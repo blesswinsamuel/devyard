@@ -64,8 +64,17 @@ func New(opts Options) *tea.Program {
 		configPath: opts.ConfigPath,
 		pane:       paneList,
 	}
-	p := tea.NewProgram(m)
-	m.program = p
+	// Bubble Tea copies the model passed to NewProgram, so a *tea.Program
+	// assigned to a field after NewProgram never reaches the program's internal
+	// copy (that was the nil-deref panic in pumpLogs). A closure is a reference
+	// type, though: it's copied by value but still closes over the same `p`
+	// variable, which is assigned below. By the time Update invokes the closure
+	// `p` holds the real program, so startFollowCmd gets a non-nil *tea.Program.
+	var p *tea.Program
+	m.startFollow = func(socket, service string, gen int64) tea.Cmd {
+		return startFollowCmd(socket, service, gen, p)
+	}
+	p = tea.NewProgram(m)
 	return p
 }
 
@@ -75,7 +84,9 @@ type model struct {
 	project    string
 	configPath string
 
-	program *tea.Program
+	// startFollow builds a startFollowCmd bound to the running *tea.Program.
+	// See New for why this is a closure rather than a stored *tea.Program.
+	startFollow func(socket, service string, gen int64) tea.Cmd
 
 	width, height int
 	ready         bool
@@ -395,7 +406,12 @@ func (m *model) maybeSwitchFollow() tea.Cmd {
 	m.followGen++
 	m.logLines = m.logLines[:0]
 	m.viewport.SetContent("")
-	return startFollowCmd(m.socket, name, m.followGen, m.program)
+	if m.startFollow == nil {
+		// Model wasn't constructed via New (e.g. in tests). No program to
+		// bind a follow to.
+		return nil
+	}
+	return m.startFollow(m.socket, name, m.followGen)
 }
 
 // startFollowSelected begins a follow for the currently selected service.
@@ -408,7 +424,11 @@ func (m *model) startFollowSelected() tea.Cmd {
 	m.followGen++
 	m.logLines = m.logLines[:0]
 	m.viewport.SetContent("")
-	return startFollowCmd(m.socket, name, m.followGen, m.program)
+	if m.startFollow == nil {
+		// Model wasn't constructed via New (e.g. in tests).
+		return nil
+	}
+	return m.startFollow(m.socket, name, m.followGen)
 }
 
 // closeFollow closes the active log-follow connection (if any). The pump
@@ -609,6 +629,13 @@ func connectCmd(socket string) tea.Cmd {
 
 func startFollowCmd(socket, service string, gen int64, p *tea.Program) tea.Cmd {
 	return func() tea.Msg {
+		if p == nil {
+			// Should not happen: the startFollow closure in New captures the
+			// program before it's assigned, but only invokes after. Guard so a
+			// future regression surfaces as a soft error instead of a nil-deref
+			// panic inside a goroutine.
+			return logDoneMsg{gen: gen, service: service, err: errors.New("tui: program not initialized")}
+		}
 		c, err := control.Dial(socket)
 		if err != nil {
 			return logDoneMsg{gen: gen, service: service, err: err}

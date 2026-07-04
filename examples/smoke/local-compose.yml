@@ -20,6 +20,13 @@
 #   - worker waits for api to be healthy, prints 5 ticks, then exits 0.
 #   - crasher depends on api (service_started), exits 7, and is restarted by the
 #     on-failure policy until the backoff cap is hit.
+#
+# Note: api uses `restart: always` (not `unless-stopped`) deliberately. With
+# `unless-stopped`, the first Ctrl-C / `down` writes an "api.stopped" marker in
+# the XDG state dir, and every subsequent `up` SKIPS api — so worker/crasher
+# fail with "dependency api exited before satisfying ...". That marker is only
+# cleared by `restart api`, which makes the smoke test annoying to re-run.
+# `always` never writes the marker, so this config is re-runnable.
 
 version: "1"
 name: smoke
@@ -40,7 +47,7 @@ services:
       interval: 1s
       timeout: 1s
       retries: 5
-    restart: unless-stopped
+    restart: always
 
   worker:
     command: |

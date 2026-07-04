@@ -267,7 +267,7 @@ Each project is namespaced by project name, so multiple projects can run side by
 - [ ] Shell completions and `local-compose version`
 - [ ] Prebuilt release binaries
 
-See [the plan](.cursor/plans/) for the full breakdown.
+See [docs/roadmap.md](docs/roadmap.md) for the full breakdown and non-goals.
 
 ## Contributing
 

@@ -353,8 +353,13 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			chk.EnsureStarted(ctx)
 		}
 
-		waitErr := cmd.Wait()
+		// Drain the stdout/stderr pipes BEFORE calling Wait. Per the os/exec
+		// docs, calling Wait before all reads from a StdoutPipe/StderrPipe
+		// have completed can close the pipe while the final line is still in
+		// the kernel pipe buffer, losing it. The readers EOF once the child
+		// closes its end (on exit), at which point Wait reaps the process.
 		pipeWG.Wait()
+		waitErr := cmd.Wait()
 
 		exitCode := exitCodeFrom(waitErr)
 		if waitErr != nil {

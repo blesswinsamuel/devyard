@@ -229,7 +229,8 @@ local-compose ps / logs / restart / down / tui  ──►  socket client
 - **Process groups**: each service is started with `Setpgid`, so `down`/`stop` uses `killpg` to
   tear down the whole tree — no orphaned children, even when `command` is a shell pipeline.
 - **Restart policy**: `on-failure` only restarts non-zero exits; `unless-stopped` honors an
-  explicit `stop` and won't auto-resume on the next `up`. Backoff is exponential with jitter.
+  explicit `stop` and won't auto-resume on the next `up` (its dependents are skipped
+  transitively and `up` exits 0 — a stop is not a failure). Backoff is exponential with jitter.
 
 ### Where state lives
 

@@ -103,7 +103,7 @@ The probe inherits the service's `shell`, `working_dir`, and `env`, so a
 | `no` (default) | Never restart. |
 | `on-failure` | Restart on non-zero exit, up to `Backoff.MaxAttempts` (capped). |
 | `always` | Restart forever, any exit. |
-| `unless-stopped` | Restart forever, **but** an explicit `stop`/`down` writes a "stopped" marker so the service does not auto-resume on the next `up`. `restart` clears the marker. |
+| `unless-stopped` | Restart forever, **but** an explicit `stop`/`down` writes a "stopped" marker so the service does not auto-resume on the next `up`. `restart` clears the marker. When a service is skipped this way, its dependents are skipped transitively (logged as `skipped: dependency "X" is stopped`) and `up` exits 0 — an explicit stop is not a failure. |
 
 Backoff is exponential with jitter (`internal/supervisor` `BackoffConfig`).
 

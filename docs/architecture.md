@@ -78,6 +78,15 @@ for `unless-stopped` services, `SIGTERM`s every group, waits up to
 re-launches a fresh run loop for that service. `Restart` removes any stopped
 marker so the service resumes normally afterward.
 
+On the next `up`, any `unless-stopped` service with a persisted marker is
+skipped at `Start` (status `stopped`, `startedOnce` stays false). `waitForDep`
+distinguishes a skipped dependency (`errDependencyStopped`) from one that
+genuinely exited: skipped dependents are skipped transitively and `Failed()`
+stays false, so `up` exits 0. A dependency that exits or goes unhealthy before
+satisfying its condition is a real failure (`Failed()` -> non-zero `up`). A
+user-initiated shutdown during startup (`errSupervisorStopping`) is also not a
+failure.
+
 Process groups are mandatory and non-negotiable: `launch` calls
 `applyProcessGroup` (`proc_unix.go`) and teardown uses `killGroup(pgid, sig)`
 with a **negative** pid to signal the whole group. This is what prevents

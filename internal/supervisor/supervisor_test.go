@@ -2,6 +2,7 @@ package supervisor_test
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -345,6 +346,116 @@ func TestSupervisorUnlessStoppedMarker(t *testing.T) {
 		t.Errorf("pid = %d, want 0 (should not be running)", st.PID)
 	}
 	_ = s2.Stop(ctx)
+}
+
+// TestSupervisorUnlessStoppedSkipsDependents verifies that when a unless-stopped
+// service is skipped on `up` because of a persisted stop marker, its dependents
+// are skipped transitively (not reported as failures), the supervisor does NOT
+// record a failure, and the per-service logs explain the skip. This is the UX
+// fix for the old behavior where dependents died with a misleading "dependency
+// exited before satisfying" message and `up` exited non-zero.
+func TestSupervisorUnlessStoppedSkipsDependents(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	locs := testLocations(t)
+	if err := locs.MkdirAll(); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Pre-create the stop marker so the api service is skipped at Start.
+	apiMarker := filepath.Join(locs.State, "api.stopped")
+	if err := os.WriteFile(apiMarker, []byte("stopped\n"), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	dir := t.TempDir()
+	dependentStart := filepath.Join(dir, "worker-started")
+	crasherStart := filepath.Join(dir, "crasher-started")
+	file := fileWith(map[string]config.Service{
+		"api": {
+			Command: "sleep 30", Shell: "sh", Restart: config.RestartUnlessStopped,
+			WorkingDir: dir,
+		},
+		"worker": {
+			Command: "touch " + dependentStart + "; sleep 30", Shell: "sh",
+			Restart: config.RestartNo, WorkingDir: dir,
+			DependsOn: config.DependsOn{
+				Entries: map[string]config.DependsOnEntry{
+					"api": {Condition: config.ConditionServiceStarted},
+				},
+				Order: []string{"api"},
+			},
+		},
+		"crasher": {
+			Command: "touch " + crasherStart + "; sleep 30", Shell: "sh",
+			Restart: config.RestartNo, WorkingDir: dir,
+			DependsOn: config.DependsOn{
+				Entries: map[string]config.DependsOnEntry{
+					"api": {Condition: config.ConditionServiceStarted},
+				},
+				Order: []string{"api"},
+			},
+		},
+	})
+	s, err := supervisor.New(supervisor.Options{
+		Locations:           locs,
+		File:                file,
+		Order:               []string{"api", "worker", "crasher"},
+		BaseDir:             dir,
+		Foreground:          false,
+		Backoff:             testBackoff(),
+		GracefulStopTimeout: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+		_ = s.Close()
+	})
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// All three services should be Stopped: api was skipped by the marker,
+	// worker/crasher are skipped transitively. None should be running.
+	if !waitFor(t, 2*time.Second, func() bool {
+		for _, st := range s.States() {
+			if st.Status != supervisor.StatusStopped {
+				return false
+			}
+			if st.PID != 0 {
+				return false
+			}
+		}
+		return true
+	}) {
+		t.Fatalf("services not all stopped: %+v", s.States())
+	}
+
+	// An explicit stop is not a failure: the supervisor must not record one.
+	if s.Failed() {
+		t.Errorf("Failed() = true, want false (skipped stops are not failures)")
+	}
+
+	// Dependents must never have launched.
+	if fileExists(dependentStart) {
+		t.Errorf("worker started marker exists; worker launched despite stopped api")
+	}
+	if fileExists(crasherStart) {
+		t.Errorf("crasher started marker exists; crasher launched despite stopped api")
+	}
+
+	// Logs must explain the skip rather than blaming api for "exiting".
+	apiLog, _ := s.LogPath("api")
+	if data := string(mustReadFile(t, apiLog)); !strings.Contains(data, "skipping stopped service api") {
+		t.Errorf("api log missing skip notice: %q", data)
+	}
+	workerLog, _ := s.LogPath("worker")
+	if data := string(mustReadFile(t, workerLog)); !strings.Contains(data, "skipped: dependency \"api\" is stopped") {
+		t.Errorf("worker log missing transitive-skip notice: %q", data)
+	}
 }
 
 // TestSupervisorRestart verifies Restart stops a running service and relaunches it.

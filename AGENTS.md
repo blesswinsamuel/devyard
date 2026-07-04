@@ -92,7 +92,12 @@ over that socket. See [docs/architecture.md](docs/architecture.md) and
   `runSupervisorChild` (`internal/cli/root.go`), not just in cobra.
 - **`unless-stopped`** persists a "stopped" marker file in the state dir so a
   service doesn't auto-resume on the next `up`. `Restart` removes it. If you
-  touch restart/stop logic, keep the marker in sync.
+  touch restart/stop logic, keep the marker in sync. When a service is skipped
+  because of the marker, its dependents are skipped transitively (`waitForDep`
+  returns `errDependencyStopped`) and `up` exits 0 — an explicit stop is not a
+  failure, so `Failed()` stays false. Only a dependency that genuinely exits or
+  goes unhealthy sets `Failed()`; a user-initiated shutdown
+  (`errSupervisorStopping`) doesn't either.
 - **Health checker lifecycle**: the checker is created before
   `depends_on: service_healthy` waiters poll it, so they see `starting` instead
   of nil. Don't reorder checker creation after `waitForDeps`.

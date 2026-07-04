@@ -23,10 +23,11 @@
 #
 # Note: api uses `restart: always` (not `unless-stopped`) deliberately. With
 # `unless-stopped`, the first Ctrl-C / `down` writes an "api.stopped" marker in
-# the XDG state dir, and every subsequent `up` SKIPS api — so worker/crasher
-# fail with "dependency api exited before satisfying ...". That marker is only
-# cleared by `restart api`, which makes the smoke test annoying to re-run.
-# `always` never writes the marker, so this config is re-runnable.
+# the XDG state dir, and every subsequent `up` SKIPS api (it won't auto-resume
+# until you `restart api`). That's intended `unless-stopped` semantics — and
+# dependents are now skipped cleanly with an "skipped: dependency api is
+# stopped" message and `up` exits 0 — but for a smoke test you typically want
+# `up` to actually start api every time, so `always` is the better fit here.
 
 version: "1"
 name: smoke

@@ -39,6 +39,19 @@ const (
 	StatusStopped  Status = "stopped" // explicitly stopped; not restarted
 )
 
+// errDependencyStopped is returned by waitForDep when a dependency was skipped
+// at Start because of a persisted "stopped" marker (restart: unless-stopped).
+// It is distinct from a dependency that genuinely exited: a skipped dependency
+// is an explicit user stop, not a failure, so the dependent is skipped
+// transitively and the supervisor does NOT record it as failed.
+var errDependencyStopped = errors.New("dependency is stopped")
+
+// errSupervisorStopping is returned by waitForDep when the supervisor is
+// shutting down (Stop called or context cancelled) while a dependent is still
+// waiting on a dependency. User-initiated cancellation is not a failure, so the
+// supervisor does NOT record it as failed.
+var errSupervisorStopping = errors.New("supervisor stopping")
+
 // DefaultGracefulStopTimeout is how long Stop waits for SIGTERM before SIGKILL.
 const DefaultGracefulStopTimeout = 10 * time.Second
 
@@ -239,8 +252,12 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	for _, name := range s.order {
 		rt := s.services[name]
 		// Unless-stopped services with a persisted "stopped" marker are
-		// skipped so they don't auto-resume on the next `up`.
+		// skipped so they don't auto-resume on the next `up`. Log it so the
+		// user sees why the service isn't starting and how to resume it.
 		if rt.spec.Restart == config.RestartUnlessStopped && s.hasStoppedMarker(name) {
+			if rt.logger != nil {
+				rt.logger.writeLine(fmt.Sprintf("local-compose: skipping stopped service %s (use `restart %s` to resume)", name, name))
+			}
 			rt.mu.Lock()
 			rt.status = StatusStopped
 			rt.mu.Unlock()
@@ -315,13 +332,25 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 
 	// Block until dependencies satisfy their conditions before launching.
 	if err := s.waitForDeps(ctx, rt); err != nil {
+		stopped := errors.Is(err, errDependencyStopped)
+		cancelled := errors.Is(err, errSupervisorStopping)
 		if rt.logger != nil {
-			rt.logger.writeLine(fmt.Sprintf("local-compose: not starting: %v", err))
+			if stopped {
+				rt.logger.writeLine(fmt.Sprintf("local-compose: skipped: %v", err))
+			} else {
+				rt.logger.writeLine(fmt.Sprintf("local-compose: not starting: %v", err))
+			}
 		}
 		rt.mu.Lock()
 		rt.status = StatusStopped
 		rt.mu.Unlock()
-		s.failed.Store(true)
+		// Only a genuine dependency failure (it exited or went unhealthy
+		// before satisfying the condition) is recorded as a failure. An
+		// explicit stop (errDependencyStopped) or user-initiated shutdown
+		// (errSupervisorStopping) is not a failure.
+		if !stopped && !cancelled {
+			s.failed.Store(true)
+		}
 		return
 	}
 
@@ -444,7 +473,7 @@ func (s *Supervisor) waitForDep(ctx context.Context, depName string, cond config
 	defer ticker.Stop()
 	for {
 		if s.isStopping() {
-			return errors.New("supervisor stopping")
+			return errSupervisorStopping
 		}
 		switch cond {
 		case config.ConditionServiceStarted:
@@ -470,15 +499,26 @@ func (s *Supervisor) waitForDep(ctx context.Context, depName string, cond config
 		// can no longer be satisfied — fail rather than hang forever.
 		select {
 		case <-dep.done:
+			dep.mu.Lock()
+			depStatus := dep.status
+			dep.mu.Unlock()
+			// A dependency that was skipped at Start (stopped marker) never
+			// launched: startedOnce is false and status is Stopped. That is
+			// an explicit user stop, not a failure — surface it as "stopped"
+			// so the dependent is skipped transitively rather than reported
+			// as a failed dependency.
+			if depStatus == StatusStopped && !dep.startedOnce.Load() {
+				return fmt.Errorf("dependency %q is stopped: %w", depName, errDependencyStopped)
+			}
 			return fmt.Errorf("dependency %q exited before satisfying %s", depName, cond)
 		default:
 		}
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("%w: %w", errSupervisorStopping, ctx.Err())
 		case <-s.stopCh:
-			return errors.New("supervisor stopping")
+			return errSupervisorStopping
 		case <-ticker.C:
 		}
 	}

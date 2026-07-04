@@ -14,6 +14,7 @@ import (
 
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
 	"github.com/blesswinsamuel/local-compose/internal/project"
+	"golang.org/x/sys/unix"
 )
 
 // readyReport is what the daemon child stub writes so the parent test can
@@ -54,7 +55,7 @@ func isSupervisorChild(args []string) bool {
 func runChildStub() {
 	pid := os.Getpid()
 	ppid := os.Getppid()
-	sid, err := syscall.Getsid(pid)
+	sid, err := unix.Getsid(pid)
 	if err != nil {
 		sid = -1
 	}
@@ -156,7 +157,7 @@ func TestSpawnReexecsAsSessionLeader(t *testing.T) {
 
 	// setsid: the child is its own session leader (sid == pid) and detached
 	// from the parent's session.
-	parentSid, _ := syscall.Getsid(os.Getpid())
+	parentSid, _ := unix.Getsid(os.Getpid())
 	if rep.SID != rep.PID {
 		t.Errorf("child sid = %d, want %d (session leader)", rep.SID, rep.PID)
 	}

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/local-compose/internal/health"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 )
 
@@ -89,7 +90,7 @@ type ServiceState struct {
 	StartedAt  time.Time
 	FinishedAt time.Time
 	HasHealth  bool
-	Health     string // "n/a" until Phase 2 wires internal/health
+	Health     string // "n/a", or health.State string when HasHealth
 }
 
 // serviceRuntime is the supervisor's mutable per-service state.
@@ -111,8 +112,32 @@ type serviceRuntime struct {
 	// or StopService) so the run loop does not restart it.
 	stopped atomic.Bool
 
+	// startedOnce is set the first time the service successfully launches and
+	// transitions to running. depends_on: service_started waiters poll it.
+	startedOnce atomic.Bool
+
+	// checker is the per-service health checker (nil when the service has no
+	// healthcheck). Guarded by checkerMu so dependents and States can read it
+	// without contending with the run loop's main mutex.
+	checkerMu sync.Mutex
+	checker   *health.Checker
+
 	// done is closed when the service's runService goroutine exits.
 	done chan struct{}
+}
+
+// setChecker stores/clears the service's health checker under checkerMu.
+func (rt *serviceRuntime) setChecker(c *health.Checker) {
+	rt.checkerMu.Lock()
+	rt.checker = c
+	rt.checkerMu.Unlock()
+}
+
+// getChecker returns the current health checker (may be nil).
+func (rt *serviceRuntime) getChecker() *health.Checker {
+	rt.checkerMu.Lock()
+	defer rt.checkerMu.Unlock()
+	return rt.checker
 }
 
 // Supervisor owns and supervises a set of services.
@@ -129,6 +154,11 @@ type Supervisor struct {
 
 	started atomic.Bool
 	stopped atomic.Bool
+
+	// failed is set when a service could not start because a depends_on
+	// condition was not satisfied (e.g. a dependency went unhealthy or exited
+	// before becoming healthy). Foreground `up` surfaces it as a non-zero exit.
+	failed atomic.Bool
 }
 
 // New constructs a Supervisor. It does not spawn anything; call Start.
@@ -247,10 +277,53 @@ func (s *Supervisor) Wait() {
 }
 
 // runService is the per-service supervise loop: launch, wait, apply restart
-// policy with backoff, repeat until stopped or the policy gives up.
+// policy with backoff, repeat until stopped or the policy gives up. It first
+// waits for the service's depends_on conditions (service_started /
+// service_healthy) to be satisfied, and starts a health checker for services
+// that declare a healthcheck so dependents and `ps` see real health state.
 func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 	defer s.wg.Done()
 	defer close(rt.done)
+
+	// Build the health checker up front (without probing) so dependents
+	// waiting on service_healthy observe a real checker in StateStarting
+	// rather than a nil one.
+	var chk *health.Checker
+	if rt.spec.Healthcheck != nil {
+		var err error
+		chk, err = health.New(rt.name, s.healthConfig(rt), func(line string) {
+			if rt.logger != nil {
+				rt.logger.writeLine(line)
+			}
+		})
+		if err != nil {
+			if rt.logger != nil {
+				rt.logger.writeLine(fmt.Sprintf("local-compose: invalid healthcheck: %v", err))
+			}
+			rt.mu.Lock()
+			rt.status = StatusStopped
+			rt.mu.Unlock()
+			s.failed.Store(true)
+			return
+		}
+		rt.setChecker(chk)
+		defer func() {
+			chk.Stop()
+			rt.setChecker(nil)
+		}()
+	}
+
+	// Block until dependencies satisfy their conditions before launching.
+	if err := s.waitForDeps(ctx, rt); err != nil {
+		if rt.logger != nil {
+			rt.logger.writeLine(fmt.Sprintf("local-compose: not starting: %v", err))
+		}
+		rt.mu.Lock()
+		rt.status = StatusStopped
+		rt.mu.Unlock()
+		s.failed.Store(true)
+		return
+	}
 
 	for {
 		if s.isStopping() || rt.stopped.Load() {
@@ -273,6 +346,11 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 				return
 			}
 			continue
+		}
+
+		// The service is up; begin probing (idempotent across restarts).
+		if chk != nil {
+			chk.EnsureStarted(ctx)
 		}
 
 		waitErr := cmd.Wait()
@@ -310,6 +388,104 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 	}
 }
 
+// healthConfig translates the service's Healthcheck spec into a health.Config
+// for the checker, inheriting the service's shell, working_dir, and env so a
+// CMD-SHELL probe runs in the same context as the service.
+func (s *Supervisor) healthConfig(rt *serviceRuntime) health.Config {
+	hc := rt.spec.Healthcheck
+	return health.Config{
+		Test:       hc.Test,
+		Interval:   hc.Interval,
+		Retries:    hc.Retries,
+		Timeout:    hc.Timeout,
+		Shell:      rt.spec.Shell,
+		WorkingDir: resolveWorkingDir(s.opts.BaseDir, rt.spec.WorkingDir),
+		Env:        mergeEnv(os.Environ(), rt.spec.Env),
+	}
+}
+
+// waitForDeps blocks until every depends_on entry's condition is satisfied.
+// Returns an error if a condition can never be met (the dependency exited
+// permanently, or went unhealthy for service_healthy) or the supervisor is
+// stopping.
+func (s *Supervisor) waitForDeps(ctx context.Context, rt *serviceRuntime) error {
+	for _, depName := range rt.spec.DependsOn.Order {
+		entry, ok := rt.spec.DependsOn.Entries[depName]
+		if !ok {
+			continue
+		}
+		if err := s.waitForDep(ctx, depName, entry.Condition); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// depPollInterval is how often waitForDep re-checks the dependency's state.
+// Kept small so service_healthy dependents start promptly once a dependency
+// flips healthy without busy-looping.
+const depPollInterval = 20 * time.Millisecond
+
+// waitForDep polls depName until condition is satisfied. service_started is
+// satisfied once the dependency has launched at least once; service_healthy
+// once its health checker reports healthy (and fails fast on unhealthy).
+func (s *Supervisor) waitForDep(ctx context.Context, depName string, cond config.DependsOnCondition) error {
+	dep, ok := s.services[depName]
+	if !ok {
+		return fmt.Errorf("depends_on %q: unknown service", depName)
+	}
+
+	ticker := time.NewTicker(depPollInterval)
+	defer ticker.Stop()
+	for {
+		if s.isStopping() {
+			return errors.New("supervisor stopping")
+		}
+		switch cond {
+		case config.ConditionServiceStarted:
+			if dep.startedOnce.Load() {
+				return nil
+			}
+		case config.ConditionServiceHealthy:
+			if chk := dep.getChecker(); chk != nil {
+				switch chk.State() {
+				case health.StateHealthy:
+					return nil
+				case health.StateUnhealthy:
+					return fmt.Errorf("dependency %q is unhealthy", depName)
+				}
+			} else if dep.startedOnce.Load() {
+				// No healthcheck declared (config validation normally
+				// forbids this for service_healthy); fall back to started.
+				return nil
+			}
+		}
+
+		// If the dependency's run loop has exited for good, the condition
+		// can no longer be satisfied — fail rather than hang forever.
+		select {
+		case <-dep.done:
+			return fmt.Errorf("dependency %q exited before satisfying %s", depName, cond)
+		default:
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-s.stopCh:
+			return errors.New("supervisor stopping")
+		case <-ticker.C:
+		}
+	}
+}
+
+// Failed reports whether any service failed to start because a depends_on
+// condition could not be satisfied. Foreground `up` surfaces this as a
+// non-zero exit so CI catches misconfigured health gates.
+func (s *Supervisor) Failed() bool {
+	return s.failed.Load()
+}
+
 // launch starts one process for the service and spins up pipe-reading
 // goroutines. It returns the cmd (for Wait), a WaitGroup that completes when
 // the pipe readers have drained, and any start error.
@@ -344,6 +520,7 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 	rt.status = StatusRunning
 	rt.startedAt = time.Now()
 	rt.mu.Unlock()
+	rt.startedOnce.Store(true)
 
 	var pipeWG sync.WaitGroup
 	pipeWG.Add(2)
@@ -493,11 +670,15 @@ func (s *Supervisor) States() []ServiceState {
 	out := make([]ServiceState, 0, len(s.order))
 	for _, name := range s.order {
 		rt := s.services[name]
-		rt.mu.Lock()
-		health := "n/a"
+		healthStr := "n/a"
 		if rt.spec.Healthcheck != nil {
-			health = "starting"
+			if chk := rt.getChecker(); chk != nil {
+				healthStr = string(chk.State())
+			} else {
+				healthStr = string(health.StateStarting)
+			}
 		}
+		rt.mu.Lock()
 		out = append(out, ServiceState{
 			Name:       name,
 			Status:     rt.status,
@@ -507,7 +688,7 @@ func (s *Supervisor) States() []ServiceState {
 			StartedAt:  rt.startedAt,
 			FinishedAt: rt.finishedAt,
 			HasHealth:  rt.spec.Healthcheck != nil,
-			Health:     health,
+			Health:     healthStr,
 		})
 		rt.mu.Unlock()
 	}

@@ -158,13 +158,17 @@ func override(env []string, k, v string) []string {
 }
 
 // pidFromPS parses the PID column (3rd field) for a named service from `ps`
-// output. Returns 0 if not found.
+// output. Returns 0 if not found or the service has no pid yet (pid column is
+// "-" while it is waiting on depends_on or starting up).
 func pidFromPS(t *testing.T, psOut, name string) int {
 	t.Helper()
 	for _, line := range strings.Split(strings.TrimSpace(psOut), "\n")[1:] {
 		fields := strings.Fields(line)
 		if len(fields) < 3 || fields[0] != name {
 			continue
+		}
+		if fields[2] == "-" {
+			return 0
 		}
 		pid, err := strconv.Atoi(fields[2])
 		if err != nil {
@@ -249,12 +253,19 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 		t.Fatalf("up -d stderr missing supervisor-started message: %q", errOut)
 	}
 
-	// ps: all three services running in topo order.
-	waitForCond(t, 3*time.Second, func() bool {
+	// ps: all three services running in topo order. depends_on: service_started
+	// gates each dependent, so wait until every service actually has a pid.
+	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, rc := e.run(t, context.Background(), "ps")
-		return rc == 0 &&
-			strings.Contains(psOut, "alpha") && strings.Contains(psOut, "running") &&
-			strings.Contains(psOut, "beta") && strings.Contains(psOut, "gamma")
+		if rc != 0 {
+			return false
+		}
+		for _, name := range []string{"alpha", "beta", "gamma"} {
+			if pidFromPS(t, psOut, name) == 0 {
+				return false
+			}
+		}
+		return true
 	}, "ps shows all three services running")
 	psOut, _, rc := e.run(t, context.Background(), "ps")
 	if rc != 0 {
@@ -479,5 +490,83 @@ func TestE2E_DownIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "no supervisor running") {
 		t.Fatalf("idempotent down missing no-supervisor message: %q", errOut)
+	}
+}
+
+// TestE2E_HealthcheckGatesDependent runs a dependency whose healthcheck passes
+// quickly and verifies the dependent only appears in `ps` once the dependency
+// is healthy.
+func TestE2E_HealthcheckGatesDependent(t *testing.T) {
+	const cfg = `version: "1"
+name: lc-test
+services:
+  db:
+    command: sh -c 'sleep 30'
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 100ms
+      retries: 3
+      timeout: 1s
+  api:
+    command: sh -c 'sleep 30'
+    depends_on:
+      db: { condition: service_healthy }`
+	e := newEnv(t, cfg)
+	_, _, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d", code)
+	}
+
+	// Eventually both run and db reports healthy.
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return strings.Contains(psOut, "db") && strings.Contains(psOut, "running") &&
+			strings.Contains(psOut, "api") && strings.Contains(psOut, "running") &&
+			strings.Contains(psOut, "healthy")
+	}, "ps shows db healthy and api running")
+}
+
+// TestE2E_UnhealthyDependencyFailsDependent verifies that when a dependency's
+// healthcheck exhausts retries, the dependent never starts and a subsequent
+// foreground `up` reports failure.
+func TestE2E_UnhealthyDependencyFailsDependent(t *testing.T) {
+	const cfg = `version: "1"
+name: lc-test
+services:
+  db:
+    command: sh -c 'sleep 30'
+    healthcheck:
+      test: ["CMD", "false"]
+      interval: 100ms
+      retries: 2
+      timeout: 1s
+  api:
+    command: sh -c 'sleep 30'
+    depends_on:
+      db: { condition: service_healthy }`
+	e := newEnv(t, cfg)
+	// Foreground up: the dependent can't start (db unhealthy), and once db's
+	// own process is the only thing left the supervisor winds down. The run
+	// must surface a failure via non-zero exit OR report the unhealthy state
+	// in `ps`. Daemonize and inspect ps instead, since the foreground path
+	// keeps db running (sleep 30) so `up` won't return on its own quickly.
+	_, _, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d", code)
+	}
+	// db must eventually report unhealthy; api must never reach running.
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return strings.Contains(psOut, "db") && strings.Contains(psOut, "unhealthy")
+	}, "ps shows db unhealthy")
+	// api row should not show running (it stays stopped).
+	psOut, _, _ := e.run(t, context.Background(), "ps")
+	for _, line := range strings.Split(strings.TrimSpace(psOut), "\n")[1:] {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == "api" {
+			if len(fields) > 1 && fields[1] == "running" {
+				t.Fatalf("api should not be running when db is unhealthy:\n%s", psOut)
+			}
+		}
 	}
 }

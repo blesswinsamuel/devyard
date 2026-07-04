@@ -78,6 +78,9 @@ func runSupervisor(configPath, projectName string, foreground, runBuilds bool) e
 	if !foreground {
 		_ = daemon.RemovePidfile(locs)
 	}
+	if sup.Failed() {
+		return fmt.Errorf("supervisor: one or more services failed to start (unmet depends_on or invalid healthcheck)")
+	}
 	return nil
 }
 

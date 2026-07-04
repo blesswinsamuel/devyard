@@ -1,0 +1,34 @@
+# golangci-lint v2 configuration.
+# Docs: https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+linters:
+  # The standard set (govet, errcheck, ineffassign, staticcheck, unused, etc.)
+  # plus a small set of useful extras. Keep this intentionally lean: every
+  # enabled linter is one more thing a contributor has to satisfy.
+  default: standard
+  enable:
+    - gosec       # security-focused checks
+    - misspell    # typo detection in comments/strings
+    - revive      # configurable, extra style checks
+    - unconvert   # detect unnecessary type conversions
+  settings:
+    misspell:
+      locale: US
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+run:
+  timeout: 5m
+  go: "1.26"
+
+issues:
+  max-same-issues: 0

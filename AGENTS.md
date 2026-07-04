@@ -18,14 +18,17 @@ go build -o local-compose ./cmd/local-compose   # build the binary
 go vet ./...                        # vet
 gofmt -l .                          # must print nothing
 go test ./...                       # all unit + integration tests
+go test -race ./...                 # with the race detector (CI uses this)
 go test ./internal/supervisor/...   # one package
 go test ./test/integration/...      # the black-box e2e suite (builds the real binary)
-golangci-lint run                   # optional but recommended before PRs
+golangci-lint run                   # lint; config in .golangci-lint.yml (v2)
 ```
 
-Tests must stay green. The integration suite builds the actual binary and drives
-the full CLI lifecycle (`up -d`, `ps`, `logs`, `restart`, `down`, `build`,
-`up --build`) against isolated XDG dirs — it never touches the user's real state.
+Tests and lint must stay green. CI (`.github/workflows/ci.yml`) runs `go vet`,
+`gofmt`, `golangci-lint`, `go build`, and `go test -race` on Ubuntu and macOS.
+The integration suite builds the actual binary and drives the full CLI lifecycle
+(`up -d`, `ps`, `logs`, `restart`, `down`, `build`, `up --build`) against
+isolated XDG dirs — it never touches the user's real state.
 
 ## Repo layout
 

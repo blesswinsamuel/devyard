@@ -281,7 +281,7 @@ cd local-compose
 go build ./...                     # build
 go vet ./...                       # vet
 gofmt -l .                         # should print nothing
-golangci-lint run                  # lint (optional but recommended)
+golangci-lint run                  # lint (config in .golangci-lint.yml)
 go test ./...                      # unit + integration tests
 ```
 

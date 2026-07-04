@@ -16,10 +16,10 @@ const DefaultShell = "sh"
 type RestartPolicy string
 
 const (
-	RestartNo             RestartPolicy = "no"
-	RestartOnFailure      RestartPolicy = "on-failure"
-	RestartAlways         RestartPolicy = "always"
-	RestartUnlessStopped  RestartPolicy = "unless-stopped"
+	RestartNo            RestartPolicy = "no"
+	RestartOnFailure     RestartPolicy = "on-failure"
+	RestartAlways        RestartPolicy = "always"
+	RestartUnlessStopped RestartPolicy = "unless-stopped"
 )
 
 // DependsOnCondition is the condition for depends_on.
@@ -86,14 +86,14 @@ type DependsOnEntry struct {
 
 // Service defines one managed process.
 type Service struct {
-	Command    string            `yaml:"command"`
-	WorkingDir string            `yaml:"working_dir,omitempty"`
-	Env        map[string]string `yaml:"env,omitempty"`
-	DependsOn  DependsOn         `yaml:"depends_on,omitempty"`
-	Healthcheck *Healthcheck     `yaml:"healthcheck,omitempty"`
-	Restart    RestartPolicy     `yaml:"restart,omitempty"`
-	Build      *Build            `yaml:"build,omitempty"`
-	Shell      string            `yaml:"shell,omitempty"`
+	Command     string            `yaml:"command"`
+	WorkingDir  string            `yaml:"working_dir,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"`
+	DependsOn   DependsOn         `yaml:"depends_on,omitempty"`
+	Healthcheck *Healthcheck      `yaml:"healthcheck,omitempty"`
+	Restart     RestartPolicy     `yaml:"restart,omitempty"`
+	Build       *Build            `yaml:"build,omitempty"`
+	Shell       string            `yaml:"shell,omitempty"`
 }
 
 // DependsOn accepts either a list of service names or a map with conditions.

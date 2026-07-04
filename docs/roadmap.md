@@ -25,6 +25,8 @@ What's done, what's planned, and where each item lives in the code.
   `local-compose.yml`. (`internal/config`, `internal/cli`)
 - **Tests** — unit tests per package plus a black-box integration suite that
   builds the real binary and drives the full lifecycle. (`test/integration`)
+- **CI + lint** — GitHub Actions workflow (`go vet`, `gofmt`, `golangci-lint`,
+  `go build`, `go test -race` on Ubuntu + macOS) and a v2 `.golangci-lint.yml`.
 
 ## Planned
 
@@ -40,8 +42,7 @@ What's done, what's planned, and where each item lives in the code.
 - [ ] **Shell completions** (cobra `__complete`) and `local-compose version`.
 - [ ] **Strict config mode** that warns on unknown fields (today `yaml.v3`
       silently ignores them).
-- [ ] **Prebuilt release binaries** (GoReleaser) + CI workflow
-      (`go vet`, `gofmt`, `golangci-lint`, `go test ./...`).
+- [ ] **Prebuilt release binaries** (GoReleaser).
 
 ## Non-goals
 

@@ -45,9 +45,9 @@ var psCmd = &cobra.Command{
 // readable in piped/non-terminal contexts.
 func printStates(states []protocol.ServiceState) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tSTATUS\tPID\tRESTARTS\tHEALTH\tEXIT")
+	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tPID\tRESTARTS\tHEALTH\tEXIT")
 	if len(states) == 0 {
-		fmt.Fprintln(w, "(no services)")
+		_, _ = fmt.Fprintln(w, "(no services)")
 		_ = w.Flush()
 		return
 	}
@@ -60,7 +60,7 @@ func printStates(states []protocol.ServiceState) {
 		if st.HasHealth {
 			health = st.Health
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%d\n", st.Name, st.Status, pid, st.Restarts, health, st.ExitCode)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%d\n", st.Name, st.Status, pid, st.Restarts, health, st.ExitCode)
 	}
 	_ = w.Flush()
 }

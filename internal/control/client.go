@@ -77,6 +77,15 @@ func (c *Client) Stop() error {
 	return c.awaitDone()
 }
 
+// StopService sends a StopService request for one service and waits for the
+// supervisor to confirm. The service is stopped in place and not restarted.
+func (c *Client) StopService(service string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStopService, Service: service}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
 // Restart sends a Restart request. If service is empty, all services are
 // restarted.
 func (c *Client) Restart(service string) error {

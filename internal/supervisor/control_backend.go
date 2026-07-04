@@ -47,6 +47,12 @@ func (b *ControlBackend) Stop(ctx context.Context) error {
 	return b.s.Stop(ctx)
 }
 
+// StopService stops a single service in place (used by the TUI's stop-selected
+// keybinding). markStopped=true so unless-stopped does not auto-resume it.
+func (b *ControlBackend) StopService(name string) error {
+	return b.s.StopService(name, true)
+}
+
 // Restart stops and relaunches one service by name.
 func (b *ControlBackend) Restart(name string) error {
 	return b.s.Restart(name)

@@ -18,12 +18,14 @@ import (
 // fakeBackend is an in-memory control.Backend for exercising the server
 // without spinning up real child processes.
 type fakeBackend struct {
-	mu       sync.Mutex
-	states   []protocol.ServiceState
-	stopErr  error
-	logPaths map[string]string
-	restarts []string
-	stopped  bool
+	mu         sync.Mutex
+	states     []protocol.ServiceState
+	stopErr    error
+	logPaths   map[string]string
+	restarts   []string
+	stopped    bool
+	stoppedSvc []string
+	stopSvcErr error
 }
 
 func (b *fakeBackend) States() []protocol.ServiceState {
@@ -39,6 +41,13 @@ func (b *fakeBackend) Stop(ctx context.Context) error {
 	defer b.mu.Unlock()
 	b.stopped = true
 	return b.stopErr
+}
+
+func (b *fakeBackend) StopService(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stoppedSvc = append(b.stoppedSvc, name)
+	return b.stopSvcErr
 }
 
 func (b *fakeBackend) Restart(name string) error {
@@ -63,6 +72,18 @@ func (b *fakeBackend) restartsFor(name string) int {
 	n := 0
 	for _, r := range b.restarts {
 		if r == name {
+			n++
+		}
+	}
+	return n
+}
+
+func (b *fakeBackend) stoppedCount(name string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := 0
+	for _, s := range b.stoppedSvc {
+		if s == name {
 			n++
 		}
 	}
@@ -131,6 +152,42 @@ func TestRoundtripStop(t *testing.T) {
 	}
 	if !b.stopped {
 		t.Errorf("backend.Stop was not called")
+	}
+}
+
+func TestRoundtripStopService(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.StopService("api"); err != nil {
+		t.Fatalf("StopService: %v", err)
+	}
+	if b.stoppedCount("api") != 1 {
+		t.Errorf("api stops = %d, want 1", b.stoppedCount("api"))
+	}
+}
+
+func TestStopServiceRequiresName(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.Send(protocol.Request{Kind: protocol.KindStopService}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	if resp.Kind != protocol.KindError {
+		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
 	}
 }
 

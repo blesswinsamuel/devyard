@@ -23,6 +23,11 @@ type Backend interface {
 	States() []protocol.ServiceState
 	// Stop gracefully stops every service. Used by `down`.
 	Stop(ctx context.Context) error
+	// StopService stops a single service in place (no restart). Used by the
+	// TUI's "stop selected" keybinding. markStopped semantics are owned by the
+	// implementation; the supervisor treats it as an explicit stop so
+	// unless-stopped does not auto-resume it.
+	StopService(name string) error
 	// Restart stops and relaunches one service by name.
 	Restart(name string) error
 	// LogPath returns the absolute path of a service's log file.
@@ -151,6 +156,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleList(w)
 	case protocol.KindStop:
 		s.handleStop(ctx, w)
+	case protocol.KindStopService:
+		s.handleStopService(w, req)
 	case protocol.KindRestart:
 		s.handleRestart(w, req)
 	case protocol.KindLogs:
@@ -173,6 +180,18 @@ func (s *Server) handleList(w io.Writer) {
 
 func (s *Server) handleStop(ctx context.Context, w io.Writer) {
 	if err := s.backend.Stop(ctx); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleStopService(w io.Writer, req protocol.Request) {
+	if req.Service == "" {
+		_ = writeError(w, "stop_service: service is required")
+		return
+	}
+	if err := s.backend.StopService(req.Service); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}

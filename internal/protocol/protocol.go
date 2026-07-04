@@ -18,16 +18,18 @@ const FrameMaxLen = 16 << 20
 type RequestKind string
 
 const (
-	KindList    RequestKind = "list"    // list services + status + pids
-	KindLogs    RequestKind = "logs"    // stream a service's log file
-	KindStop    RequestKind = "stop"    // stop every service (down)
-	KindRestart RequestKind = "restart" // restart one (Service) or all services
+	KindList        RequestKind = "list"         // list services + status + pids
+	KindLogs        RequestKind = "logs"         // stream a service's log file
+	KindStop        RequestKind = "stop"         // stop every service (down)
+	KindStopService RequestKind = "stop_service" // stop one service by name
+	KindRestart     RequestKind = "restart"      // restart one (Service) or all services
 )
 
 // Request is a client -> supervisor message.
 //
 //   - Kind==KindLogs: Service selects the log file, Follow enables tailing.
 //   - Kind==KindRestart: Service selects one service; empty means all.
+//   - Kind==KindStopService: Service selects the service to stop in place.
 //   - Kind==KindList / KindStop: no fields used.
 type Request struct {
 	Kind    RequestKind `json:"kind"`

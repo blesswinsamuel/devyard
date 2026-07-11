@@ -196,6 +196,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
+	case tea.MouseClickMsg:
+		return m.handleMouseClick(msg)
+
+	case tea.MouseWheelMsg:
+		if m.currentView == viewServices && m.pane == paneLogs {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case tickMsg:
 		return m, tea.Batch(
 			tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg{} }),
@@ -455,6 +466,38 @@ func (m model) handleLogsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	mouse := msg.Mouse()
+	if m.currentView == viewProjects {
+		paneW := min(m.width, 50)
+		if mouse.X >= paneW || mouse.Y < 0 {
+			return m, nil
+		}
+		row := mouse.Y - 2
+		if row >= 0 && row < len(m.projects) {
+			m.selectedProj = row
+		}
+		return m, nil
+	}
+	if m.currentView != viewServices {
+		return m, nil
+	}
+	if mouse.X < listPaneWidth {
+		m.pane = paneList
+		row := mouse.Y - 2
+		if row >= 0 && row < len(m.states) {
+			old := m.selected
+			m.selected = row
+			if old != m.selected {
+				return m, m.maybeSwitchFollow()
+			}
+		}
+		return m, nil
+	}
+	m.pane = paneLogs
+	return m, nil
+}
+
 // --- State handlers ---
 
 func (m model) handleProjects(msg projectsMsg) (tea.Model, tea.Cmd) {
@@ -607,10 +650,12 @@ func (m model) View() tea.View {
 	if m.currentView == viewProjects {
 		v := tea.NewView(m.renderProjectsView())
 		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
 		return v
 	}
 	v := tea.NewView(m.renderSplit())
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
@@ -621,23 +666,24 @@ func (m model) renderStartPrompt() string {
 }
 
 func (m model) renderProjectsView() string {
-	width := listPaneWidth - 2
-	nameWidth := max(1, width-10)
-	header := fmt.Sprintf("%-*s %-9s", nameWidth, "PROJECT", "STATUS")
-	rows := []string{titleStyle.Render("Projects"), header}
+	paneW := min(m.width, 50)
+	contentWidth := paneW - 4
+	nameWidth := max(1, contentWidth-12)
+	header := fmt.Sprintf(" %-*s %-9s", nameWidth, "PROJECT", "STATUS")
+	rows := []string{header}
 	for i, p := range m.projects {
 		name := p.Name
 		if len(name) > nameWidth {
 			name = name[:nameWidth]
 		}
 		statusCell := lipgloss.NewStyle().Foreground(ui.StatusColor(p.Status)).Render(fmt.Sprintf("%-9s", p.Status))
-		marker := " "
+		line := fmt.Sprintf(" %-*s %s", nameWidth, name, statusCell)
 		if i == m.selectedProj {
-			marker = "▸"
-		}
-		line := fmt.Sprintf("%s %-*s %s", marker, nameWidth, name, statusCell)
-		if i == m.selectedProj {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
+			w := lipgloss.Width(line)
+			if w < contentWidth {
+				line += strings.Repeat(" ", contentWidth-w)
+			}
+			line = lipgloss.NewStyle().Background(lipgloss.Color("62")).Render(line)
 		}
 		rows = append(rows, line)
 	}
@@ -645,7 +691,8 @@ func (m model) renderProjectsView() string {
 		rows = append(rows, lipgloss.NewStyle().Faint(true).Render("(no projects; run `local-compose up` to start one)"))
 	}
 	content := strings.Join(rows, "\n")
-	body := paneBorder.Width(listPaneWidth).Height(m.height - helpBarHeight - 2).Render(content)
+	height := m.height - helpBarHeight - 2
+	body := renderTitledPane(paneW, height, "Projects", content)
 	help := m.renderHelpBar()
 	return lipgloss.JoinVertical(lipgloss.Left, body, help)
 }
@@ -658,16 +705,42 @@ func (m model) renderSplit() string {
 	return lipgloss.JoinVertical(lipgloss.Left, body, help)
 }
 
-var (
-	paneBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
-	titleStyle = lipgloss.NewStyle().Bold(true).Faint(true)
-)
+func renderTitledPane(width, height int, title, content string) string {
+	innerWidth := width - 2
+	if innerWidth < 0 {
+		innerWidth = 0
+	}
+	titlePart := "─ " + title + " "
+	titleRunes := []rune(titlePart)
+	fillWidth := innerWidth - len(titleRunes)
+	if fillWidth < 0 {
+		if innerWidth > 2 {
+			titlePart = string(titleRunes[:innerWidth-1]) + " "
+		} else {
+			titlePart = ""
+		}
+		titleRunes = []rune(titlePart)
+		fillWidth = innerWidth - len(titleRunes)
+		if fillWidth < 0 {
+			fillWidth = 0
+		}
+	}
+	topLine := "╭" + titlePart + strings.Repeat("─", fillWidth) + "╮"
+
+	paneBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	rendered := paneBorder.Width(width).Height(height).Render(content)
+	lines := strings.SplitN(rendered, "\n", 2)
+	if len(lines) < 2 {
+		return rendered
+	}
+	return topLine + "\n" + lines[1]
+}
 
 func (m model) renderListPane() string {
-	width := listPaneWidth - 2
-	nameWidth := max(1, width-16)
-	header := fmt.Sprintf("%-*s %-9s %5s", nameWidth, "SERVICE", "STATUS", "PID")
-	rows := []string{titleStyle.Render("Services"), header}
+	contentWidth := listPaneWidth - 4
+	nameWidth := max(1, contentWidth-18)
+	header := fmt.Sprintf(" %-*s %-9s %5s", nameWidth, "SERVICE", "STATUS", "PID")
+	rows := []string{header}
 	for i, st := range m.states {
 		name := st.Name
 		if len(name) > nameWidth {
@@ -675,13 +748,13 @@ func (m model) renderListPane() string {
 		}
 		statusCell := lipgloss.NewStyle().Foreground(ui.StatusColor(st.Status)).Render(fmt.Sprintf("%-9s", st.Status))
 		pidCell := ui.PIDLabel(st.PID)
-		marker := " "
+		line := fmt.Sprintf(" %-*s %s %5s", nameWidth, name, statusCell, pidCell)
 		if i == m.selected {
-			marker = "▸"
-		}
-		line := fmt.Sprintf("%s %-*s %s %5s", marker, nameWidth, name, statusCell, pidCell)
-		if i == m.selected {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
+			w := lipgloss.Width(line)
+			if w < contentWidth {
+				line += strings.Repeat(" ", contentWidth-w)
+			}
+			line = lipgloss.NewStyle().Background(lipgloss.Color("62")).Render(line)
 		}
 		rows = append(rows, line)
 	}
@@ -690,7 +763,7 @@ func (m model) renderListPane() string {
 	}
 	content := strings.Join(rows, "\n")
 	height := m.height - helpBarHeight - 2
-	return paneBorder.Width(listPaneWidth).Height(height).Render(content)
+	return renderTitledPane(listPaneWidth, height, "Services", content)
 }
 
 func (m model) renderLogsPane() string {
@@ -698,9 +771,9 @@ func (m model) renderLogsPane() string {
 	if name := m.selectedName(); name != "" {
 		title = "Logs: " + name
 	}
-	content := titleStyle.Render(title) + "\n" + m.viewport.View()
+	content := m.viewport.View()
 	height := m.height - helpBarHeight - 2
-	return paneBorder.Width(m.width - listPaneWidth).Height(height).Render(content)
+	return renderTitledPane(m.width-listPaneWidth, height, title, content)
 }
 
 func (m model) renderHelpBar() string {

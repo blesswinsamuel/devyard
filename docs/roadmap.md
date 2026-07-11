@@ -4,10 +4,18 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Done
 
-- **Core lifecycle** — `up`, `up -d` (detached supervisor via `setsid` re-exec),
-  `down`, `ps`, `logs [service] [--follow]`, `restart [service]`,
-  `build [service...]`, `up --build`. (`internal/cli`, `internal/supervisor`,
-  `internal/daemon`, `internal/control`)
+- **Core lifecycle** — `up`, `up -d`, `down`, `ps`, `logs [service] [--follow]`,
+  `restart [service]`, `build [service...]`, `up --build`. (`internal/cli`,
+  `internal/supervisor`, `internal/control`)
+- **Global daemon** — a single daemon process owns multiple project
+  supervisors (`map[string]*supervisor.Supervisor`). All CLI commands, the TUI,
+  and the web UI are thin clients over one Unix socket at
+  `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. (`internal/orchestrator`,
+  `internal/daemon`, `internal/cli/daemon_run.go`)
+- **Autostart** — on daemon startup, projects with `restart: always` or
+  `restart: unless-stopped` services are started automatically (unless a
+  project-level `.stopped` marker exists). `on-failure` does not trigger
+  autostart. (`internal/orchestrator` `Autostart()`)
 - **Process-group safety** — each service in its own `setpgid` group; teardown
   via `killpg` so no orphans. (`internal/supervisor/proc_unix.go`)
 - **Dependency ordering** — `depends_on` graph with cycle detection and
@@ -18,9 +26,14 @@ What's done, what's planned, and where each item lives in the code.
 - **Restart policies** — `no` / `on-failure` / `always` / `unless-stopped` with
   exponential backoff + jitter; `unless-stopped` persists a stopped marker so
   it doesn't auto-resume. (`internal/supervisor/restart.go`)
-- **TUI** — Bubble Tea v2 frontend: service list, streaming logs, restart/stop/
-  down keybindings, "offer to start" when no supervisor is running.
-  (`internal/tui`)
+- **TUI** — Bubble Tea v2 frontend: project selection screen, service list,
+  streaming logs, restart/stop/down keybindings, Esc to go back to project
+  list. Works without a config file (shows all known projects). (`internal/tui`)
+- **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Served by the
+  daemon when `web.enabled` is true in global config. Loopback-only by default.
+  (`internal/web`, `web/`)
+- **Global config** — `$XDG_CONFIG_HOME/local-compose/config.yml` with
+  `web.enabled`, `web.host`, `web.port`. (`internal/globalconfig`)
 - **Config discovery** — `-f`/`-p` flags; walk-up discovery of
   `local-compose.yml`. (`internal/config`, `internal/cli`)
 - **Tests** — unit tests per package plus a black-box integration suite that
@@ -30,15 +43,12 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Planned
 
-- [ ] **`local-compose web`** — a browser dashboard (HTTP + WebSocket) over the
-      same control socket protocol. Loopback-only by default; assets embedded
-      via `embed.FS` so the binary stays single-file. Status: stub
-      (`internal/web/doc.go` only). See
-      [architecture.md](architecture.md) and [control-protocol.md](control-protocol.md).
 - [ ] **`.env` / `--env-file` loading** and `${VAR}` interpolation in config.
 - [ ] **Log rotation** by size in the state dir; `logs --tail N` / `--since`.
 - [ ] **Configurable graceful stop timeout** per service / via flag (currently
       fixed at 10s in `Supervisor`).
+- [ ] **`on-failure` autostart** — currently `on-failure` does not trigger
+      autostart; only `always` and `unless-stopped` do.
 - [ ] **Shell completions** (cobra `__complete`) and `local-compose version`.
 - [ ] **Strict config mode** that warns on unknown fields (today `yaml.v3`
       silently ignores them).

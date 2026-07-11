@@ -7,9 +7,10 @@
 > Orchestrate local processes the way you orchestrate containers with docker-compose — without Docker.
 
 `local-compose` runs the processes in your `local-compose.yml` on your own machine, with the
-ergonomics you already know: `up`, `down`, `ps`, `logs`, `restart`, `build`, and an interactive
-TUI. It's a single static binary, built for macOS and Linux, that supervises your dev services,
-streams their output, restarts them on crash, and waits for healthchecks before starting dependents.
+ergonomics you already know: `up`, `down`, `ps`, `logs`, `restart`, `build`, an interactive
+TUI, and a browser-based web UI. It's a single static binary, built for macOS and Linux, that
+supervises your dev services, streams their output, restarts them on crash, and waits for
+healthchecks before starting dependents.
 
 Use it for the "run a few processes together" half of docker-compose — the API server, the web
 dev server, a local DB, a worker — without spinning up a container runtime.
@@ -34,6 +35,9 @@ a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a
 - **Health-gated dependencies** — `depends_on: { condition: service_healthy }` waits for a
   healthcheck to pass before starting dependents.
 - **A real TUI** — drive everything from the terminal with live logs and one-key actions.
+- **Web UI** — a browser dashboard over the same control protocol, with xterm.js log streaming.
+- **Multi-project daemon** — a single daemon manages multiple projects; autostarts projects
+  with `restart: always` or `restart: unless-stopped` on daemon startup.
 - **One static binary** — no runtime, no daemon-on-a-daemon, no container engine.
 
 ## Installation
@@ -100,21 +104,24 @@ local-compose up -d        # start everything in the background
 local-compose ps           # see status, pids, health
 local-compose logs -f api  # tail the api's output
 local-compose restart web  # restart one service
-local-compose tui          # interactive dashboard
-local-compose down         # stop everything
+local-compose tui          # interactive terminal dashboard
+local-compose down         # stop the current project
+local-compose stop-daemon  # stop all projects and the daemon
 ```
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
-| `up [-d] [--build]` | Start all services (in dependency order). `-d` detaches into a background supervisor. `--build` runs build steps first. |
-| `down` | Stop all services and the supervisor. Idempotent — safe to run when nothing's up. |
+| `up [-d] [--build]` | Start all services (in dependency order). `-d` detaches (doesn't follow logs). `--build` runs build steps first. Auto-starts the daemon if needed. |
+| `down` | Stop all services in the current project. Idempotent — safe to run when nothing's up. |
 | `ps` | List services with status, PID, restart count, health, and exit code. |
 | `logs [service] [--follow]` | Print a service's logs. `--follow` streams. With no service, defaults to the first one. |
 | `restart [service]` | Restart one service, or all when no service is given. |
 | `build [service...]` | Run build commands for the named services (or all that declare one, in start order). |
-| `tui` | Open the interactive terminal UI. |
+| `tui` | Open the interactive terminal UI. Without `-f`, shows all known projects. |
+| `start-daemon` | Start the global daemon (manages multiple projects). Usually auto-started by `up`. |
+| `stop-daemon` | Stop the global daemon and all projects. |
 
 Global flags:
 
@@ -125,6 +132,23 @@ Global flags:
 
 ### The TUI
 
+The TUI has two views: a **project list** (shown when started without `-f`)
+and a **service view** for the selected project.
+
+**Project list:**
+
+```
+┌─ Projects ────────────── ┐
+│ PROJECT      STATUS
+│ ▸ myapp      running
+│   api        stopped
+│   web        running
+└────────────────────────── ┘
+ ↑/↓ select · Enter open · s start · q quit
+```
+
+**Service view (after selecting a project):**
+
 ```
 ┌─ Services ─────────────── ┐ ┌─ Logs: api ───────────────────────────────────┐
 │ SERVICE      STATUS    PID │ │                                                │
@@ -132,23 +156,22 @@ Global flags:
 │   web        running  4822 │ │  INFO connected to db                          │
 │   db         healthy  4820 │ │  ...                                           │
 └────────────────────────── ┘ └────────────────────────────────────────────────┘
- ↑/↓ select · Tab pane · r restart · s stop · d down · q quit
+ ↑/↓ select · Tab logs · r restart · s stop · d down · Esc back · q quit
 ```
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓` (or `k` / `j`) | Select a service |
+| `↑` / `↓` (or `k` / `j`) | Select a project or service |
 | `g` / `G` | Jump to top / bottom |
-| `Enter` / `→` / `l` | Focus the logs pane |
-| `←` / `h` | Back to the service list |
+| `Enter` / `→` / `l` | Open project / focus the logs pane |
+| `Esc` / `←` / `h` | Back to project list (from service view) or service list (from logs pane) |
 | `Tab` | Switch panes |
 | `r` | Restart the selected service |
-| `s` | Stop the selected service |
-| `d` | Stop everything (`down`) |
-| `q` / `Ctrl+C` / `Esc` | Quit (detaches only — the supervisor keeps running) |
+| `s` | Stop the selected service (or start a stopped project from the project list) |
+| `d` | Stop the current project (`down`) |
+| `q` / `Ctrl+C` | Quit (detaches only — the daemon keeps running) |
 
-If you start the TUI with no supervisor running, it offers to start one detached (like `up -d`)
-and then attaches.
+If no daemon is running, the TUI offers to start one.
 
 ## Config reference
 
@@ -209,23 +232,27 @@ config honest about what `local-compose` actually does.
 
 ## How it works
 
-`local-compose` has a small, focused architecture: one **supervisor** process owns the child
-processes and exposes a **Unix socket** control protocol; every other command (`ps`, `logs`,
-`restart`, `down`) and the TUI are thin clients over that socket.
+`local-compose` has a small, focused architecture: one **global daemon** process owns a
+supervisor per project, and exposes a single **Unix socket** control protocol; every other
+command (`ps`, `logs`, `restart`, `down`), the TUI, and the web UI are thin clients over that
+socket.
 
 ```
-local-compose up -d  ──►  Supervisor (setsid, backgrounded)
-                           │  owns child processes (one process group each)
-                           │  serves a Unix socket
-                           ▼
-            $XDG_RUNTIME_DIR/local-compose/<project>/supervisor.sock
+local-compose up  ──►  ensureDaemon()  ──►  Global Daemon (setsid, backgrounded)
+                                              │  owns one Supervisor per project
+                                              │  serves one Unix socket
+                                              │  optionally serves web UI
+                                              ▼
+                            $XDG_RUNTIME_DIR/local-compose/daemon.sock
 
-local-compose ps / logs / restart / down / tui  ──►  socket client
+local-compose ps / logs / restart / down / tui / web  ──►  socket client
 ```
 
-- **Foreground `up`** is the supervisor staying attached to your terminal.
-- **`up -d`** re-execs the binary as a daemonized supervisor (via `setsid`) and returns; it writes
-  a pidfile and binds the control socket.
+- **`up`** auto-starts the daemon if it's not running, sends `start_project` over the socket,
+  and (in foreground mode) follows logs from all services. `up -d` just starts the project and
+  returns.
+- **Autostart**: on daemon startup, projects with `restart: always` or `restart: unless-stopped`
+  services are started automatically (unless explicitly stopped with `down`).
 - **Process groups**: each service is started with `Setpgid`, so `down`/`stop` uses `killpg` to
   tear down the whole tree — no orphaned children, even when `command` is a shell pipeline.
 - **Restart policy**: `on-failure` only restarts non-zero exits; `unless-stopped` honors an
@@ -238,10 +265,28 @@ Per the XDG base directory spec:
 
 | Path | Holds |
 | --- | --- |
-| `$XDG_RUNTIME_DIR/local-compose/<project>/` (or `/tmp/local-compose/<project>/`) | Control socket + pidfile. Transient — cleared on reboot. |
-| `$XDG_STATE_HOME/local-compose/<project>/` (or `~/.local/state/local-compose/<project>/`) | Per-service log files + the `unless-stopped` marker. Persisted. |
+| `$XDG_RUNTIME_DIR/local-compose/` (or `/tmp/local-compose/`) | Daemon control socket + pidfile. Transient — cleared on reboot. |
+| `$XDG_STATE_HOME/local-compose/<project>/` (or `~/.local/state/local-compose/<project>/`) | Per-service log files, config-path, and stopped markers. Persisted. |
+| `$XDG_CONFIG_HOME/local-compose/config.yml` (or `~/.config/local-compose/config.yml`) | Global config (web UI settings). |
 
-Each project is namespaced by project name, so multiple projects can run side by side.
+Each project is namespaced by project name, so multiple projects can run side by side under one
+daemon.
+
+### Web UI
+
+The daemon can serve a browser-based dashboard (SolidJS SPA with xterm.js log streaming) over
+WebSocket. Enable it in the global config:
+
+```yaml
+# ~/.config/local-compose/config.yml
+web:
+  enabled: true
+  host: 127.0.0.1   # loopback only by default
+  port: 9090
+```
+
+Then start the daemon (`local-compose start-daemon` or `local-compose up -d`) and open
+`http://127.0.0.1:9090`.
 
 ## Comparison
 
@@ -250,8 +295,10 @@ Each project is namespaced by project name, so multiple projects can run side by
 | Compose-style YAML config | ✅ | ✅ | — | — | Procfile |
 | Runs locally (no engine) | ✅ | — | ✅ | ✅ | ✅ |
 | Detached `up -d` + `ps`/`down` | ✅ | ✅ | — | — | partial |
+| Multi-project daemon | ✅ | ✅ | — | — | — |
 | Health-gated `depends_on` | ✅ | ✅ | — | — | — |
 | Interactive TUI | ✅ | — | ✅ | — | — |
+| Web UI | ✅ | — | — | — | — |
 | Restart policies | ✅ | ✅ | — | — | — |
 | Single static binary | ✅ | — | ✅ | ✅ | depends on runtime |
 
@@ -259,12 +306,15 @@ Each project is namespaced by project name, so multiple projects can run side by
 
 - [x] Core: `up`, `down`, `ps`, `logs`, `restart`, `build`, detached `up -d`
 - [x] Healthchecks + `depends_on` conditions
-- [x] Bubble Tea TUI
-- [ ] `local-compose web` — a browser dashboard (HTTP + WebSocket) over the same control protocol,
-      loopback-only by default, assets embedded so the binary stays single-file
+- [x] Bubble Tea TUI with project selection
+- [x] Global daemon with multi-project orchestrator
+- [x] Autostart projects based on service restart policies
+- [x] Web UI — browser dashboard (WS + embedded SolidJS SPA with xterm.js logs)
+- [x] Global config (`web.enabled`, `web.host`, `web.port`)
 - [ ] `.env` / `--env-file` loading and `${VAR}` interpolation in config
 - [ ] Log rotation and `logs --tail` / `--since`
 - [ ] Graceful stop timeout (SIGTERM → SIGKILL)
+- [ ] `on-failure` autostart
 - [ ] Shell completions and `local-compose version`
 - [ ] Prebuilt release binaries
 
@@ -273,8 +323,8 @@ See [docs/roadmap.md](docs/roadmap.md) for the full breakdown and non-goals.
 ## Contributing
 
 Contributions are welcome. The project is a standard Go module laid out as a `cmd/` entrypoint
-over `internal/` packages (`config`, `dag`, `supervisor`, `daemon`, `control`, `protocol`,
-`health`, `logs`, `tui`, `ui`).
+over `internal/` packages (`config`, `dag`, `supervisor`, `daemon`, `orchestrator`, `control`,
+`protocol`, `health`, `logs`, `tui`, `ui`, `web`, `globalconfig`, `project`).
 
 ```bash
 git clone https://github.com/blesswinsamuel/local-compose.git

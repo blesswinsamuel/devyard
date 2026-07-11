@@ -715,7 +715,7 @@ func (m model) renderProjectsView() string {
 		rows = append(rows, lipgloss.NewStyle().Faint(true).Render("(no projects; run `local-compose up` to start one)"))
 	}
 	content := strings.Join(rows, "\n")
-	height := m.height - helpBarHeight - 2
+	height := m.height - helpBarHeight
 	body := renderTitledPane(paneW, height, "Projects", content)
 	help := m.renderHelpBar()
 	return lipgloss.JoinVertical(lipgloss.Left, body, help)
@@ -786,7 +786,7 @@ func (m model) renderListPane() string {
 		rows = append(rows, lipgloss.NewStyle().Faint(true).Render("(no services)"))
 	}
 	content := strings.Join(rows, "\n")
-	height := m.height - helpBarHeight - 2
+	height := m.height - helpBarHeight
 	return renderTitledPane(listPaneWidth, height, "Services", content)
 }
 
@@ -796,7 +796,7 @@ func (m model) renderLogsPane() string {
 		title = "Logs: " + name
 	}
 	content := m.viewport.View()
-	height := m.height - helpBarHeight - 2
+	height := m.height - helpBarHeight
 	return renderTitledPane(m.width-listPaneWidth, height, title, content)
 }
 

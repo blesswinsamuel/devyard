@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 )
@@ -23,6 +25,18 @@ func Dial(socket string) (*Client, error) {
 		return nil, fmt.Errorf("control: dial %s: %w", socket, err)
 	}
 	return &Client{conn: conn}, nil
+}
+
+// WaitForSocket polls until a Unix socket exists at path or the timeout
+// elapses, giving the daemonized child a moment to bind before we dial.
+func WaitForSocket(path string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if fi, err := os.Stat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // Close closes the connection. It is safe to call after a prior error.

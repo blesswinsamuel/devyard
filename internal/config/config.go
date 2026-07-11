@@ -271,3 +271,33 @@ func FindConfig(startDir string) (string, error) {
 	}
 	return "", fmt.Errorf("local-compose.yml not found")
 }
+
+// BuildEnv returns the parent environment with svcEnv overlaid (additive,
+// matching the service env rule). Keys present in svcEnv replace the
+// corresponding parent keys; new keys are appended.
+func BuildEnv(svcEnv map[string]string) []string {
+	parent := os.Environ()
+	if len(svcEnv) == 0 {
+		return parent
+	}
+	seen := make(map[string]bool, len(svcEnv))
+	out := make([]string, 0, len(parent)+len(svcEnv))
+	for _, kv := range parent {
+		k := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			k = kv[:i]
+		}
+		if v, ok := svcEnv[k]; ok {
+			out = append(out, k+"="+v)
+			seen[k] = true
+			continue
+		}
+		out = append(out, kv)
+	}
+	for k, v := range svcEnv {
+		if !seen[k] {
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
+}

@@ -3,9 +3,9 @@
 // (up -d, ps, logs, restart, down, build, up --build) against isolated XDG
 // runtime/state dirs, plus the negative config paths.
 //
-// These codify the Phase 1 step 9 manual e2e test so regressions in the
-// daemon, control socket, process-group teardown, and config validation are
-// caught automatically.
+// These codify the canonical e2e tests so regressions in the daemon, control
+// socket, process-group teardown, and config validation are caught
+// automatically.
 package integration_test
 
 import (
@@ -221,7 +221,7 @@ func waitForCond(t *testing.T, timeout time.Duration, cond func() bool, msg stri
 	t.Fatalf("timed out waiting for: %s", msg)
 }
 
-// threeServiceLoopConfig is the canonical Phase 1 sample: alpha -> beta ->
+// threeServiceLoopConfig is the canonical sample: alpha -> beta ->
 // gamma with both list and map depends_on forms, looping forever so ps/logs/
 // restart/down can be exercised.
 const threeServiceLoopConfig = `version: "1"

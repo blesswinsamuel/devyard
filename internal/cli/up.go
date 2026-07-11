@@ -57,9 +57,8 @@ var upCmd = &cobra.Command{
 }
 
 // followForeground streams logs from all services in the project to stdout with
-// colored prefixes (mirroring the old foreground supervisor behavior) and
-// blocks until all services have exited or been stopped. Ctrl+C sends
-// stop_project to the daemon and waits for it to complete.
+// colored prefixes and blocks until all services have exited or been stopped.
+// Ctrl+C sends stop_project to the daemon and waits for it to complete.
 func followForeground(socket, project string, order []string) error {
 	stop := make(chan struct{})
 	stopOnce := sync.Once{}

@@ -9,7 +9,6 @@ package tui
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -867,19 +866,7 @@ func startDaemonCmd(configPath string) tea.Cmd {
 				return startedMsg{err: err}
 			}
 		}
-		waitForSocket(dloc.Socket, 3*time.Second)
+		control.WaitForSocket(dloc.Socket, 3*time.Second)
 		return startedMsg{pid: pid}
-	}
-}
-
-// waitForSocket polls until a Unix socket exists at path or the timeout
-// elapses, giving the daemonized child a moment to bind before we dial.
-func waitForSocket(path string, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if fi, err := os.Stat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
 }

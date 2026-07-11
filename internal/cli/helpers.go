@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
 	"github.com/blesswinsamuel/local-compose/internal/dag"
 	"github.com/blesswinsamuel/local-compose/internal/project"
@@ -114,7 +115,7 @@ func ensureDaemon() (string, error) {
 			return "", err
 		}
 		fmt.Fprintf(os.Stderr, "local-compose: daemon started (pid %d)\n", pid)
-		waitForSocket(locs.Socket, 3*time.Second)
+		control.WaitForSocket(locs.Socket, 3*time.Second)
 	}
 	return locs.Socket, nil
 }
@@ -140,17 +141,4 @@ func cwd() string {
 		return "."
 	}
 	return d
-}
-
-// waitForSocket polls until a Unix socket exists at path or the timeout
-// elapses. It's used after spawning the daemon to give it a moment to bind the
-// control socket before subsequent commands race to dial it.
-func waitForSocket(path string, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if fi, err := os.Stat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
 }

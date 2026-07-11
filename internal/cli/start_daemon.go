@@ -33,7 +33,7 @@ var startDaemonCmd = &cobra.Command{
 		}
 		fmt.Fprintf(os.Stderr, "local-compose: daemon started (pid %d)\n", pid)
 
-		waitForSocket(locs.Socket, 3*time.Second)
+		control.WaitForSocket(locs.Socket, 3*time.Second)
 		return nil
 	},
 }

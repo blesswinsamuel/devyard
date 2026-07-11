@@ -28,9 +28,9 @@ type MultiBackend interface {
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
-// It is used by tests and the legacy single-project supervisor path so the
-// control server can use the same MultiBackend dispatch code. Project is the
-// project name (may be empty for anonymous single-project servers).
+// It is used by tests so the control server can use the same MultiBackend
+// dispatch code. Project is the project name (may be empty for anonymous
+// single-project servers).
 type SingleProjectBackend struct {
 	Backend
 	Project string

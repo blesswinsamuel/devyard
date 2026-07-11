@@ -27,8 +27,7 @@ var buildCmd = &cobra.Command{
 }
 
 // runAllBuilds runs the build step for every service (in start order) that
-// declares one. It's the entry point used by `up --build` and the daemon
-// child's --build path.
+// declares one. It's the entry point used by `up --build`.
 func runAllBuilds(cfg *loadedConfig) error {
 	return runBuilds(cfg, cfg.Order...)
 }
@@ -75,39 +74,10 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	cmd.Env = buildEnv(spec.Env)
+	cmd.Env = config.BuildEnv(spec.Env)
 	cmd.Stdout = prefixWriter(name, os.Stdout)
 	cmd.Stderr = prefixWriter(name, os.Stderr)
 	return cmd.Run()
-}
-
-// buildEnv returns the parent environment with the spec's env overlaid
-// (additive, matching the service env rule).
-func buildEnv(svcEnv map[string]string) []string {
-	parent := os.Environ()
-	if len(svcEnv) == 0 {
-		return parent
-	}
-	seen := make(map[string]bool, len(svcEnv))
-	out := make([]string, 0, len(parent)+len(svcEnv))
-	for _, kv := range parent {
-		k := kv
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			k = kv[:i]
-		}
-		if v, ok := svcEnv[k]; ok {
-			out = append(out, k+"="+v)
-			seen[k] = true
-			continue
-		}
-		out = append(out, kv)
-	}
-	for k, v := range svcEnv {
-		if !seen[k] {
-			out = append(out, k+"="+v)
-		}
-	}
-	return out
 }
 
 // prefixWriter wraps a writer so each line written through it gets a service

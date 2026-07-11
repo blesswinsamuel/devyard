@@ -135,7 +135,7 @@ func (d *Daemon) StartProject(configPath string, build bool) error {
 	d.projects[name] = p
 	d.mu.Unlock()
 
-	// Write config path for autostart discovery (phase 5).
+	// Write config path for autostart discovery.
 	_ = writeConfigPath(locs, configPath)
 
 	go func() {
@@ -278,8 +278,7 @@ func runBuilds(cfg *loadedConfig) error {
 		if svc.Build == nil {
 			continue
 		}
-		// Build execution is handled by the CLI in Phase 2; for now builds
-		// run inline in the daemon.
+		// Build execution runs inline in the daemon.
 		if err := runOneBuild(cfg, name, svc.Build.Spec); err != nil {
 			return fmt.Errorf("build %q: %w", name, err)
 		}
@@ -296,7 +295,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = filepath.Join(cfg.BaseDir, dir)
 	}
-	// Use the build command from the CLI's build.go logic.
+	// Run the build command; output goes to the daemon's stderr (daemon log).
 	return runBuildCommand(shell, spec.Command, dir, spec.Env)
 }
 

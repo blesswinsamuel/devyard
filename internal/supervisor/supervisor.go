@@ -34,6 +34,7 @@ type Status string
 const (
 	StatusStarting Status = "starting"
 	StatusRunning  Status = "running"
+	StatusStopping Status = "stopping"
 	StatusBackoff  Status = "backoff"
 	StatusExited   Status = "exited"
 	StatusStopped  Status = "stopped" // explicitly stopped; not restarted
@@ -401,18 +402,21 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			rt.logger.writeLine(fmt.Sprintf("local-compose: exited with code %d", exitCode))
 		}
 
+		stopping := s.isStopping() || rt.stopped.Load()
+
 		rt.mu.Lock()
 		rt.pid = 0
 		rt.pgid = 0
 		rt.exitCode = exitCode
-		rt.status = StatusExited
 		rt.finishedAt = time.Now()
+		if stopping {
+			rt.status = StatusStopped
+		} else {
+			rt.status = StatusExited
+		}
 		rt.mu.Unlock()
 
-		if s.isStopping() || rt.stopped.Load() {
-			rt.mu.Lock()
-			rt.status = StatusStopped
-			rt.mu.Unlock()
+		if stopping {
 			return
 		}
 		if !shouldRestart(rt.spec.Restart, exitCode) {
@@ -638,6 +642,18 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 	}
 	s.stopOnce.Do(func() { close(s.stopCh) })
 
+	// Mark every eligible service as stopping immediately so clients see
+	// the transition before the process actually exits.
+	for _, name := range s.order {
+		rt := s.services[name]
+		rt.mu.Lock()
+		switch rt.status {
+		case StatusStarting, StatusRunning, StatusBackoff:
+			rt.status = StatusStopping
+		}
+		rt.mu.Unlock()
+	}
+
 	for _, name := range s.order {
 		rt := s.services[name]
 		if rt.spec.Restart == config.RestartUnlessStopped {
@@ -708,6 +724,14 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Du
 	if markStopped && rt.spec.Restart == config.RestartUnlessStopped {
 		_ = s.writeStoppedMarker(rt.name)
 	}
+
+	// Mark as stopping immediately so clients see the transition.
+	rt.mu.Lock()
+	switch rt.status {
+	case StatusStarting, StatusRunning, StatusBackoff:
+		rt.status = StatusStopping
+	}
+	rt.mu.Unlock()
 
 	rt.mu.Lock()
 	pgid := rt.pgid

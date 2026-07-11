@@ -790,7 +790,7 @@ func (m model) renderListPane() string {
 		if len(name) > nameWidth {
 			name = name[:nameWidth]
 		}
-		statusCell := lipgloss.NewStyle().Foreground(ui.StatusColor(st.Status)).Render(fmt.Sprintf("%-9s", st.Status))
+		statusCell := lipgloss.NewStyle().Foreground(ui.StatusColor(st.Status)).Render(fmt.Sprintf("%-9s", ui.StatusLabel(st.Status, st.ExitCode)))
 		pidCell := ui.PIDLabel(st.PID)
 		line := fmt.Sprintf(" %-*s %s %5s", nameWidth, name, statusCell, pidCell)
 		if i == m.selected {

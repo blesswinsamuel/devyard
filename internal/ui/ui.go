@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
 
 	"charm.land/lipgloss/v2"
@@ -30,10 +31,12 @@ func StatusColor(status string) color.Color {
 		return lipgloss.Color("42") // green
 	case "starting":
 		return lipgloss.Color("214") // amber
+	case "stopping":
+		return lipgloss.Color("214") // amber
 	case "backoff":
 		return lipgloss.Color("202") // orange-red
 	case "exited":
-		return lipgloss.Color("245") // grey
+		return lipgloss.Color("196") // red
 	case "stopped":
 		return lipgloss.Color("243") // dimmer grey
 	default:
@@ -107,6 +110,16 @@ func PIDLabel(pid int) string {
 		return "-"
 	}
 	return itoa(pid)
+}
+
+// StatusLabel renders the status text for a service. When the service has
+// exited with a non-zero code the code is appended so the user can see it
+// at a glance.
+func StatusLabel(status string, exitCode int) string {
+	if status == "exited" && exitCode != 0 {
+		return fmt.Sprintf("exited(%d)", exitCode)
+	}
+	return status
 }
 
 // itoa avoids pulling strconv into every frontend just for pid formatting; it

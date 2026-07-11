@@ -70,6 +70,37 @@ func HealthLabel(hasHealth bool, health string) string {
 	return health
 }
 
+// prefixColors is the per-service color palette used for log prefixes.
+var prefixColors = []color.Color{
+	lipgloss.Color("203"),
+	lipgloss.Color("39"),
+	lipgloss.Color("84"),
+	lipgloss.Color("213"),
+	lipgloss.Color("219"),
+	lipgloss.Color("171"),
+	lipgloss.Color("141"),
+	lipgloss.Color("117"),
+}
+
+// ServicePrefix renders a colored, bold service name suitable for log line
+// prefixes. The color is deterministically chosen from a palette by hashing the
+// service name.
+func ServicePrefix(name string) string {
+	c := prefixColors[absHash(name)%len(prefixColors)]
+	return lipgloss.NewStyle().Foreground(c).Bold(true).Render(name)
+}
+
+func absHash(s string) int {
+	h := 0
+	for _, c := range s {
+		h += int(c)
+	}
+	if h < 0 {
+		h = -h
+	}
+	return h
+}
+
 // PIDLabel renders the pid column text, "-" when the service has no live pid.
 func PIDLabel(pid int) string {
 	if pid <= 0 {

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
 
 var buildCmd = &cobra.Command{
@@ -83,7 +84,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 // prefixWriter wraps a writer so each line written through it gets a service
 // prefix, mirroring the supervisor's foreground log prefixing for builds.
 func prefixWriter(name string, w io.Writer) io.Writer {
-	return &linePrefixer{w: w, prefix: name + " │ "}
+	return &linePrefixer{w: w, prefix: ui.ServicePrefix(name) + " │ "}
 }
 
 // linePrefixer inserts prefix at the start of each line. It buffers a partial

@@ -3,26 +3,13 @@ package supervisor
 import (
 	"bufio"
 	"fmt"
-	"image/color"
 	"io"
 	"os"
 	"strings"
 	"sync"
 
-	"charm.land/lipgloss/v2"
+	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
-
-// prefixColors is the per-service color palette used for foreground prefixes.
-var prefixColors = []color.Color{
-	lipgloss.Color("203"),
-	lipgloss.Color("39"),
-	lipgloss.Color("84"),
-	lipgloss.Color("213"),
-	lipgloss.Color("219"),
-	lipgloss.Color("171"),
-	lipgloss.Color("141"),
-	lipgloss.Color("117"),
-}
 
 // serviceLogger appends a service's output to a log file and, in foreground
 // mode, also writes prefixed colored lines to stdout.
@@ -40,9 +27,7 @@ func newServiceLogger(path, name string, stdout io.Writer, foreground bool) (*se
 	if err != nil {
 		return nil, err
 	}
-	color := prefixColors[absHash(name)%len(prefixColors)]
-	prefixStyle := lipgloss.NewStyle().Foreground(color).Bold(true)
-	prefixStr := prefixStyle.Render(name)
+	prefixStr := ui.ServicePrefix(name)
 	return &serviceLogger{
 		file:       f,
 		stdout:     stdout,
@@ -89,15 +74,4 @@ func (s *Supervisor) readLines(r io.Reader, rt *serviceRuntime) {
 			return
 		}
 	}
-}
-
-func absHash(s string) int {
-	h := 0
-	for _, c := range s {
-		h += int(c)
-	}
-	if h < 0 {
-		h = -h
-	}
-	return h
 }

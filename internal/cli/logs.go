@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
+	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
 
 var logsFollow bool
@@ -47,8 +48,9 @@ var logsCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
+		prefix := ui.ServicePrefix(service) + " │ "
 		return client.Logs(cfg.Project, service, logsFollow, func(line string) {
-			fmt.Println(line)
+			fmt.Println(prefix + line)
 		})
 	},
 }

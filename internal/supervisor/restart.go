@@ -79,6 +79,39 @@ func shouldRestart(policy config.RestartPolicy, exitCode int) bool {
 	}
 }
 
+// defaultColorEnv returns POSIX-standard environment variables that tell
+// child processes to emit colors even when stdout is not a terminal. These
+// are injected with lowest priority (parent env and service env win).
+func defaultColorEnv() []string {
+	return []string{
+		"CLICOLOR=1",
+		"CLICOLOR_FORCE=1",
+		"TERM=xterm-256color",
+	}
+}
+
+// applyEnvDefaults appends defaults to parent for any keys not already present.
+func applyEnvDefaults(parent, defaults []string) []string {
+	existing := make(map[string]bool, len(parent))
+	for _, kv := range parent {
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			existing[kv[:i]] = true
+		}
+	}
+	out := make([]string, 0, len(parent)+len(defaults))
+	out = append(out, parent...)
+	for _, kv := range defaults {
+		k := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			k = kv[:i]
+		}
+		if !existing[k] {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // mergeEnv returns parent env with svc env overlaid (additive, not replacing
 // the whole set — same rule as docker-compose).
 func mergeEnv(parent []string, svc map[string]string) []string {

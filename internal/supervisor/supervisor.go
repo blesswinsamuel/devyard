@@ -549,7 +549,7 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 
 	cmd := newCommand(shell, "-c", svc.Command)
 	cmd.dir = resolveWorkingDir(s.opts.BaseDir, svc.WorkingDir)
-	cmd.env = mergeEnv(os.Environ(), svc.Env)
+	cmd.env = mergeEnv(applyEnvDefaults(os.Environ(), defaultColorEnv()), svc.Env)
 
 	if svc.TTY {
 		return s.launchPTY(cmd, rt)

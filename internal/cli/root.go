@@ -37,6 +37,7 @@ func init() {
 	rootCmd.AddCommand(tuiCmd)
 	rootCmd.AddCommand(startDaemonCmd)
 	rootCmd.AddCommand(stopDaemonCmd)
+	rootCmd.AddCommand(reloadCmd)
 }
 
 // isDaemonChild reports whether the binary was invoked as

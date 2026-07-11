@@ -15,6 +15,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
@@ -587,8 +588,31 @@ func (m *model) closeFollow() {
 	}
 }
 
+// cleanLogLine removes ANSI control sequences (cursor movement, erase, etc.)
+// that corrupt the TUI layout, while preserving SGR sequences (colors, bold,
+// etc.) so log output retains its styling.
+func cleanLogLine(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s))
+	var state byte
+	p := ansi.NewParser()
+	for len(s) > 0 {
+		seq, _, n, newState := ansi.DecodeSequence(s, state, p)
+		if newState == ansi.NormalState && len(seq) > 0 {
+			if seq[0] == '\x1b' && ansi.HasCsiPrefix(seq) && ansi.Cmd(p.Command()).Final() == 'm' {
+				buf.WriteString(seq)
+			} else if newState == ansi.NormalState && len(seq) == 1 && seq[0] >= ' ' {
+				buf.WriteString(seq)
+			}
+		}
+		s = s[n:]
+		state = newState
+	}
+	return buf.String()
+}
+
 func (m *model) appendLog(line string) {
-	m.logLines = boundLogLines(m.logLines, line, maxLogLineCount)
+	m.logLines = boundLogLines(m.logLines, cleanLogLine(line), maxLogLineCount)
 	atBottom := m.viewport.AtBottom()
 	m.viewport.SetContent(strings.Join(m.logLines, "\n"))
 	if atBottom {

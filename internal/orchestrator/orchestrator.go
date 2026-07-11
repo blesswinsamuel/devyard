@@ -82,7 +82,7 @@ func (d *Daemon) StartProject(configPath string, build bool) error {
 	d.mu.Lock()
 	if _, exists := d.projects[name]; exists {
 		d.mu.Unlock()
-		return fmt.Errorf("project %q is already running; use stop_project first", name)
+		return fmt.Errorf("project %q is already running; run 'local-compose stop' first", name)
 	}
 	d.mu.Unlock()
 

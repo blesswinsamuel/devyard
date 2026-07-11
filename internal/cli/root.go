@@ -35,6 +35,7 @@ func init() {
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(tuiCmd)
+	rootCmd.AddCommand(webCmd)
 	rootCmd.AddCommand(startDaemonCmd)
 	rootCmd.AddCommand(stopDaemonCmd)
 	rootCmd.AddCommand(reloadCmd)

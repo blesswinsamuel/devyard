@@ -25,20 +25,29 @@ import (
 var distFS embed.FS
 
 // Server is the HTTP + WebSocket server for the web UI. It serves the embedded
-// SPA at / and a WebSocket endpoint at /ws that dispatches JSON messages to the
-// daemon's MultiBackend.
+// SPA at / and a WebSocket endpoint at /ws. In in-process mode (used by the
+// daemon) the handler dispatches directly to a MultiBackend. In proxy mode
+// (used by the `web` subcommand) it translates WS messages to control-protocol
+// frames over a Unix socket.
 type Server struct {
-	backend  control.MultiBackend // the daemon's MultiBackend
-	addr     string               // host:port
-	listener net.Listener
-	closed   bool
-	mu       sync.Mutex
+	backend    control.MultiBackend // the daemon's MultiBackend (nil in proxy mode)
+	socketPath string               // daemon socket path (empty in in-process mode)
+	addr       string               // host:port
+	listener   net.Listener
+	closed     bool
+	mu         sync.Mutex
 }
 
 // NewServer creates a web server bound to addr. The daemon's MultiBackend is
 // used for all WS dispatch (in-process, no socket dialing).
 func NewServer(addr string, backend control.MultiBackend) *Server {
 	return &Server{addr: addr, backend: backend}
+}
+
+// NewProxyServer creates a web server that proxies WS messages to the daemon
+// over the given Unix socket, without holding an in-process MultiBackend.
+func NewProxyServer(addr, socketPath string) *Server {
+	return &Server{addr: addr, socketPath: socketPath}
 }
 
 // ListenAndServe starts the HTTP server. It returns once the listener is
@@ -152,7 +161,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			s.sendError(c, ctx, "invalid message: "+err.Error())
 			continue
 		}
-		s.dispatchWS(c, ctx, &req, subs)
+		if s.socketPath != "" {
+			s.proxyDispatch(c, ctx, &req, subs)
+		} else {
+			s.dispatchWS(c, ctx, &req, subs)
+		}
 	}
 }
 

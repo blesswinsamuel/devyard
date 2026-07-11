@@ -35,13 +35,13 @@ type Backend interface {
 }
 
 // Server is the Unix-socket control server. It accepts connections from
-// CLI/TUI/web clients, dispatches each request to the Backend, and streams
-// responses back as length-prefixed JSON frames. Each connection serves a
-// single request; streaming requests (Logs follow) hold the connection until
+// CLI/TUI/web clients, dispatches each request to the MultiBackend, and
+// streams responses back as length-prefixed JSON frames. Each connection serves
+// a single request; streaming requests (Logs follow) hold the connection until
 // the stream ends or the client disconnects.
 type Server struct {
 	socket  string
-	backend Backend
+	backend MultiBackend
 
 	mu     sync.Mutex
 	ln     net.Listener
@@ -55,7 +55,7 @@ type Server struct {
 // NewServer creates a control server that will listen on socket when
 // ListenAndServe is called. The socket's parent directory must already exist
 // (call project.Locations.MkdirAll first).
-func NewServer(socket string, backend Backend) *Server {
+func NewServer(socket string, backend MultiBackend) *Server {
 	return &Server{
 		socket:  socket,
 		backend: backend,
@@ -153,33 +153,50 @@ func (s *Server) serveConn(conn net.Conn) {
 func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request) {
 	switch req.Kind {
 	case protocol.KindList:
-		s.handleList(w)
+		s.handleList(w, req)
 	case protocol.KindStop:
-		s.handleStop(ctx, w)
+		s.handleStop(ctx, w, req)
 	case protocol.KindStopService:
 		s.handleStopService(w, req)
 	case protocol.KindRestart:
 		s.handleRestart(w, req)
 	case protocol.KindLogs:
 		s.handleLogs(w, req)
+	case protocol.KindListProjects:
+		s.handleListProjects(w)
+	case protocol.KindStartProject:
+		s.handleStartProject(w, req)
+	case protocol.KindStopProject:
+		s.handleStopProject(w, req)
+	case protocol.KindStopDaemon:
+		s.handleStopDaemon(w)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
 	}
 }
 
-func (s *Server) handleList(w io.Writer) {
-	states := s.backend.States()
+func (s *Server) handleList(w io.Writer, req protocol.Request) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	states := b.States()
 	if err := protocol.WriteFrame(w, protocol.Response{
 		Kind:   protocol.KindStates,
 		States: states,
 	}); err != nil {
-		// Connection dropped mid-write; nothing more to do.
 		_ = err
 	}
 }
 
-func (s *Server) handleStop(ctx context.Context, w io.Writer) {
-	if err := s.backend.Stop(ctx); err != nil {
+func (s *Server) handleStop(ctx context.Context, w io.Writer, req protocol.Request) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	if err := b.Stop(ctx); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}
@@ -191,7 +208,12 @@ func (s *Server) handleStopService(w io.Writer, req protocol.Request) {
 		_ = writeError(w, "stop_service: service is required")
 		return
 	}
-	if err := s.backend.StopService(req.Service); err != nil {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	if err := b.StopService(req.Service); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}
@@ -199,8 +221,13 @@ func (s *Server) handleStopService(w io.Writer, req protocol.Request) {
 }
 
 func (s *Server) handleRestart(w io.Writer, req protocol.Request) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
 	if req.Service != "" {
-		if err := s.backend.Restart(req.Service); err != nil {
+		if err := b.Restart(req.Service); err != nil {
 			_ = writeError(w, err.Error())
 			return
 		}
@@ -208,8 +235,8 @@ func (s *Server) handleRestart(w io.Writer, req protocol.Request) {
 		return
 	}
 	// Restart all: iterate the current snapshot in start order.
-	for _, st := range s.backend.States() {
-		if err := s.backend.Restart(st.Name); err != nil {
+	for _, st := range b.States() {
+		if err := b.Restart(st.Name); err != nil {
 			_ = writeError(w, fmt.Sprintf("restart %s: %v", st.Name, err))
 			return
 		}
@@ -222,14 +249,61 @@ func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
 		_ = writeError(w, "logs: service is required")
 		return
 	}
-	path, err := s.backend.LogPath(req.Service)
+	b, err := s.backend.ProjectBackend(req.Project)
 	if err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}
-	if err := streamLogs(w, path, req.Follow, s.stopCh); err != nil {
+	path, err := b.LogPath(req.Service)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	if err := streamLogs(w, path, req.Follow, s.stopCh, req.Project, req.Service); err != nil {
 		_ = writeError(w, err.Error())
 	}
+}
+
+func (s *Server) handleListProjects(w io.Writer) {
+	projects := s.backend.ListProjects()
+	if err := protocol.WriteFrame(w, protocol.Response{
+		Kind:     protocol.KindProjects,
+		Projects: projects,
+	}); err != nil {
+		_ = err
+	}
+}
+
+func (s *Server) handleStartProject(w io.Writer, req protocol.Request) {
+	if req.ConfigPath == "" {
+		_ = writeError(w, "start_project: config_path is required")
+		return
+	}
+	if err := s.backend.StartProject(req.ConfigPath, req.Build); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleStopProject(w io.Writer, req protocol.Request) {
+	if req.Project == "" {
+		_ = writeError(w, "stop_project: project is required")
+		return
+	}
+	if err := s.backend.StopProject(req.Project); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleStopDaemon(w io.Writer) {
+	if err := s.backend.StopDaemon(); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
 }
 
 // writeError sends a KindError frame, swallowing the error (the connection is
@@ -249,14 +323,14 @@ const followPollInterval = 100 * time.Millisecond
 // client disconnects (write error) or stop is closed. A final KindDone frame
 // is sent when the stream ends cleanly. Truncated/rotated files are handled
 // by rewinding to offset 0 when the read offset is past the file size.
-func streamLogs(w io.Writer, path string, follow bool, stop <-chan struct{}) error {
+func streamLogs(w io.Writer, path string, follow bool, stop <-chan struct{}, project, service string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
 
-	if err := tailFile(w, f, follow, stop); err != nil {
+	if err := tailFile(w, f, follow, stop, project, service); err != nil {
 		return err
 	}
 	return protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
@@ -265,7 +339,7 @@ func streamLogs(w io.Writer, path string, follow bool, stop <-chan struct{}) err
 // tailFile writes existing file content as log-line frames and optionally
 // keeps tailing for appended content. Incomplete trailing bytes (no newline)
 // are withheld until a newline arrives, so each frame is a complete line.
-func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}) error {
+func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}, project, service string) error {
 	var leftover []byte
 	buf := make([]byte, 4096)
 
@@ -281,8 +355,10 @@ func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}) error 
 			line := string(data[:i])
 			data = data[i+1:]
 			if err := protocol.WriteFrame(w, protocol.Response{
-				Kind: protocol.KindLogLine,
-				Line: line,
+				Kind:    protocol.KindLogLine,
+				Project: project,
+				Service: service,
+				Line:    line,
 			}); err != nil {
 				return err
 			}
@@ -310,8 +386,10 @@ func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}) error 
 		// doesn't silently drop the last line a service wrote.
 		if len(leftover) > 0 {
 			if err := protocol.WriteFrame(w, protocol.Response{
-				Kind: protocol.KindLogLine,
-				Line: string(leftover),
+				Kind:    protocol.KindLogLine,
+				Project: project,
+				Service: service,
+				Line:    string(leftover),
 			}); err != nil {
 				return err
 			}

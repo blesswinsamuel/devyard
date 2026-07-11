@@ -35,7 +35,7 @@ var downCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		if err := client.Stop(); err != nil {
+		if err := client.Stop(""); err != nil {
 			return err
 		}
 		// The Stop request returns once the supervisor has signalled every

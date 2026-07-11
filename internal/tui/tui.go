@@ -622,7 +622,7 @@ func connectCmd(socket string) tea.Cmd {
 			return statesMsg{err: err}
 		}
 		defer func() { _ = c.Close() }()
-		states, err := c.List()
+		states, err := c.List("")
 		return statesMsg{states: states, err: err}
 	}
 }
@@ -640,7 +640,7 @@ func startFollowCmd(socket, service string, gen int64, p *tea.Program) tea.Cmd {
 		if err != nil {
 			return logDoneMsg{gen: gen, service: service, err: err}
 		}
-		if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Service: service, Follow: true}); err != nil {
+		if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Project: "", Service: service, Follow: true}); err != nil {
 			_ = c.Close()
 			return logDoneMsg{gen: gen, service: service, err: err}
 		}
@@ -679,11 +679,11 @@ func actionCmd(socket, action, service string) tea.Cmd {
 		defer func() { _ = c.Close() }()
 		switch action {
 		case "restart":
-			err = c.Restart(service)
+			err = c.Restart("", service)
 		case "stop":
-			err = c.StopService(service)
+			err = c.StopService("", service)
 		case "down":
-			err = c.Stop()
+			err = c.Stop("")
 		default:
 			err = fmt.Errorf("unknown action %q", action)
 		}

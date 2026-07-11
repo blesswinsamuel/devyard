@@ -10,12 +10,15 @@ import (
 )
 
 // Execute runs the root command. Before dispatching to cobra it checks for the
-// hidden daemon re-exec flag (--supervisor <project>) so the daemonized child
-// runs the foreground supervisor code path directly, without cobra parsing
-// flags it doesn't know about.
+// hidden daemon re-exec flags (--supervisor <project> and --daemon) so the
+// daemonized child runs the appropriate code path directly, without cobra
+// parsing flags it doesn't know about.
 func Execute() error {
 	if project, rest, ok := supervisorChildArgs(os.Args); ok {
 		return runSupervisorChild(project, rest)
+	}
+	if isDaemonChild(os.Args) {
+		return runDaemonChild()
 	}
 	return rootCmd.Execute()
 }
@@ -37,6 +40,8 @@ func init() {
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(tuiCmd)
+	rootCmd.AddCommand(startDaemonCmd)
+	rootCmd.AddCommand(stopDaemonCmd)
 }
 
 // supervisorChildArgs detects the daemon re-exec argv: the binary was invoked
@@ -52,6 +57,17 @@ func supervisorChildArgs(args []string) (project string, rest []string, ok bool)
 		}
 	}
 	return "", nil, false
+}
+
+// isDaemonChild reports whether the binary was invoked as
+// `local-compose --daemon` (the daemonized global daemon child).
+func isDaemonChild(args []string) bool {
+	for _, a := range args {
+		if a == daemon.DaemonFlag {
+			return true
+		}
+	}
+	return false
 }
 
 // runSupervisorChild parses the residual flags from the daemon re-exec and

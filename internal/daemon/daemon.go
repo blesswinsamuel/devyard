@@ -21,6 +21,11 @@ import (
 // registered with cobra) so it never shows up in help/completions.
 const SupervisorFlag = "--supervisor"
 
+// DaemonFlag is the hidden flag the global daemon child is invoked with. The
+// CLI root command handles it by running the global daemon (orchestrator)
+// instead of dispatching a normal subcommand.
+const DaemonFlag = "--daemon"
+
 // Options configures a daemon Spawn.
 type Options struct {
 	// Locations are the resolved runtime/state dirs. The pidfile is written to
@@ -183,6 +188,78 @@ func Running(locs *project.Locations) (int, error) {
 
 // RemovePidfile removes the pidfile, ignoring "not exist" errors.
 func RemovePidfile(locs *project.Locations) error {
+	err := os.Remove(locs.Pidfile)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+// SpawnDaemon re-execs the current binary as a daemonized global daemon: a
+// new session leader (setsid) detached from the controlling terminal, with
+// stdio repointed at the daemon log file. It writes the child's pidfile and
+// returns the child's pid.
+func SpawnDaemon(locs *project.DaemonLocations) (int, error) {
+	if locs == nil {
+		return 0, errors.New("daemon: DaemonLocations is required")
+	}
+
+	self, err := os.Executable()
+	if err != nil {
+		return 0, fmt.Errorf("daemon: resolve executable: %w", err)
+	}
+
+	if err := locs.MkdirAll(); err != nil {
+		return 0, err
+	}
+
+	logFile, err := os.OpenFile(locs.LogFile,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return 0, fmt.Errorf("daemon: open daemon log: %w", err)
+	}
+	defer func() { _ = logFile.Close() }()
+
+	cmd := exec.Command(self, DaemonFlag)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin = nil
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.Env = os.Environ()
+
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("daemon: start daemon: %w", err)
+	}
+	pid := cmd.Process.Pid
+
+	if err := cmd.Process.Release(); err != nil {
+		return pid, fmt.Errorf("daemon: release daemon: %w", err)
+	}
+
+	if err := writePidfile(locs.Pidfile, pid); err != nil {
+		return pid, err
+	}
+	return pid, nil
+}
+
+// DaemonRunning returns the pid of an existing global daemon, or 0 if none is
+// running. A stale pidfile (dead pid) is treated as "not running".
+func DaemonRunning(locs *project.DaemonLocations) (int, error) {
+	pid, err := ReadPidfile(locs.Pidfile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	if !IsAlive(pid) {
+		return 0, nil
+	}
+	return pid, nil
+}
+
+// RemoveDaemonPidfile removes the daemon pidfile, ignoring "not exist" errors.
+func RemoveDaemonPidfile(locs *project.DaemonLocations) error {
 	err := os.Remove(locs.Pidfile)
 	if os.IsNotExist(err) {
 		return nil

@@ -47,7 +47,7 @@ func newTestServer(t *testing.T, b *fakeBackend) *control.Server {
 		t.Fatalf("mkdtemp: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	srv := control.NewServer(filepath.Join(dir, "s.sock"), b)
+	srv := control.NewServer(filepath.Join(dir, "s.sock"), control.SingleProjectBackend{Backend: b})
 	if err := srv.ListenAndServe(); err != nil {
 		t.Fatalf("ListenAndServe: %v", err)
 	}

@@ -35,7 +35,7 @@ var restartCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		if err := client.Restart(service); err != nil {
+		if err := client.Restart("", service); err != nil {
 			return err
 		}
 		if service == "" {

@@ -51,9 +51,10 @@ func (c *Client) Recv() (protocol.Response, error) {
 	return resp, nil
 }
 
-// List sends a List request and returns the service snapshot.
-func (c *Client) List() ([]protocol.ServiceState, error) {
-	if err := c.Send(protocol.Request{Kind: protocol.KindList}); err != nil {
+// List sends a List request for the given project and returns the service
+// snapshot. An empty project is valid for single-project servers.
+func (c *Client) List(project string) ([]protocol.ServiceState, error) {
+	if err := c.Send(protocol.Request{Kind: protocol.KindList, Project: project}); err != nil {
 		return nil, err
 	}
 	resp, err := c.Recv()
@@ -69,41 +70,88 @@ func (c *Client) List() ([]protocol.ServiceState, error) {
 	return resp.States, nil
 }
 
-// Stop sends a Stop request (down) and waits for the supervisor to confirm.
-func (c *Client) Stop() error {
-	if err := c.Send(protocol.Request{Kind: protocol.KindStop}); err != nil {
+// ListProjects sends a ListProjects request and returns the project snapshot.
+func (c *Client) ListProjects() ([]protocol.ProjectInfo, error) {
+	if err := c.Send(protocol.Request{Kind: protocol.KindListProjects}); err != nil {
+		return nil, err
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.Kind == protocol.KindError {
+		return nil, errors.New(resp.Error)
+	}
+	if resp.Kind != protocol.KindProjects {
+		return nil, fmt.Errorf("control: unexpected response %q, want %q", resp.Kind, protocol.KindProjects)
+	}
+	return resp.Projects, nil
+}
+
+// StartProject sends a StartProject request with the given config path. If
+// build is true, pre-start builds are run before starting services.
+func (c *Client) StartProject(configPath string, build bool) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStartProject, ConfigPath: configPath, Build: build}); err != nil {
 		return err
 	}
 	return c.awaitDone()
 }
 
-// StopService sends a StopService request for one service and waits for the
-// supervisor to confirm. The service is stopped in place and not restarted.
-func (c *Client) StopService(service string) error {
-	if err := c.Send(protocol.Request{Kind: protocol.KindStopService, Service: service}); err != nil {
+// StopProject sends a StopProject request for the named project and waits for
+// the daemon to confirm. The project's services are stopped and the project is
+// removed from the daemon's map.
+func (c *Client) StopProject(project string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStopProject, Project: project}); err != nil {
 		return err
 	}
 	return c.awaitDone()
 }
 
-// Restart sends a Restart request. If service is empty, all services are
-// restarted.
-func (c *Client) Restart(service string) error {
-	if err := c.Send(protocol.Request{Kind: protocol.KindRestart, Service: service}); err != nil {
+// StopDaemon sends a StopDaemon request, stopping all projects and shutting
+// down the daemon process.
+func (c *Client) StopDaemon() error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStopDaemon}); err != nil {
 		return err
 	}
 	return c.awaitDone()
 }
 
-// Logs sends a Logs request and calls onLine for each log line received. If
-// follow is true, it blocks until the supervisor signals Done (e.g. on
-// shutdown) or the connection drops. If follow is false, it returns after the
-// existing log content has been streamed.
-func (c *Client) Logs(service string, follow bool, onLine func(string)) error {
+// Stop sends a Stop request for the given project (stops all services in that
+// project) and waits for confirmation.
+func (c *Client) Stop(project string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStop, Project: project}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
+// StopService sends a StopService request for one service in the given project
+// and waits for confirmation. The service is stopped in place and not restarted.
+func (c *Client) StopService(project, service string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStopService, Project: project, Service: service}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
+// Restart sends a Restart request for the given project. If service is empty,
+// all services in the project are restarted.
+func (c *Client) Restart(project, service string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindRestart, Project: project, Service: service}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
+// Logs sends a Logs request for the given project + service and calls onLine
+// for each log line received. If follow is true, it blocks until the daemon
+// signals Done (e.g. on shutdown) or the connection drops. If follow is false,
+// it returns after the existing log content has been streamed.
+func (c *Client) Logs(project, service string, follow bool, onLine func(string)) error {
 	if onLine == nil {
 		onLine = func(string) {}
 	}
-	if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Service: service, Follow: follow}); err != nil {
+	if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Project: project, Service: service, Follow: follow}); err != nil {
 		return err
 	}
 	for {

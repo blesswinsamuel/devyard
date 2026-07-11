@@ -18,23 +18,35 @@ const FrameMaxLen = 16 << 20
 type RequestKind string
 
 const (
-	KindList        RequestKind = "list"         // list services + status + pids
-	KindLogs        RequestKind = "logs"         // stream a service's log file
-	KindStop        RequestKind = "stop"         // stop every service (down)
-	KindStopService RequestKind = "stop_service" // stop one service by name
-	KindRestart     RequestKind = "restart"      // restart one (Service) or all services
+	KindList         RequestKind = "list"          // list services + status + pids
+	KindLogs         RequestKind = "logs"          // stream a service's log file
+	KindStop         RequestKind = "stop"          // stop every service in a project
+	KindStopService  RequestKind = "stop_service"  // stop one service by name
+	KindRestart      RequestKind = "restart"       // restart one (Service) or all services
+	KindListProjects RequestKind = "list_projects" // list all known projects
+	KindStartProject RequestKind = "start_project" // start a project from a config path
+	KindStopProject  RequestKind = "stop_project"  // stop a project and remove it from the daemon
+	KindStopDaemon   RequestKind = "stop_daemon"   // stop all projects and shut down the daemon
 )
 
-// Request is a client -> supervisor message.
+// Request is a client -> daemon message.
 //
-//   - Kind==KindLogs: Service selects the log file, Follow enables tailing.
-//   - Kind==KindRestart: Service selects one service; empty means all.
-//   - Kind==KindStopService: Service selects the service to stop in place.
-//   - Kind==KindList / KindStop: no fields used.
+//   - Kind==KindLogs: Project + Service selects the log file, Follow enables tailing.
+//   - Kind==KindRestart: Project selects the project; Service selects one service
+//     (empty means all).
+//   - Kind==KindStopService: Project + Service selects the service to stop.
+//   - Kind==KindList / KindStop: Project selects the project.
+//   - Kind==KindStartProject: ConfigPath is the absolute path to local-compose.yml;
+//     Build runs pre-start builds.
+//   - Kind==KindStopProject / KindStopDaemon: Project selects the project (or all
+//     when empty for stop_daemon).
 type Request struct {
-	Kind    RequestKind `json:"kind"`
-	Service string      `json:"service,omitempty"`
-	Follow  bool        `json:"follow,omitempty"`
+	Kind       RequestKind `json:"kind"`
+	Project    string      `json:"project,omitempty"`
+	Service    string      `json:"service,omitempty"`
+	Follow     bool        `json:"follow,omitempty"`
+	ConfigPath string      `json:"config_path,omitempty"`
+	Build      bool        `json:"build,omitempty"`
 }
 
 // ResponseKind discriminates Response payloads sent from the supervisor to a
@@ -43,10 +55,11 @@ type Request struct {
 type ResponseKind string
 
 const (
-	KindStates  ResponseKind = "states"   // a snapshot of every service
-	KindLogLine ResponseKind = "log_line" // one line of a service's log
-	KindDone    ResponseKind = "done"     // request complete, no more frames
-	KindError   ResponseKind = "error"    // an error occurred (Error has text)
+	KindStates   ResponseKind = "states"   // a snapshot of every service
+	KindProjects ResponseKind = "projects" // a snapshot of every known project
+	KindLogLine  ResponseKind = "log_line" // one line of a service's log
+	KindDone     ResponseKind = "done"     // request complete, no more frames
+	KindError    ResponseKind = "error"    // an error occurred (Error has text)
 )
 
 // ServiceState is the wire form of a service snapshot. Time fields are encoded
@@ -64,12 +77,24 @@ type ServiceState struct {
 	Health     string `json:"health"`
 }
 
-// Response is a supervisor -> client message.
+// ProjectInfo is the wire form of a project snapshot. It describes one project
+// known to the daemon, whether its supervisor is currently running, and the
+// config path it was started from.
+type ProjectInfo struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`      // running | stopped
+	ConfigPath string `json:"config_path"` // absolute path to local-compose.yml
+}
+
+// Response is a daemon -> client message.
 type Response struct {
-	Kind   ResponseKind   `json:"kind"`
-	States []ServiceState `json:"states,omitempty"` // Kind==KindStates
-	Line   string         `json:"line,omitempty"`   // Kind==KindLogLine
-	Error  string         `json:"error,omitempty"`  // Kind==KindError
+	Kind     ResponseKind   `json:"kind"`
+	States   []ServiceState `json:"states,omitempty"`   // Kind==KindStates
+	Projects []ProjectInfo  `json:"projects,omitempty"` // Kind==KindProjects
+	Project  string         `json:"project,omitempty"`  // Kind==KindLogLine (which project)
+	Service  string         `json:"service,omitempty"`  // Kind==KindLogLine (which service)
+	Line     string         `json:"line,omitempty"`     // Kind==KindLogLine
+	Error    string         `json:"error,omitempty"`    // Kind==KindError
 }
 
 // WriteFrame writes v as a length-prefixed JSON frame: a 4-byte big-endian

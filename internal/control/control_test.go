@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -101,7 +102,7 @@ func newServer(t *testing.T, b *fakeBackend) *control.Server {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
 	sock := filepath.Join(sockDir, "s.sock")
-	srv := control.NewServer(sock, b)
+	srv := control.NewServer(sock, control.SingleProjectBackend{Backend: b})
 	if err := srv.ListenAndServe(); err != nil {
 		t.Fatalf("ListenAndServe: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestRoundtripList(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	got, err := c.List()
+	got, err := c.List("")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -147,7 +148,7 @@ func TestRoundtripStop(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Stop(); err != nil {
+	if err := c.Stop(""); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 	if !b.stopped {
@@ -163,7 +164,7 @@ func TestRoundtripStopService(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.StopService("api"); err != nil {
+	if err := c.StopService("", "api"); err != nil {
 		t.Fatalf("StopService: %v", err)
 	}
 	if b.stoppedCount("api") != 1 {
@@ -204,7 +205,7 @@ func TestRoundtripRestartOne(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Restart("web"); err != nil {
+	if err := c.Restart("", "web"); err != nil {
 		t.Fatalf("Restart: %v", err)
 	}
 	if b.restartsFor("web") != 1 {
@@ -228,7 +229,7 @@ func TestRoundtripRestartAll(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Restart(""); err != nil {
+	if err := c.Restart("", ""); err != nil {
 		t.Fatalf("Restart all: %v", err)
 	}
 	if b.restartsFor("api") != 1 || b.restartsFor("web") != 1 {
@@ -253,7 +254,7 @@ func TestRoundtripLogsNoFollow(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	var lines []string
-	if err := c.Logs("api", false, func(l string) { lines = append(lines, l) }); err != nil {
+	if err := c.Logs("", "api", false, func(l string) { lines = append(lines, l) }); err != nil {
 		t.Fatalf("Logs: %v", err)
 	}
 	if len(lines) != 3 || lines[0] != "line1" || lines[2] != "line3" {
@@ -279,7 +280,7 @@ func TestRoundtripLogsFollow(t *testing.T) {
 	lines := make(chan string, 16)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- c.Logs("api", true, func(l string) { lines <- l })
+		errCh <- c.Logs("", "api", true, func(l string) { lines <- l })
 	}()
 
 	// Expect the pre-existing line quickly.
@@ -321,7 +322,7 @@ func TestLogsUnknownService(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Logs("nope", false, nil); err == nil {
+	if err := c.Logs("", "nope", false, nil); err == nil {
 		t.Errorf("Logs for unknown service: expected error, got nil")
 	}
 }
@@ -395,6 +396,229 @@ func TestProtocolReadFrameEOF(t *testing.T) {
 	err := protocol.ReadFrame(&buf, &resp)
 	if !errors.Is(err, io.EOF) {
 		t.Errorf("ReadFrame on empty buffer: err = %v, want io.EOF", err)
+	}
+}
+
+// --- multi-backend tests ---
+
+// fakeMultiBackend is an in-memory control.MultiBackend for exercising the
+// server's daemon-level dispatch (list_projects, start_project, stop_project,
+// stop_daemon) and per-project routing.
+type fakeMultiBackend struct {
+	mu           sync.Mutex
+	projects     map[string]control.Backend
+	started      []string
+	stopped      []string
+	daemonStopCh chan struct{}
+}
+
+func newFakeMultiBackend() *fakeMultiBackend {
+	return &fakeMultiBackend{
+		projects:     make(map[string]control.Backend),
+		daemonStopCh: make(chan struct{}),
+	}
+}
+
+func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]protocol.ProjectInfo, 0, len(m.projects))
+	for name := range m.projects {
+		out = append(out, protocol.ProjectInfo{Name: name, Status: "running"})
+	}
+	return out
+}
+
+func (m *fakeMultiBackend) StartProject(configPath string, build bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.started = append(m.started, configPath)
+	m.projects[filepath.Base(filepath.Dir(configPath))] = &fakeBackend{}
+	return nil
+}
+
+func (m *fakeMultiBackend) StopProject(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.projects[name]; !ok {
+		return fmt.Errorf("project %q not running", name)
+	}
+	m.stopped = append(m.stopped, name)
+	delete(m.projects, name)
+	return nil
+}
+
+func (m *fakeMultiBackend) StopDaemon() error {
+	select {
+	case <-m.daemonStopCh:
+	default:
+		close(m.daemonStopCh)
+	}
+	return nil
+}
+
+func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.projects[project]
+	if !ok {
+		return nil, fmt.Errorf("project %q not running", project)
+	}
+	return b, nil
+}
+
+func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
+	t.Helper()
+	sockDir, err := os.MkdirTemp("/tmp", "lc-ctrl")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
+	sock := filepath.Join(sockDir, "s.sock")
+	srv := control.NewServer(sock, m)
+	if err := srv.ListenAndServe(); err != nil {
+		t.Fatalf("ListenAndServe: %v", err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	return srv
+}
+
+func TestMultiListProjects(t *testing.T) {
+	m := newFakeMultiBackend()
+	m.projects["api"] = &fakeBackend{}
+	m.projects["web"] = &fakeBackend{}
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	projects, err := c.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	if len(projects) != 2 {
+		t.Fatalf("got %d projects, want 2: %+v", len(projects), projects)
+	}
+}
+
+func TestMultiStartProject(t *testing.T) {
+	m := newFakeMultiBackend()
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.StartProject("/path/to/local-compose.yml", false); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	if len(m.started) != 1 || m.started[0] != "/path/to/local-compose.yml" {
+		t.Errorf("started = %v, want [/path/to/local-compose.yml]", m.started)
+	}
+}
+
+func TestMultiStopProject(t *testing.T) {
+	m := newFakeMultiBackend()
+	m.projects["api"] = &fakeBackend{}
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.StopProject("api"); err != nil {
+		t.Fatalf("StopProject: %v", err)
+	}
+	if len(m.stopped) != 1 || m.stopped[0] != "api" {
+		t.Errorf("stopped = %v, want [api]", m.stopped)
+	}
+}
+
+func TestMultiStopDaemon(t *testing.T) {
+	m := newFakeMultiBackend()
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.StopDaemon(); err != nil {
+		t.Fatalf("StopDaemon: %v", err)
+	}
+	select {
+	case <-m.daemonStopCh:
+	default:
+		t.Fatalf("daemon stop channel was not closed")
+	}
+}
+
+func TestMultiProjectBackendRouting(t *testing.T) {
+	b := &fakeBackend{
+		states: []protocol.ServiceState{{Name: "svc", Status: "running", PID: 42}},
+	}
+	m := newFakeMultiBackend()
+	m.projects["api"] = b
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	got, err := c.List("api")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "svc" || got[0].PID != 42 {
+		t.Errorf("states = %+v, want [{svc 42}]", got)
+	}
+}
+
+func TestMultiProjectBackendUnknownProject(t *testing.T) {
+	m := newFakeMultiBackend()
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	_, err = c.List("nope")
+	if err == nil {
+		t.Fatalf("List for unknown project: expected error, got nil")
+	}
+}
+
+func TestStopDaemonRequiresNoFields(t *testing.T) {
+	m := newFakeMultiBackend()
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.Send(protocol.Request{Kind: protocol.KindStopDaemon}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	if resp.Kind != protocol.KindDone {
+		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindDone)
 	}
 }
 

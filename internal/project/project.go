@@ -110,3 +110,54 @@ func (l *Locations) MkdirAll() error {
 	}
 	return nil
 }
+
+// DaemonLocations holds the resolved paths for the global daemon (not
+// per-project). The daemon socket and pidfile live at the app-level XDG
+// runtime dir; the daemon log lives at the app-level XDG state dir.
+type DaemonLocations struct {
+	Runtime string
+	State   string
+	Socket  string
+	Pidfile string
+	LogFile string
+}
+
+// ResolveDaemon derives the daemon-level paths using the process environment.
+// These are shared across all projects managed by the daemon.
+func ResolveDaemon() (*DaemonLocations, error) {
+	return resolveDaemon(os.Getenv, homeDir)
+}
+
+func resolveDaemon(getenv envGetter, home func() (string, error)) (*DaemonLocations, error) {
+	rt := runtimeDir(getenv)
+	if rt == "" {
+		rt = DefaultRuntimeBase
+	} else {
+		rt = filepath.Join(rt, AppDir)
+	}
+
+	st, err := stateDir(getenv, home)
+	if err != nil {
+		return nil, err
+	}
+	st = filepath.Join(st, AppDir)
+
+	return &DaemonLocations{
+		Runtime: rt,
+		State:   st,
+		Socket:  filepath.Join(rt, "daemon.sock"),
+		Pidfile: filepath.Join(rt, "daemon.pid"),
+		LogFile: filepath.Join(st, "daemon.log"),
+	}, nil
+}
+
+// MkdirAll creates the daemon's runtime and state directories.
+func (d *DaemonLocations) MkdirAll() error {
+	if err := os.MkdirAll(d.Runtime, 0o700); err != nil {
+		return fmt.Errorf("create daemon runtime dir: %w", err)
+	}
+	if err := os.MkdirAll(d.State, 0o755); err != nil {
+		return fmt.Errorf("create daemon state dir: %w", err)
+	}
+	return nil
+}

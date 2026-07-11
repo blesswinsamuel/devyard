@@ -48,7 +48,7 @@ var logsCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		return client.Logs(service, logsFollow, func(line string) {
+		return client.Logs("", service, logsFollow, func(line string) {
 			fmt.Println(line)
 		})
 	},

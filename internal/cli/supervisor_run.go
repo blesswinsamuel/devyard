@@ -53,7 +53,10 @@ func runSupervisor(configPath, projectName string, foreground, runBuilds bool) e
 		return fmt.Errorf("supervisor: %w", err)
 	}
 
-	srv := control.NewServer(locs.Socket, supervisor.NewControlBackend(sup))
+	srv := control.NewServer(locs.Socket, control.SingleProjectBackend{
+		Backend: supervisor.NewControlBackend(sup),
+		Project: cfg.Project,
+	})
 	if err := srv.ListenAndServe(); err != nil {
 		_ = sup.Close()
 		return err

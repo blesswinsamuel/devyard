@@ -31,7 +31,7 @@ var psCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		states, err := client.List()
+		states, err := client.List("")
 		if err != nil {
 			return err
 		}

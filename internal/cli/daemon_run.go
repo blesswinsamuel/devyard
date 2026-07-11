@@ -11,12 +11,14 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
 	"github.com/blesswinsamuel/local-compose/internal/orchestrator"
 	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/local-compose/internal/web"
 )
 
 // runDaemonChild is the entry point for the daemonized global daemon. It
 // creates the orchestrator, starts the control server on the daemon socket,
-// loads the global config, installs a signal handler, and blocks until
-// StopDaemon is called or a signal is received.
+// optionally starts the web UI (if enabled in global config), installs a
+// signal handler, and blocks until StopDaemon is called or a signal is
+// received.
 func runDaemonChild() error {
 	locs, err := project.ResolveDaemon()
 	if err != nil {
@@ -40,6 +42,18 @@ func runDaemonChild() error {
 		return err
 	}
 
+	// Start the web UI if enabled in global config.
+	var webSrv *web.Server
+	if cfg.Web.Enabled {
+		webAddr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
+		webSrv = web.NewServer(webAddr, d)
+		if err := webSrv.ListenAndServe(); err != nil {
+			fmt.Fprintf(os.Stderr, "local-compose: web UI: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "local-compose: web UI at http://%s\n", webSrv.Addr())
+		}
+	}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
@@ -49,6 +63,9 @@ func runDaemonChild() error {
 		_ = d.StopDaemon()
 	}
 
+	if webSrv != nil {
+		_ = webSrv.Close()
+	}
 	_ = srv.Close()
 	_ = daemon.RemoveDaemonPidfile(locs)
 	return nil

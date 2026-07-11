@@ -133,6 +133,108 @@ func TestMergeEnvAdditive(t *testing.T) {
 	}
 }
 
+func TestDefaultColorEnvValues(t *testing.T) {
+	t.Parallel()
+	env := supervisor.DefaultColorEnvForTest()
+	got := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	if got["CLICOLOR"] != "1" {
+		t.Errorf("CLICOLOR = %q, want 1", got["CLICOLOR"])
+	}
+	if got["CLICOLOR_FORCE"] != "1" {
+		t.Errorf("CLICOLOR_FORCE = %q, want 1", got["CLICOLOR_FORCE"])
+	}
+	if got["TERM"] != "xterm-256color" {
+		t.Errorf("TERM = %q, want xterm-256color", got["TERM"])
+	}
+}
+
+func TestColorEnvOverrides(t *testing.T) {
+	t.Parallel()
+	parent := []string{"PATH=/usr/bin", "TERM=dumb"}
+	svc := map[string]string{"CLICOLOR_FORCE": "0"}
+	base := supervisor.ApplyEnvDefaultsForTest(parent, supervisor.DefaultColorEnvForTest())
+	out := supervisor.MergeEnvForTest(base, svc)
+	got := map[string]string{}
+	for _, kv := range out {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	// Parent env should override color defaults.
+	if got["TERM"] != "dumb" {
+		t.Errorf("TERM = %q, want dumb (parent wins over color default)", got["TERM"])
+	}
+	// Service env should override color defaults.
+	if got["CLICOLOR_FORCE"] != "0" {
+		t.Errorf("CLICOLOR_FORCE = %q, want 0 (svc wins over color default)", got["CLICOLOR_FORCE"])
+	}
+	// Color defaults that are not overridden should be present.
+	if got["CLICOLOR"] != "1" {
+		t.Errorf("CLICOLOR = %q, want 1 (default applied)", got["CLICOLOR"])
+	}
+}
+
+// TestSupervisorColorEnv verifies a launched process receives the color
+// environment variables.
+func TestSupervisorColorEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"envcheck": {Command: "echo CLICOLOR=$CLICOLOR CLICOLOR_FORCE=$CLICOLOR_FORCE TERM=$TERM", Shell: "sh", Restart: config.RestartNo},
+	})
+	s := newSupervisor(t, file, []string{"envcheck"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s.Wait()
+
+	path, err := s.LogPath("envcheck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := string(mustReadFile(t, path))
+	if !strings.Contains(data, "CLICOLOR=1 CLICOLOR_FORCE=1 TERM=xterm-256color") {
+		t.Errorf("log = %q, want color env vars present", data)
+	}
+}
+
+// TestSupervisorColorEnvServiceOverride verifies service env overrides color defaults.
+func TestSupervisorColorEnvServiceOverride(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"envcheck": {
+			Command: "echo CLICOLOR=$CLICOLOR",
+			Shell:   "sh",
+			Restart: config.RestartNo,
+			Env:     map[string]string{"CLICOLOR": "0"},
+		},
+	})
+	s := newSupervisor(t, file, []string{"envcheck"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s.Wait()
+
+	path, err := s.LogPath("envcheck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := string(mustReadFile(t, path))
+	if !strings.Contains(data, "CLICOLOR=0") {
+		t.Errorf("log = %q, want CLICOLOR=0 (service override)", data)
+	}
+}
+
 func TestResolveWorkingDir(t *testing.T) {
 	t.Parallel()
 	if got := supervisor.ResolveWorkingDirForTest("/base", "./api"); got != "/base/api" {

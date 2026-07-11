@@ -28,3 +28,13 @@ func ExitCodeFromForTest(err error) int {
 func BackoffDelayForTest(b BackoffConfig, attempt int) time.Duration {
 	return b.delay(attempt)
 }
+
+// DefaultColorEnvForTest exposes defaultColorEnv.
+func DefaultColorEnvForTest() []string {
+	return defaultColorEnv()
+}
+
+// ApplyEnvDefaultsForTest exposes applyEnvDefaults.
+func ApplyEnvDefaultsForTest(parent, defaults []string) []string {
+	return applyEnvDefaults(parent, defaults)
+}

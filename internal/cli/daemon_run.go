@@ -8,14 +8,15 @@ import (
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
+	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
 	"github.com/blesswinsamuel/local-compose/internal/orchestrator"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 )
 
 // runDaemonChild is the entry point for the daemonized global daemon. It
 // creates the orchestrator, starts the control server on the daemon socket,
-// installs a signal handler, and blocks until StopDaemon is called or a
-// signal is received.
+// loads the global config, installs a signal handler, and blocks until
+// StopDaemon is called or a signal is received.
 func runDaemonChild() error {
 	locs, err := project.ResolveDaemon()
 	if err != nil {
@@ -24,6 +25,13 @@ func runDaemonChild() error {
 	if err := locs.MkdirAll(); err != nil {
 		return err
 	}
+
+	cfg, err := globalconfig.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "local-compose: global config: %v\n", err)
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "local-compose: global config: %s\n", cfg)
 
 	d := orchestrator.New()
 

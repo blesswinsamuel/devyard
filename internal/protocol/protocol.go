@@ -55,11 +55,12 @@ type Request struct {
 type ResponseKind string
 
 const (
-	KindStates   ResponseKind = "states"   // a snapshot of every service
-	KindProjects ResponseKind = "projects" // a snapshot of every known project
-	KindLogLine  ResponseKind = "log_line" // one line of a service's log
-	KindDone     ResponseKind = "done"     // request complete, no more frames
-	KindError    ResponseKind = "error"    // an error occurred (Error has text)
+	KindStates     ResponseKind = "states"      // a snapshot of every service
+	KindProjects   ResponseKind = "projects"    // a snapshot of every known project
+	KindLogLine    ResponseKind = "log_line"    // one line of a service's log
+	KindLogContent ResponseKind = "log_content" // bulk: entire existing log file text
+	KindDone       ResponseKind = "done"        // request complete, no more frames
+	KindError      ResponseKind = "error"       // an error occurred (Error has text)
 )
 
 // ServiceState is the wire form of a service snapshot. Time fields are encoded
@@ -94,6 +95,7 @@ type Response struct {
 	Project  string         `json:"project,omitempty"`  // Kind==KindLogLine (which project)
 	Service  string         `json:"service,omitempty"`  // Kind==KindLogLine (which service)
 	Line     string         `json:"line,omitempty"`     // Kind==KindLogLine
+	Content  string         `json:"content,omitempty"`  // Kind==KindLogContent (bulk file text)
 	Error    string         `json:"error,omitempty"`    // Kind==KindError
 }
 

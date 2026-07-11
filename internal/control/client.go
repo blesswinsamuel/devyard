@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
@@ -177,6 +178,12 @@ func (c *Client) Logs(project, service string, follow bool, onLine func(string))
 		switch resp.Kind {
 		case protocol.KindLogLine:
 			onLine(resp.Line)
+		case protocol.KindLogContent:
+			for _, line := range strings.Split(strings.TrimRight(resp.Content, "\n"), "\n") {
+				if line != "" {
+					onLine(line)
+				}
+			}
 		case protocol.KindDone:
 			return nil
 		case protocol.KindError:

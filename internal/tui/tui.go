@@ -144,6 +144,12 @@ type logLineMsg struct {
 	line    string
 }
 
+type logContentMsg struct {
+	gen     int64
+	service string
+	content string
+}
+
 type logDoneMsg struct {
 	gen     int64
 	service string
@@ -233,6 +239,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.appendLog(msg.line)
+		return m, nil
+
+	case logContentMsg:
+		if msg.gen != m.followGen || msg.service != m.selectedName() {
+			return m, nil
+		}
+		m.logLines = nil
+		for _, line := range strings.Split(strings.TrimRight(msg.content, "\n"), "\n") {
+			if line != "" {
+				m.logLines = boundLogLines(m.logLines, cleanLogLine(line), maxLogLineCount)
+			}
+		}
+		m.viewport.SetContent(strings.Join(m.logLines, "\n"))
+		m.viewport.GotoBottom()
 		return m, nil
 
 	case logDoneMsg:
@@ -902,6 +922,8 @@ func pumpLogs(c *control.Client, service string, gen int64, p *tea.Program) {
 		switch resp.Kind {
 		case protocol.KindLogLine:
 			p.Send(logLineMsg{gen: gen, service: service, line: resp.Line})
+		case protocol.KindLogContent:
+			p.Send(logContentMsg{gen: gen, service: service, content: resp.Content})
 		case protocol.KindDone:
 			p.Send(logDoneMsg{gen: gen, service: service})
 			return

@@ -336,10 +336,31 @@ func streamLogs(w io.Writer, path string, follow bool, stop <-chan struct{}, pro
 	return protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
 }
 
-// tailFile writes existing file content as log-line frames and optionally
-// keeps tailing for appended content. Incomplete trailing bytes (no newline)
-// are withheld until a newline arrives, so each frame is a complete line.
+// tailFile sends the existing file content as a single bulk frame and
+// optionally keeps tailing for appended content. During the follow phase,
+// incomplete trailing bytes (no newline) are withheld until a newline arrives,
+// so each frame is a complete line.
 func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}, project, service string) error {
+	// Send entire existing content in one frame so the client can render it
+	// instantly without a line-by-line scroll animation.
+	content, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	if err := protocol.WriteFrame(w, protocol.Response{
+		Kind:    protocol.KindLogContent,
+		Project: project,
+		Service: service,
+		Content: string(content),
+	}); err != nil {
+		return err
+	}
+
+	if !follow {
+		return nil
+	}
+
+	// Follow: poll for new content until stop or the writer errors.
 	var leftover []byte
 	buf := make([]byte, 4096)
 
@@ -365,39 +386,6 @@ func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}, projec
 		}
 	}
 
-	// Drain current content.
-	for {
-		n, err := f.Read(buf)
-		if n > 0 {
-			if e := flush(buf[:n]); e != nil {
-				return e
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-	}
-
-	if !follow {
-		// Emit a trailing partial line (no newline) so non-follow `logs`
-		// doesn't silently drop the last line a service wrote.
-		if len(leftover) > 0 {
-			if err := protocol.WriteFrame(w, protocol.Response{
-				Kind:    protocol.KindLogLine,
-				Project: project,
-				Service: service,
-				Line:    string(leftover),
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	// Follow: poll for new content until stop or the writer errors.
 	ticker := time.NewTicker(followPollInterval)
 	defer ticker.Stop()
 	for {

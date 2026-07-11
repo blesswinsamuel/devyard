@@ -65,6 +65,7 @@ type Response struct {
     Project  string         `json:"project,omitempty"`   // Kind == "log_line" (which project)
     Service  string         `json:"service,omitempty"`  // Kind == "log_line" (which service)
     Line     string         `json:"line,omitempty"`     // Kind == "log_line"
+    Content  string         `json:"content,omitempty"`  // Kind == "log_content" (bulk file text)
     Error    string         `json:"error,omitempty"`    // Kind == "error"
 }
 ```
@@ -73,15 +74,19 @@ type Response struct {
 | --- | --- |
 | `"states"` | A snapshot of every service in a project (one response, `States` populated). |
 | `"projects"` | A snapshot of every known project (`Projects` populated). |
-| `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). |
+| `"log_content"` | Bulk: the entire existing log file text (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. |
+| `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). Sent for each new line during follow. |
 | `"done"` | Request complete; no more frames will follow on this connection. |
 | `"error"` | An error occurred (`Error` has the message). The connection is now done. |
 
-A single request may produce many responses. A `Logs{follow:true}` stream is a
-sequence of `log_line` frames ending in `done` (on shutdown) or `error` (on
-failure). `list`/`stop`/`stop_service`/`restart` each produce a single terminal
-`states`/`done`/`error`. `list_projects` produces a single `projects` response.
-`start_project`/`stop_project`/`stop_daemon` produce a single `done` or `error`.
+A single request may produce many responses. A `Logs{follow:true}` stream starts
+with a single `log_content` frame (bulk existing content), then a sequence of
+`log_line` frames for new lines, ending in `done` (on shutdown) or `error` (on
+failure). A `Logs{follow:false}` stream sends a single `log_content` frame
+followed by `done`. `list`/`stop`/`stop_service`/`restart` each produce a single
+terminal `states`/`done`/`error`. `list_projects` produces a single `projects`
+response. `start_project`/`stop_project`/`stop_daemon` produce a single `done`
+or `error`.
 
 ## ServiceState
 

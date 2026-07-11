@@ -19,9 +19,20 @@ var tuiCmd = &cobra.Command{
 			return err
 		}
 
+		var project, configPath string
+		if flagConfigPath != "" || flagProject != "" {
+			cfg, err := loadConfig(flagConfigPath, flagProject)
+			if err != nil {
+				return err
+			}
+			project = cfg.Project
+			configPath = cfg.ConfigPath
+		}
+
 		prog := tui.New(tui.Options{
-			Socket:  socket,
-			Project: flagProject,
+			Socket:     socket,
+			Project:    project,
+			ConfigPath: configPath,
 		})
 		if _, err := prog.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: tui: %v\n", err)

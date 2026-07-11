@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
@@ -93,6 +94,10 @@ func (d *Daemon) StartProject(configPath string, build bool) error {
 		return err
 	}
 
+	// Remove the project-level stopped marker so unless-stopped autostart
+	// will resume this project on the next daemon start.
+	_ = removeProjectStoppedMarker(locs)
+
 	if build {
 		if err := runBuilds(cfg); err != nil {
 			return err
@@ -141,14 +146,20 @@ func (d *Daemon) StartProject(configPath string, build bool) error {
 	return nil
 }
 
-// StopProject stops the named project's services, closes its supervisor, and
-// removes it from the daemon's map.
+// StopProject stops the named project's services, writes a project-level
+// stopped marker (so unless-stopped autostart won't resume it), closes its
+// supervisor, and removes it from the daemon's map.
 func (d *Daemon) StopProject(name string) error {
 	d.mu.Lock()
 	p, ok := d.projects[name]
 	d.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("project %q is not running", name)
+	}
+
+	locs, err := project.Resolve(name)
+	if err == nil {
+		_ = writeProjectStoppedMarker(locs)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), supervisor.DefaultGracefulStopTimeout)
@@ -290,7 +301,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 }
 
 // writeConfigPath persists the config path in the project's state dir so the
-// daemon can discover known projects for autostart (phase 5).
+// daemon can discover known projects for autostart.
 func writeConfigPath(locs *project.Locations, configPath string) error {
 	path := filepath.Join(locs.State, "config-path")
 	abs, err := filepath.Abs(configPath)
@@ -298,4 +309,160 @@ func writeConfigPath(locs *project.Locations, configPath string) error {
 		abs = configPath
 	}
 	return os.WriteFile(path, []byte(abs+"\n"), 0o644)
+}
+
+// writeProjectStoppedMarker writes a project-level ".stopped" marker file so
+// the daemon knows not to autostart this project (unless the user explicitly
+// starts it again, which removes the marker).
+func writeProjectStoppedMarker(locs *project.Locations) error {
+	path := filepath.Join(locs.State, ".stopped")
+	return os.WriteFile(path, []byte("stopped\n"), 0o644)
+}
+
+// removeProjectStoppedMarker removes the project-level ".stopped" marker file
+// so the project will autostart on the next daemon start.
+func removeProjectStoppedMarker(locs *project.Locations) error {
+	path := filepath.Join(locs.State, ".stopped")
+	err := os.Remove(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+// HasProjectStoppedMarker reports whether the named project has a project-level
+// ".stopped" marker in its state dir.
+func HasProjectStoppedMarker(name string) bool {
+	locs, err := project.Resolve(name)
+	if err != nil {
+		return false
+	}
+	return hasProjectStoppedMarker(locs)
+}
+
+// RemoveProjectStoppedMarker removes the project-level ".stopped" marker for
+// the named project.
+func RemoveProjectStoppedMarker(name string) error {
+	locs, err := project.Resolve(name)
+	if err != nil {
+		return err
+	}
+	return removeProjectStoppedMarker(locs)
+}
+
+// hasProjectStoppedMarker reports whether the project has a ".stopped" marker.
+func hasProjectStoppedMarker(locs *project.Locations) bool {
+	path := filepath.Join(locs.State, ".stopped")
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// readConfigPath reads the config path stored in the project's state dir.
+func readConfigPath(locs *project.Locations) (string, bool) {
+	path := filepath.Join(locs.State, "config-path")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	s := string(data)
+	return strings.TrimSpace(s), true
+}
+
+// Autostart scans the state dir for known projects and starts supervisors for
+// those that have services with restart: always or restart: unless-stopped
+// (unless a project-level .stopped marker exists). It is called by the daemon
+// child on startup. Returns the number of projects started and the number
+// skipped.
+func (d *Daemon) Autostart() (started, skipped int, err error) {
+	stateBase, err := stateBaseDir()
+	if err != nil {
+		return 0, 0, err
+	}
+	appDir := filepath.Join(stateBase, project.AppDir)
+	entries, err := os.ReadDir(appDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil
+		}
+		return 0, 0, fmt.Errorf("autostart: read state dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		locs, err := project.Resolve(name)
+		if err != nil {
+			continue
+		}
+		configPath, ok := readConfigPath(locs)
+		if !ok {
+			continue
+		}
+		if _, err := os.Stat(configPath); err != nil {
+			continue
+		}
+
+		cfg, err := loadConfig(configPath)
+		if err != nil {
+			continue
+		}
+
+		policy := autostartPolicy(cfg.File)
+		if policy == config.RestartNo {
+			skipped++
+			continue
+		}
+		if policy == config.RestartUnlessStopped && hasProjectStoppedMarker(locs) {
+			skipped++
+			continue
+		}
+
+		if err := d.StartProject(configPath, false); err != nil {
+			fmt.Fprintf(os.Stderr, "local-compose: autostart: project %q: %v\n", name, err)
+			skipped++
+			continue
+		}
+		started++
+	}
+	return started, skipped, nil
+}
+
+// autostartPolicy returns the restart policy that determines whether a
+// project should autostart. If any service has restart: always, the project
+// autostarts unconditionally. If any service has restart: unless-stopped, the
+// project autostarts unless a .stopped marker exists. Otherwise the project
+// does not autostart.
+func autostartPolicy(file *config.File) config.RestartPolicy {
+	hasAlways := false
+	hasUnlessStopped := false
+	for _, svc := range file.Services {
+		switch svc.Restart {
+		case config.RestartAlways:
+			hasAlways = true
+		case config.RestartUnlessStopped:
+			hasUnlessStopped = true
+		}
+	}
+	if hasAlways {
+		return config.RestartAlways
+	}
+	if hasUnlessStopped {
+		return config.RestartUnlessStopped
+	}
+	return config.RestartNo
+}
+
+// stateBaseDir returns the XDG state base directory (without the app dir
+// segment).
+func stateBaseDir() (string, error) {
+	if s := os.Getenv("XDG_STATE_HOME"); s != "" {
+		return s, nil
+	}
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("determine state dir: %w", err)
+	}
+	return filepath.Join(h, project.DefaultStateBase), nil
 }

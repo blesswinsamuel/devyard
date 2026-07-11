@@ -42,6 +42,16 @@ func runDaemonChild() error {
 		return err
 	}
 
+	// Autostart projects with restart: always or restart: unless-stopped
+	// (unless a .stopped marker exists).
+	started, skipped, err := d.Autostart()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "local-compose: autostart: %v\n", err)
+	}
+	if started > 0 || skipped > 0 {
+		fmt.Fprintf(os.Stderr, "local-compose: autostart: %d started, %d skipped\n", started, skipped)
+	}
+
 	// Start the web UI if enabled in global config.
 	var webSrv *web.Server
 	if cfg.Web.Enabled {

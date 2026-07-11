@@ -138,7 +138,6 @@ export function App() {
                   <th style={thStyle}>PID</th>
                   <th style={thStyle}>Restarts</th>
                   <th style={thStyle}>Health</th>
-                  <th style={thStyle}>Exit</th>
                   <th style={thStyle}>Actions</th>
                 </tr>
               </thead>
@@ -153,13 +152,14 @@ export function App() {
                       }}
                     >
                       <td style={tdStyle}>{s.name}</td>
-                      <td style={{ ...tdStyle, color: statusColor(s.status) }}>{s.status}</td>
+                      <td style={{ ...tdStyle, color: statusColor(s.status) }}>
+                        {s.status}{s.status === "exited" ? ` (${s.exit_code})` : ""}
+                      </td>
                       <td style={tdStyle}>{s.pid > 0 ? s.pid : "-"}</td>
                       <td style={tdStyle}>{s.restarts}</td>
                       <td style={{ ...tdStyle, color: healthColor(s.has_health, s.health) }}>
                         {s.has_health ? s.health : "-"}
                       </td>
-                      <td style={tdStyle}>{s.exit_code}</td>
                       <td style={tdStyle}>
                         <button
                           onClick={(e) => { e.stopPropagation(); sendWS({ type: "restart_service", project: selectedProject()!, service: s.name }); }}

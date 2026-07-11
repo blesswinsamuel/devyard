@@ -18,24 +18,26 @@ var restartCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		locs, err := resolveLocations(cfg.Project)
-		if err != nil {
-			return err
-		}
 
 		service := ""
 		if len(args) == 1 {
 			service = args[0]
 		}
 
-		client, err := control.Dial(locs.Socket)
+		socket, err := dialDaemon()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "local-compose: no supervisor running for project %q\n", cfg.Project)
+			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
+			return err
+		}
+
+		client, err := control.Dial(socket)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
 			return err
 		}
 		defer func() { _ = client.Close() }()
 
-		if err := client.Restart("", service); err != nil {
+		if err := client.Restart(cfg.Project, service); err != nil {
 			return err
 		}
 		if service == "" {

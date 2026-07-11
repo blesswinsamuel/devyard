@@ -45,11 +45,10 @@ const (
 )
 
 // Options configures a TUI run. Socket is the supervisor's control socket;
-// Locs/Project/ConfigPath are only used when the TUI offers to start a
-// detached supervisor because none is running.
+// Project/ConfigPath are only used when the TUI offers to start a project
+// because none is running.
 type Options struct {
 	Socket     string
-	Locs       *project.Locations
 	Project    string
 	ConfigPath string
 }
@@ -59,7 +58,6 @@ type Options struct {
 func New(opts Options) *tea.Program {
 	m := model{
 		socket:     opts.Socket,
-		locs:       opts.Locs,
 		project:    opts.Project,
 		configPath: opts.ConfigPath,
 		pane:       paneList,
@@ -71,8 +69,8 @@ func New(opts Options) *tea.Program {
 	// variable, which is assigned below. By the time Update invokes the closure
 	// `p` holds the real program, so startFollowCmd gets a non-nil *tea.Program.
 	var p *tea.Program
-	m.startFollow = func(socket, service string, gen int64) tea.Cmd {
-		return startFollowCmd(socket, service, gen, p)
+	m.startFollow = func(socket, project, service string, gen int64) tea.Cmd {
+		return startFollowCmd(socket, project, service, gen, p)
 	}
 	p = tea.NewProgram(m)
 	return p
@@ -80,13 +78,12 @@ func New(opts Options) *tea.Program {
 
 type model struct {
 	socket     string
-	locs       *project.Locations
 	project    string
 	configPath string
 
 	// startFollow builds a startFollowCmd bound to the running *tea.Program.
 	// See New for why this is a closure rather than a stored *tea.Program.
-	startFollow func(socket, service string, gen int64) tea.Cmd
+	startFollow func(socket, project, service string, gen int64) tea.Cmd
 
 	width, height int
 	ready         bool
@@ -162,7 +159,7 @@ type startedMsg struct {
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.Tick(pollInterval, func(time.Time) tea.Msg { return listTickMsg{} }),
-		connectCmd(m.socket),
+		connectCmd(m.socket, m.project),
 	)
 }
 
@@ -180,7 +177,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case listTickMsg:
 		return m, tea.Batch(
 			tea.Tick(pollInterval, func(time.Time) tea.Msg { return listTickMsg{} }),
-			connectCmd(m.socket),
+			connectCmd(m.socket, m.project),
 		)
 
 	case statesMsg:
@@ -237,7 +234,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Refresh the snapshot immediately so the UI reflects the action.
-		return m, connectCmd(m.socket)
+		return m, connectCmd(m.socket, m.project)
 
 	case startedMsg:
 		if msg.err != nil {
@@ -249,7 +246,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus(fmt.Sprintf("supervisor started (pid %d)", msg.pid), statusInfo)
 		return m, tea.Batch(
 			tea.Tick(pollInterval, func(time.Time) tea.Msg { return listTickMsg{} }),
-			connectCmd(m.socket),
+			connectCmd(m.socket, m.project),
 		)
 	}
 	return m, nil
@@ -287,7 +284,7 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setStatus("restarting "+name+"...", statusInfo)
-		return m, actionCmd(m.socket, "restart", name)
+		return m, actionCmd(m.socket, m.project, "restart", name)
 
 	case "s":
 		name := m.selectedName()
@@ -295,12 +292,12 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setStatus("stopping "+name+"...", statusInfo)
-		return m, actionCmd(m.socket, "stop", name)
+		return m, actionCmd(m.socket, m.project, "stop", name)
 
 	case "d":
 		m.setStatus("down...", statusInfo)
 		m.closeFollow()
-		return m, actionCmd(m.socket, "down", "")
+		return m, actionCmd(m.socket, m.project, "down", "")
 	}
 
 	if m.pane == paneList {
@@ -314,7 +311,7 @@ func (m model) handleStartPrompt(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "y", "Y":
 		m.noSupervisor = false
 		m.setStatus("starting supervisor...", statusInfo)
-		return m, startDaemonCmd(m.locs, m.project, m.configPath)
+		return m, startDaemonCmd(m.project, m.configPath)
 	case "n", "N", "q", "ctrl+c", "esc":
 		m.quitting = true
 		return m, tea.Quit
@@ -411,7 +408,7 @@ func (m *model) maybeSwitchFollow() tea.Cmd {
 		// bind a follow to.
 		return nil
 	}
-	return m.startFollow(m.socket, name, m.followGen)
+	return m.startFollow(m.socket, m.project, name, m.followGen)
 }
 
 // startFollowSelected begins a follow for the currently selected service.
@@ -428,7 +425,7 @@ func (m *model) startFollowSelected() tea.Cmd {
 		// Model wasn't constructed via New (e.g. in tests).
 		return nil
 	}
-	return m.startFollow(m.socket, name, m.followGen)
+	return m.startFollow(m.socket, m.project, name, m.followGen)
 }
 
 // closeFollow closes the active log-follow connection (if any). The pump
@@ -615,32 +612,28 @@ func truncate(s string, n int) string {
 
 // --- commands ---
 
-func connectCmd(socket string) tea.Cmd {
+func connectCmd(socket, project string) tea.Cmd {
 	return func() tea.Msg {
 		c, err := control.Dial(socket)
 		if err != nil {
 			return statesMsg{err: err}
 		}
 		defer func() { _ = c.Close() }()
-		states, err := c.List("")
+		states, err := c.List(project)
 		return statesMsg{states: states, err: err}
 	}
 }
 
-func startFollowCmd(socket, service string, gen int64, p *tea.Program) tea.Cmd {
+func startFollowCmd(socket, project, service string, gen int64, p *tea.Program) tea.Cmd {
 	return func() tea.Msg {
 		if p == nil {
-			// Should not happen: the startFollow closure in New captures the
-			// program before it's assigned, but only invokes after. Guard so a
-			// future regression surfaces as a soft error instead of a nil-deref
-			// panic inside a goroutine.
 			return logDoneMsg{gen: gen, service: service, err: errors.New("tui: program not initialized")}
 		}
 		c, err := control.Dial(socket)
 		if err != nil {
 			return logDoneMsg{gen: gen, service: service, err: err}
 		}
-		if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Project: "", Service: service, Follow: true}); err != nil {
+		if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Project: project, Service: service, Follow: true}); err != nil {
 			_ = c.Close()
 			return logDoneMsg{gen: gen, service: service, err: err}
 		}
@@ -670,7 +663,7 @@ func pumpLogs(c *control.Client, service string, gen int64, p *tea.Program) {
 	}
 }
 
-func actionCmd(socket, action, service string) tea.Cmd {
+func actionCmd(socket, project, action, service string) tea.Cmd {
 	return func() tea.Msg {
 		c, err := control.Dial(socket)
 		if err != nil {
@@ -679,11 +672,11 @@ func actionCmd(socket, action, service string) tea.Cmd {
 		defer func() { _ = c.Close() }()
 		switch action {
 		case "restart":
-			err = c.Restart("", service)
+			err = c.Restart(project, service)
 		case "stop":
-			err = c.StopService("", service)
+			err = c.StopService(project, service)
 		case "down":
-			err = c.Stop("")
+			err = c.StopProject(project)
 		default:
 			err = fmt.Errorf("unknown action %q", action)
 		}
@@ -691,28 +684,41 @@ func actionCmd(socket, action, service string) tea.Cmd {
 	}
 }
 
-func startDaemonCmd(locs *project.Locations, project, configPath string) tea.Cmd {
+func startDaemonCmd(project, configPath string) tea.Cmd {
 	return func() tea.Msg {
-		if locs == nil {
-			return startedMsg{err: errors.New("no project locations resolved")}
-		}
-		if pid, err := daemon.Running(locs); err != nil {
-			return startedMsg{err: err}
-		} else if pid > 0 {
-			waitForSocket(locs.Socket, 3*time.Second)
-			return startedMsg{pid: pid}
-		}
-		pid, err := daemon.Spawn(daemon.Options{
-			Locations:  locs,
-			Project:    project,
-			ConfigPath: configPath,
-		})
+		// Ensure the global daemon is running, then start the project.
+		dloc, err := daemonLocations()
 		if err != nil {
 			return startedMsg{err: err}
 		}
-		waitForSocket(locs.Socket, 3*time.Second)
+		pid, err := daemon.DaemonRunning(dloc)
+		if err != nil {
+			return startedMsg{err: err}
+		}
+		if pid == 0 {
+			pid, err = daemon.SpawnDaemon(dloc)
+			if err != nil {
+				return startedMsg{err: err}
+			}
+		}
+		waitForSocket(dloc.Socket, 3*time.Second)
+
+		// Start the project via the daemon.
+		c, err := control.Dial(dloc.Socket)
+		if err != nil {
+			return startedMsg{err: err}
+		}
+		defer func() { _ = c.Close() }()
+		if err := c.StartProject(configPath, false); err != nil {
+			return startedMsg{err: err}
+		}
 		return startedMsg{pid: pid}
 	}
+}
+
+// daemonLocations resolves the global daemon paths.
+func daemonLocations() (*project.DaemonLocations, error) {
+	return project.ResolveDaemon()
 }
 
 // waitForSocket polls until a Unix socket exists at path or the timeout

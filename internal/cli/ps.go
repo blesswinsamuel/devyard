@@ -19,19 +19,21 @@ var psCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		locs, err := resolveLocations(cfg.Project)
+
+		socket, err := dialDaemon()
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
 			return err
 		}
 
-		client, err := control.Dial(locs.Socket)
+		client, err := control.Dial(socket)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "local-compose: no supervisor running for project %q (is it up?)\n", cfg.Project)
+			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
 			return err
 		}
 		defer func() { _ = client.Close() }()
 
-		states, err := client.List("")
+		states, err := client.List(cfg.Project)
 		if err != nil {
 			return err
 		}

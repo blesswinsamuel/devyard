@@ -86,8 +86,10 @@ func newEnv(t *testing.T, configContents string) *env {
 		configPath: filepath.Join(cfgDir, "local-compose.yml"),
 	}
 	// Best-effort teardown: down is idempotent and safe even if nothing is up.
+	// Also stop the daemon so tests don't leak processes.
 	t.Cleanup(func() {
 		_, _, _ = e.run(t, context.Background(), "down")
+		_, _, _ = e.run(t, context.Background(), "stop-daemon")
 	})
 	return e
 }
@@ -249,8 +251,8 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
 	}
-	if !strings.Contains(errOut, "supervisor started") {
-		t.Fatalf("up -d stderr missing supervisor-started message: %q", errOut)
+	if !strings.Contains(errOut, "project \"lc-test\" started") {
+		t.Fatalf("up -d stderr missing project-started message: %q", errOut)
 	}
 
 	// ps: all three services running in topo order. depends_on: service_started
@@ -325,13 +327,8 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 	waitForCond(t, 3*time.Second, func() bool {
 		_, _, rc := e.run(t, context.Background(), "ps")
 		return rc != 0
-	}, "ps fails after down (no supervisor)")
+	}, "ps fails after down (project not running)")
 	assertNoOrphans(t, pids...)
-
-	socket := filepath.Join(e.runtime, "local-compose", e.projName, "supervisor.sock")
-	if _, err := os.Stat(socket); !os.IsNotExist(err) {
-		t.Fatalf("socket still present after down: stat=%v", err)
-	}
 }
 
 func TestE2E_ForegroundUpShortLived(t *testing.T) {
@@ -475,8 +472,8 @@ func TestE2E_PSWithNoSupervisorErrors(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("ps with no supervisor: expected non-zero exit, got 0")
 	}
-	if !strings.Contains(errOut, "no supervisor running") {
-		t.Fatalf("ps-with-no-supervisor error missing message: %q", errOut)
+	if !strings.Contains(errOut, "no daemon running") {
+		t.Fatalf("ps-with-no-daemon error missing message: %q", errOut)
 	}
 }
 
@@ -488,8 +485,8 @@ func TestE2E_DownIsIdempotent(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("down with no supervisor: expected exit 0, got %d (err=%q)", code, errOut)
 	}
-	if !strings.Contains(errOut, "no supervisor running") {
-		t.Fatalf("idempotent down missing no-supervisor message: %q", errOut)
+	if !strings.Contains(errOut, "no daemon running") {
+		t.Fatalf("idempotent down missing no-daemon message: %q", errOut)
 	}
 }
 

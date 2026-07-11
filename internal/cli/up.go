@@ -3,12 +3,14 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/blesswinsamuel/local-compose/internal/daemon"
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/local-compose/internal/control"
 )
 
 var upDetach bool
@@ -22,53 +24,134 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		locs, err := resolveLocations(cfg.Project)
+
+		if upBuild {
+			if err := runAllBuilds(cfg); err != nil {
+				return err
+			}
+		}
+
+		socket, err := ensureDaemon()
 		if err != nil {
 			return err
 		}
-		if err := locs.MkdirAll(); err != nil {
+
+		client, err := control.Dial(socket)
+		if err != nil {
 			return err
 		}
+		if err := client.StartProject(cfg.ConfigPath, false); err != nil {
+			_ = client.Close()
+			return err
+		}
+		_ = client.Close()
+
+		fmt.Fprintf(os.Stderr, "local-compose: project %q started\n", cfg.Project)
 
 		if upDetach {
-			return upDaemon(cfg, locs)
+			return nil
 		}
-		return runSupervisor(cfg.ConfigPath, cfg.Project, true, upBuild)
+
+		return followForeground(socket, cfg.Project, cfg.Order)
 	},
 }
 
-// upDaemon spawns the daemonized supervisor (re-exec with setsid) and returns
-// once the child has been launched. It refuses to double-start when a live
-// pidfile already points at a running supervisor.
-func upDaemon(cfg *loadedConfig, locs *project.Locations) error {
-	if pid, err := daemon.Running(locs); err != nil {
-		return fmt.Errorf("check running supervisor: %w", err)
-	} else if pid > 0 {
-		return fmt.Errorf("supervisor already running for project %q (pid %d); use `down` first", cfg.Project, pid)
+// followForeground streams logs from all services in the project to stdout with
+// colored prefixes (mirroring the old foreground supervisor behavior) and
+// blocks until all services have exited or been stopped. Ctrl+C sends
+// stop_project to the daemon and waits for it to complete.
+func followForeground(socket, project string, order []string) error {
+	stop := make(chan struct{})
+	stopOnce := sync.Once{}
+
+	// Track follow clients so we can close them when services are done.
+	var followMu sync.Mutex
+	var followClients []*control.Client
+
+	closeAllFollows := func() {
+		followMu.Lock()
+		for _, c := range followClients {
+			_ = c.Close()
+		}
+		followClients = nil
+		followMu.Unlock()
 	}
 
-	extra := []string{}
-	if upBuild {
-		extra = append(extra, "--build")
-	}
-	pid, err := daemon.Spawn(daemon.Options{
-		Locations:  locs,
-		Project:    cfg.Project,
-		ConfigPath: cfg.ConfigPath,
-		ExtraArgs:  extra,
-	})
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "local-compose: supervisor started (pid %d) for project %q\n", pid, cfg.Project)
+	// Signal handler: Ctrl+C → stop_project → exit.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 
-	// Wait briefly for the child to bind the control socket so a `ps`
-	// immediately after `up -d` doesn't race.
-	waitForSocket(locs.Socket, 3*time.Second)
-	return nil
+	go func() {
+		select {
+		case <-sigCh:
+			stopOnce.Do(func() { close(stop) })
+			closeAllFollows()
+			c, err := control.Dial(socket)
+			if err != nil {
+				return
+			}
+			defer func() { _ = c.Close() }()
+			_ = c.StopProject(project)
+		case <-stop:
+		}
+	}()
+
+	// Follow logs for each service in its own goroutine.
+	var wg sync.WaitGroup
+	for _, svc := range order {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			c, err := control.Dial(socket)
+			if err != nil {
+				return
+			}
+			followMu.Lock()
+			followClients = append(followClients, c)
+			followMu.Unlock()
+			prefix := prefixWriter(name, os.Stdout)
+			_ = c.Logs(project, name, true, func(line string) {
+				fmt.Fprintf(prefix, "%s\n", line)
+			})
+		}(svc)
+	}
+
+	// Poll list until all services are exited or stopped.
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			closeAllFollows()
+			wg.Wait()
+			return nil
+		case <-ticker.C:
+			c, err := control.Dial(socket)
+			if err != nil {
+				continue
+			}
+			states, err := c.List(project)
+			_ = c.Close()
+			if err != nil {
+				continue
+			}
+			allDone := true
+			for _, s := range states {
+				if s.Status != "exited" && s.Status != "stopped" {
+					allDone = false
+					break
+				}
+			}
+			if allDone {
+				stopOnce.Do(func() { close(stop) })
+				closeAllFollows()
+			}
+		}
+	}
 }
 
 func init() {
-	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Run supervisor in the background")
+	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Run in the background (don't follow logs)")
 	upCmd.Flags().BoolVar(&upBuild, "build", false, "Build services before starting")
 }

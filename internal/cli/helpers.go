@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/local-compose/internal/daemon"
 	"github.com/blesswinsamuel/local-compose/internal/dag"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 )
@@ -91,6 +92,52 @@ func resolveLocations(projectName string) (*project.Locations, error) {
 	return project.Resolve(projectName)
 }
 
+// daemonSocketPath returns the global daemon's control socket path.
+func daemonSocketPath() (string, error) {
+	locs, err := project.ResolveDaemon()
+	if err != nil {
+		return "", err
+	}
+	return locs.Socket, nil
+}
+
+// ensureDaemon checks whether the global daemon is running and spawns it if
+// not. It returns the daemon's control socket path. Used by `up` which needs
+// the daemon to start a project.
+func ensureDaemon() (string, error) {
+	locs, err := project.ResolveDaemon()
+	if err != nil {
+		return "", err
+	}
+	pid, err := daemon.DaemonRunning(locs)
+	if err != nil {
+		return "", fmt.Errorf("check running daemon: %w", err)
+	}
+	if pid == 0 {
+		pid, err = daemon.SpawnDaemon(locs)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(os.Stderr, "local-compose: daemon started (pid %d)\n", pid)
+		waitForSocket(locs.Socket, 3*time.Second)
+	}
+	return locs.Socket, nil
+}
+
+// dialDaemon dials the global daemon's control socket. It returns an error if
+// the daemon is not running. Used by `ps`, `logs`, `restart`, `down` which
+// require the daemon to be already running.
+func dialDaemon() (string, error) {
+	sock, err := daemonSocketPath()
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(sock); err != nil {
+		return "", fmt.Errorf("no daemon running; use `local-compose up` to start")
+	}
+	return sock, nil
+}
+
 // cwd returns the current working directory, falling back to "." on error.
 func cwd() string {
 	d, err := os.Getwd()
@@ -101,8 +148,8 @@ func cwd() string {
 }
 
 // waitForSocket polls until a Unix socket exists at path or the timeout
-// elapses. It's used after `up -d` to give the daemonized child a moment to
-// bind the control socket before subsequent commands race to dial it.
+// elapses. It's used after spawning the daemon to give it a moment to bind the
+// control socket before subsequent commands race to dial it.
 func waitForSocket(path string, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

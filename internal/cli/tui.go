@@ -17,17 +17,15 @@ var tuiCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		locs, err := resolveLocations(cfg.Project)
+
+		socket, err := dialDaemon()
 		if err != nil {
-			return err
-		}
-		if err := locs.MkdirAll(); err != nil {
+			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
 			return err
 		}
 
 		prog := tui.New(tui.Options{
-			Socket:     locs.Socket,
-			Locs:       locs,
+			Socket:     socket,
 			Project:    cfg.Project,
 			ConfigPath: cfg.ConfigPath,
 		})

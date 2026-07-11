@@ -1,7 +1,7 @@
 package control
 
 import (
-	"errors"
+	"context"
 	"fmt"
 
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
@@ -28,10 +28,9 @@ type MultiBackend interface {
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
-// It is used by the legacy single-project supervisor path (foreground `up` and
-// the --supervisor daemon child) so the control server can use the same
-// MultiBackend dispatch code. Project is the project name (may be empty for
-// anonymous single-project servers).
+// It is used by tests and the legacy single-project supervisor path so the
+// control server can use the same MultiBackend dispatch code. Project is the
+// project name (may be empty for anonymous single-project servers).
 type SingleProjectBackend struct {
 	Backend
 	Project string
@@ -42,15 +41,18 @@ func (s SingleProjectBackend) ListProjects() []protocol.ProjectInfo {
 }
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool) error {
-	return errors.New("start_project not supported in single-project mode")
+	return fmt.Errorf("start_project not supported in single-project mode")
 }
 
 func (s SingleProjectBackend) StopProject(name string) error {
-	return errors.New("stop_project not supported in single-project mode")
+	if name != "" && name != s.Project {
+		return fmt.Errorf("unknown project %q", name)
+	}
+	return s.Stop(context.Background())
 }
 
 func (s SingleProjectBackend) StopDaemon() error {
-	return errors.New("stop_daemon not supported in single-project mode")
+	return s.Stop(context.Background())
 }
 
 func (s SingleProjectBackend) ProjectBackend(project string) (Backend, error) {

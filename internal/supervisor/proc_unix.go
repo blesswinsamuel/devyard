@@ -5,8 +5,11 @@ package supervisor
 import (
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"syscall"
+
+	"github.com/creack/pty"
 )
 
 // command is a thin wrapper around exec.Cmd that keeps syscall usage confined
@@ -50,6 +53,25 @@ func (c *command) start() error {
 	return c.cmd.Start()
 }
 
+// startWithPTY allocates a pseudo-terminal and starts the process with
+// stdin/stdout/stderr connected to the slave side. Returns the master fd
+// which can be used to read output and write input.
+func (c *command) startWithPTY() (*os.File, error) {
+	if c.cmd == nil {
+		return nil, errors.New("command not initialized")
+	}
+	if c.dir != "" {
+		c.cmd.Dir = c.dir
+	}
+	if c.env != nil {
+		c.cmd.Env = c.env
+	}
+	// Setpgid so the child gets its own process group for killGroup.
+	// StartWithSize will add Setsid + Setctty for the PTY session.
+	c.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return pty.StartWithSize(c.cmd, nil)
+}
+
 func (c *command) processPID() int {
 	if c.cmd.Process == nil {
 		return 0
@@ -80,4 +102,9 @@ func killGroup(pgid int, sig syscall.Signal) error {
 		return nil
 	}
 	return syscall.Kill(-pgid, sig)
+}
+
+// resizePTY changes the PTY window size for a service's master fd.
+func resizePTY(f *os.File, width, height int) error {
+	return pty.Setsize(f, &pty.Winsize{Cols: uint16(width), Rows: uint16(height)})
 }

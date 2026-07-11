@@ -137,6 +137,11 @@ type serviceRuntime struct {
 
 	// done is closed when the service's runService goroutine exits.
 	done chan struct{}
+
+	// ptyMaster is the master fd of the PTY when the service has tty: true.
+	// nil for non-TTY services. Guarded by ptyMu.
+	ptyMu     sync.Mutex
+	ptyMaster *os.File
 }
 
 // setChecker stores/clears the service's health checker under checkerMu.
@@ -389,6 +394,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 		// closes its end (on exit), at which point Wait reaps the process.
 		pipeWG.Wait()
 		waitErr := cmd.Wait()
+		rt.closePTY()
 
 		exitCode := exitCodeFrom(waitErr)
 		if waitErr != nil {
@@ -544,6 +550,11 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 	cmd := newCommand(shell, "-c", svc.Command)
 	cmd.dir = resolveWorkingDir(s.opts.BaseDir, svc.WorkingDir)
 	cmd.env = mergeEnv(os.Environ(), svc.Env)
+
+	if svc.TTY {
+		return s.launchPTY(cmd, rt)
+	}
+
 	if err := applyProcessGroup(cmd); err != nil {
 		return nil, nil, fmt.Errorf("set process group: %w", err)
 	}
@@ -573,6 +584,42 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 	go s.pipeLines(stderr, rt, &pipeWG)
 
 	return cmd, &pipeWG, nil
+}
+
+// launchPTY starts a service with a PTY. Output is read from the master fd
+// and forwarded to the service logger. The master is stored on the runtime
+// so Attach clients can read/write directly.
+func (s *Supervisor) launchPTY(cmd *command, rt *serviceRuntime) (*command, *sync.WaitGroup, error) {
+	ptyMaster, err := cmd.startWithPTY()
+	if err != nil {
+		return nil, nil, fmt.Errorf("start with PTY: %w", err)
+	}
+
+	pgid := cmd.processPID()
+
+	rt.mu.Lock()
+	rt.pid = cmd.processPID()
+	rt.pgid = pgid
+	rt.status = StatusRunning
+	rt.startedAt = time.Now()
+	rt.mu.Unlock()
+	rt.startedOnce.Store(true)
+
+	rt.ptyMu.Lock()
+	rt.ptyMaster = ptyMaster
+	rt.ptyMu.Unlock()
+
+	var pipeWG sync.WaitGroup
+	pipeWG.Add(1)
+	go s.readPTY(ptyMaster, rt, &pipeWG)
+
+	return cmd, &pipeWG, nil
+}
+
+// readPTY reads from the PTY master and forwards output to the service logger.
+func (s *Supervisor) readPTY(r io.Reader, rt *serviceRuntime, wg *sync.WaitGroup) {
+	defer wg.Done()
+	s.readLines(r, rt)
 }
 
 // pipeLines reads a child pipe line-by-line and forwards to the service logger.
@@ -789,7 +836,68 @@ func (s *Supervisor) sleepBackoff(ctx context.Context, rt *serviceRuntime) bool 
 	}
 }
 
-// Close releases per-service resources (log files). It is safe to call after
+// Attach returns the PTY master for a TTY service, allowing a client to read
+// output and write input directly. Returns an error if the service is not
+// TTY-enabled or is not running.
+func (s *Supervisor) Attach(name string) (io.ReadWriteCloser, error) {
+	rt, ok := s.services[name]
+	if !ok {
+		return nil, fmt.Errorf("supervisor: unknown service %q", name)
+	}
+	if !rt.spec.TTY {
+		return nil, fmt.Errorf("supervisor: service %q does not have tty enabled", name)
+	}
+	rt.ptyMu.Lock()
+	master := rt.ptyMaster
+	rt.ptyMu.Unlock()
+	if master == nil {
+		return nil, fmt.Errorf("supervisor: service %q is not running", name)
+	}
+	return master, nil
+}
+
+// WriteInput writes data to a TTY service's PTY master (stdin).
+func (s *Supervisor) WriteInput(name string, data []byte) error {
+	rt, ok := s.services[name]
+	if !ok {
+		return fmt.Errorf("supervisor: unknown service %q", name)
+	}
+	rt.ptyMu.Lock()
+	master := rt.ptyMaster
+	rt.ptyMu.Unlock()
+	if master == nil {
+		return fmt.Errorf("supervisor: service %q is not running or not TTY", name)
+	}
+	_, err := master.Write(data)
+	return err
+}
+
+// Resize changes the PTY window size for a TTY service.
+func (s *Supervisor) Resize(name string, width, height int) error {
+	rt, ok := s.services[name]
+	if !ok {
+		return fmt.Errorf("supervisor: unknown service %q", name)
+	}
+	rt.ptyMu.Lock()
+	master := rt.ptyMaster
+	rt.ptyMu.Unlock()
+	if master == nil {
+		return fmt.Errorf("supervisor: service %q is not running or not TTY", name)
+	}
+	return resizePTY(master, width, height)
+}
+
+// closePTY closes the PTY master fd for a service. Called when the process exits.
+func (rt *serviceRuntime) closePTY() {
+	rt.ptyMu.Lock()
+	defer rt.ptyMu.Unlock()
+	if rt.ptyMaster != nil {
+		_ = rt.ptyMaster.Close()
+		rt.ptyMaster = nil
+	}
+}
+
+// Close releases per-service resources (log files, PTY fds). It is safe to call after
 // Stop.
 func (s *Supervisor) Close() error {
 	s.mu.Lock()
@@ -801,6 +909,7 @@ func (s *Supervisor) Close() error {
 	}
 	sort.Strings(names)
 	for _, n := range names {
+		s.services[n].closePTY()
 		if l := s.services[n].logger; l != nil {
 			if err := l.close(); err != nil && firstErr == nil {
 				firstErr = err

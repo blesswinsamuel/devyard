@@ -94,6 +94,7 @@ type Service struct {
 	Restart     RestartPolicy     `yaml:"restart,omitempty"`
 	Build       *Build            `yaml:"build,omitempty"`
 	Shell       string            `yaml:"shell,omitempty"`
+	TTY         bool              `yaml:"tty,omitempty"`
 }
 
 // DependsOn accepts either a list of service names or a map with conditions.

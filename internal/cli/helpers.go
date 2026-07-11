@@ -87,11 +87,6 @@ func startOrder(file *config.File) ([]string, error) {
 	return order, nil
 }
 
-// resolveLocations derives the runtime/state dirs for the resolved project.
-func resolveLocations(projectName string) (*project.Locations, error) {
-	return project.Resolve(projectName)
-}
-
 // daemonSocketPath returns the global daemon's control socket path.
 func daemonSocketPath() (string, error) {
 	locs, err := project.ResolveDaemon()

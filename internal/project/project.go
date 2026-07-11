@@ -21,16 +21,14 @@ const AppDir = "local-compose"
 
 // Locations holds the resolved runtime and state paths for one project.
 //
-//   - Runtime dir holds the control socket and pidfiles (transient, may be
-//     cleared on reboot). Never persisted across reboots.
+//   - Runtime dir holds transient files (cleared on reboot). Never persisted
+//     across reboots.
 //   - State dir holds per-service log files and the "stopped" marker used by
 //     unless-stopped restart policy. Persisted across reboots.
 type Locations struct {
 	Name    string
 	Runtime string
 	State   string
-	Socket  string
-	Pidfile string
 	LogsDir string
 }
 
@@ -76,8 +74,6 @@ func resolve(name string, getenv envGetter, home func() (string, error)) (*Locat
 		Name:    name,
 		Runtime: runtime,
 		State:   state,
-		Socket:  filepath.Join(runtime, "supervisor.sock"),
-		Pidfile: filepath.Join(runtime, "supervisor.pid"),
 		LogsDir: filepath.Join(state, "logs"),
 	}, nil
 }

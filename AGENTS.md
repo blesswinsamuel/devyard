@@ -46,7 +46,6 @@ internal/
   control/     # Unix-socket server (MultiBackend interface) + thin Client
   protocol/    # wire frames: Request/Response, length-prefixed JSON
   health/      # per-service healthcheck state machine (starting -> healthy | unhealthy)
-  logs/        # doc-only placeholder; actual logging lives in supervisor/logs.go
   tui/         # Bubble Tea v2 frontend (charm.land/bubbletea/v2)
   ui/          # shared status color/label helpers used by cli, tui, web
   web/         # WS server + embedded SolidJS SPA (xterm.js logs)

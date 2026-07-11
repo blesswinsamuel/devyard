@@ -33,8 +33,6 @@ func testLocations(t *testing.T) *project.Locations {
 		Name:    "test",
 		Runtime: filepath.Join(dir, "runtime"),
 		State:   filepath.Join(dir, "state"),
-		Socket:  filepath.Join(dir, "runtime", "supervisor.sock"),
-		Pidfile: filepath.Join(dir, "runtime", "supervisor.pid"),
 		LogsDir: filepath.Join(dir, "state", "logs"),
 	}
 }

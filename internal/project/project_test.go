@@ -29,12 +29,6 @@ func TestResolveDefaults(t *testing.T) {
 	if loc.State != wantState {
 		t.Fatalf("state: got %q want %q", loc.State, wantState)
 	}
-	if loc.Socket != filepath.Join(loc.Runtime, "supervisor.sock") {
-		t.Fatalf("socket: %q", loc.Socket)
-	}
-	if loc.Pidfile != filepath.Join(loc.Runtime, "supervisor.pid") {
-		t.Fatalf("pidfile: %q", loc.Pidfile)
-	}
 	if loc.LogsDir != filepath.Join(loc.State, "logs") {
 		t.Fatalf("logs dir: %q", loc.LogsDir)
 	}

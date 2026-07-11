@@ -115,7 +115,7 @@ func ensureDaemon() (string, error) {
 			return "", err
 		}
 		fmt.Fprintf(os.Stderr, "local-compose: daemon started (pid %d)\n", pid)
-		control.WaitForSocket(locs.Socket, 3*time.Second)
+		_ = control.WaitForSocket(locs.Socket, 3*time.Second)
 	}
 	return locs.Socket, nil
 }

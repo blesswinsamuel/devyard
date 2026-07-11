@@ -963,7 +963,7 @@ func startDaemonCmd(configPath string) tea.Cmd {
 				return startedMsg{err: err}
 			}
 		}
-		control.WaitForSocket(dloc.Socket, 3*time.Second)
+		_ = control.WaitForSocket(dloc.Socket, 3*time.Second)
 		return startedMsg{pid: pid}
 	}
 }

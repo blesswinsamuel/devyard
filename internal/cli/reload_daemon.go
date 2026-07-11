@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -75,8 +76,33 @@ var reloadCmd = &cobra.Command{
 		}
 		fmt.Fprintf(os.Stderr, "local-compose: daemon started (pid %d)\n", newPid)
 
-		control.WaitForSocket(locs.Socket, 3*time.Second)
+		if err := control.WaitForSocket(locs.Socket, 5*time.Second); err != nil {
+			return fmt.Errorf("wait for daemon: %w", err)
+		}
 
+		// Verify the daemon is responsive before sending start requests.
+		newProjects, err := func() ([]protocol.ProjectInfo, error) {
+			c, err := control.Dial(locs.Socket)
+			if err != nil {
+				return nil, err
+			}
+			defer c.Close()
+			return c.ListProjects()
+		}()
+		if err != nil {
+			return fmt.Errorf("verify daemon: %w", err)
+		}
+
+		// Build the set of projects the new daemon already started (via
+		// autostart) so we don't hit "already running" errors.
+		alreadyRunning := make(map[string]bool, len(newProjects))
+		for _, p := range newProjects {
+			if p.Status == "running" {
+				alreadyRunning[p.Name] = true
+			}
+		}
+
+		var startErrs []error
 		for _, cfgPath := range runningConfigs {
 			if err := func() error {
 				c, err := control.Dial(locs.Socket)
@@ -86,11 +112,38 @@ var reloadCmd = &cobra.Command{
 				defer c.Close()
 				return c.StartProject(cfgPath, false)
 			}(); err != nil {
-				fmt.Fprintf(os.Stderr, "local-compose: reload: start project %s: %v\n", cfgPath, err)
+				// "already running" is not a real error — autostart
+				// already started the project with the same config.
+				if !isAlreadyRunning(err, alreadyRunning) {
+					startErrs = append(startErrs, fmt.Errorf("start project %s: %w", cfgPath, err))
+				}
 			}
+		}
+
+		if len(startErrs) > 0 {
+			for _, e := range startErrs {
+				fmt.Fprintf(os.Stderr, "local-compose: %v\n", e)
+			}
+			return fmt.Errorf("reload completed with %d error(s)", len(startErrs))
 		}
 
 		fmt.Fprintln(os.Stderr, "local-compose: daemon reloaded")
 		return nil
 	},
+}
+
+// isAlreadyRunning reports whether err is an "already running" error for a
+// project in the alreadyRunning set. This avoids treating the autostart race
+// as a real failure.
+func isAlreadyRunning(err error, alreadyRunning map[string]bool) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for name := range alreadyRunning {
+		if strings.Contains(msg, fmt.Sprintf("project %q is already running", name)) {
+			return true
+		}
+	}
+	return false
 }

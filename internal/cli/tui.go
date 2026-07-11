@@ -13,11 +13,6 @@ var tuiCmd = &cobra.Command{
 	Use:   "tui",
 	Short: "Interactive terminal UI for managing services",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(flagConfigPath, flagProject)
-		if err != nil {
-			return err
-		}
-
 		socket, err := dialDaemon()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
@@ -25,9 +20,8 @@ var tuiCmd = &cobra.Command{
 		}
 
 		prog := tui.New(tui.Options{
-			Socket:     socket,
-			Project:    cfg.Project,
-			ConfigPath: cfg.ConfigPath,
+			Socket:  socket,
+			Project: flagProject,
 		})
 		if _, err := prog.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: tui: %v\n", err)

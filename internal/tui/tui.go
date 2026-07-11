@@ -1,11 +1,9 @@
 // Package tui implements the Bubble Tea interactive frontend.
 //
-// The TUI is a thin client over the same Unix-socket control protocol used by
-// the CLI: it dials the supervisor, polls List snapshots on a timer, and
-// follows the selected service's log stream over a long-lived Logs{follow}
-// connection. Restart/stop keybindings send one-shot requests. If no
-// supervisor is running it offers to start one detached (`up -d`) and then
-// attaches. Quitting only detaches — the supervisor keeps running.
+// The TUI is a thin client over the global daemon's control socket. It shows a
+// project list first (polled from list_projects), then a service view for the
+// selected project with streaming logs, restart/stop keybindings, and a
+// back-to-projects key (Esc). If no daemon is running it offers to start one.
 package tui
 
 import (
@@ -36,7 +34,15 @@ const (
 	maxLogLineCount = 5000
 )
 
-// pane is the currently focused split.
+// view is the currently active screen.
+type view int
+
+const (
+	viewProjects view = iota
+	viewServices
+)
+
+// pane is the currently focused split in the services view.
 type pane int
 
 const (
@@ -44,30 +50,29 @@ const (
 	paneLogs
 )
 
-// Options configures a TUI run. Socket is the supervisor's control socket;
-// Project/ConfigPath are only used when the TUI offers to start a project
-// because none is running.
+// Options configures a TUI run. Socket is the daemon's control socket. If
+// Project is non-empty, the TUI skips the project list and goes directly to
+// that project's service view.
 type Options struct {
 	Socket     string
 	Project    string
 	ConfigPath string
 }
 
-// New constructs the Bubble Tea program for the TUI. The returned program has
-// not been started; call Run().
+// New constructs the Bubble Tea program for the TUI.
 func New(opts Options) *tea.Program {
 	m := model{
 		socket:     opts.Socket,
 		project:    opts.Project,
 		configPath: opts.ConfigPath,
-		pane:       paneList,
 	}
-	// Bubble Tea copies the model passed to NewProgram, so a *tea.Program
-	// assigned to a field after NewProgram never reaches the program's internal
-	// copy (that was the nil-deref panic in pumpLogs). A closure is a reference
-	// type, though: it's copied by value but still closes over the same `p`
-	// variable, which is assigned below. By the time Update invokes the closure
-	// `p` holds the real program, so startFollowCmd gets a non-nil *tea.Program.
+	if opts.Project != "" {
+		m.currentView = viewServices
+	} else {
+		m.currentView = viewProjects
+	}
+	m.pane = paneList
+
 	var p *tea.Program
 	m.startFollow = func(socket, project, service string, gen int64) tea.Cmd {
 		return startFollowCmd(socket, project, service, gen, p)
@@ -82,21 +87,24 @@ type model struct {
 	configPath string
 
 	// startFollow builds a startFollowCmd bound to the running *tea.Program.
-	// See New for why this is a closure rather than a stored *tea.Program.
 	startFollow func(socket, project, service string, gen int64) tea.Cmd
 
 	width, height int
 	ready         bool
 
-	states   []protocol.ServiceState
-	selected int
+	// Project list view state.
+	projects     []protocol.ProjectInfo
+	selectedProj int
+
+	// Service view state.
+	currentView view
+	states      []protocol.ServiceState
+	selected    int
 
 	pane     pane
 	viewport viewport.Model
 
-	// follow is the active log-follow connection. It is nil when no service
-	// is being tailed. followGen increments every time a new follow is
-	// requested so stale messages from a previous goroutine are ignored.
+	// follow is the active log-follow connection.
 	follow    *control.Client
 	followGen int64
 
@@ -105,8 +113,8 @@ type model struct {
 	status     string
 	statusKind statusKind
 
-	noSupervisor bool
-	quitting     bool
+	noDaemon bool
+	quitting bool
 }
 
 type statusKind int
@@ -118,7 +126,12 @@ const (
 
 // --- messages ---
 
-type listTickMsg struct{}
+type tickMsg struct{}
+
+type projectsMsg struct {
+	projects []protocol.ProjectInfo
+	err      error
+}
 
 type statesMsg struct {
 	states []protocol.ServiceState
@@ -158,9 +171,19 @@ type startedMsg struct {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
-		tea.Tick(pollInterval, func(time.Time) tea.Msg { return listTickMsg{} }),
-		connectCmd(m.socket, m.project),
+		tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg{} }),
+		m.pollCmd(),
 	)
+}
+
+func (m model) pollCmd() tea.Cmd {
+	if m.noDaemon {
+		return nil
+	}
+	if m.currentView == viewProjects {
+		return pollProjectsCmd(m.socket)
+	}
+	return pollStatesCmd(m.socket, m.project)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -174,18 +197,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
-	case listTickMsg:
+	case tickMsg:
 		return m, tea.Batch(
-			tea.Tick(pollInterval, func(time.Time) tea.Msg { return listTickMsg{} }),
-			connectCmd(m.socket, m.project),
+			tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg{} }),
+			m.pollCmd(),
 		)
+
+	case projectsMsg:
+		return m.handleProjects(msg)
 
 	case statesMsg:
 		return m.handleStates(msg)
 
 	case followStartedMsg:
 		if msg.gen != m.followGen {
-			// Stale: a newer selection superseded this follow. Close it.
 			_ = msg.client.Close()
 			return m, nil
 		}
@@ -206,8 +231,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.follow = nil
 		if msg.err != nil && !m.quitting {
 			m.setStatus("logs: "+msg.err.Error(), statusErr)
-			// Reconnect shortly so a supervisor restart/down-then-up is
-			// picked up automatically.
 			return m, tea.Tick(800*time.Millisecond, func(time.Time) tea.Msg {
 				return retryFollowMsg{}
 			})
@@ -215,7 +238,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case retryFollowMsg:
-		if m.quitting || m.noSupervisor {
+		if m.quitting || m.noDaemon {
 			return m, nil
 		}
 		if m.follow != nil {
@@ -233,20 +256,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setStatus(fmt.Sprintf("%s: ok", msg.action), statusInfo)
 			}
 		}
-		// Refresh the snapshot immediately so the UI reflects the action.
-		return m, connectCmd(m.socket, m.project)
+		return m, m.pollCmd()
 
 	case startedMsg:
 		if msg.err != nil {
-			m.setStatus("start supervisor: "+msg.err.Error(), statusErr)
-			m.noSupervisor = true
+			m.setStatus("start daemon: "+msg.err.Error(), statusErr)
+			m.noDaemon = true
 			return m, nil
 		}
-		m.noSupervisor = false
-		m.setStatus(fmt.Sprintf("supervisor started (pid %d)", msg.pid), statusInfo)
+		m.noDaemon = false
+		m.setStatus(fmt.Sprintf("daemon started (pid %d)", msg.pid), statusInfo)
 		return m, tea.Batch(
-			tea.Tick(pollInterval, func(time.Time) tea.Msg { return listTickMsg{} }),
-			connectCmd(m.socket, m.project),
+			tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg{} }),
+			m.pollCmd(),
 		)
 	}
 	return m, nil
@@ -254,21 +276,113 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 type retryFollowMsg struct{}
 
-// handleKey dispatches key presses. Selection keys are live in the list pane,
-// scroll keys in the logs pane. Global keys (r/s/d/q/Tab) work from either.
+// --- Key handling ---
+
 func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if m.noSupervisor {
+	if m.noDaemon {
 		return m.handleStartPrompt(msg)
 	}
 	if m.quitting {
 		return m, nil
 	}
 
+	// Global quit works from any view.
 	switch msg.String() {
-	case "q", "ctrl+c", "esc":
+	case "ctrl+c":
 		m.quitting = true
 		m.closeFollow()
 		return m, tea.Quit
+	}
+
+	if m.currentView == viewProjects {
+		return m.handleProjectListKey(msg)
+	}
+	return m.handleServiceViewKey(msg)
+}
+
+func (m model) handleStartPrompt(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		m.noDaemon = false
+		m.setStatus("starting daemon...", statusInfo)
+		return m, startDaemonCmd(m.configPath)
+	case "n", "N", "q", "ctrl+c", "esc":
+		m.quitting = true
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m model) handleProjectListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "esc":
+		m.quitting = true
+		return m, tea.Quit
+
+	case "up", "k":
+		if m.selectedProj > 0 {
+			m.selectedProj--
+		}
+		return m, nil
+
+	case "down", "j":
+		if m.selectedProj < len(m.projects)-1 {
+			m.selectedProj++
+		}
+		return m, nil
+
+	case "home", "g":
+		m.selectedProj = 0
+		return m, nil
+
+	case "end", "G":
+		m.selectedProj = len(m.projects) - 1
+		return m, nil
+
+	case "enter", "right", "l":
+		if m.selectedProj < 0 || m.selectedProj >= len(m.projects) {
+			return m, nil
+		}
+		m.project = m.projects[m.selectedProj].Name
+		m.configPath = m.projects[m.selectedProj].ConfigPath
+		m.currentView = viewServices
+		m.states = nil
+		m.selected = 0
+		m.closeFollow()
+		return m, pollStatesCmd(m.socket, m.project)
+
+	case "s":
+		// Start the selected (stopped) project.
+		if m.selectedProj < 0 || m.selectedProj >= len(m.projects) {
+			return m, nil
+		}
+		p := m.projects[m.selectedProj]
+		if p.ConfigPath == "" {
+			return m, nil
+		}
+		m.setStatus("starting "+p.Name+"...", statusInfo)
+		return m, startProjectCmd(m.socket, p.ConfigPath)
+	}
+	return m, nil
+}
+
+func (m model) handleServiceViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q":
+		m.quitting = true
+		m.closeFollow()
+		return m, tea.Quit
+
+	case "esc", "backspace", "left", "h":
+		if m.pane == paneLogs {
+			m.pane = paneList
+			return m, nil
+		}
+		// Esc from list pane → back to projects.
+		m.currentView = viewProjects
+		m.closeFollow()
+		m.states = nil
+		return m, pollProjectsCmd(m.socket)
 
 	case "tab":
 		if m.pane == paneList {
@@ -304,19 +418,6 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleListKey(msg)
 	}
 	return m.handleLogsKey(msg)
-}
-
-func (m model) handleStartPrompt(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "y", "Y":
-		m.noSupervisor = false
-		m.setStatus("starting supervisor...", statusInfo)
-		return m, startDaemonCmd(m.project, m.configPath)
-	case "n", "N", "q", "ctrl+c", "esc":
-		m.quitting = true
-		return m, tea.Quit
-	}
-	return m, nil
 }
 
 func (m model) handleListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -355,18 +456,35 @@ func (m model) handleLogsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// handleStates applies a fresh List snapshot. A dial failure transitions to
-// the "offer to start" prompt; success refreshes the table and starts the log
-// follow for the selected service if none is running.
+// --- State handlers ---
+
+func (m model) handleProjects(msg projectsMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil {
+		m.projects = nil
+		m.noDaemon = true
+		m.setStatus("no daemon running (press y to start, q to quit)", statusInfo)
+		return m, nil
+	}
+	m.noDaemon = false
+	m.projects = msg.projects
+	if m.selectedProj >= len(m.projects) {
+		m.selectedProj = len(m.projects) - 1
+	}
+	if m.selectedProj < 0 {
+		m.selectedProj = 0
+	}
+	return m, nil
+}
+
 func (m model) handleStates(msg statesMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.states = nil
 		m.closeFollow()
-		m.noSupervisor = true
-		m.setStatus("no supervisor running (press y to start, q to quit)", statusInfo)
-		return m, nil
+		// Project might have been stopped; go back to projects list.
+		m.currentView = viewProjects
+		m.setStatus("project not running (press Esc to go back)", statusInfo)
+		return m, pollProjectsCmd(m.socket)
 	}
-	m.noSupervisor = false
 	m.states = msg.states
 	if len(m.states) == 0 {
 		m.selected = 0
@@ -386,33 +504,26 @@ func (m model) handleStates(msg statesMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// maybeSwitchFollow restarts the log follow when the selection has changed.
-// It has a pointer receiver because it bumps followGen and clears the log
-// buffer; callers return the mutated model so the gen advance survives.
+// --- Follow management ---
+
 func (m *model) maybeSwitchFollow() tea.Cmd {
-	if m.noSupervisor || m.quitting {
+	if m.noDaemon || m.quitting {
 		return nil
 	}
 	name := m.selectedName()
 	if name == "" {
 		return nil
 	}
-	// Switching is always a fresh follow: close the old connection (its
-	// goroutine's done message will be ignored as stale) and bump the gen.
 	m.closeFollow()
 	m.followGen++
 	m.logLines = m.logLines[:0]
 	m.viewport.SetContent("")
 	if m.startFollow == nil {
-		// Model wasn't constructed via New (e.g. in tests). No program to
-		// bind a follow to.
 		return nil
 	}
 	return m.startFollow(m.socket, m.project, name, m.followGen)
 }
 
-// startFollowSelected begins a follow for the currently selected service.
-// Pointer receiver for the same reason as maybeSwitchFollow.
 func (m *model) startFollowSelected() tea.Cmd {
 	name := m.selectedName()
 	if name == "" {
@@ -422,14 +533,11 @@ func (m *model) startFollowSelected() tea.Cmd {
 	m.logLines = m.logLines[:0]
 	m.viewport.SetContent("")
 	if m.startFollow == nil {
-		// Model wasn't constructed via New (e.g. in tests).
 		return nil
 	}
 	return m.startFollow(m.socket, m.project, name, m.followGen)
 }
 
-// closeFollow closes the active log-follow connection (if any). The pump
-// goroutine will emit a stale logDoneMsg that Update ignores via followGen.
 func (m *model) closeFollow() {
 	if m.follow != nil {
 		_ = m.follow.Close()
@@ -446,9 +554,6 @@ func (m *model) appendLog(line string) {
 	}
 }
 
-// boundLogLines appends line to lines and trims the oldest entries so the
-// slice never exceeds max. It is pure (no rendering) so it can be unit-tested
-// in isolation from the viewport.
 func boundLogLines(lines []string, line string, max int) []string {
 	lines = append(lines, line)
 	if len(lines) > max {
@@ -463,7 +568,6 @@ func (m *model) setStatus(s string, k statusKind) {
 	m.statusKind = k
 }
 
-// selectedName returns the name of the currently highlighted service, or "".
 func (m model) selectedName() string {
 	if m.selected < 0 || m.selected >= len(m.states) {
 		return ""
@@ -471,8 +575,6 @@ func (m model) selectedName() string {
 	return m.states[m.selected].Name
 }
 
-// layoutViewport sizes the log viewport to fit the right pane given the
-// current terminal dimensions.
 func (m *model) layoutViewport() {
 	if !m.ready {
 		return
@@ -481,11 +583,11 @@ func (m *model) layoutViewport() {
 	if rightW < 10 {
 		rightW = 10
 	}
-	innerW := rightW - 2 // box border
+	innerW := rightW - 2
 	if innerW < 1 {
 		innerW = 1
 	}
-	innerH := m.height - helpBarHeight - 2 // box border
+	innerH := m.height - helpBarHeight - 2
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -500,8 +602,13 @@ func (m model) View() tea.View {
 	if !m.ready {
 		return tea.NewView("local-compose tui: starting...")
 	}
-	if m.noSupervisor {
+	if m.noDaemon {
 		return tea.NewView(m.renderStartPrompt())
+	}
+	if m.currentView == viewProjects {
+		v := tea.NewView(m.renderProjectsView())
+		v.AltScreen = true
+		return v
 	}
 	v := tea.NewView(m.renderSplit())
 	v.AltScreen = true
@@ -510,11 +617,38 @@ func (m model) View() tea.View {
 
 func (m model) renderStartPrompt() string {
 	title := lipgloss.NewStyle().Bold(true).Render("local-compose tui")
-	body := fmt.Sprintf(
-		"No supervisor running for project %q.\n\n  y - start it now (detached, like `up -d`)\n  n / q - quit",
-		m.project,
-	)
+	body := "No daemon running.\n\n  y - start it now\n  n / q - quit"
 	return lipgloss.JoinVertical(lipgloss.Left, title, "", body)
+}
+
+func (m model) renderProjectsView() string {
+	width := listPaneWidth - 2
+	nameWidth := max(1, width-10)
+	header := fmt.Sprintf("%-*s %-9s", nameWidth, "PROJECT", "STATUS")
+	rows := []string{titleStyle.Render("Projects"), header}
+	for i, p := range m.projects {
+		name := p.Name
+		if len(name) > nameWidth {
+			name = name[:nameWidth]
+		}
+		statusCell := lipgloss.NewStyle().Foreground(ui.StatusColor(p.Status)).Render(fmt.Sprintf("%-9s", p.Status))
+		marker := " "
+		if i == m.selectedProj {
+			marker = "▸"
+		}
+		line := fmt.Sprintf("%s %-*s %s", marker, nameWidth, name, statusCell)
+		if i == m.selectedProj {
+			line = lipgloss.NewStyle().Bold(true).Render(line)
+		}
+		rows = append(rows, line)
+	}
+	if len(m.projects) == 0 {
+		rows = append(rows, lipgloss.NewStyle().Faint(true).Render("(no projects; run `local-compose up` to start one)"))
+	}
+	content := strings.Join(rows, "\n")
+	body := paneBorder.Width(listPaneWidth).Height(m.height - helpBarHeight - 2).Render(content)
+	help := m.renderHelpBar()
+	return lipgloss.JoinVertical(lipgloss.Left, body, help)
 }
 
 func (m model) renderSplit() string {
@@ -531,7 +665,7 @@ var (
 )
 
 func (m model) renderListPane() string {
-	width := listPaneWidth - 2 // account for border + padding
+	width := listPaneWidth - 2
 	nameWidth := max(1, width-16)
 	header := fmt.Sprintf("%-*s %-9s %5s", nameWidth, "SERVICE", "STATUS", "PID")
 	rows := []string{titleStyle.Render("Services"), header}
@@ -571,13 +705,21 @@ func (m model) renderLogsPane() string {
 }
 
 func (m model) renderHelpBar() string {
-	keys := " ↑/↓ select · Tab pane · r restart · s stop · d down · G/g top/bottom · q quit"
-	if m.pane == paneLogs {
-		keys = " Logs pane: ↑/↓ scroll · PgUp/PgDn · h back to list · Tab pane · r restart · s stop · q quit"
+	var keys string
+	if m.currentView == viewProjects {
+		keys = " ↑/↓ select · Enter open · s start · q quit"
+	} else if m.pane == paneLogs {
+		keys = " Logs: ↑/↓ scroll · h/Tab list · r restart · s stop · d down · Esc back · q quit"
+	} else {
+		keys = " ↑/↓ select · Tab logs · r restart · s stop · d down · Esc back · q quit"
 	}
 	statusLine := m.status
 	if statusLine == "" {
-		statusLine = fmt.Sprintf("project %s", m.project)
+		if m.currentView == viewServices {
+			statusLine = fmt.Sprintf("project %s", m.project)
+		} else {
+			statusLine = "local-compose"
+		}
 	}
 	statusStyle := lipgloss.NewStyle()
 	if m.statusKind == statusErr {
@@ -602,7 +744,6 @@ func truncate(s string, n int) string {
 	if lipgloss.Width(s) <= n {
 		return s
 	}
-	// crude truncation by rune count; good enough for a status line.
 	r := []rune(s)
 	if len(r) <= n {
 		return s
@@ -612,7 +753,19 @@ func truncate(s string, n int) string {
 
 // --- commands ---
 
-func connectCmd(socket, project string) tea.Cmd {
+func pollProjectsCmd(socket string) tea.Cmd {
+	return func() tea.Msg {
+		c, err := control.Dial(socket)
+		if err != nil {
+			return projectsMsg{err: err}
+		}
+		defer func() { _ = c.Close() }()
+		projects, err := c.ListProjects()
+		return projectsMsg{projects: projects, err: err}
+	}
+}
+
+func pollStatesCmd(socket, project string) tea.Cmd {
 	return func() tea.Msg {
 		c, err := control.Dial(socket)
 		if err != nil {
@@ -684,10 +837,23 @@ func actionCmd(socket, project, action, service string) tea.Cmd {
 	}
 }
 
-func startDaemonCmd(project, configPath string) tea.Cmd {
+func startProjectCmd(socket, configPath string) tea.Cmd {
 	return func() tea.Msg {
-		// Ensure the global daemon is running, then start the project.
-		dloc, err := daemonLocations()
+		c, err := control.Dial(socket)
+		if err != nil {
+			return actionResultMsg{action: "start", err: err}
+		}
+		defer func() { _ = c.Close() }()
+		if err := c.StartProject(configPath, false); err != nil {
+			return actionResultMsg{action: "start", err: err}
+		}
+		return actionResultMsg{action: "start"}
+	}
+}
+
+func startDaemonCmd(configPath string) tea.Cmd {
+	return func() tea.Msg {
+		dloc, err := project.ResolveDaemon()
 		if err != nil {
 			return startedMsg{err: err}
 		}
@@ -702,23 +868,8 @@ func startDaemonCmd(project, configPath string) tea.Cmd {
 			}
 		}
 		waitForSocket(dloc.Socket, 3*time.Second)
-
-		// Start the project via the daemon.
-		c, err := control.Dial(dloc.Socket)
-		if err != nil {
-			return startedMsg{err: err}
-		}
-		defer func() { _ = c.Close() }()
-		if err := c.StartProject(configPath, false); err != nil {
-			return startedMsg{err: err}
-		}
 		return startedMsg{pid: pid}
 	}
-}
-
-// daemonLocations resolves the global daemon paths.
-func daemonLocations() (*project.DaemonLocations, error) {
-	return project.ResolveDaemon()
 }
 
 // waitForSocket polls until a Unix socket exists at path or the timeout

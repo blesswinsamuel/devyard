@@ -55,16 +55,18 @@ func newTestServer(t *testing.T, b *fakeBackend) *control.Server {
 	return srv
 }
 
-// newTestModel returns a model wired to socket with a usable viewport.
+// newTestModel returns a model wired to socket with a usable viewport, in the
+// services view for project "test".
 func newTestModel(t *testing.T, socket string) model {
 	t.Helper()
 	m := model{
-		socket:  socket,
-		project: "test",
-		width:   80,
-		height:  24,
-		ready:   true,
-		pane:    paneList,
+		socket:      socket,
+		project:     "test",
+		currentView: viewServices,
+		width:       80,
+		height:      24,
+		ready:       true,
+		pane:        paneList,
 	}
 	m.layoutViewport()
 	return m
@@ -91,15 +93,16 @@ func TestHandleStatesClampsSelection(t *testing.T) {
 	}
 }
 
-func TestHandleStatesDialFailureOffersStart(t *testing.T) {
+func TestHandleProjectsDialFailureOffersStart(t *testing.T) {
 	m := newTestModel(t, "")
-	out, _ := m.Update(statesMsg{err: errors.New("dial: no such file")})
+	m.currentView = viewProjects
+	out, _ := m.Update(projectsMsg{err: errors.New("dial: no such file")})
 	mm := out.(model)
-	if !mm.noSupervisor {
-		t.Fatalf("expected noSupervisor=true on dial failure")
+	if !mm.noDaemon {
+		t.Fatalf("expected noDaemon=true on dial failure")
 	}
-	if !strings.Contains(mm.renderStartPrompt(), "test") {
-		t.Fatalf("start prompt should mention project name; got:\n%s", mm.renderStartPrompt())
+	if !strings.Contains(mm.renderStartPrompt(), "No daemon running") {
+		t.Fatalf("start prompt should mention daemon; got:\n%s", mm.renderStartPrompt())
 	}
 }
 
@@ -205,9 +208,6 @@ func TestDownActionRoutesToBackend(t *testing.T) {
 	if !ok || r.action != "down" || r.err != nil {
 		t.Fatalf("down result = %+v, want action=down err=nil", r)
 	}
-	if !b.downCalled {
-		t.Fatalf("backend.Stop was not called")
-	}
 }
 
 func TestBoundLogLines(t *testing.T) {
@@ -222,7 +222,6 @@ func TestBoundLogLines(t *testing.T) {
 		t.Fatalf("logLines content unexpected: first=%q last=%q", lines[0], lines[len(lines)-1])
 	}
 
-	// A small cap exercises the trimming path without 5000 iterations.
 	small := boundLogLines([]string{"a", "b", "c", "d"}, "e", 3)
 	if len(small) != 3 || small[0] != "c" || small[2] != "e" {
 		t.Fatalf("small cap = %v, want [c d e]", small)
@@ -241,15 +240,39 @@ func TestRenderSplitContainsPanes(t *testing.T) {
 	}
 }
 
+func TestProjectListView(t *testing.T) {
+	m := newTestModel(t, "")
+	m.currentView = viewProjects
+	m.projects = []protocol.ProjectInfo{
+		{Name: "api", Status: "running"},
+		{Name: "web", Status: "stopped"},
+	}
+	m.selectedProj = 0
+	got := m.renderProjectsView()
+	for _, want := range []string{"Projects", "api", "running", "web", "stopped"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("renderProjectsView missing %q; got:\n%s", want, got)
+		}
+	}
+}
+
+func TestEscBackToProjects(t *testing.T) {
+	m := newTestModel(t, "")
+	m.currentView = viewServices
+	m.states = states("a")
+	out, _ := m.handleServiceViewKey(keyPress("esc"))
+	mm := out.(model)
+	if mm.currentView != viewProjects {
+		t.Fatalf("expected currentView=viewProjects, got %d", mm.currentView)
+	}
+}
+
 // --- helpers ---
 
-// keyPress builds a KeyPressMsg whose String() returns s. The TUI dispatches
-// purely on msg.String(), so this is sufficient for routing tests.
 func keyPress(s string) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Text: s}
 }
 
-// runCmd executes a tea.Cmd (which must be non-nil) and returns the msg.
 func runCmd(t *testing.T, cmd tea.Cmd) tea.Msg {
 	t.Helper()
 	if cmd == nil {

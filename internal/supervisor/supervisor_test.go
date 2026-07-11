@@ -141,8 +141,8 @@ func TestResolveWorkingDir(t *testing.T) {
 	if got := supervisor.ResolveWorkingDirForTest("/base", "/abs/x"); got != "/abs/x" {
 		t.Errorf("absolute: %q, want /abs/x", got)
 	}
-	if got := supervisor.ResolveWorkingDirForTest("/base", ""); got != "" {
-		t.Errorf("empty: %q, want empty (inherit cwd)", got)
+	if got := supervisor.ResolveWorkingDirForTest("/base", ""); got != "/base" {
+		t.Errorf("empty: %q, want /base (default to config dir)", got)
 	}
 }
 

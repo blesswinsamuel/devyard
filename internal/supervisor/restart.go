@@ -108,11 +108,11 @@ func mergeEnv(parent []string, svc map[string]string) []string {
 }
 
 // resolveWorkingDir resolves a service working_dir against the config base
-// dir when relative. Empty working_dir means "inherit the supervisor's cwd"
-// (returned as "" so exec uses the process cwd).
+// dir when relative. Empty working_dir defaults to baseDir (the config
+// file's directory).
 func resolveWorkingDir(baseDir, workingDir string) string {
 	if workingDir == "" {
-		return ""
+		return baseDir
 	}
 	if filepath.IsAbs(workingDir) {
 		return workingDir

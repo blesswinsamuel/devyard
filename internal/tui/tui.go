@@ -15,6 +15,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
@@ -34,6 +35,9 @@ const (
 
 	selColor   = "238" // selection background
 	hoverColor = "237" // hover background (one step lighter)
+
+	copyCursorColor = "220" // bright yellow cursor highlight
+	copySelectColor = "24"  // dark blue selection highlight
 )
 
 // view is the currently active screen.
@@ -76,6 +80,7 @@ func New(opts Options) *tea.Program {
 		hoveredRow:     -1,
 		hoveredProjRow: -1,
 		hoveredCmd:     -1,
+		selAnchorLine:  -1,
 	}
 	if opts.Project != "" {
 		m.currentView = viewServices
@@ -134,6 +139,14 @@ type model struct {
 
 	// Help popup state.
 	showHelp bool
+
+	// Copy/select mode state.
+	copyMode       bool
+	cursorLine     int  // line index in m.logLines
+	cursorCol      int  // rune index within the line
+	selAnchorLine  int  // selection anchor line (-1 = no anchor)
+	selAnchorCol   int  // selection anchor column
+	mouseSelecting bool // true while mouse button held for drag selection
 }
 
 type statusKind int
@@ -228,6 +241,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMotionMsg:
 		return m.handleMouseMotion(msg)
 
+	case tea.MouseReleaseMsg:
+		return m.handleMouseRelease(msg)
+
 	case tea.MouseWheelMsg:
 		if m.currentView == viewServices {
 			m.pane = paneLogs
@@ -267,6 +283,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logContentMsg:
 		if msg.gen != m.followGen || msg.service != m.selectedName() {
 			return m, nil
+		}
+		if m.copyMode {
+			m.exitCopyMode()
 		}
 		m.logLines = nil
 		for _, line := range strings.Split(strings.TrimRight(msg.content, "\n"), "\n") {
@@ -445,7 +464,13 @@ func (m model) handleServiceViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		m.closeFollow()
 		return m, tea.Quit
+	}
 
+	if m.copyMode {
+		return m.handleCopyModeKey(msg)
+	}
+
+	switch msg.String() {
 	case "esc", "backspace", "left", "h":
 		if m.pane == paneLogs {
 			m.pane = paneList
@@ -572,6 +597,9 @@ func (m model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if mouse.X < listPaneWidth {
+		if m.copyMode {
+			m.exitCopyMode()
+		}
 		m.pane = paneList
 		row := mouse.Y - 2
 		if row >= 0 && row < len(m.states) {
@@ -584,6 +612,14 @@ func (m model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.pane = paneLogs
+	if m.currentView == viewServices && mouse.X >= listPaneWidth && mouse.Y >= 0 && mouse.Y < m.height-1 {
+		line, col := m.screenToLogPos(mouse.X, mouse.Y)
+		m.enterCopyMode(line, col)
+		m.selAnchorLine = line
+		m.selAnchorCol = col
+		m.mouseSelecting = true
+		m.applySelectionHighlights()
+	}
 	return m, nil
 }
 
@@ -670,6 +706,17 @@ func (m model) handleMouseMotion(msg tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
 
 	m.hoveredRow = -1
 	m.hoveredProjRow = -1
+
+	// Handle mouse drag selection in logs pane.
+	if m.copyMode && m.mouseSelecting && mouse.Button != 0 && m.currentView == viewServices {
+		line, col := m.screenToLogPos(mouse.X, mouse.Y)
+		m.cursorLine = line
+		m.cursorCol = col
+		m.clampCursor()
+		m.applySelectionHighlights()
+		return m, nil
+	}
+
 	return m, nil
 }
 
@@ -763,11 +810,21 @@ func (m *model) closeFollow() {
 }
 
 func (m *model) appendLog(line string) {
+	oldLen := len(m.logLines)
 	m.logLines = boundLogLines(m.logLines, ui.CleanLogLine(line), maxLogLineCount)
+	trimmed := oldLen + 1 - len(m.logLines)
+	if trimmed > 0 && m.copyMode {
+		m.cursorLine -= trimmed
+		m.selAnchorLine -= trimmed
+		m.clampCursor()
+	}
 	atBottom := m.viewport.AtBottom()
 	m.viewport.SetContent(strings.Join(m.logLines, "\n"))
 	if atBottom {
 		m.viewport.GotoBottom()
+	}
+	if m.copyMode {
+		m.applySelectionHighlights()
 	}
 }
 
@@ -1049,25 +1106,40 @@ func (m model) renderLogsPane() string {
 	if name := m.selectedName(); name != "" {
 		title = "Logs: " + name
 	}
+	if m.copyMode {
+		title += " [SELECT]"
+	}
 	content := m.viewport.View()
 	height := m.height - helpBarHeight
 	return renderTitledPane(m.width-listPaneWidth, height, title, content, m.pane == paneLogs)
 }
 
 func (m model) renderHelpBar() string {
-	items := m.helpBarItems()
-
-	// Render command buttons on the left.
 	var buttons []string
-	for i, item := range items {
-		text := fmt.Sprintf(" %s %s ", item.key, item.label)
-		var styled string
-		if i == m.hoveredCmd {
-			styled = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("238")).Render(text)
-		} else {
-			styled = lipgloss.NewStyle().Faint(true).Render(text)
+
+	if m.copyMode {
+		items := []helpBarItem{
+			{label: "select", key: "v"},
+			{label: "copy", key: "c"},
+			{label: "exit", key: "esc"},
 		}
-		buttons = append(buttons, styled)
+		for _, item := range items {
+			text := fmt.Sprintf(" %s %s ", item.key, item.label)
+			styled := lipgloss.NewStyle().Faint(true).Render(text)
+			buttons = append(buttons, styled)
+		}
+	} else {
+		items := m.helpBarItems()
+		for i, item := range items {
+			text := fmt.Sprintf(" %s %s ", item.key, item.label)
+			var styled string
+			if i == m.hoveredCmd {
+				styled = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("238")).Render(text)
+			} else {
+				styled = lipgloss.NewStyle().Faint(true).Render(text)
+			}
+			buttons = append(buttons, styled)
+		}
 	}
 	left := strings.Join(buttons, "")
 
@@ -1128,6 +1200,19 @@ func (m model) renderHelpPopup() string {
 		"    ?              Close this help",
 	}
 	sections = append(sections, strings.Join(genLines, "\n"))
+
+	// Copy mode section
+	copyLines := []string{
+		"  Copy Mode (in logs pane)",
+		"    Click + drag    Select text with mouse",
+		"    v              Enter / anchor selection",
+		"    c              Copy selection to clipboard",
+		"    h/j/k/l        Move cursor",
+		"    0 / $          Start / end of line",
+		"    g / G          Top / Bottom",
+		"    Esc            Exit copy mode",
+	}
+	sections = append(sections, strings.Join(copyLines, "\n"))
 
 	title := lipgloss.NewStyle().Bold(true).Render("Keyboard Shortcuts")
 	content := title + "\n\n" + strings.Join(sections, "\n\n") + "\n"
@@ -1209,6 +1294,304 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
+}
+
+// --- Copy mode ---
+
+func (m *model) enterCopyMode(line, col int) {
+	m.copyMode = true
+	m.cursorLine = line
+	m.cursorCol = col
+	m.selAnchorLine = -1
+	m.selAnchorCol = 0
+	m.clampCursor()
+}
+
+func (m *model) exitCopyMode() {
+	m.copyMode = false
+	m.selAnchorLine = -1
+	m.selAnchorCol = 0
+	m.mouseSelecting = false
+	m.viewport.ClearHighlights()
+}
+
+func (m model) handleCopyModeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.exitCopyMode()
+		return m, nil
+
+	case "v":
+		if m.selAnchorLine >= 0 {
+			m.selAnchorLine = -1
+			m.selAnchorCol = 0
+		} else {
+			m.selAnchorLine = m.cursorLine
+			m.selAnchorCol = m.cursorCol
+		}
+		m.applySelectionHighlights()
+		return m, nil
+
+	case "c":
+		if m.selAnchorLine >= 0 {
+			text := m.extractSelectedText()
+			m.exitCopyMode()
+			return m, tea.SetClipboard(text)
+		}
+		return m, nil
+
+	case "h", "left":
+		m.moveCursorLeft()
+	case "l", "right":
+		m.moveCursorRight()
+	case "j", "down":
+		m.moveCursorDown()
+	case "k", "up":
+		m.moveCursorUp()
+	case "g", "home":
+		m.cursorLine = 0
+		m.cursorCol = 0
+	case "G", "end":
+		if len(m.logLines) > 0 {
+			m.cursorLine = len(m.logLines) - 1
+			runes := []rune(m.logLines[m.cursorLine])
+			m.cursorCol = len(runes)
+		}
+	case "0":
+		m.cursorCol = 0
+	case "$":
+		if m.cursorLine < len(m.logLines) {
+			runes := []rune(m.logLines[m.cursorLine])
+			m.cursorCol = len(runes)
+		}
+	default:
+		return m, nil
+	}
+
+	m.clampCursor()
+	m.ensureCursorVisible()
+	m.applySelectionHighlights()
+	return m, nil
+}
+
+func (m *model) moveCursorLeft() {
+	if m.cursorCol > 0 {
+		m.cursorCol--
+	}
+}
+
+func (m *model) moveCursorRight() {
+	if m.cursorLine < len(m.logLines) {
+		runes := []rune(m.logLines[m.cursorLine])
+		if m.cursorCol < len(runes) {
+			m.cursorCol++
+		}
+	}
+}
+
+func (m *model) moveCursorUp() {
+	if m.cursorLine > 0 {
+		m.cursorLine--
+		m.cursorCol = min(m.cursorCol, len([]rune(m.logLines[m.cursorLine])))
+	}
+}
+
+func (m *model) moveCursorDown() {
+	if m.cursorLine < len(m.logLines)-1 {
+		m.cursorLine++
+		m.cursorCol = min(m.cursorCol, len([]rune(m.logLines[m.cursorLine])))
+	}
+}
+
+func (m *model) clampCursor() {
+	if len(m.logLines) == 0 {
+		m.cursorLine = 0
+		m.cursorCol = 0
+		return
+	}
+	if m.cursorLine < 0 {
+		m.cursorLine = 0
+	}
+	if m.cursorLine >= len(m.logLines) {
+		m.cursorLine = len(m.logLines) - 1
+	}
+	runes := []rune(m.logLines[m.cursorLine])
+	if m.cursorCol < 0 {
+		m.cursorCol = 0
+	}
+	if m.cursorCol > len(runes) {
+		m.cursorCol = len(runes)
+	}
+}
+
+func (m *model) ensureCursorVisible() {
+	if !m.ready {
+		return
+	}
+	maxWidth := m.viewport.Width()
+	if maxWidth <= 0 {
+		return
+	}
+	visRow := m.logicalToVisualRow(m.cursorLine, m.cursorCol)
+	visHeight := m.viewport.Height()
+	yOff := m.viewport.YOffset()
+	if visRow < yOff {
+		m.viewport.SetYOffset(visRow)
+	} else if visRow >= yOff+visHeight {
+		m.viewport.SetYOffset(visRow - visHeight + 1)
+	}
+}
+
+func (m *model) logicalToVisualRow(line, col int) int {
+	maxWidth := m.viewport.Width()
+	if maxWidth <= 0 {
+		return 0
+	}
+	visRow := 0
+	for i := 0; i < line && i < len(m.logLines); i++ {
+		lineWidth := ansi.StringWidth(m.logLines[i])
+		visRows := (lineWidth + maxWidth - 1) / maxWidth
+		if visRows == 0 {
+			visRows = 1
+		}
+		visRow += visRows
+	}
+	if line < len(m.logLines) {
+		runes := []rune(m.logLines[line])
+		if col > len(runes) {
+			col = len(runes)
+		}
+		prefix := string(runes[:col])
+		displayCol := ansi.StringWidth(prefix)
+		visRow += displayCol / maxWidth
+	}
+	return visRow
+}
+
+func (m model) screenToLogPos(screenX, screenY int) (line, col int) {
+	vpX := screenX - listPaneWidth - 2
+	vpY := screenY - 1
+	if vpX < 0 {
+		vpX = 0
+	}
+	if vpY < 0 {
+		vpY = 0
+	}
+	visRow := vpY + m.viewport.YOffset()
+	maxWidth := m.viewport.Width()
+	if maxWidth <= 0 || len(m.logLines) == 0 {
+		return 0, 0
+	}
+	totalVisRow := 0
+	for i, logLine := range m.logLines {
+		lineWidth := ansi.StringWidth(logLine)
+		lineVisRows := (lineWidth + maxWidth - 1) / maxWidth
+		if lineVisRows == 0 {
+			lineVisRows = 1
+		}
+		if totalVisRow+lineVisRows > visRow {
+			visOffset := visRow - totalVisRow
+			subLineStartCol := visOffset * maxWidth
+			targetDisplayCol := subLineStartCol + vpX
+			runes := []rune(logLine)
+			accumWidth := 0
+			for r, ch := range runes {
+				chWidth := max(1, ansi.StringWidth(string(ch)))
+				if accumWidth+chWidth > targetDisplayCol {
+					return i, r
+				}
+				accumWidth += chWidth
+			}
+			return i, len(runes)
+		}
+		totalVisRow += lineVisRows
+	}
+	return len(m.logLines) - 1, 0
+}
+
+func (m *model) posToByteOffset(line, col int) int {
+	offset := 0
+	for i := 0; i < line && i < len(m.logLines); i++ {
+		offset += len(m.logLines[i]) + 1
+	}
+	if line >= 0 && line < len(m.logLines) {
+		runes := []rune(m.logLines[line])
+		if col > len(runes) {
+			col = len(runes)
+		}
+		offset += len(string(runes[:col]))
+	}
+	return offset
+}
+
+func (m *model) applySelectionHighlights() {
+	m.viewport.HighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color(copySelectColor))
+	m.viewport.SelectedHighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color(copySelectColor))
+
+	content := m.viewport.GetContent()
+	if content == "" {
+		m.viewport.ClearHighlights()
+		return
+	}
+
+	if m.selAnchorLine >= 0 {
+		startByte := m.posToByteOffset(m.selAnchorLine, m.selAnchorCol)
+		endByte := m.posToByteOffset(m.cursorLine, m.cursorCol)
+		if startByte > endByte {
+			startByte, endByte = endByte, startByte
+		}
+		if startByte == endByte {
+			endByte = startByte + 1
+		}
+		m.viewport.SetHighlights([][]int{{startByte, endByte}})
+	} else {
+		byteOff := m.posToByteOffset(m.cursorLine, m.cursorCol)
+		if byteOff < len(content) {
+			m.viewport.HighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color(copyCursorColor))
+			m.viewport.SetHighlights([][]int{{byteOff, byteOff + 1}})
+		}
+	}
+}
+
+func (m *model) extractSelectedText() string {
+	if m.selAnchorLine < 0 {
+		return ""
+	}
+	startLine, startCol := m.selAnchorLine, m.selAnchorCol
+	endLine, endCol := m.cursorLine, m.cursorCol
+	if startLine > endLine || (startLine == endLine && startCol > endCol) {
+		startLine, startCol, endLine, endCol = endLine, endCol, startLine, startCol
+	}
+	if startLine == endLine {
+		runes := []rune(m.logLines[startLine])
+		startCol = min(startCol, len(runes))
+		endCol = min(endCol, len(runes))
+		return string(runes[startCol:endCol])
+	}
+	var parts []string
+	if startLine < len(m.logLines) {
+		firstRunes := []rune(m.logLines[startLine])
+		if startCol < len(firstRunes) {
+			parts = append(parts, string(firstRunes[startCol:]))
+		}
+	}
+	for i := startLine + 1; i < endLine && i < len(m.logLines); i++ {
+		parts = append(parts, m.logLines[i])
+	}
+	if endLine < len(m.logLines) {
+		lastRunes := []rune(m.logLines[endLine])
+		endCol = min(endCol, len(lastRunes))
+		parts = append(parts, string(lastRunes[:endCol]))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (m model) handleMouseRelease(msg tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {
+	if m.mouseSelecting {
+		m.mouseSelecting = false
+		return m, nil
+	}
+	return m, nil
 }
 
 // --- commands ---

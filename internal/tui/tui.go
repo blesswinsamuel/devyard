@@ -618,7 +618,6 @@ func (m model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		m.selAnchorLine = line
 		m.selAnchorCol = col
 		m.mouseSelecting = true
-		m.applySelectionHighlights()
 	}
 	return m, nil
 }
@@ -713,7 +712,6 @@ func (m model) handleMouseMotion(msg tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
 		m.cursorLine = line
 		m.cursorCol = col
 		m.clampCursor()
-		m.applySelectionHighlights()
 		return m, nil
 	}
 
@@ -822,9 +820,6 @@ func (m *model) appendLog(line string) {
 	m.viewport.SetContent(strings.Join(m.logLines, "\n"))
 	if atBottom {
 		m.viewport.GotoBottom()
-	}
-	if m.copyMode {
-		m.applySelectionHighlights()
 	}
 }
 
@@ -1108,6 +1103,21 @@ func (m model) renderLogsPane() string {
 	}
 	if m.copyMode {
 		title += " [SELECT]"
+		selStart := m.selectionLineStart()
+		selEnd := m.selectionLineEnd()
+		cursorLine := m.cursorLine
+		haveSelection := m.selAnchorLine >= 0
+		m.viewport.StyleLineFunc = func(lineIdx int) lipgloss.Style {
+			if haveSelection && lineIdx >= selStart && lineIdx <= selEnd {
+				return lipgloss.NewStyle().Background(lipgloss.Color(copySelectColor))
+			}
+			if lineIdx == cursorLine {
+				return lipgloss.NewStyle().Background(lipgloss.Color(copyCursorColor))
+			}
+			return lipgloss.Style{}
+		}
+	} else {
+		m.viewport.StyleLineFunc = nil
 	}
 	content := m.viewport.View()
 	height := m.height - helpBarHeight
@@ -1312,7 +1322,6 @@ func (m *model) exitCopyMode() {
 	m.selAnchorLine = -1
 	m.selAnchorCol = 0
 	m.mouseSelecting = false
-	m.viewport.ClearHighlights()
 }
 
 func (m model) handleCopyModeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -1329,7 +1338,6 @@ func (m model) handleCopyModeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.selAnchorLine = m.cursorLine
 			m.selAnchorCol = m.cursorCol
 		}
-		m.applySelectionHighlights()
 		return m, nil
 
 	case "c":
@@ -1351,6 +1359,7 @@ func (m model) handleCopyModeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "g", "home":
 		m.cursorLine = 0
 		m.cursorCol = 0
+		m.snapCursorToVisible()
 	case "G", "end":
 		if len(m.logLines) > 0 {
 			m.cursorLine = len(m.logLines) - 1
@@ -1359,6 +1368,7 @@ func (m model) handleCopyModeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "0":
 		m.cursorCol = 0
+		m.snapCursorToVisible()
 	case "$":
 		if m.cursorLine < len(m.logLines) {
 			runes := []rune(m.logLines[m.cursorLine])
@@ -1370,13 +1380,16 @@ func (m model) handleCopyModeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	m.clampCursor()
 	m.ensureCursorVisible()
-	m.applySelectionHighlights()
 	return m, nil
 }
 
 func (m *model) moveCursorLeft() {
 	if m.cursorCol > 0 {
+		runes := []rune(m.logLines[m.cursorLine])
 		m.cursorCol--
+		for m.cursorCol > 0 && ansi.StringWidth(string(runes[m.cursorCol])) == 0 {
+			m.cursorCol--
+		}
 	}
 }
 
@@ -1385,6 +1398,9 @@ func (m *model) moveCursorRight() {
 		runes := []rune(m.logLines[m.cursorLine])
 		if m.cursorCol < len(runes) {
 			m.cursorCol++
+			for m.cursorCol < len(runes) && ansi.StringWidth(string(runes[m.cursorCol])) == 0 {
+				m.cursorCol++
+			}
 		}
 	}
 }
@@ -1393,6 +1409,7 @@ func (m *model) moveCursorUp() {
 	if m.cursorLine > 0 {
 		m.cursorLine--
 		m.cursorCol = min(m.cursorCol, len([]rune(m.logLines[m.cursorLine])))
+		m.snapCursorToVisible()
 	}
 }
 
@@ -1400,6 +1417,20 @@ func (m *model) moveCursorDown() {
 	if m.cursorLine < len(m.logLines)-1 {
 		m.cursorLine++
 		m.cursorCol = min(m.cursorCol, len([]rune(m.logLines[m.cursorLine])))
+		m.snapCursorToVisible()
+	}
+}
+
+func (m *model) snapCursorToVisible() {
+	if m.cursorLine < 0 || m.cursorLine >= len(m.logLines) {
+		return
+	}
+	runes := []rune(m.logLines[m.cursorLine])
+	if m.cursorCol >= len(runes) {
+		return
+	}
+	for m.cursorCol < len(runes) && ansi.StringWidth(string(runes[m.cursorCol])) == 0 {
+		m.cursorCol++
 	}
 }
 
@@ -1422,6 +1453,7 @@ func (m *model) clampCursor() {
 	if m.cursorCol > len(runes) {
 		m.cursorCol = len(runes)
 	}
+	m.snapCursorToVisible()
 }
 
 func (m *model) ensureCursorVisible() {
@@ -1496,7 +1528,10 @@ func (m model) screenToLogPos(screenX, screenY int) (line, col int) {
 			runes := []rune(logLine)
 			accumWidth := 0
 			for r, ch := range runes {
-				chWidth := max(1, ansi.StringWidth(string(ch)))
+				chWidth := ansi.StringWidth(string(ch))
+				if chWidth == 0 {
+					continue
+				}
 				if accumWidth+chWidth > targetDisplayCol {
 					return i, r
 				}
@@ -1509,48 +1544,28 @@ func (m model) screenToLogPos(screenX, screenY int) (line, col int) {
 	return len(m.logLines) - 1, 0
 }
 
-func (m *model) posToByteOffset(line, col int) int {
-	offset := 0
-	for i := 0; i < line && i < len(m.logLines); i++ {
-		offset += len(m.logLines[i]) + 1
+func (m model) selectionLineStart() int {
+	if m.selAnchorLine < 0 {
+		return -1
 	}
-	if line >= 0 && line < len(m.logLines) {
-		runes := []rune(m.logLines[line])
-		if col > len(runes) {
-			col = len(runes)
-		}
-		offset += len(string(runes[:col]))
+	startLine, startCol := m.selAnchorLine, m.selAnchorCol
+	endLine, endCol := m.cursorLine, m.cursorCol
+	if startLine > endLine || (startLine == endLine && startCol > endCol) {
+		startLine, startCol, endLine, endCol = endLine, endCol, startLine, startCol
 	}
-	return offset
+	return startLine
 }
 
-func (m *model) applySelectionHighlights() {
-	m.viewport.HighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color(copySelectColor))
-	m.viewport.SelectedHighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color(copySelectColor))
-
-	content := m.viewport.GetContent()
-	if content == "" {
-		m.viewport.ClearHighlights()
-		return
+func (m model) selectionLineEnd() int {
+	if m.selAnchorLine < 0 {
+		return -1
 	}
-
-	if m.selAnchorLine >= 0 {
-		startByte := m.posToByteOffset(m.selAnchorLine, m.selAnchorCol)
-		endByte := m.posToByteOffset(m.cursorLine, m.cursorCol)
-		if startByte > endByte {
-			startByte, endByte = endByte, startByte
-		}
-		if startByte == endByte {
-			endByte = startByte + 1
-		}
-		m.viewport.SetHighlights([][]int{{startByte, endByte}})
-	} else {
-		byteOff := m.posToByteOffset(m.cursorLine, m.cursorCol)
-		if byteOff < len(content) {
-			m.viewport.HighlightStyle = lipgloss.NewStyle().Background(lipgloss.Color(copyCursorColor))
-			m.viewport.SetHighlights([][]int{{byteOff, byteOff + 1}})
-		}
+	startLine, startCol := m.selAnchorLine, m.selAnchorCol
+	endLine, endCol := m.cursorLine, m.cursorCol
+	if startLine > endLine || (startLine == endLine && startCol > endCol) {
+		startLine, startCol, endLine, endCol = endLine, endCol, startLine, startCol
 	}
+	return endLine
 }
 
 func (m *model) extractSelectedText() string {
@@ -1583,7 +1598,7 @@ func (m *model) extractSelectedText() string {
 		endCol = min(endCol, len(lastRunes))
 		parts = append(parts, string(lastRunes[:endCol]))
 	}
-	return strings.Join(parts, "\n")
+	return ansi.Strip(strings.Join(parts, "\n"))
 }
 
 func (m model) handleMouseRelease(msg tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {

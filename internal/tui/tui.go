@@ -415,7 +415,7 @@ func (m model) handleServiceViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.states = nil
 		return m, pollProjectsCmd(m.socket)
 
-	case "tab":
+	case "tab", "shift+tab":
 		if m.pane == paneList {
 			m.pane = paneLogs
 		} else {

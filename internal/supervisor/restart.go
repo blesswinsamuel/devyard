@@ -84,6 +84,7 @@ func shouldRestart(policy config.RestartPolicy, exitCode int) bool {
 // are injected with lowest priority (parent env and service env win).
 func defaultColorEnv() []string {
 	return []string{
+		"FORCE_COLOR=1",
 		"CLICOLOR=1",
 		"CLICOLOR_FORCE=1",
 		"TERM=xterm-256color",

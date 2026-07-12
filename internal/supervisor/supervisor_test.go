@@ -141,6 +141,9 @@ func TestDefaultColorEnvValues(t *testing.T) {
 		k, v, _ := strings.Cut(kv, "=")
 		got[k] = v
 	}
+	if got["FORCE_COLOR"] != "1" {
+		t.Errorf("FORCE_COLOR = %q, want 1", got["FORCE_COLOR"])
+	}
 	if got["CLICOLOR"] != "1" {
 		t.Errorf("CLICOLOR = %q, want 1", got["CLICOLOR"])
 	}

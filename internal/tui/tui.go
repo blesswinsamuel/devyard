@@ -770,17 +770,18 @@ func renderTitledPane(width, height int, title, content string, active bool) str
 		}
 	}
 
-	var fg lipgloss.Style
+	var borderStyle, titleStyle lipgloss.Style
 	if active {
-		fg = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
+		borderStyle = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("255")).Padding(0, 1)
+		titleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	} else {
-		fg = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("243"))
+		borderStyle = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("243")).Padding(0, 1)
+		titleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
 	}
-	paneBorder := lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(fg.GetForeground()).Padding(0, 1)
 
-	topLine := fg.Render("┏") + fg.Render(titlePart) + fg.Render(strings.Repeat("━", fillWidth)) + fg.Render("┓")
+	topLine := titleStyle.Render("┏" + titlePart + strings.Repeat("━", fillWidth) + "┓")
 
-	rendered := paneBorder.Width(width).Height(height).Render(content)
+	rendered := borderStyle.Width(width).Height(height).Render(content)
 	lines := strings.SplitN(rendered, "\n", 2)
 	if len(lines) < 2 {
 		return rendered

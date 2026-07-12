@@ -596,8 +596,8 @@ func (m model) handleHelpBarClick(x int) (tea.Model, tea.Cmd) {
 	}
 
 	// Check if click is on the "? help" hint (far right).
-	helpHintX := m.width - len("? help") - 2
-	if x >= helpHintX {
+	helpHintW := lipgloss.Width("? help")
+	if x >= m.width-helpHintW {
 		m.showHelp = true
 		return m, nil
 	}
@@ -1058,7 +1058,7 @@ func (m model) renderHelpBar() string {
 		text := fmt.Sprintf(" %s %s ", item.key, item.label)
 		var styled string
 		if i == m.hoveredCmd {
-			styled = lipgloss.NewStyle().Background(lipgloss.Color("238")).Render(text)
+			styled = lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("238")).Render(text)
 		} else {
 			styled = lipgloss.NewStyle().Faint(true).Render(text)
 		}
@@ -1083,15 +1083,9 @@ func (m model) renderHelpBar() string {
 	// Help hint on the far right.
 	helpHint := lipgloss.NewStyle().Faint(true).Render("? help")
 
-	// Calculate available space for status (between buttons and help hint).
-	usedWidth := lipgloss.Width(left) + lipgloss.Width(helpHint) + 4 // 4 = separators + padding
-	availableForStatus := m.width - usedWidth
-	if availableForStatus < 0 {
-		availableForStatus = 0
-	}
-	statusText := statusStyle.Render(truncate(statusLine, availableForStatus))
-
-	return lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", statusText, "  ", helpHint)
+	// Right-align status + help hint at the terminal edge.
+	statusText := statusStyle.Render(statusLine)
+	return left + lipgloss.PlaceHorizontal(m.width, lipgloss.Right, statusText+"  "+helpHint)
 }
 
 func (m model) renderHelpPopup() string {

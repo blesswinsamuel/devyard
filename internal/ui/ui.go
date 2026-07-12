@@ -122,6 +122,14 @@ func StatusLabel(status string, exitCode int) string {
 	return status
 }
 
+// StatusMessage renders a colored status label suitable for informational log
+// lines (e.g. "exited at ...", "stopped at ..."). The status text is colored
+// according to StatusColor so lifecycle events are visually distinct.
+func StatusMessage(status string) string {
+	c := StatusColor(status)
+	return lipgloss.NewStyle().Foreground(c).Bold(true).Render(status)
+}
+
 // itoa avoids pulling strconv into every frontend just for pid formatting; it
 // is only ever called on small non-negative values.
 func itoa(n int) string {

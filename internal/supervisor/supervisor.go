@@ -26,6 +26,7 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/health"
 	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
 
 // Status is the lifecycle state of a supervised service.
@@ -399,7 +400,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 
 		exitCode := exitCodeFrom(waitErr)
 		if waitErr != nil {
-			rt.logger.writeLine(fmt.Sprintf("local-compose: exited with code %d", exitCode))
+			rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s with exit code %d", ui.StatusMessage("exited"), time.Now().UTC().Format(time.RFC3339), exitCode))
 		}
 
 		stopping := s.isStopping() || rt.stopped.Load()
@@ -742,10 +743,12 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Du
 
 	select {
 	case <-rt.done:
+		rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s", ui.StatusMessage("stopped"), time.Now().UTC().Format(time.RFC3339)))
 		return nil
 	case <-time.After(grace):
 	}
 
+	rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s", ui.StatusMessage("stopped"), time.Now().UTC().Format(time.RFC3339)))
 	rt.mu.Lock()
 	pgid = rt.pgid
 	rt.mu.Unlock()
@@ -769,6 +772,8 @@ func (s *Supervisor) Restart(name string) error {
 	if err := s.stopOne(rt, false, s.opts.GracefulStopTimeout); err != nil {
 		return err
 	}
+
+	rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s", ui.StatusMessage("restarted"), time.Now().UTC().Format(time.RFC3339)))
 
 	// Reset state for a clean relaunch.
 	rt.stopped.Store(false)

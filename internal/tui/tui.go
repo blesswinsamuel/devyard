@@ -770,19 +770,15 @@ func renderTitledPane(width, height int, title, content string, active bool) str
 		}
 	}
 
-	var borderColor string
-	var titleStyle lipgloss.Style
+	var fg lipgloss.Style
 	if active {
-		borderColor = "255"
-		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(borderColor))
+		fg = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
 	} else {
-		borderColor = "243"
-		titleStyle = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color(borderColor))
+		fg = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("243"))
 	}
-	paneBorder := lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color(borderColor)).Padding(0, 1)
+	paneBorder := lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(fg.GetForeground()).Padding(0, 1)
 
-	cornerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor))
-	topLine := cornerStyle.Render("┏") + titleStyle.Render(titlePart) + titleStyle.Render(strings.Repeat("━", fillWidth)) + cornerStyle.Render("┓")
+	topLine := fg.Render("┏") + fg.Render(titlePart) + fg.Render(strings.Repeat("━", fillWidth)) + fg.Render("┓")
 
 	rendered := paneBorder.Width(width).Height(height).Render(content)
 	lines := strings.SplitN(rendered, "\n", 2)

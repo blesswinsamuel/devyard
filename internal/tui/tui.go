@@ -505,6 +505,7 @@ func (m model) handleListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if len(m.states) == 0 {
 		return m, nil
 	}
+	old := m.selected
 	switch msg.String() {
 	case "up", "k":
 		if m.selected > 0 {
@@ -520,10 +521,14 @@ func (m model) handleListKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.selected = len(m.states) - 1
 	case "enter", "right", "l":
 		m.pane = paneLogs
+		return m, nil
 	default:
 		return m, nil
 	}
-	return m, m.maybeSwitchFollow()
+	if old != m.selected {
+		return m, m.maybeSwitchFollow()
+	}
+	return m, nil
 }
 
 func (m model) handleLogsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

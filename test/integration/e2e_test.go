@@ -99,7 +99,7 @@ func newEnv(t *testing.T, configContents string) *env {
 // The timeout bounds hangs (e.g. a stuck `logs --follow`).
 func (e *env) run(t *testing.T, ctx context.Context, args ...string) (string, string, int) {
 	t.Helper()
-	full := append([]string{"-p", e.projName, "-f", e.configPath}, args...)
+	full := append([]string{"-p", e.projName, "--file", e.configPath}, args...)
 	cmd := exec.CommandContext(ctx, binPath, full...)
 	cmd.Dir = e.cfgDir
 	cmd.Env = e.environ()
@@ -452,7 +452,7 @@ func TestE2E_MissingConfigFile(t *testing.T) {
 	e := newEnv(t, threeServiceLoopConfig)
 	// Point -f at a non-existent file.
 	ctx := context.Background()
-	cmd := exec.CommandContext(ctx, binPath, "-p", e.projName, "-f", filepath.Join(e.cfgDir, "nope.yml"), "up", "-d")
+	cmd := exec.CommandContext(ctx, binPath, "-p", e.projName, "--file", filepath.Join(e.cfgDir, "nope.yml"), "up", "-d")
 	cmd.Dir = e.cfgDir
 	cmd.Env = e.environ()
 	var stderr bytes.Buffer

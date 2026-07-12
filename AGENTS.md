@@ -91,8 +91,6 @@ that socket. The daemon autostarts projects whose services declare
 
 ## Gotchas
 
-- **`-f` is the persistent config flag**, so `logs --follow` has no `-f` shorthand
-  (it's `--follow`). Don't "fix" this.
 - **Daemon re-exec** is detected in `cli.Execute()` *before* cobra runs, via the
   hidden `--daemon` flag (`daemon.DaemonFlag`). The daemon child runs
   `runDaemonChild` (`internal/cli/daemon_run.go`), not a cobra command. If you

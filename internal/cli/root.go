@@ -25,7 +25,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&flagConfigPath, "file", "f", "", "Path to local-compose.yml (default: walk up from cwd)")
+	rootCmd.PersistentFlags().StringVar(&flagConfigPath, "file", "", "Path to local-compose.yml (default: walk up from cwd)")
 	rootCmd.PersistentFlags().StringVarP(&flagProject, "project", "p", "", "Project name (default: config name or config dir name)")
 
 	rootCmd.AddCommand(upCmd)

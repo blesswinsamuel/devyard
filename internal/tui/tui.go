@@ -754,7 +754,7 @@ func renderTitledPane(width, height int, title, content string, active bool) str
 	if innerWidth < 0 {
 		innerWidth = 0
 	}
-	titlePart := "─ " + title + " "
+	titlePart := "━ " + title + " "
 	titleRunes := []rune(titlePart)
 	fillWidth := innerWidth - len(titleRunes)
 	if fillWidth < 0 {
@@ -779,10 +779,10 @@ func renderTitledPane(width, height int, title, content string, active bool) str
 		borderColor = "238"
 		titleStyle = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color(borderColor))
 	}
-	paneBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(borderColor)).Padding(0, 1)
+	paneBorder := lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color(borderColor)).Padding(0, 1)
 
 	cornerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor))
-	topLine := cornerStyle.Render("╭") + titleStyle.Render(titlePart) + titleStyle.Render(strings.Repeat("─", fillWidth)) + cornerStyle.Render("╮")
+	topLine := cornerStyle.Render("┏") + titleStyle.Render(titlePart) + titleStyle.Render(strings.Repeat("━", fillWidth)) + cornerStyle.Render("┓")
 
 	rendered := paneBorder.Width(width).Height(height).Render(content)
 	lines := strings.SplitN(rendered, "\n", 2)

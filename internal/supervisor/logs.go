@@ -50,7 +50,7 @@ func (l *serviceLogger) writeLine(line string) {
 		_ = err
 	}
 	if l.foreground {
-		_, _ = fmt.Fprintf(l.stdout, "%s │ %s\n", l.prefixStr, line)
+		_, _ = fmt.Fprintf(l.stdout, "%s │ %s\n", l.prefixStr, ui.CleanLogLine(line))
 	}
 }
 

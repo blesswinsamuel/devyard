@@ -111,7 +111,8 @@ func (p *linePrefixer) Write(buf []byte) (int, error) {
 			total += n
 			return total, err
 		}
-		n, err := p.w.Write(buf[:i+1])
+		cleaned := ui.CleanLogLine(string(buf[:i]))
+		n, err := io.WriteString(p.w, cleaned+"\n")
 		total += n
 		if err != nil {
 			return total, err

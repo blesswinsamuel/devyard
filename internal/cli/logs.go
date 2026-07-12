@@ -48,10 +48,7 @@ var logsCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		prefix := ui.ServicePrefix(service) + " │ "
-		return client.Logs(cfg.Project, service, logsFollow, func(line string) {
-			fmt.Println(prefix + line)
-		})
+		return client.Logs(cfg.Project, service, logsFollow, newLogPrinter(service))
 	},
 }
 
@@ -59,4 +56,14 @@ func init() {
 	// --follow has no -f shorthand: -f is reserved for the persistent --file
 	// config flag. This matches docker-compose's `--follow` spelling.
 	logsCmd.Flags().BoolVar(&logsFollow, "follow", false, "Follow log output")
+}
+
+// newLogPrinter returns a callback that prints log lines to stdout with a
+// colored service prefix, stripping non-SGR ANSI sequences so control
+// characters from child processes don't corrupt the terminal output.
+func newLogPrinter(service string) func(string) {
+	prefix := ui.ServicePrefix(service) + " │ "
+	return func(line string) {
+		fmt.Println(prefix + ui.CleanLogLine(line))
+	}
 }

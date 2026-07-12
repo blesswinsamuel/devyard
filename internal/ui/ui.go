@@ -3,8 +3,10 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -159,4 +161,27 @@ func itoa(n int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// CleanLogLine removes ANSI control sequences (cursor movement, erase, carriage
+// returns, etc.) that corrupt terminal output, while preserving SGR sequences
+// (colors, bold, etc.) so log output retains its styling.
+func CleanLogLine(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s))
+	var state byte
+	p := ansi.NewParser()
+	for len(s) > 0 {
+		seq, _, n, newState := ansi.DecodeSequence(s, state, p)
+		if newState == ansi.NormalState && len(seq) > 0 {
+			if seq[0] == '\x1b' && ansi.HasCsiPrefix(seq) && ansi.Cmd(p.Command()).Final() == 'm' {
+				buf.WriteString(seq) // preserve SGR (color) sequences
+			} else if newState == ansi.NormalState && len(seq) == 1 && seq[0] >= ' ' {
+				buf.WriteString(seq) // preserve printable characters
+			}
+		}
+		s = s[n:]
+		state = newState
+	}
+	return buf.String()
 }

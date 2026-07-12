@@ -669,7 +669,7 @@ func (m *model) layoutViewport() {
 	if rightW < 10 {
 		rightW = 10
 	}
-	innerW := rightW - 2
+	innerW := rightW - 4
 	if innerW < 1 {
 		innerW = 1
 	}

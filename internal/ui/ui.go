@@ -130,6 +130,12 @@ func StatusMessage(status string) string {
 	return lipgloss.NewStyle().Foreground(c).Bold(true).Render(status)
 }
 
+// Dim renders text in a dim grey style, useful for de-emphasizing metadata
+// like timestamps and prefixes in log messages.
+func Dim(text string) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render(text)
+}
+
 // itoa avoids pulling strconv into every frontend just for pid formatting; it
 // is only ever called on small non-negative values.
 func itoa(n int) string {

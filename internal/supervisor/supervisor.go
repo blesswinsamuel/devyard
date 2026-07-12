@@ -400,7 +400,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 
 		exitCode := exitCodeFrom(waitErr)
 		if waitErr != nil {
-			rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s with exit code %d", ui.StatusMessage("exited"), time.Now().UTC().Format(time.RFC3339), exitCode))
+			rt.logger.writeLine(fmt.Sprintf("%s %s %s with exit code %d", ui.Dim("local-compose:"), ui.StatusMessage("exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339)), exitCode))
 		}
 
 		stopping := s.isStopping() || rt.stopped.Load()
@@ -743,12 +743,12 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Du
 
 	select {
 	case <-rt.done:
-		rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s", ui.StatusMessage("stopped"), time.Now().UTC().Format(time.RFC3339)))
+		rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 		return nil
 	case <-time.After(grace):
 	}
 
-	rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s", ui.StatusMessage("stopped"), time.Now().UTC().Format(time.RFC3339)))
+	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 	rt.mu.Lock()
 	pgid = rt.pgid
 	rt.mu.Unlock()
@@ -773,7 +773,7 @@ func (s *Supervisor) Restart(name string) error {
 		return err
 	}
 
-	rt.logger.writeLine(fmt.Sprintf("local-compose: %s at %s", ui.StatusMessage("restarted"), time.Now().UTC().Format(time.RFC3339)))
+	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("restarted"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 
 	// Reset state for a clean relaunch.
 	rt.stopped.Store(false)

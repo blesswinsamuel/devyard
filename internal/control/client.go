@@ -150,6 +150,15 @@ func (c *Client) StopService(project, service string) error {
 	return c.awaitDone()
 }
 
+// KillService sends a KillService request for one service in the given project
+// and waits for confirmation. The service is immediately SIGKILLed.
+func (c *Client) KillService(project, service string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindKillService, Project: project, Service: service}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
 // Restart sends a Restart request for the given project. If service is empty,
 // all services in the project are restarted.
 func (c *Client) Restart(project, service string) error {

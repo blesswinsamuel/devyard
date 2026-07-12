@@ -170,6 +170,11 @@ export function App() {
                           onClick={(e) => { e.stopPropagation(); sendWS({ type: "stop_service", project: selectedProject()!, service: s.name }); }}
                           style={smallBtnStyle}
                         >Stop</button>
+                        {" "}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); sendWS({ type: "kill_service", project: selectedProject()!, service: s.name }); }}
+                          style={smallBtnStyle}
+                        >Kill</button>
                       </td>
                     </tr>
                   )}

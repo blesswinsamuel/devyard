@@ -183,6 +183,8 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleRestartService(c, ctx, req)
 	case "stop_service":
 		s.handleStopService(c, ctx, req)
+	case "kill_service":
+		s.handleKillService(c, ctx, req)
 	case "subscribe_logs":
 		s.handleSubscribeLogs(c, ctx, req, subs)
 	case "unsubscribe_logs":
@@ -249,6 +251,19 @@ func (s *Server) handleStopService(c *websocket.Conn, ctx context.Context, req *
 		return
 	}
 	if err := b.StopService(req.Service); err != nil {
+		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
+}
+
+func (s *Server) handleKillService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	if err := b.KillService(req.Service); err != nil {
 		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
 		return
 	}

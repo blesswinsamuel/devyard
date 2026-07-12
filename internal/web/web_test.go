@@ -93,12 +93,17 @@ type fakeBackend struct {
 	logPaths map[string]string
 	restarts []string
 	stopped  []string
+	killed   []string
 }
 
 func (b *fakeBackend) States() []protocol.ServiceState { return b.states }
 func (b *fakeBackend) Stop(context.Context) error      { return nil }
 func (b *fakeBackend) StopService(name string) error {
 	b.stopped = append(b.stopped, name)
+	return nil
+}
+func (b *fakeBackend) KillService(name string) error {
+	b.killed = append(b.killed, name)
 	return nil
 }
 func (b *fakeBackend) Restart(name string) error {
@@ -262,6 +267,23 @@ func TestWSStopService(t *testing.T) {
 	}
 	if len(b.stopped) != 1 || b.stopped[0] != "web" {
 		t.Errorf("stopped = %v", b.stopped)
+	}
+}
+
+func TestWSKillService(t *testing.T) {
+	b := &fakeBackend{states: []protocol.ServiceState{{Name: "web", Status: "running"}}}
+	m := newFakeMulti()
+	m.projects["api"] = b
+	srv := newWebServer(t, m)
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]string{"type": "kill_service", "project": "api", "service": "web"})
+	resp := recvWSMsg(t, c)
+	if resp["type"] != "result" || resp["ok"] != true {
+		t.Fatalf("resp = %+v, want result ok=true", resp)
+	}
+	if len(b.killed) != 1 || b.killed[0] != "web" {
+		t.Errorf("killed = %v", b.killed)
 	}
 }
 

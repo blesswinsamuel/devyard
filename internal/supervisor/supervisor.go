@@ -55,7 +55,7 @@ var errDependencyStopped = errors.New("dependency is stopped")
 var errSupervisorStopping = errors.New("supervisor stopping")
 
 // DefaultGracefulStopTimeout is how long Stop waits for SIGTERM before SIGKILL.
-const DefaultGracefulStopTimeout = 10 * time.Second
+const DefaultGracefulStopTimeout = 20 * time.Second
 
 // Options configures a Supervisor.
 type Options struct {
@@ -715,15 +715,53 @@ func (s *Supervisor) StopService(name string, markStopped bool) error {
 	return nil
 }
 
-// stopOne stops a single service and waits for its run loop to exit.
-func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Duration) error {
+// KillService immediately SIGKILLs a single service by name without a grace
+// period. If the service has already exited, this is a no-op.
+func (s *Supervisor) KillService(name string) error {
+	rt, ok := s.services[name]
+	if !ok {
+		return fmt.Errorf("supervisor: unknown service %q", name)
+	}
 	if rt.stopped.Swap(true) {
-		// Already stopped; just wait for the loop to finish if running.
 		select {
 		case <-rt.done:
 		default:
 		}
 		return nil
+	}
+	if rt.spec.Restart == config.RestartUnlessStopped {
+		_ = s.writeStoppedMarker(rt.name)
+	}
+	rt.mu.Lock()
+	switch rt.status {
+	case StatusStarting, StatusRunning, StatusBackoff:
+		rt.status = StatusStopping
+	}
+	pgid := rt.pgid
+	rt.mu.Unlock()
+	if pgid > 0 {
+		_ = killGroup(pgid, syscall.SIGKILL)
+	}
+	select {
+	case <-rt.done:
+	case <-time.After(5 * time.Second):
+	}
+	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("killed"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+	return nil
+}
+
+// stopOne stops a single service and waits for its run loop to exit.
+func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Duration) error {
+	alreadyStopped := rt.stopped.Swap(true)
+	if alreadyStopped {
+		// Already marked as stopped — but if the process is still
+		// running, resend the stop signal so the user can re-trigger
+		// graceful shutdown (or escalation after the grace period).
+		select {
+		case <-rt.done:
+			return nil
+		default:
+		}
 	}
 
 	if markStopped && rt.spec.Restart == config.RestartUnlessStopped {

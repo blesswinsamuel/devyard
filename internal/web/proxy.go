@@ -45,6 +45,8 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxyRestartService(c, ctx, req)
 	case "stop_service":
 		s.proxyStopService(c, ctx, req)
+	case "kill_service":
+		s.proxyKillService(c, ctx, req)
 	case "subscribe_logs":
 		s.proxySubscribeLogs(c, ctx, req, subs)
 	case "unsubscribe_logs":
@@ -127,6 +129,19 @@ func (s *Server) proxyRestartService(c *websocket.Conn, ctx context.Context, req
 
 func (s *Server) proxyStopService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
 	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindStopService, Project: req.Project, Service: req.Service})
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: resp.Error})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
+}
+
+func (s *Server) proxyKillService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindKillService, Project: req.Project, Service: req.Service})
 	if err != nil {
 		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
 		return

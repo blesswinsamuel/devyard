@@ -53,6 +53,11 @@ func (b *ControlBackend) StopService(name string) error {
 	return b.s.StopService(name, true)
 }
 
+// KillService immediately SIGKILLs a single service without a grace period.
+func (b *ControlBackend) KillService(name string) error {
+	return b.s.KillService(name)
+}
+
 // Restart stops and relaunches one service by name.
 func (b *ControlBackend) Restart(name string) error {
 	return b.s.Restart(name)

@@ -26,6 +26,7 @@ type fakeBackend struct {
 	restarts   []string
 	stopped    bool
 	stoppedSvc []string
+	killedSvc  []string
 	stopSvcErr error
 }
 
@@ -49,6 +50,13 @@ func (b *fakeBackend) StopService(name string) error {
 	defer b.mu.Unlock()
 	b.stoppedSvc = append(b.stoppedSvc, name)
 	return b.stopSvcErr
+}
+
+func (b *fakeBackend) KillService(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.killedSvc = append(b.killedSvc, name)
+	return nil
 }
 
 func (b *fakeBackend) Restart(name string) error {
@@ -84,6 +92,18 @@ func (b *fakeBackend) stoppedCount(name string) int {
 	defer b.mu.Unlock()
 	n := 0
 	for _, s := range b.stoppedSvc {
+		if s == name {
+			n++
+		}
+	}
+	return n
+}
+
+func (b *fakeBackend) killedCount(name string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := 0
+	for _, s := range b.killedSvc {
 		if s == name {
 			n++
 		}
@@ -181,6 +201,42 @@ func TestStopServiceRequiresName(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 	if err := c.Send(protocol.Request{Kind: protocol.KindStopService}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	if resp.Kind != protocol.KindError {
+		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
+	}
+}
+
+func TestRoundtripKillService(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.KillService("", "api"); err != nil {
+		t.Fatalf("KillService: %v", err)
+	}
+	if b.killedCount("api") != 1 {
+		t.Errorf("api kills = %d, want 1", b.killedCount("api"))
+	}
+}
+
+func TestKillServiceRequiresName(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.Send(protocol.Request{Kind: protocol.KindKillService}); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 	resp, err := c.Recv()

@@ -472,6 +472,14 @@ func (m model) handleServiceViewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.setStatus("stopping "+name+"...", statusInfo)
 		return m, actionCmd(m.socket, m.project, "stop", name)
 
+	case "k":
+		name := m.selectedName()
+		if name == "" {
+			return m, nil
+		}
+		m.setStatus("killing "+name+"...", statusInfo)
+		return m, actionCmd(m.socket, m.project, "kill", name)
+
 	case "d":
 		m.setStatus("down...", statusInfo)
 		m.closeFollow()
@@ -742,6 +750,7 @@ func (m model) helpBarItems() []helpBarItem {
 	return []helpBarItem{
 		{label: "restart", key: "r"},
 		{label: "stop", key: "s"},
+		{label: "kill", key: "k"},
 		{label: "down", key: "d"},
 	}
 }
@@ -773,6 +782,13 @@ func (m model) executeHelpBarItem(item helpBarItem) (tea.Model, tea.Cmd) {
 		}
 		m.setStatus("stopping "+name+"...", statusInfo)
 		return m, actionCmd(m.socket, m.project, "stop", name)
+	case "k":
+		name := m.selectedName()
+		if name == "" {
+			return m, nil
+		}
+		m.setStatus("killing "+name+"...", statusInfo)
+		return m, actionCmd(m.socket, m.project, "kill", name)
 	case "d":
 		m.setStatus("down...", statusInfo)
 		m.closeFollow()
@@ -1027,6 +1043,7 @@ func (m model) renderHelpPopup() string {
 	} else {
 		actionLines = append(actionLines, "    r              Restart service")
 		actionLines = append(actionLines, "    s              Stop service")
+		actionLines = append(actionLines, "    k              Kill service")
 		actionLines = append(actionLines, "    d              Down project")
 	}
 	sections = append(sections, strings.Join(actionLines, "\n"))
@@ -1201,6 +1218,8 @@ func actionCmd(socket, project, action, service string) tea.Cmd {
 			err = c.Restart(project, service)
 		case "stop":
 			err = c.StopService(project, service)
+		case "kill":
+			err = c.KillService(project, service)
 		case "down":
 			err = c.StopProject(project)
 		default:

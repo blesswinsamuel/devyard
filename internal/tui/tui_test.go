@@ -20,6 +20,7 @@ type fakeBackend struct {
 	states     []protocol.ServiceState
 	restarts   []string
 	stopped    []string
+	killed     []string
 	downCalled bool
 	logPaths   map[string]string
 }
@@ -28,6 +29,10 @@ func (b *fakeBackend) States() []protocol.ServiceState { return b.states }
 func (b *fakeBackend) Stop(context.Context) error      { b.downCalled = true; return nil }
 func (b *fakeBackend) StopService(name string) error {
 	b.stopped = append(b.stopped, name)
+	return nil
+}
+func (b *fakeBackend) KillService(name string) error {
+	b.killed = append(b.killed, name)
 	return nil
 }
 func (b *fakeBackend) Restart(name string) error { b.restarts = append(b.restarts, name); return nil }
@@ -193,6 +198,23 @@ func TestStopActionRoutesToBackend(t *testing.T) {
 	}
 	if len(b.stopped) != 1 || b.stopped[0] != "api" {
 		t.Fatalf("backend.stopped = %v, want [api]", b.stopped)
+	}
+}
+
+func TestKillActionRoutesToBackend(t *testing.T) {
+	b := &fakeBackend{states: states("api")}
+	srv := newTestServer(t, b)
+	m := newTestModel(t, srv.Addr())
+	m.states = b.states
+
+	_, cmd := m.handleKey(keyPress("k"))
+	msg := runCmd(t, cmd)
+	r, ok := msg.(actionResultMsg)
+	if !ok || r.action != "kill" || r.service != "api" || r.err != nil {
+		t.Fatalf("kill result = %+v, want action=kill service=api err=nil", r)
+	}
+	if len(b.killed) != 1 || b.killed[0] != "api" {
+		t.Fatalf("backend.killed = %v, want [api]", b.killed)
 	}
 }
 

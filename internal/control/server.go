@@ -28,6 +28,8 @@ type Backend interface {
 	// implementation; the supervisor treats it as an explicit stop so
 	// unless-stopped does not auto-resume it.
 	StopService(name string) error
+	// KillService immediately SIGKILLs a single service without a grace period.
+	KillService(name string) error
 	// Restart stops and relaunches one service by name.
 	Restart(name string) error
 	// LogPath returns the absolute path of a service's log file.
@@ -158,6 +160,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleStop(ctx, w, req)
 	case protocol.KindStopService:
 		s.handleStopService(w, req)
+	case protocol.KindKillService:
+		s.handleKillService(w, req)
 	case protocol.KindRestart:
 		s.handleRestart(w, req)
 	case protocol.KindLogs:
@@ -214,6 +218,23 @@ func (s *Server) handleStopService(w io.Writer, req protocol.Request) {
 		return
 	}
 	if err := b.StopService(req.Service); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleKillService(w io.Writer, req protocol.Request) {
+	if req.Service == "" {
+		_ = writeError(w, "kill_service: service is required")
+		return
+	}
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	if err := b.KillService(req.Service); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}

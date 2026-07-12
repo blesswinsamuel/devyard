@@ -49,6 +49,12 @@ const (
 	paneLogs
 )
 
+// helpBarItem represents a clickable command in the bottom bar.
+type helpBarItem struct {
+	label string // e.g. "restart"
+	key   string // e.g. "r"
+}
+
 // Options configures a TUI run. Socket is the daemon's control socket. If
 // Project is non-empty, the TUI skips the project list and goes directly to
 // that project's service view.
@@ -64,6 +70,7 @@ func New(opts Options) *tea.Program {
 		socket:     opts.Socket,
 		project:    opts.Project,
 		configPath: opts.ConfigPath,
+		hoveredCmd: -1,
 	}
 	if opts.Project != "" {
 		m.currentView = viewServices
@@ -114,6 +121,10 @@ type model struct {
 
 	noDaemon bool
 	quitting bool
+
+	// Help popup state.
+	showHelp   bool
+	hoveredCmd int // index of hovered command in help bar, -1 for none
 }
 
 type statusKind int
@@ -204,6 +215,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseClickMsg:
 		return m.handleMouseClick(msg)
+
+	case tea.MouseMotionMsg:
+		return m.handleMouseMotion(msg)
 
 	case tea.MouseWheelMsg:
 		if m.currentView == viewServices {
@@ -323,6 +337,25 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		m.closeFollow()
 		return m, tea.Quit
+	}
+
+	// Help popup toggles.
+	if msg.String() == "?" {
+		m.showHelp = !m.showHelp
+		if !m.showHelp {
+			m.hoveredCmd = -1
+		}
+		return m, nil
+	}
+
+	// When help popup is open, suppress all other keys.
+	if m.showHelp {
+		if msg.String() == "esc" {
+			m.showHelp = false
+			m.hoveredCmd = -1
+			return m, nil
+		}
+		return m, nil
 	}
 
 	if m.currentView == viewProjects {
@@ -489,6 +522,19 @@ func (m model) handleLogsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	mouse := msg.Mouse()
+
+	// Click on help popup closes it.
+	if m.showHelp {
+		m.showHelp = false
+		m.hoveredCmd = -1
+		return m, nil
+	}
+
+	// Click on help bar (bottom row).
+	if mouse.Y == m.height-1 {
+		return m.handleHelpBarClick(mouse.X)
+	}
+
 	if m.currentView == viewProjects {
 		paneW := min(m.width, 50)
 		if mouse.X >= paneW || mouse.Y < 0 {
@@ -516,6 +562,62 @@ func (m model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.pane = paneLogs
+	return m, nil
+}
+
+func (m model) handleHelpBarClick(x int) (tea.Model, tea.Cmd) {
+	items := m.helpBarItems()
+
+	// Calculate x-positions for each button.
+	xPos := 0
+	for _, item := range items {
+		itemW := len(item.key) + len(item.label) + 3 // " k label "
+		if x >= xPos && x < xPos+itemW {
+			return m.executeHelpBarItem(item)
+		}
+		xPos += itemW
+	}
+
+	// Check if click is on the "? help" hint (far right).
+	helpHintX := m.width - len("? help") - 2
+	if x >= helpHintX {
+		m.showHelp = true
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m model) handleMouseMotion(msg tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
+	mouse := msg.Mouse()
+
+	if m.showHelp {
+		m.hoveredCmd = -1
+		return m, nil
+	}
+
+	// Only track hover on the help bar row.
+	if mouse.Y != m.height-1 {
+		if m.hoveredCmd != -1 {
+			m.hoveredCmd = -1
+		}
+		return m, nil
+	}
+
+	items := m.helpBarItems()
+	found := -1
+	xPos := 0
+	for i, item := range items {
+		itemW := len(item.key) + len(item.label) + 3 // " k label "
+		if mouse.X >= xPos && mouse.X < xPos+itemW {
+			found = i
+			break
+		}
+		xPos += itemW
+	}
+	if found != m.hoveredCmd {
+		m.hoveredCmd = found
+	}
 	return m, nil
 }
 
@@ -631,6 +733,54 @@ func (m *model) setStatus(s string, k statusKind) {
 	m.statusKind = k
 }
 
+func (m model) helpBarItems() []helpBarItem {
+	if m.currentView == viewProjects {
+		return []helpBarItem{
+			{label: "start", key: "s"},
+		}
+	}
+	return []helpBarItem{
+		{label: "restart", key: "r"},
+		{label: "stop", key: "s"},
+		{label: "down", key: "d"},
+	}
+}
+
+func (m model) executeHelpBarItem(item helpBarItem) (tea.Model, tea.Cmd) {
+	switch item.key {
+	case "r":
+		name := m.selectedName()
+		if name == "" {
+			return m, nil
+		}
+		m.setStatus("restarting "+name+"...", statusInfo)
+		return m, actionCmd(m.socket, m.project, "restart", name)
+	case "s":
+		if m.currentView == viewProjects {
+			if m.selectedProj < 0 || m.selectedProj >= len(m.projects) {
+				return m, nil
+			}
+			p := m.projects[m.selectedProj]
+			if p.ConfigPath == "" {
+				return m, nil
+			}
+			m.setStatus("starting "+p.Name+"...", statusInfo)
+			return m, startProjectCmd(m.socket, p.ConfigPath)
+		}
+		name := m.selectedName()
+		if name == "" {
+			return m, nil
+		}
+		m.setStatus("stopping "+name+"...", statusInfo)
+		return m, actionCmd(m.socket, m.project, "stop", name)
+	case "d":
+		m.setStatus("down...", statusInfo)
+		m.closeFollow()
+		return m, actionCmd(m.socket, m.project, "down", "")
+	}
+	return m, nil
+}
+
 func (m model) selectedName() string {
 	if m.selected < 0 || m.selected >= len(m.states) {
 		return ""
@@ -668,13 +818,17 @@ func (m model) View() tea.View {
 	if m.noDaemon {
 		return tea.NewView(m.renderStartPrompt())
 	}
+	var content string
 	if m.currentView == viewProjects {
-		v := tea.NewView(m.renderProjectsView())
-		v.AltScreen = true
-		v.MouseMode = tea.MouseModeCellMotion
-		return v
+		content = m.renderProjectsView()
+	} else {
+		content = m.renderSplit()
 	}
-	v := tea.NewView(m.renderSplit())
+	if m.showHelp {
+		popup := m.renderHelpPopup()
+		content = m.overlayPopup(content, popup)
+	}
+	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
@@ -807,14 +961,23 @@ func (m model) renderLogsPane() string {
 }
 
 func (m model) renderHelpBar() string {
-	var keys string
-	if m.currentView == viewProjects {
-		keys = " ↑/↓ select · Enter open · s start · q quit"
-	} else if m.pane == paneLogs {
-		keys = " Logs: ↑/↓ scroll · h/Tab list · r restart · s stop · d down · Esc back · q quit"
-	} else {
-		keys = " ↑/↓ select · Tab logs · r restart · s stop · d down · Esc back · q quit"
+	items := m.helpBarItems()
+
+	// Render command buttons on the left.
+	var buttons []string
+	for i, item := range items {
+		text := fmt.Sprintf(" %s %s ", item.key, item.label)
+		var styled string
+		if i == m.hoveredCmd {
+			styled = lipgloss.NewStyle().Background(lipgloss.Color("238")).Render(text)
+		} else {
+			styled = lipgloss.NewStyle().Faint(true).Render(text)
+		}
+		buttons = append(buttons, styled)
 	}
+	left := strings.Join(buttons, "")
+
+	// Status on the right side.
 	statusLine := m.status
 	if statusLine == "" {
 		if m.currentView == viewServices {
@@ -827,9 +990,115 @@ func (m model) renderHelpBar() string {
 	if m.statusKind == statusErr {
 		statusStyle = statusStyle.Foreground(lipgloss.Color("196"))
 	}
-	left := statusStyle.Render(truncate(statusLine, m.width-len(keys)-2))
-	right := lipgloss.NewStyle().Faint(true).Render(keys)
-	return lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", right)
+
+	// Help hint on the far right.
+	helpHint := lipgloss.NewStyle().Faint(true).Render("? help")
+
+	// Calculate available space for status (between buttons and help hint).
+	usedWidth := lipgloss.Width(left) + lipgloss.Width(helpHint) + 4 // 4 = separators + padding
+	availableForStatus := m.width - usedWidth
+	if availableForStatus < 0 {
+		availableForStatus = 0
+	}
+	statusText := statusStyle.Render(truncate(statusLine, availableForStatus))
+
+	return lipgloss.JoinHorizontal(lipgloss.Left, left, "  ", statusText, "  ", helpHint)
+}
+
+func (m model) renderHelpPopup() string {
+	var sections []string
+
+	// Navigation section
+	navLines := []string{
+		"  Navigation",
+		"    \u2191/\u2193  k/j      Move up/down",
+		"    \u2190/\u2192  h/l      Back / Forward",
+		"    Tab            Switch pane",
+		"    g/G            Top / Bottom",
+		"    Enter          Select / Open",
+	}
+	sections = append(sections, strings.Join(navLines, "\n"))
+
+	// Actions section
+	var actionLines []string
+	actionLines = append(actionLines, "  Actions")
+	if m.currentView == viewProjects {
+		actionLines = append(actionLines, "    s              Start project")
+	} else {
+		actionLines = append(actionLines, "    r              Restart service")
+		actionLines = append(actionLines, "    s              Stop service")
+		actionLines = append(actionLines, "    d              Down project")
+	}
+	sections = append(sections, strings.Join(actionLines, "\n"))
+
+	// General section
+	genLines := []string{
+		"  General",
+		"    q              Quit",
+		"    Esc            Back",
+		"    ?              Close this help",
+	}
+	sections = append(sections, strings.Join(genLines, "\n"))
+
+	title := lipgloss.NewStyle().Bold(true).Render("Keyboard Shortcuts")
+	content := title + "\n\n" + strings.Join(sections, "\n\n") + "\n"
+
+	// Build bordered box
+	popupW := 42
+
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Width(popupW-2). // border adds 2 chars
+		Padding(0, 1)
+	popup := borderStyle.Render(content)
+
+	return popup
+}
+
+func (m model) overlayPopup(bg, popup string) string {
+	bgLines := strings.Split(bg, "\n")
+	popupLines := strings.Split(popup, "\n")
+
+	bgH := len(bgLines)
+	popupH := len(popupLines)
+	popupW := 0
+	for _, l := range popupLines {
+		w := lipgloss.Width(l)
+		if w > popupW {
+			popupW = w
+		}
+	}
+
+	startY := (bgH - popupH) / 2
+	if startY < 0 {
+		startY = 0
+	}
+	startX := (m.width - popupW) / 2
+	if startX < 0 {
+		startX = 0
+	}
+
+	result := make([]string, bgH)
+	for y := 0; y < bgH; y++ {
+		line := ""
+		if y < len(bgLines) {
+			line = bgLines[y]
+		}
+		if y >= startY && y-startY < popupH {
+			pLine := popupLines[y-startY]
+			padLeft := strings.Repeat(" ", startX)
+			remaining := m.width - startX - lipgloss.Width(pLine)
+			if remaining < 0 {
+				remaining = 0
+			}
+			padRight := strings.Repeat(" ", remaining)
+			result[y] = padLeft + pLine + padRight
+		} else {
+			result[y] = line
+		}
+	}
+	return strings.Join(result, "\n")
 }
 
 func max(a, b int) int {

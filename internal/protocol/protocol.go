@@ -18,16 +18,17 @@ const FrameMaxLen = 16 << 20
 type RequestKind string
 
 const (
-	KindList         RequestKind = "list"          // list services + status + pids
-	KindLogs         RequestKind = "logs"          // stream a service's log file
-	KindStop         RequestKind = "stop"          // stop every service in a project
-	KindStopService  RequestKind = "stop_service"  // stop one service by name
-	KindKillService  RequestKind = "kill_service"  // immediately SIGKILL one service
-	KindRestart      RequestKind = "restart"       // restart one (Service) or all services
-	KindListProjects RequestKind = "list_projects" // list all known projects
-	KindStartProject RequestKind = "start_project" // start a project from a config path
-	KindStopProject  RequestKind = "stop_project"  // stop a project and remove it from the daemon
-	KindStopDaemon   RequestKind = "stop_daemon"   // stop all projects and shut down the daemon
+	KindList          RequestKind = "list"           // list services + status + pids
+	KindLogs          RequestKind = "logs"           // stream a service's log file
+	KindStop          RequestKind = "stop"           // stop every service in a project
+	KindStopService   RequestKind = "stop_service"   // stop one service by name
+	KindKillService   RequestKind = "kill_service"   // immediately SIGKILL one service
+	KindRestart       RequestKind = "restart"        // restart one (Service) or all services
+	KindListProjects  RequestKind = "list_projects"  // list all known projects
+	KindStartProject  RequestKind = "start_project"  // start a project from a config path
+	KindStopProject   RequestKind = "stop_project"   // stop a project's services
+	KindRemoveProject RequestKind = "remove_project" // stop a project and completely remove it from the daemon
+	KindStopDaemon    RequestKind = "stop_daemon"    // stop all projects and shut down the daemon
 )
 
 // Request is a client -> daemon message.

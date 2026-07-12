@@ -16,9 +16,10 @@ type MultiBackend interface {
 	// StartProject loads the config at configPath and starts a supervisor
 	// for it. If build is true, pre-start builds are run first.
 	StartProject(configPath string, build bool) error
-	// StopProject stops the named project's services and removes it from
-	// the daemon.
+	// StopProject stops the named project's services.
 	StopProject(name string) error
+	// RemoveProject stops the named project's services and removes it from the daemon.
+	RemoveProject(name string) error
 	// StopDaemon stops all projects and signals the daemon to exit.
 	StopDaemon() error
 	// ProjectBackend returns the Backend for the named project, or an
@@ -45,6 +46,13 @@ func (s SingleProjectBackend) StartProject(configPath string, build bool) error 
 }
 
 func (s SingleProjectBackend) StopProject(name string) error {
+	if name != "" && name != s.Project {
+		return fmt.Errorf("unknown project %q", name)
+	}
+	return s.Stop(context.Background())
+}
+
+func (s SingleProjectBackend) RemoveProject(name string) error {
 	if name != "" && name != s.Project {
 		return fmt.Errorf("unknown project %q", name)
 	}

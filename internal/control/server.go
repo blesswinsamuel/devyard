@@ -172,6 +172,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleStartProject(w, req)
 	case protocol.KindStopProject:
 		s.handleStopProject(w, req)
+	case protocol.KindRemoveProject:
+		s.handleRemoveProject(w, req)
 	case protocol.KindStopDaemon:
 		s.handleStopDaemon(w)
 	default:
@@ -313,6 +315,18 @@ func (s *Server) handleStopProject(w io.Writer, req protocol.Request) {
 		return
 	}
 	if err := s.backend.StopProject(req.Project); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleRemoveProject(w io.Writer, req protocol.Request) {
+	if req.Project == "" {
+		_ = writeError(w, "remove_project: project is required")
+		return
+	}
+	if err := s.backend.RemoveProject(req.Project); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}

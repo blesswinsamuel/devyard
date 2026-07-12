@@ -479,8 +479,16 @@ func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]protocol.ProjectInfo, 0, len(m.projects))
-	for name := range m.projects {
-		out = append(out, protocol.ProjectInfo{Name: name, Status: "running"})
+	for name, b := range m.projects {
+		status := "running"
+		if fb, ok := b.(*fakeBackend); ok {
+			fb.mu.Lock()
+			if fb.stopped {
+				status = "stopped"
+			}
+			fb.mu.Unlock()
+		}
+		out = append(out, protocol.ProjectInfo{Name: name, Status: status})
 	}
 	return out
 }
@@ -496,10 +504,20 @@ func (m *fakeMultiBackend) StartProject(configPath string, build bool) error {
 func (m *fakeMultiBackend) StopProject(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.projects[name]; !ok {
+	b, ok := m.projects[name]
+	if !ok {
 		return fmt.Errorf("project %q not running", name)
 	}
 	m.stopped = append(m.stopped, name)
+	return b.Stop(context.Background())
+}
+
+func (m *fakeMultiBackend) RemoveProject(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.projects[name]; !ok {
+		return fmt.Errorf("project %q not running", name)
+	}
 	delete(m.projects, name)
 	return nil
 }
@@ -594,6 +612,25 @@ func TestMultiStopProject(t *testing.T) {
 	}
 	if len(m.stopped) != 1 || m.stopped[0] != "api" {
 		t.Errorf("stopped = %v, want [api]", m.stopped)
+	}
+}
+
+func TestMultiRemoveProject(t *testing.T) {
+	m := newFakeMultiBackend()
+	m.projects["api"] = &fakeBackend{}
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.RemoveProject("api"); err != nil {
+		t.Fatalf("RemoveProject: %v", err)
+	}
+	if _, exists := m.projects["api"]; exists {
+		t.Errorf("expected project 'api' to be removed")
 	}
 }
 

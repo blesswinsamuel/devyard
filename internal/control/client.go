@@ -114,10 +114,19 @@ func (c *Client) StartProject(configPath string, build bool) error {
 }
 
 // StopProject sends a StopProject request for the named project and waits for
-// the daemon to confirm. The project's services are stopped and the project is
-// removed from the daemon's map.
+// the daemon to confirm. The project's services are stopped but the project remains
+// in the daemon's list.
 func (c *Client) StopProject(project string) error {
 	if err := c.Send(protocol.Request{Kind: protocol.KindStopProject, Project: project}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
+// RemoveProject sends a RemoveProject request for the named project and waits for
+// the daemon to confirm. The project is stopped and removed from the daemon.
+func (c *Client) RemoveProject(project string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindRemoveProject, Project: project}); err != nil {
 		return err
 	}
 	return c.awaitDone()

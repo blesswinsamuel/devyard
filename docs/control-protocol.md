@@ -52,7 +52,8 @@ type Request struct {
 | `"restart"` | project name | service name (empty = all) | — | Restart the named service, or all when empty. Acks with `done`. |
 | `"list_projects"` | — | — | — | Return one `projects` response with a snapshot of all known projects. |
 | `"start_project"` | — | — | `ConfigPath`, `Build` | Load the config at `ConfigPath` and start a supervisor for it. Acks with `done` or `error`. |
-| `"stop_project"` | project name | — | — | Stop the named project's services and remove it from the daemon. Acks with `done`. |
+| `"stop_project"` | project name | — | — | Stop the named project's services. Acks with `done`. |
+| `"remove_project"` | project name | — | — | Stop the named project's services, remove it from the daemon, and delete its runtime and state directories. Acks with `done`. |
 | `"stop_daemon"` | — | — | — | Stop all projects and shut down the daemon. Acks with `done`. |
 
 ## Response (daemon -> client)
@@ -85,8 +86,8 @@ with a single `log_content` frame (bulk existing content), then a sequence of
 failure). A `Logs{follow:false}` stream sends a single `log_content` frame
 followed by `done`. `list`/`stop`/`stop_service`/`restart` each produce a single
 terminal `states`/`done`/`error`. `list_projects` produces a single `projects`
-response. `start_project`/`stop_project`/`stop_daemon` produce a single `done`
-or `error`.
+response. `start_project`/`stop_project`/`remove_project`/`stop_daemon` produce
+a single `done` or `error`.
 
 ## ServiceState
 
@@ -131,6 +132,7 @@ Prefer these over hand-rolling request/response loops:
 - `client.ListProjects() ([]ProjectInfo, error)` — `list_projects`.
 - `client.StartProject(configPath, build) error` — `start_project`.
 - `client.StopProject(project) error` — `stop_project`.
+- `client.RemoveProject(project) error` — `remove_project`.
 - `client.StopDaemon() error` — `stop_daemon`.
 
 Each method sends one request and drains responses until a terminal frame. For

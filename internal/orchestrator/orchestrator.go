@@ -80,9 +80,11 @@ func (d *Daemon) StartProject(configPath string, build bool) error {
 	name := cfg.Name
 
 	d.mu.Lock()
-	if _, exists := d.projects[name]; exists {
-		d.mu.Unlock()
-		return fmt.Errorf("project %q is already running; run 'local-compose stop' first", name)
+	if p, exists := d.projects[name]; exists {
+		if p.Status() == "running" {
+			d.mu.Unlock()
+			return fmt.Errorf("project %q is already running; run 'local-compose stop' first", name)
+		}
 	}
 	d.mu.Unlock()
 
@@ -147,14 +149,17 @@ func (d *Daemon) StartProject(configPath string, build bool) error {
 }
 
 // StopProject stops the named project's services, writes a project-level
-// stopped marker (so unless-stopped autostart won't resume it), closes its
-// supervisor, and removes it from the daemon's map.
+// stopped marker (so unless-stopped autostart won't resume it), and closes its
+// supervisor. The project remains in the daemon's map.
 func (d *Daemon) StopProject(name string) error {
 	d.mu.Lock()
 	p, ok := d.projects[name]
 	d.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("project %q is not running", name)
+	}
+	if p.Status() == "stopped" {
+		return nil
 	}
 
 	locs, err := project.Resolve(name)
@@ -171,9 +176,47 @@ func (d *Daemon) StopProject(name string) error {
 	_ = p.Sup.Close()
 	p.cancel()
 
+	return nil
+}
+
+// RemoveProject stops the named project's services if running, removes the project
+// from the daemon's map, and deletes its runtime and state directories.
+func (d *Daemon) RemoveProject(name string) error {
 	d.mu.Lock()
-	delete(d.projects, name)
+	p, exists := d.projects[name]
 	d.mu.Unlock()
+
+	if exists {
+		if p.Status() == "running" {
+			locs, err := project.Resolve(name)
+			if err == nil {
+				_ = writeProjectStoppedMarker(locs)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), supervisor.DefaultGracefulStopTimeout)
+			if err := p.Sup.Stop(ctx); err != nil {
+				cancel()
+				return err
+			}
+			cancel()
+			<-p.done
+			_ = p.Sup.Close()
+			p.cancel()
+		}
+
+		d.mu.Lock()
+		delete(d.projects, name)
+		d.mu.Unlock()
+	}
+
+	locs, err := project.Resolve(name)
+	if err != nil {
+		return err
+	}
+
+	// Delete runtime and state directories to completely remove it.
+	_ = os.RemoveAll(locs.Runtime)
+	_ = os.RemoveAll(locs.State)
+
 	return nil
 }
 

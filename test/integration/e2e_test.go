@@ -319,15 +319,31 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 		pidFromPS(t, finalPS, "gamma"),
 	}
 
-	// down: supervisor and all services stop, socket removed.
+	// down: supervisor and all services stop, but project stays in daemon.
 	_, downErr, rc := e.run(t, context.Background(), "down")
 	if rc != 0 {
 		t.Fatalf("down: exit %d, err=%q", rc, downErr)
 	}
+
+	// ps should succeed (exit 0) and report all services as exited/stopped
+	psAfterDown, psErr, rc := e.run(t, context.Background(), "ps")
+	if rc != 0 {
+		t.Fatalf("ps after down: exit %d, err=%q, out=%q", rc, psErr, psAfterDown)
+	}
+	if !strings.Contains(psAfterDown, "exited") && !strings.Contains(psAfterDown, "stopped") {
+		t.Fatalf("expected services to be exited/stopped after down, got: %q", psAfterDown)
+	}
+
+	// remove: stops and completely removes the project from the daemon.
+	_, removeErr, rc := e.run(t, context.Background(), "remove")
+	if rc != 0 {
+		t.Fatalf("remove: exit %d, err=%q", rc, removeErr)
+	}
+
 	waitForCond(t, 3*time.Second, func() bool {
 		_, _, rc := e.run(t, context.Background(), "ps")
 		return rc != 0
-	}, "ps fails after down (project not running)")
+	}, "ps fails after remove (project not running)")
 	assertNoOrphans(t, pids...)
 }
 

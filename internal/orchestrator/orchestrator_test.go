@@ -73,8 +73,17 @@ func TestStartAndStopProject(t *testing.T) {
 	}
 
 	projects = d.ListProjects()
+	if len(projects) != 1 || projects[0].Status != "stopped" {
+		t.Fatalf("ListProjects after stop = %+v, want [lc-test] with stopped status", projects)
+	}
+
+	if err := d.RemoveProject("lc-test"); err != nil {
+		t.Fatalf("RemoveProject: %v", err)
+	}
+
+	projects = d.ListProjects()
 	if len(projects) != 0 {
-		t.Fatalf("ListProjects after stop = %+v, want empty", projects)
+		t.Fatalf("ListProjects after remove = %+v, want empty", projects)
 	}
 }
 
@@ -329,5 +338,25 @@ func TestAutostartNoProjects(t *testing.T) {
 	}
 	if started != 0 || skipped != 0 {
 		t.Fatalf("started=%d skipped=%d, want 0/0", started, skipped)
+	}
+}
+
+func TestRemoveProject(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	configPath := writeConfig(t, shortSleepConfig)
+
+	if err := d.StartProject(configPath, false); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+
+	// Remove project while running (should stop and remove)
+	if err := d.RemoveProject("lc-test"); err != nil {
+		t.Fatalf("RemoveProject: %v", err)
+	}
+
+	projects := d.ListProjects()
+	if len(projects) != 0 {
+		t.Fatalf("ListProjects = %+v, want empty after RemoveProject", projects)
 	}
 }

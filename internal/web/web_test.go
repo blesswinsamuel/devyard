@@ -40,11 +40,16 @@ func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
 	defer m.mu.Unlock()
 	out := make([]protocol.ProjectInfo, 0, len(m.projects))
 	for name, b := range m.projects {
+		status := "running"
+		if fb, ok := b.(*fakeBackend); ok {
+			if fb.stoppedProj {
+				status = "stopped"
+			}
+		}
 		out = append(out, protocol.ProjectInfo{
 			Name:   name,
-			Status: "running",
+			Status: status,
 		})
-		_ = b
 	}
 	return out
 }
@@ -60,10 +65,20 @@ func (m *fakeMultiBackend) StartProject(configPath string, build bool) error {
 func (m *fakeMultiBackend) StopProject(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.projects[name]; !ok {
+	b, ok := m.projects[name]
+	if !ok {
 		return fmt.Errorf("project %q not running", name)
 	}
 	m.stopped = append(m.stopped, name)
+	return b.Stop(context.Background())
+}
+
+func (m *fakeMultiBackend) RemoveProject(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.projects[name]; !ok {
+		return fmt.Errorf("project %q not running", name)
+	}
 	delete(m.projects, name)
 	return nil
 }
@@ -89,15 +104,16 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 
 // fakeBackend is a minimal control.Backend for WS testing.
 type fakeBackend struct {
-	states   []protocol.ServiceState
-	logPaths map[string]string
-	restarts []string
-	stopped  []string
-	killed   []string
+	states      []protocol.ServiceState
+	logPaths    map[string]string
+	restarts    []string
+	stopped     []string
+	killed      []string
+	stoppedProj bool
 }
 
 func (b *fakeBackend) States() []protocol.ServiceState { return b.states }
-func (b *fakeBackend) Stop(context.Context) error      { return nil }
+func (b *fakeBackend) Stop(context.Context) error      { b.stoppedProj = true; return nil }
 func (b *fakeBackend) StopService(name string) error {
 	b.stopped = append(b.stopped, name)
 	return nil

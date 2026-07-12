@@ -708,7 +708,11 @@ func (s *Supervisor) StopService(name string, markStopped bool) error {
 	if !ok {
 		return fmt.Errorf("supervisor: unknown service %q", name)
 	}
-	return s.stopOne(rt, markStopped, s.opts.GracefulStopTimeout)
+	if err := s.stopOne(rt, markStopped, s.opts.GracefulStopTimeout); err != nil {
+		return err
+	}
+	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+	return nil
 }
 
 // stopOne stops a single service and waits for its run loop to exit.
@@ -743,12 +747,10 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Du
 
 	select {
 	case <-rt.done:
-		rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 		return nil
 	case <-time.After(grace):
 	}
 
-	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 	rt.mu.Lock()
 	pgid = rt.pgid
 	rt.mu.Unlock()

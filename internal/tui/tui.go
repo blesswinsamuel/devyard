@@ -206,7 +206,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouseClick(msg)
 
 	case tea.MouseWheelMsg:
-		if m.currentView == viewServices && m.pane == paneLogs {
+		if m.currentView == viewServices {
+			m.pane = paneLogs
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd

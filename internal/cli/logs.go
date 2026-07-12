@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -22,17 +23,8 @@ var logsCmd = &cobra.Command{
 			return err
 		}
 
-		service := ""
-		if len(args) == 1 {
-			service = args[0]
-		} else {
-			if len(cfg.Order) == 0 {
-				return fmt.Errorf("no services defined in config")
-			}
-			service = cfg.Order[0]
-			if len(cfg.Order) > 1 {
-				fmt.Fprintf(os.Stderr, "local-compose: no service specified, defaulting to %q\n", service)
-			}
+		if len(cfg.Order) == 0 {
+			return fmt.Errorf("no services defined in config")
 		}
 
 		socket, err := dialDaemon()
@@ -41,21 +33,56 @@ var logsCmd = &cobra.Command{
 			return err
 		}
 
-		client, err := control.Dial(socket)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
-			return err
+		if len(args) == 1 {
+			service := args[0]
+			client, err := control.Dial(socket)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
+				return err
+			}
+			defer func() { _ = client.Close() }()
+			return client.Logs(cfg.Project, service, logsFollow, newLogPrinter(service))
 		}
-		defer func() { _ = client.Close() }()
 
-		return client.Logs(cfg.Project, service, logsFollow, newLogPrinter(service))
+		if len(cfg.Order) == 1 {
+			service := cfg.Order[0]
+			client, err := control.Dial(socket)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
+				return err
+			}
+			defer func() { _ = client.Close() }()
+			return client.Logs(cfg.Project, service, logsFollow, newLogPrinter(service))
+		}
+
+		return logsAllServices(socket, cfg.Project, cfg.Order)
 	},
 }
 
+// logsAllServices opens a client connection per service and streams their logs
+// concurrently. For non-follow mode each connection returns after the existing
+// content is printed. For follow mode the goroutines block until the daemon
+// shuts down or the connections are closed.
+func logsAllServices(socket, project string, order []string) error {
+	var wg sync.WaitGroup
+	for _, name := range order {
+		wg.Add(1)
+		go func(svc string) {
+			defer wg.Done()
+			c, err := control.Dial(socket)
+			if err != nil {
+				return
+			}
+			defer func() { _ = c.Close() }()
+			_ = c.Logs(project, svc, logsFollow, newLogPrinter(svc))
+		}(name)
+	}
+	wg.Wait()
+	return nil
+}
+
 func init() {
-	// --follow has no -f shorthand: -f is reserved for the persistent --file
-	// config flag. This matches docker-compose's `--follow` spelling.
-	logsCmd.Flags().BoolVar(&logsFollow, "follow", false, "Follow log output")
+	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "Follow log output")
 }
 
 // newLogPrinter returns a callback that prints log lines to stdout with a

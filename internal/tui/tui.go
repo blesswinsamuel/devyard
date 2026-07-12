@@ -1036,10 +1036,10 @@ func renderTitledPane(width, height int, title, content string, active bool) str
 
 	var borderStyle, titleStyle lipgloss.Style
 	if active {
-		borderStyle = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("255")).Padding(0, 1)
+		borderStyle = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("255"))
 		titleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	} else {
-		borderStyle = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("243")).Padding(0, 1)
+		borderStyle = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("243"))
 		titleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
 	}
 

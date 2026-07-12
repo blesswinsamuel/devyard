@@ -736,7 +736,7 @@ func (m model) renderProjectsView() string {
 	}
 	content := strings.Join(rows, "\n")
 	height := m.height - helpBarHeight
-	body := renderTitledPane(paneW, height, "Projects", content)
+	body := renderTitledPane(paneW, height, "Projects", content, true)
 	help := m.renderHelpBar()
 	return lipgloss.JoinVertical(lipgloss.Left, body, help)
 }
@@ -749,7 +749,7 @@ func (m model) renderSplit() string {
 	return lipgloss.JoinVertical(lipgloss.Left, body, help)
 }
 
-func renderTitledPane(width, height int, title, content string) string {
+func renderTitledPane(width, height int, title, content string, active bool) string {
 	innerWidth := width - 2
 	if innerWidth < 0 {
 		innerWidth = 0
@@ -769,9 +769,19 @@ func renderTitledPane(width, height int, title, content string) string {
 			fillWidth = 0
 		}
 	}
-	topLine := "╭" + titlePart + strings.Repeat("─", fillWidth) + "╮"
 
-	paneBorder := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+	var titleStyle lipgloss.Style
+	var paneBorder lipgloss.Style
+	if active {
+		titleStyle = lipgloss.NewStyle().Bold(true)
+		paneBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("62")).Padding(0, 1)
+	} else {
+		titleStyle = lipgloss.NewStyle().Faint(true)
+		paneBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1)
+	}
+
+	topLine := "╭" + titleStyle.Render(titlePart) + titleStyle.Render(strings.Repeat("─", fillWidth)) + "╮"
+
 	rendered := paneBorder.Width(width).Height(height).Render(content)
 	lines := strings.SplitN(rendered, "\n", 2)
 	if len(lines) < 2 {
@@ -807,7 +817,7 @@ func (m model) renderListPane() string {
 	}
 	content := strings.Join(rows, "\n")
 	height := m.height - helpBarHeight
-	return renderTitledPane(listPaneWidth, height, "Services", content)
+	return renderTitledPane(listPaneWidth, height, "Services", content, m.pane == paneList)
 }
 
 func (m model) renderLogsPane() string {
@@ -817,7 +827,7 @@ func (m model) renderLogsPane() string {
 	}
 	content := m.viewport.View()
 	height := m.height - helpBarHeight
-	return renderTitledPane(m.width-listPaneWidth, height, title, content)
+	return renderTitledPane(m.width-listPaneWidth, height, title, content, m.pane == paneLogs)
 }
 
 func (m model) renderHelpBar() string {

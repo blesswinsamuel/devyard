@@ -776,7 +776,7 @@ func renderTitledPane(width, height int, title, content string, active bool) str
 		borderColor = "255"
 		titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(borderColor))
 	} else {
-		borderColor = "238"
+		borderColor = "243"
 		titleStyle = lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color(borderColor))
 	}
 	paneBorder := lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color(borderColor)).Padding(0, 1)

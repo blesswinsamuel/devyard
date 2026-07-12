@@ -31,6 +31,9 @@ const (
 	listPaneWidth   = 30
 	helpBarHeight   = 1
 	maxLogLineCount = 5000
+
+	selColor   = "238" // selection background
+	hoverColor = "237" // hover background (one step lighter)
 )
 
 // view is the currently active screen.
@@ -67,10 +70,12 @@ type Options struct {
 // New constructs the Bubble Tea program for the TUI.
 func New(opts Options) *tea.Program {
 	m := model{
-		socket:     opts.Socket,
-		project:    opts.Project,
-		configPath: opts.ConfigPath,
-		hoveredCmd: -1,
+		socket:         opts.Socket,
+		project:        opts.Project,
+		configPath:     opts.ConfigPath,
+		hoveredRow:     -1,
+		hoveredProjRow: -1,
+		hoveredCmd:     -1,
 	}
 	if opts.Project != "" {
 		m.currentView = viewServices
@@ -122,9 +127,13 @@ type model struct {
 	noDaemon bool
 	quitting bool
 
+	// Hover state.
+	hoveredRow     int // index of hovered service row, -1 for none
+	hoveredProjRow int // index of hovered project row, -1 for none
+	hoveredCmd     int // index of hovered command in help bar, -1 for none
+
 	// Help popup state.
-	showHelp   bool
-	hoveredCmd int // index of hovered command in help bar, -1 for none
+	showHelp bool
 }
 
 type statusKind int
@@ -601,31 +610,61 @@ func (m model) handleMouseMotion(msg tea.MouseMotionMsg) (tea.Model, tea.Cmd) {
 
 	if m.showHelp {
 		m.hoveredCmd = -1
+		m.hoveredRow = -1
+		m.hoveredProjRow = -1
 		return m, nil
 	}
 
-	// Only track hover on the help bar row.
-	if mouse.Y != m.height-1 {
-		if m.hoveredCmd != -1 {
-			m.hoveredCmd = -1
+	// Help bar row: track command hover.
+	if mouse.Y == m.height-1 {
+		m.hoveredRow = -1
+		m.hoveredProjRow = -1
+		items := m.helpBarItems()
+		found := -1
+		xPos := 0
+		for i, item := range items {
+			itemW := len(item.key) + len(item.label) + 3 // " k label "
+			if mouse.X >= xPos && mouse.X < xPos+itemW {
+				found = i
+				break
+			}
+			xPos += itemW
+		}
+		if found != m.hoveredCmd {
+			m.hoveredCmd = found
 		}
 		return m, nil
 	}
 
-	items := m.helpBarItems()
-	found := -1
-	xPos := 0
-	for i, item := range items {
-		itemW := len(item.key) + len(item.label) + 3 // " k label "
-		if mouse.X >= xPos && mouse.X < xPos+itemW {
-			found = i
-			break
+	m.hoveredCmd = -1
+
+	if m.currentView == viewProjects {
+		paneW := min(m.width, 50)
+		if mouse.X < paneW && mouse.Y >= 2 {
+			row := mouse.Y - 2
+			if row < len(m.projects) {
+				m.hoveredProjRow = row
+				return m, nil
+			}
 		}
-		xPos += itemW
+		m.hoveredProjRow = -1
+		return m, nil
 	}
-	if found != m.hoveredCmd {
-		m.hoveredCmd = found
+
+	if m.currentView == viewServices && m.pane == paneList {
+		if mouse.X < listPaneWidth && mouse.Y >= 2 {
+			row := mouse.Y - 2
+			if row < len(m.states) {
+				m.hoveredRow = row
+				return m, nil
+			}
+		}
+		m.hoveredRow = -1
+		return m, nil
 	}
+
+	m.hoveredRow = -1
+	m.hoveredProjRow = -1
 	return m, nil
 }
 
@@ -867,14 +906,30 @@ func (m model) renderProjectsView() string {
 		if len(name) > nameWidth {
 			name = name[:nameWidth]
 		}
-		statusCell := lipgloss.NewStyle().Foreground(ui.StatusColor(p.Status)).Render(fmt.Sprintf("%-9s", p.Status))
-		line := fmt.Sprintf(" %-*s %s", nameWidth, name, statusCell)
+		statusText := fmt.Sprintf("%-9s", p.Status)
+
+		var line string
 		if i == m.selectedProj {
+			bg := lipgloss.Color(selColor)
+			namePart := lipgloss.NewStyle().Background(bg).Render(fmt.Sprintf(" %-*s", nameWidth, name))
+			statusPart := lipgloss.NewStyle().Foreground(ui.StatusColor(p.Status)).Background(bg).Render(" " + statusText)
+			line = namePart + statusPart
 			w := lipgloss.Width(line)
 			if w < contentWidth {
-				line += strings.Repeat(" ", contentWidth-w)
+				line += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", contentWidth-w))
 			}
-			line = lipgloss.NewStyle().Background(lipgloss.Color("62")).Render(line)
+		} else if i == m.hoveredProjRow {
+			bg := lipgloss.Color(hoverColor)
+			namePart := lipgloss.NewStyle().Background(bg).Render(fmt.Sprintf(" %-*s", nameWidth, name))
+			statusPart := lipgloss.NewStyle().Foreground(ui.StatusColor(p.Status)).Background(bg).Render(" " + statusText)
+			line = namePart + statusPart
+			w := lipgloss.Width(line)
+			if w < contentWidth {
+				line += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", contentWidth-w))
+			}
+		} else {
+			statusPart := lipgloss.NewStyle().Foreground(ui.StatusColor(p.Status)).Render(statusText)
+			line = fmt.Sprintf(" %-*s %s", nameWidth, name, statusPart)
 		}
 		rows = append(rows, line)
 	}
@@ -946,15 +1001,33 @@ func (m model) renderListPane() string {
 		if len(name) > nameWidth {
 			name = name[:nameWidth]
 		}
-		statusCell := lipgloss.NewStyle().Foreground(ui.StatusColor(st.Status)).Render(fmt.Sprintf("%-9s", ui.StatusLabel(st.Status, st.ExitCode)))
-		pidCell := ui.PIDLabel(st.PID)
-		line := fmt.Sprintf(" %-*s %s %5s", nameWidth, name, statusCell, pidCell)
+		statusText := fmt.Sprintf("%-9s", ui.StatusLabel(st.Status, st.ExitCode))
+		pidText := fmt.Sprintf("%5s", ui.PIDLabel(st.PID))
+
+		var line string
 		if i == m.selected {
+			bg := lipgloss.Color(selColor)
+			namePart := lipgloss.NewStyle().Background(bg).Render(fmt.Sprintf(" %-*s", nameWidth, name))
+			statusPart := lipgloss.NewStyle().Foreground(ui.StatusColor(st.Status)).Background(bg).Render(" " + statusText)
+			pidPart := lipgloss.NewStyle().Background(bg).Render(" " + pidText)
+			line = namePart + statusPart + pidPart
 			w := lipgloss.Width(line)
 			if w < contentWidth {
-				line += strings.Repeat(" ", contentWidth-w)
+				line += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", contentWidth-w))
 			}
-			line = lipgloss.NewStyle().Background(lipgloss.Color("62")).Render(line)
+		} else if i == m.hoveredRow {
+			bg := lipgloss.Color(hoverColor)
+			namePart := lipgloss.NewStyle().Background(bg).Render(fmt.Sprintf(" %-*s", nameWidth, name))
+			statusPart := lipgloss.NewStyle().Foreground(ui.StatusColor(st.Status)).Background(bg).Render(" " + statusText)
+			pidPart := lipgloss.NewStyle().Background(bg).Render(" " + pidText)
+			line = namePart + statusPart + pidPart
+			w := lipgloss.Width(line)
+			if w < contentWidth {
+				line += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", contentWidth-w))
+			}
+		} else {
+			statusPart := lipgloss.NewStyle().Foreground(ui.StatusColor(st.Status)).Render(statusText)
+			line = fmt.Sprintf(" %-*s %s %5s", nameWidth, name, statusPart, pidText)
 		}
 		rows = append(rows, line)
 	}

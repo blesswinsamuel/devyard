@@ -1376,41 +1376,49 @@ func (m model) handleCopyModeKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) moveCursorLeft() {
-	if m.cursorCol > 0 {
-		runes := []rune(m.logLines[m.cursorLine])
-		m.cursorCol--
-		for m.cursorCol > 0 && ansi.StringWidth(string(runes[m.cursorCol])) == 0 {
-			m.cursorCol--
-		}
+func (m *model) moveCursorRight() {
+	if m.cursorLine >= len(m.logLines) {
+		return
+	}
+	stripped := ansi.Strip(m.logLines[m.cursorLine])
+	maxVisCol := ansi.StringWidth(stripped)
+	if m.cursorCol < maxVisCol {
+		m.cursorCol++
 	}
 }
 
-func (m *model) moveCursorRight() {
-	if m.cursorLine < len(m.logLines) {
-		runes := []rune(m.logLines[m.cursorLine])
-		if m.cursorCol < len(runes) {
-			m.cursorCol++
-			for m.cursorCol < len(runes) && ansi.StringWidth(string(runes[m.cursorCol])) == 0 {
-				m.cursorCol++
-			}
-		}
+func (m *model) moveCursorLeft() {
+	if m.cursorCol > 0 {
+		m.cursorCol--
 	}
 }
 
 func (m *model) moveCursorUp() {
 	if m.cursorLine > 0 {
 		m.cursorLine--
-		m.cursorCol = min(m.cursorCol, len([]rune(m.logLines[m.cursorLine])))
-		m.snapCursorToVisible()
+		stripped := ansi.Strip(m.logLines[m.cursorLine])
+		maxVisCol := ansi.StringWidth(stripped)
+		m.cursorCol = min(m.cursorCol, maxVisCol)
 	}
 }
 
 func (m *model) moveCursorDown() {
 	if m.cursorLine < len(m.logLines)-1 {
 		m.cursorLine++
-		m.cursorCol = min(m.cursorCol, len([]rune(m.logLines[m.cursorLine])))
-		m.snapCursorToVisible()
+		stripped := ansi.Strip(m.logLines[m.cursorLine])
+		maxVisCol := ansi.StringWidth(stripped)
+		m.cursorCol = min(m.cursorCol, maxVisCol)
+	}
+}
+
+func (m *model) moveCursorStartOfLine() {
+	m.cursorCol = 0
+}
+
+func (m *model) moveCursorEndOfLine() {
+	if m.cursorLine < len(m.logLines) {
+		stripped := ansi.Strip(m.logLines[m.cursorLine])
+		m.cursorCol = ansi.StringWidth(stripped)
 	}
 }
 
@@ -1418,12 +1426,10 @@ func (m *model) snapCursorToVisible() {
 	if m.cursorLine < 0 || m.cursorLine >= len(m.logLines) {
 		return
 	}
-	runes := []rune(m.logLines[m.cursorLine])
-	if m.cursorCol >= len(runes) {
-		return
-	}
-	for m.cursorCol < len(runes) && ansi.StringWidth(string(runes[m.cursorCol])) == 0 {
-		m.cursorCol++
+	stripped := ansi.Strip(m.logLines[m.cursorLine])
+	maxVisCol := ansi.StringWidth(stripped)
+	if m.cursorCol > maxVisCol {
+		m.cursorCol = maxVisCol
 	}
 }
 
@@ -1439,12 +1445,8 @@ func (m *model) clampCursor() {
 	if m.cursorLine >= len(m.logLines) {
 		m.cursorLine = len(m.logLines) - 1
 	}
-	runes := []rune(m.logLines[m.cursorLine])
 	if m.cursorCol < 0 {
 		m.cursorCol = 0
-	}
-	if m.cursorCol > len(runes) {
-		m.cursorCol = len(runes)
 	}
 	m.snapCursorToVisible()
 }
@@ -1518,36 +1520,47 @@ func (m model) screenToLogPos(screenX, screenY int) (line, col int) {
 			visOffset := visRow - totalVisRow
 			subLineStartCol := visOffset * maxWidth
 			targetDisplayCol := subLineStartCol + vpX
+			// Convert targetDisplayCol to visual column (count of visible chars)
 			runes := []rune(logLine)
 			accumWidth := 0
-			for r, ch := range runes {
+			for _, ch := range runes {
 				chWidth := ansi.StringWidth(string(ch))
 				if chWidth == 0 {
 					continue
 				}
 				if accumWidth+chWidth > targetDisplayCol {
-					return i, r
+					return i, accumWidth
 				}
 				accumWidth += chWidth
 			}
-			return i, len(runes)
+			return i, accumWidth
 		}
 		totalVisRow += lineVisRows
 	}
 	return len(m.logLines) - 1, 0
 }
 
-func (m *model) posToByteOffset(line, col int) int {
+// posToByteOffset converts a (line, visualCol) position to byte offset in the content.
+// visualCol is the count of visible characters (display width, not rune index).
+func (m *model) posToByteOffset(line, visualCol int) int {
 	offset := 0
 	for i := 0; i < line && i < len(m.logLines); i++ {
-		offset += len(m.logLines[i]) + 1
+		offset += len(m.logLines[i]) + 1 // +1 for newline
 	}
 	if line >= 0 && line < len(m.logLines) {
-		runes := []rune(m.logLines[line])
-		if col > len(runes) {
-			col = len(runes)
+		logLine := m.logLines[line]
+		runes := []rune(logLine)
+		accumWidth := 0
+		byteOffset := 0
+		for i, ch := range runes {
+			chWidth := ansi.StringWidth(string(ch))
+			if accumWidth >= visualCol {
+				return offset + byteOffset
+			}
+			accumWidth += chWidth
+			byteOffset += len(string(runes[i : i+1]))
 		}
-		offset += len(string(runes[:col]))
+		return offset + len(logLine)
 	}
 	return offset
 }
@@ -1585,33 +1598,65 @@ func (m *model) extractSelectedText() string {
 	if m.selAnchorLine < 0 {
 		return ""
 	}
-	startLine, startCol := m.selAnchorLine, m.selAnchorCol
-	endLine, endCol := m.cursorLine, m.cursorCol
-	if startLine > endLine || (startLine == endLine && startCol > endCol) {
-		startLine, startCol, endLine, endCol = endLine, endCol, startLine, startCol
+	startLine, startVisCol := m.selAnchorLine, m.selAnchorCol
+	endLine, endVisCol := m.cursorLine, m.cursorCol
+	if startLine > endLine || (startLine == endLine && startVisCol > endVisCol) {
+		startLine, startVisCol, endLine, endVisCol = endLine, endVisCol, startLine, startVisCol
 	}
 	if startLine == endLine {
-		runes := []rune(m.logLines[startLine])
-		startCol = min(startCol, len(runes))
-		endCol = min(endCol, len(runes))
-		return ansi.Strip(string(runes[startCol:endCol]))
+		return m.extractTextFromLine(startLine, startVisCol, endVisCol)
 	}
 	var parts []string
 	if startLine < len(m.logLines) {
-		firstRunes := []rune(m.logLines[startLine])
-		if startCol < len(firstRunes) {
-			parts = append(parts, string(firstRunes[startCol:]))
-		}
+		parts = append(parts, m.extractTextFromLine(startLine, startVisCol, -1))
 	}
 	for i := startLine + 1; i < endLine && i < len(m.logLines); i++ {
-		parts = append(parts, m.logLines[i])
+		parts = append(parts, ansi.Strip(m.logLines[i]))
 	}
 	if endLine < len(m.logLines) {
-		lastRunes := []rune(m.logLines[endLine])
-		endCol = min(endCol, len(lastRunes))
-		parts = append(parts, string(lastRunes[:endCol]))
+		parts = append(parts, m.extractTextFromLine(endLine, 0, endVisCol))
 	}
-	return ansi.Strip(strings.Join(parts, "\n"))
+	return strings.Join(parts, "\n")
+}
+
+// extractTextFromLine extracts text from a line between visual columns [startVisCol, endVisCol).
+// If endVisCol is -1, extracts to the end of the line.
+func (m *model) extractTextFromLine(line, startVisCol, endVisCol int) string {
+	if line < 0 || line >= len(m.logLines) {
+		return ""
+	}
+	logLine := m.logLines[line]
+	runes := []rune(logLine)
+	stripped := ansi.Strip(logLine)
+	maxVisCol := ansi.StringWidth(stripped)
+	if startVisCol < 0 {
+		startVisCol = 0
+	}
+	if endVisCol < 0 || endVisCol > maxVisCol {
+		endVisCol = maxVisCol
+	}
+	if startVisCol >= endVisCol {
+		return ""
+	}
+	// Convert visual columns to rune indices
+	startRune := 0
+	endRune := 0
+	accumWidth := 0
+	for i, ch := range runes {
+		chWidth := ansi.StringWidth(string(ch))
+		if accumWidth >= startVisCol && startRune == 0 && accumWidth > 0 {
+			startRune = i
+		}
+		if accumWidth >= endVisCol {
+			endRune = i
+			break
+		}
+		accumWidth += chWidth
+	}
+	if endRune == 0 {
+		endRune = len(runes)
+	}
+	return ansi.Strip(string(runes[startRune:endRune]))
 }
 
 func (m model) handleMouseRelease(msg tea.MouseReleaseMsg) (tea.Model, tea.Cmd) {

@@ -244,67 +244,21 @@ func (d *Daemon) StopDaemon() error {
 		p.cancel()
 	}
 
-	d.mu.Lock()
-	d.projects = make(map[string]*Project)
-	d.mu.Unlock()
 	return nil
 }
 
-// ListProjects returns a snapshot of all known projects (both in-memory and on-disk)
+// ListProjects returns a snapshot of all known projects (both running and stopped)
 // and their statuses.
 func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	out := make([]protocol.ProjectInfo, 0, len(d.projects))
-	seen := make(map[string]bool)
-
-	// 1. Include all in-memory projects.
 	for name, p := range d.projects {
-		seen[name] = true
 		out = append(out, protocol.ProjectInfo{
 			Name:       name,
 			Status:     p.Status(),
 			ConfigPath: p.ConfigPath,
-		})
-	}
-
-	// 2. Discover stopped projects stored on disk under state base dir.
-	stateBase, err := stateBaseDir()
-	if err != nil {
-		return out
-	}
-	appDir := filepath.Join(stateBase, project.AppDir)
-	entries, err := os.ReadDir(appDir)
-	if err != nil {
-		return out
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if seen[name] {
-			continue
-		}
-
-		locs, err := project.Resolve(name)
-		if err != nil {
-			continue
-		}
-		configPath, ok := readConfigPath(locs)
-		if !ok {
-			continue
-		}
-		if _, err := os.Stat(configPath); err != nil {
-			continue
-		}
-
-		out = append(out, protocol.ProjectInfo{
-			Name:       name,
-			Status:     "stopped",
-			ConfigPath: configPath,
 		})
 	}
 
@@ -514,11 +468,20 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 		}
 
 		policy := autostartPolicy(cfg.File)
-		if policy == config.RestartNo {
-			skipped++
-			continue
-		}
-		if policy == config.RestartUnlessStopped && hasProjectStoppedMarker(locs) {
+		shouldAutostart := policy == config.RestartAlways || (policy == config.RestartUnlessStopped && !hasProjectStoppedMarker(locs))
+
+		if !shouldAutostart {
+			// Register stopped project in memory so d.projects owns all registered projects.
+			d.mu.Lock()
+			if _, exists := d.projects[name]; !exists {
+				d.projects[name] = &Project{
+					Name:       name,
+					ConfigPath: configPath,
+					BaseDir:    cfg.BaseDir,
+					done:       closedChan(),
+				}
+			}
+			d.mu.Unlock()
 			skipped++
 			continue
 		}
@@ -569,4 +532,10 @@ func stateBaseDir() (string, error) {
 		return "", fmt.Errorf("determine state dir: %w", err)
 	}
 	return filepath.Join(h, project.DefaultStateBase), nil
+}
+
+func closedChan() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
 }

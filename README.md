@@ -56,6 +56,16 @@ cd local-compose
 go build -o local-compose ./cmd/local-compose
 ```
 
+`version`, `commit`, and `date` build metadata can be injected via `-ldflags`
+(the defaults are `dev`, empty, empty):
+
+```bash
+go build -ldflags "-X github.com/blesswinsamuel/local-compose/internal/cli.Version=v1.2.3 \
+                   -X github.com/blesswinsamuel/local-compose/internal/cli.Commit=$(git rev-parse --short HEAD) \
+                   -X github.com/blesswinsamuel/local-compose/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+         -o local-compose ./cmd/local-compose
+```
+
 Prebuilt binaries for tagged releases will be published on the
 [releases page](https://github.com/blesswinsamuel/local-compose/releases) once available.
 

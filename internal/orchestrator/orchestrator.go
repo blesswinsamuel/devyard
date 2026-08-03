@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -306,6 +307,10 @@ func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 			ConfigPath: configPath,
 		})
 	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Name < out[j].Name
+	})
 
 	return out
 }

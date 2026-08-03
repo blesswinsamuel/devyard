@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -381,6 +382,98 @@ func TestSupervisorStopService(t *testing.T) {
 	}
 	if st.PID != 0 {
 		t.Errorf("pid = %d, want 0 after stop", st.PID)
+	}
+}
+
+// TestSupervisorKillService starts a long sleep and verifies KillService sends
+// the requested signal and the run loop exits.
+func TestSupervisorKillService(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"sleeper": {Command: "sleep 30", Shell: "sh", Restart: config.RestartNo},
+	})
+	s := newSupervisor(t, file, []string{"sleeper"})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+		_ = s.Close()
+	})
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !waitFor(t, 2*time.Second, func() bool {
+		return s.States()[0].Status == supervisor.StatusRunning
+	}) {
+		t.Fatalf("sleeper never reached running: %+v", s.States())
+	}
+
+	if err := s.KillService("sleeper", "SIGTERM"); err != nil {
+		t.Fatalf("KillService: %v", err)
+	}
+	if !waitFor(t, 2*time.Second, func() bool {
+		return s.States()[0].Status == supervisor.StatusStopped
+	}) {
+		t.Fatalf("sleeper not stopped after kill: %+v", s.States())
+	}
+}
+
+func TestKillServiceUnknownService(t *testing.T) {
+	s := newSupervisor(t, fileWith(map[string]config.Service{
+		"sleeper": {Command: "sleep 30", Shell: "sh", Restart: config.RestartNo},
+	}), []string{"sleeper"})
+	if err := s.KillService("nope", "SIGKILL"); err == nil {
+		t.Fatalf("KillService for unknown service: expected error, got nil")
+	}
+}
+
+func TestKillServiceBadSignal(t *testing.T) {
+	s := newSupervisor(t, fileWith(map[string]config.Service{
+		"sleeper": {Command: "sleep 30", Shell: "sh", Restart: config.RestartNo},
+	}), []string{"sleeper"})
+	if err := s.KillService("sleeper", "SIGBOGUS"); err == nil {
+		t.Fatalf("KillService with bad signal: expected error, got nil")
+	}
+}
+
+func TestParseSignal(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want syscall.Signal
+		ok   bool
+	}{
+		{name: "", want: syscall.SIGKILL, ok: true},
+		{name: "SIGKILL", want: syscall.SIGKILL, ok: true},
+		{name: "KILL", want: syscall.SIGKILL, ok: true},
+		{name: "sigterm", want: syscall.SIGTERM, ok: true},
+		{name: "SIGTERM", want: syscall.SIGTERM, ok: true},
+		{name: "TERM", want: syscall.SIGTERM, ok: true},
+		{name: "SIGINT", want: syscall.SIGINT, ok: true},
+		{name: "INT", want: syscall.SIGINT, ok: true},
+		{name: "SIGHUP", want: syscall.SIGHUP, ok: true},
+		{name: "9", want: syscall.SIGKILL, ok: true},
+		{name: "15", want: syscall.SIGTERM, ok: true},
+		{name: "SIGBOGUS", ok: false},
+		{name: "BOGUS", ok: false},
+		{name: "0", ok: false},
+		{name: "32", ok: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := supervisor.ParseSignalForTest(tc.name)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("ParseSignal(%q): %v", tc.name, err)
+				}
+				if got != tc.want {
+					t.Errorf("ParseSignal(%q) = %v, want %v", tc.name, got, tc.want)
+				}
+			} else if err == nil {
+				t.Errorf("ParseSignal(%q): expected error, got %v", tc.name, got)
+			}
+		})
 	}
 }
 

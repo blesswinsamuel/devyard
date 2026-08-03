@@ -141,7 +141,7 @@ func (s *Server) proxyStopService(c *websocket.Conn, ctx context.Context, req *w
 }
 
 func (s *Server) proxyKillService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindKillService, Project: req.Project, Service: req.Service})
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindKillService, Project: req.Project, Service: req.Service, Signal: req.Signal})
 	if err != nil {
 		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
 		return

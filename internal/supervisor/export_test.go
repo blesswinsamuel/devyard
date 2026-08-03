@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"syscall"
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
@@ -37,4 +38,9 @@ func DefaultColorEnvForTest() []string {
 // ApplyEnvDefaultsForTest exposes applyEnvDefaults.
 func ApplyEnvDefaultsForTest(parent, defaults []string) []string {
 	return applyEnvDefaults(parent, defaults)
+}
+
+// ParseSignalForTest exposes parseSignal.
+func ParseSignalForTest(name string) (syscall.Signal, error) {
+	return parseSignal(name)
 }

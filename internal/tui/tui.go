@@ -1747,7 +1747,7 @@ func actionCmd(socket, project, action, service string) tea.Cmd {
 		case "stop":
 			err = c.StopService(project, service)
 		case "kill":
-			err = c.KillService(project, service)
+			err = c.KillService(project, service, "")
 		case "down":
 			err = c.StopProject(project)
 		default:

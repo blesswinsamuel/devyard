@@ -28,8 +28,10 @@ type Backend interface {
 	// implementation; the supervisor treats it as an explicit stop so
 	// unless-stopped does not auto-resume it.
 	StopService(name string) error
-	// KillService immediately SIGKILLs a single service without a grace period.
-	KillService(name string) error
+	// KillService sends signal to a single service's process group without a
+	// grace period. signal is a signal name (e.g. "SIGKILL", "SIGTERM"); empty
+	// means SIGKILL.
+	KillService(name, signal string) error
 	// Restart stops and relaunches one service by name.
 	Restart(name string) error
 	// LogPath returns the absolute path of a service's log file.
@@ -227,18 +229,25 @@ func (s *Server) handleStopService(w io.Writer, req protocol.Request) {
 }
 
 func (s *Server) handleKillService(w io.Writer, req protocol.Request) {
-	if req.Service == "" {
-		_ = writeError(w, "kill_service: service is required")
-		return
-	}
 	b, err := s.backend.ProjectBackend(req.Project)
 	if err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}
-	if err := b.KillService(req.Service); err != nil {
-		_ = writeError(w, err.Error())
+	if req.Service != "" {
+		if err := b.KillService(req.Service, req.Signal); err != nil {
+			_ = writeError(w, err.Error())
+			return
+		}
+		_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
 		return
+	}
+	// Kill all: iterate the current snapshot in start order.
+	for _, st := range b.States() {
+		if err := b.KillService(st.Name, req.Signal); err != nil {
+			_ = writeError(w, fmt.Sprintf("kill %s: %v", st.Name, err))
+			return
+		}
 	}
 	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
 }

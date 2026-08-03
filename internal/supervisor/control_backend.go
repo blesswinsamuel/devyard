@@ -53,9 +53,10 @@ func (b *ControlBackend) StopService(name string) error {
 	return b.s.StopService(name, true)
 }
 
-// KillService immediately SIGKILLs a single service without a grace period.
-func (b *ControlBackend) KillService(name string) error {
-	return b.s.KillService(name)
+// KillService immediately sends signal to a single service's process group
+// without a grace period. Empty signal means SIGKILL.
+func (b *ControlBackend) KillService(name, signal string) error {
+	return b.s.KillService(name, signal)
 }
 
 // Restart stops and relaunches one service by name.

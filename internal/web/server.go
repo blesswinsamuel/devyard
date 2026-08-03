@@ -121,6 +121,7 @@ type wsRequest struct {
 	Type       string `json:"type"`
 	Project    string `json:"project,omitempty"`
 	Service    string `json:"service,omitempty"`
+	Signal     string `json:"signal,omitempty"`
 	ConfigPath string `json:"config_path,omitempty"`
 }
 
@@ -263,7 +264,7 @@ func (s *Server) handleKillService(c *websocket.Conn, ctx context.Context, req *
 		s.sendError(c, ctx, err.Error())
 		return
 	}
-	if err := b.KillService(req.Service); err != nil {
+	if err := b.KillService(req.Service, req.Signal); err != nil {
 		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
 		return
 	}

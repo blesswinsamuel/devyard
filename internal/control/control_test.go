@@ -27,6 +27,7 @@ type fakeBackend struct {
 	stopped    bool
 	stoppedSvc []string
 	killedSvc  []string
+	killedSigs []string
 	stopSvcErr error
 }
 
@@ -52,10 +53,11 @@ func (b *fakeBackend) StopService(name string) error {
 	return b.stopSvcErr
 }
 
-func (b *fakeBackend) KillService(name string) error {
+func (b *fakeBackend) KillService(name, signal string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.killedSvc = append(b.killedSvc, name)
+	b.killedSigs = append(b.killedSigs, signal)
 	return nil
 }
 
@@ -220,31 +222,36 @@ func TestRoundtripKillService(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.KillService("", "api"); err != nil {
+	if err := c.KillService("", "api", "SIGTERM"); err != nil {
 		t.Fatalf("KillService: %v", err)
 	}
 	if b.killedCount("api") != 1 {
 		t.Errorf("api kills = %d, want 1", b.killedCount("api"))
 	}
+	if len(b.killedSigs) != 1 || b.killedSigs[0] != "SIGTERM" {
+		t.Errorf("signals = %v, want [SIGTERM]", b.killedSigs)
+	}
 }
 
-func TestKillServiceRequiresName(t *testing.T) {
-	b := &fakeBackend{}
+func TestKillServiceEmptyServiceKillsAll(t *testing.T) {
+	b := &fakeBackend{
+		states: []protocol.ServiceState{
+			{Name: "api", Status: "running"},
+			{Name: "web", Status: "running"},
+		},
+	}
 	srv := newServer(t, b)
 	c, err := control.Dial(srv.Addr())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Send(protocol.Request{Kind: protocol.KindKillService}); err != nil {
-		t.Fatalf("Send: %v", err)
+	if err := c.KillService("", "", "SIGKILL"); err != nil {
+		t.Fatalf("KillService all: %v", err)
 	}
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv: %v", err)
-	}
-	if resp.Kind != protocol.KindError {
-		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
+	if b.killedCount("api") != 1 || b.killedCount("web") != 1 {
+		t.Errorf("kill-all counts: api=%d web=%d, want 1/1",
+			b.killedCount("api"), b.killedCount("web"))
 	}
 }
 

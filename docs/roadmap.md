@@ -5,8 +5,8 @@ What's done, what's planned, and where each item lives in the code.
 ## Done
 
 - **Core lifecycle** — `up`, `up -d`, `down`, `ps`, `logs [service] [--follow]`,
-  `restart [service]`, `build [service...]`, `up --build`. (`internal/cli`,
-  `internal/supervisor`, `internal/control`)
+  `restart [service]`, `kill [service] [--signal]`, `build [service...]`,
+  `up --build`. (`internal/cli`, `internal/supervisor`, `internal/control`)
 - **Global daemon** — a single daemon process owns multiple project
   supervisors (`map[string]*supervisor.Supervisor`). All CLI commands, the TUI,
   and the web UI are thin clients over one Unix socket at

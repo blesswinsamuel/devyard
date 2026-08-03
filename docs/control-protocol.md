@@ -37,6 +37,7 @@ type Request struct {
     Kind       RequestKind `json:"kind"`
     Project    string      `json:"project,omitempty"`
     Service    string      `json:"service,omitempty"`
+    Signal     string      `json:"signal,omitempty"`
     Follow     bool        `json:"follow,omitempty"`
     ConfigPath string      `json:"config_path,omitempty"`
     Build      bool        `json:"build,omitempty"`
@@ -49,6 +50,7 @@ type Request struct {
 | `"logs"` | project name | service name | `Follow` | Stream the service's log file. `follow:false` streams existing content and ends with `done`; `follow:true` keeps streaming new lines until shutdown/disconnect. |
 | `"stop"` | project name | — | — | Stop every service in the project. Acks with `done` once all groups are torn down. |
 | `"stop_service"` | project name | service name | — | Stop one service in place (no restart). Acks with `done`. |
+| `"kill_service"` | project name | service name (empty = all) | `Signal` | Signal one service (empty = all services, in start order) with the named signal; empty `Signal` means `SIGKILL`. No grace period. Acks with `done`. |
 | `"restart"` | project name | service name (empty = all) | — | Restart the named service, or all when empty. Acks with `done`. |
 | `"list_projects"` | — | — | — | Return one `projects` response with a snapshot of all known projects. |
 | `"start_project"` | — | — | `ConfigPath`, `Build` | Load the config at `ConfigPath` and start a supervisor for it. Acks with `done` or `error`. |
@@ -84,10 +86,10 @@ A single request may produce many responses. A `Logs{follow:true}` stream starts
 with a single `log_content` frame (bulk existing content), then a sequence of
 `log_line` frames for new lines, ending in `done` (on shutdown) or `error` (on
 failure). A `Logs{follow:false}` stream sends a single `log_content` frame
-followed by `done`. `list`/`stop`/`stop_service`/`restart` each produce a single
-terminal `states`/`done`/`error`. `list_projects` produces a single `projects`
-response. `start_project`/`stop_project`/`remove_project`/`stop_daemon` produce
-a single `done` or `error`.
+followed by `done`. `list`/`stop`/`stop_service`/`kill_service`/`restart` each
+produce a single terminal `states`/`done`/`error`. `list_projects` produces a
+single `projects` response. `start_project`/`stop_project`/`remove_project`/
+`stop_daemon` produce a single `done` or `error`.
 
 ## ServiceState
 
@@ -128,6 +130,8 @@ Prefer these over hand-rolling request/response loops:
   line, returns on `done`/`error`.
 - `client.Stop(project) error` — `stop` (stop all services in a project).
 - `client.StopService(project, name) error` — `stop_service`.
+- `client.KillService(project, name, signal) error` — `kill_service` (empty
+  `signal` = `SIGKILL`).
 - `client.Restart(project, service) error` — `restart` (empty service = all).
 - `client.ListProjects() ([]ProjectInfo, error)` — `list_projects`.
 - `client.StartProject(configPath, build) error` — `start_project`.
@@ -161,6 +165,7 @@ type Backend interface {
     States() []protocol.ServiceState
     Stop(ctx context.Context) error
     StopService(name string) error
+    KillService(name, signal string) error
     Restart(name string) error
     LogPath(name string) (string, error)
 }

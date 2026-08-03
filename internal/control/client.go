@@ -160,9 +160,10 @@ func (c *Client) StopService(project, service string) error {
 }
 
 // KillService sends a KillService request for one service in the given project
-// and waits for confirmation. The service is immediately SIGKILLed.
-func (c *Client) KillService(project, service string) error {
-	if err := c.Send(protocol.Request{Kind: protocol.KindKillService, Project: project, Service: service}); err != nil {
+// and waits for confirmation. The service is immediately signalled with the
+// given signal name (empty means SIGKILL).
+func (c *Client) KillService(project, service, signal string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindKillService, Project: project, Service: service, Signal: signal}); err != nil {
 		return err
 	}
 	return c.awaitDone()

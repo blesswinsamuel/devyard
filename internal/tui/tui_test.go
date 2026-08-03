@@ -31,7 +31,7 @@ func (b *fakeBackend) StopService(name string) error {
 	b.stopped = append(b.stopped, name)
 	return nil
 }
-func (b *fakeBackend) KillService(name string) error {
+func (b *fakeBackend) KillService(name, signal string) error {
 	b.killed = append(b.killed, name)
 	return nil
 }

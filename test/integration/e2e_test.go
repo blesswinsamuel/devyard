@@ -589,3 +589,49 @@ services:
 		}
 	}
 }
+
+// TestE2E_KillService verifies `kill` forcefully terminates a service with the
+// default SIGKILL, and `kill --signal` lets the caller pick the signal.
+func TestE2E_KillService(t *testing.T) {
+	const cfg = `version: "1"
+name: lc-test
+services:
+  alpha:
+    command: sh -c 'echo alpha-start; sleep 300'
+    restart: unless-stopped
+  beta:
+    command: sh -c 'echo beta-start; sleep 300'
+    restart: unless-stopped
+`
+	e := newEnv(t, cfg)
+	_, _, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d", code)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") != 0
+	}, "ps shows both services running")
+
+	psOut, _, _ := e.run(t, context.Background(), "ps")
+	alphaPID := pidFromPS(t, psOut, "alpha")
+	betaPID := pidFromPS(t, psOut, "beta")
+
+	// kill beta with the default SIGKILL.
+	_, killErr, rc := e.run(t, context.Background(), "kill", "beta")
+	if rc != 0 {
+		t.Fatalf("kill beta: exit %d, err=%q", rc, killErr)
+	}
+	// kill alpha with an explicit SIGTERM.
+	_, killErr, rc = e.run(t, context.Background(), "kill", "--signal", "SIGTERM", "alpha")
+	if rc != 0 {
+		t.Fatalf("kill --signal SIGTERM alpha: exit %d, err=%q", rc, killErr)
+	}
+
+	waitForCond(t, 3*time.Second, func() bool {
+		after, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, after, "alpha") == 0 && pidFromPS(t, after, "beta") == 0
+	}, "kill left both services stopped")
+
+	assertNoOrphans(t, alphaPID, betaPID)
+}

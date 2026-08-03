@@ -827,9 +827,14 @@ func (s *Supervisor) StopService(name string, markStopped bool) error {
 	return nil
 }
 
-// KillService immediately SIGKILLs a single service by name without a grace
-// period. If the service has already exited, this is a no-op.
-func (s *Supervisor) KillService(name string) error {
+// KillService immediately sends signal to a single service's process group
+// without a grace period. signal is a signal name ("SIGKILL", "SIGTERM", ...);
+// empty means SIGKILL. If the service has already exited, this is a no-op.
+func (s *Supervisor) KillService(name, signal string) error {
+	sig, err := parseSignal(signal)
+	if err != nil {
+		return err
+	}
 	rt, ok := s.services[name]
 	if !ok {
 		return fmt.Errorf("supervisor: unknown service %q", name)
@@ -852,7 +857,7 @@ func (s *Supervisor) KillService(name string) error {
 	pgid := rt.pgid
 	rt.mu.Unlock()
 	if pgid > 0 {
-		_ = killGroup(pgid, syscall.SIGKILL)
+		_ = killGroup(pgid, sig)
 	}
 	select {
 	case <-rt.done:

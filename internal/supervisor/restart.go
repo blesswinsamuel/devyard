@@ -96,7 +96,11 @@ func applyEnvDefaults(parent, defaults []string) []string {
 	existing := make(map[string]bool, len(parent))
 	for _, kv := range parent {
 		if i := strings.IndexByte(kv, '='); i >= 0 {
-			existing[kv[:i]] = true
+			key := kv[:i]
+			val := kv[i+1:]
+			if val != "" {
+				existing[key] = true
+			}
 		}
 	}
 	out := make([]string, 0, len(parent)+len(defaults))

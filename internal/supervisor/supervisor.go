@@ -230,16 +230,19 @@ func New(opts Options) (*Supervisor, error) {
 	}, nil
 }
 
-// Start launches every service in topological order and returns once all have
-// been spawned. It does not block until services exit — use Wait for that.
-// Calling Start twice returns an error.
-func (s *Supervisor) Start(ctx context.Context) error {
+// AdoptOrStart checks for existing saved state and adopts living processes; otherwise starts new processes.
+func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 	if !s.started.CompareAndSwap(false, true) {
 		return errors.New("supervisor: already started")
 	}
 
 	if err := s.openLoggers(); err != nil {
 		return err
+	}
+
+	snap, err := LoadState(s.opts.Locations)
+	if err != nil && s.opts.Stdout != nil {
+		fmt.Fprintf(s.opts.Stdout, "supervisor: load state: %v\n", err)
 	}
 
 	if s.opts.InstallSignalHandler {
@@ -258,9 +261,6 @@ func (s *Supervisor) Start(ctx context.Context) error {
 
 	for _, name := range s.order {
 		rt := s.services[name]
-		// Unless-stopped services with a persisted "stopped" marker are
-		// skipped so they don't auto-resume on the next `up`. Log it so the
-		// user sees why the service isn't starting and how to resume it.
 		if rt.spec.Restart == config.RestartUnlessStopped && s.hasStoppedMarker(name) {
 			if rt.logger != nil {
 				rt.logger.writeLine(fmt.Sprintf("local-compose: skipping stopped service %s (use `restart %s` to resume)", name, name))
@@ -271,10 +271,118 @@ func (s *Supervisor) Start(ctx context.Context) error {
 			close(rt.done)
 			continue
 		}
+
+		var adoptedSnap *ServiceStateSnapshot
+		if snap != nil {
+			if sSnap, ok := snap.Services[name]; ok {
+				if IsProcessGroupAlive(sSnap.PGID) {
+					sSnapCopy := sSnap
+					adoptedSnap = &sSnapCopy
+				}
+			}
+		}
+
 		s.wg.Add(1)
-		go s.runService(ctx, rt)
+		if adoptedSnap != nil {
+			go s.adoptService(ctx, rt, *adoptedSnap)
+		} else {
+			go s.runService(ctx, rt)
+		}
 	}
 	return nil
+}
+
+// adoptService attaches to an existing running process group recorded in snapshot and monitors it.
+func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap ServiceStateSnapshot) {
+	defer s.wg.Done()
+	defer close(rt.done)
+
+	rt.mu.Lock()
+	rt.pid = snap.PID
+	rt.pgid = snap.PGID
+	rt.status = StatusRunning
+	rt.startedAt = snap.StartedAt
+	rt.restarts = snap.Restarts
+	rt.mu.Unlock()
+	rt.startedOnce.Store(true)
+
+	if rt.logger != nil {
+		rt.logger.writeLine(fmt.Sprintf("local-compose: adopted existing process group (PGID %d)", snap.PGID))
+	}
+
+	var chk *health.Checker
+	if rt.spec.Healthcheck != nil {
+		var err error
+		chk, err = health.New(rt.name, s.healthConfig(rt), func(line string) {
+			if rt.logger != nil {
+				rt.logger.writeLine(line)
+			}
+		})
+		if err == nil {
+			rt.setChecker(chk)
+			chk.EnsureStarted(ctx)
+			defer func() {
+				chk.Stop()
+				rt.setChecker(nil)
+			}()
+		}
+	}
+
+	// Poll process group liveness until exit
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if s.isStopping() || rt.stopped.Load() {
+			rt.mu.Lock()
+			rt.status = StatusStopped
+			rt.mu.Unlock()
+			return
+		}
+
+		if !IsProcessGroupAlive(snap.PGID) {
+			rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("adopted process exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+			rt.mu.Lock()
+			rt.pid = 0
+			rt.pgid = 0
+			rt.finishedAt = time.Now()
+			rt.status = StatusExited
+			rt.mu.Unlock()
+
+			if s.isStopping() || rt.stopped.Load() {
+				return
+			}
+			if !shouldRestart(rt.spec.Restart, -1) {
+				return
+			}
+			if !s.shouldRetry(rt) {
+				rt.logger.writeLine("local-compose: giving up after max restart attempts")
+				return
+			}
+			if !s.sleepBackoff(ctx, rt) {
+				return
+			}
+			// Switch to standard run loop after adoption exit
+			s.wg.Add(1)
+			s.runService(ctx, rt)
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.stopCh:
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// Start launches every service in topological order and returns once all have
+// been spawned. It does not block until services exit — use Wait for that.
+// Calling Start twice returns an error.
+func (s *Supervisor) Start(ctx context.Context) error {
+	return s.AdoptOrStart(ctx)
 }
 
 // openLoggers opens the per-service log files under the state logs dir.
@@ -583,6 +691,8 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 	rt.mu.Unlock()
 	rt.startedOnce.Store(true)
 
+	_ = s.SaveState()
+
 	var pipeWG sync.WaitGroup
 	pipeWG.Add(2)
 	go s.pipeLines(stdout, rt, &pipeWG)
@@ -676,12 +786,14 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 
 	select {
 	case <-done:
+		_ = RemoveState(s.opts.Locations)
 		return nil
 	case <-time.After(graceful):
 	}
 
 	s.signalAll(syscall.SIGKILL)
 	<-done
+	_ = RemoveState(s.opts.Locations)
 	return nil
 }
 

@@ -37,9 +37,31 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(tuiCmd)
 	rootCmd.AddCommand(webCmd)
+	rootCmd.AddCommand(daemonCmd)
+
+	// Top-level aliases for backward compatibility
+	startDaemonCmd := &cobra.Command{
+		Use:    "start-daemon",
+		Short:  "Alias for `local-compose daemon start`",
+		Hidden: true,
+		RunE:   runDaemonStart,
+	}
+	stopDaemonCmd := &cobra.Command{
+		Use:    "stop-daemon",
+		Short:  "Alias for `local-compose daemon stop`",
+		Hidden: true,
+		RunE:   runDaemonStop,
+	}
+	reloadDaemonCmd := &cobra.Command{
+		Use:    "reload-daemon",
+		Short:  "Alias for `local-compose daemon reload`",
+		Hidden: true,
+		RunE:   runDaemonReload,
+	}
+
 	rootCmd.AddCommand(startDaemonCmd)
 	rootCmd.AddCommand(stopDaemonCmd)
-	rootCmd.AddCommand(reloadCmd)
+	rootCmd.AddCommand(reloadDaemonCmd)
 }
 
 // isDaemonChild reports whether the binary was invoked as

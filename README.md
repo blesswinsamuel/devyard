@@ -120,8 +120,10 @@ local-compose stop-daemon  # stop all projects and the daemon
 | `restart [service]` | Restart one service, or all when no service is given. |
 | `build [service...]` | Run build commands for the named services (or all that declare one, in start order). |
 | `tui` | Open the interactive terminal UI. Without `-f`, shows all known projects. |
-| `start-daemon` | Start the global daemon (manages multiple projects). Usually auto-started by `up`. |
-| `stop-daemon` | Stop the global daemon and all projects. |
+| `daemon start` | Start the global daemon (manages multiple projects). Usually auto-started by `up`. |
+| `daemon stop` | Stop the global daemon and all projects. |
+| `daemon restart` | Restart/reload the global daemon process with seamless process adoption. |
+| `daemon status` | Display current daemon status and active projects. |
 
 Global flags:
 

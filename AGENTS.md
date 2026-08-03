@@ -10,6 +10,12 @@ Read this before making changes.
 `github.com/blesswinsamuel/local-compose`. See [README.md](README.md) for the user
 pitch and [docs/architecture.md](docs/architecture.md) for how it works inside.
 
+## Greenfield Project & Compatibility Strategy
+
+This is an early-stage **greenfield project**.
+- **No backward compatibility**: Do not add or keep legacy aliases, backward-compatibility shims, or deprecated command flags.
+- **Clean breaking refactors**: Prefer direct, clean breaking changes over preserving outdated interfaces or command aliases.
+
 ## Essential commands
 
 ```bash

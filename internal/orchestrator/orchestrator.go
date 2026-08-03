@@ -246,18 +246,64 @@ func (d *Daemon) StopDaemon() error {
 	return nil
 }
 
-// ListProjects returns a snapshot of all known projects and their statuses.
+// ListProjects returns a snapshot of all known projects (both in-memory and on-disk)
+// and their statuses.
 func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
 	out := make([]protocol.ProjectInfo, 0, len(d.projects))
+	seen := make(map[string]bool)
+
+	// 1. Include all in-memory projects.
 	for name, p := range d.projects {
+		seen[name] = true
 		out = append(out, protocol.ProjectInfo{
 			Name:       name,
 			Status:     p.Status(),
 			ConfigPath: p.ConfigPath,
 		})
 	}
+
+	// 2. Discover stopped projects stored on disk under state base dir.
+	stateBase, err := stateBaseDir()
+	if err != nil {
+		return out
+	}
+	appDir := filepath.Join(stateBase, project.AppDir)
+	entries, err := os.ReadDir(appDir)
+	if err != nil {
+		return out
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if seen[name] {
+			continue
+		}
+
+		locs, err := project.Resolve(name)
+		if err != nil {
+			continue
+		}
+		configPath, ok := readConfigPath(locs)
+		if !ok {
+			continue
+		}
+		if _, err := os.Stat(configPath); err != nil {
+			continue
+		}
+
+		out = append(out, protocol.ProjectInfo{
+			Name:       name,
+			Status:     "stopped",
+			ConfigPath: configPath,
+		})
+	}
+
 	return out
 }
 

@@ -136,8 +136,8 @@ func TestStopDaemonStopsAllProjects(t *testing.T) {
 	}
 
 	projects := d.ListProjects()
-	if len(projects) != 0 {
-		t.Fatalf("ListProjects after StopDaemon = %+v, want empty", projects)
+	if len(projects) != 1 || projects[0].Status != "stopped" {
+		t.Fatalf("ListProjects after StopDaemon = %+v, want [lc-test] with stopped status", projects)
 	}
 }
 

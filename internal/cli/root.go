@@ -28,17 +28,61 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagConfigPath, "file", "", "Path to local-compose.yml (default: walk up from cwd)")
 	rootCmd.PersistentFlags().StringVarP(&flagProject, "project", "p", "", "Project name (default: config name or config dir name)")
 
+	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(upCmd)
 	rootCmd.AddCommand(downCmd)
 	rootCmd.AddCommand(removeCmd)
 	rootCmd.AddCommand(psCmd)
-	rootCmd.AddCommand(lsCmd)
+
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(buildCmd)
+
 	rootCmd.AddCommand(tuiCmd)
 	rootCmd.AddCommand(webCmd)
 	rootCmd.AddCommand(daemonCmd)
+
+	cobra.AddTemplateFunc("commandGroups", func() []struct {
+		Title    string
+		Commands []*cobra.Command
+	} {
+		return []struct {
+			Title    string
+			Commands []*cobra.Command
+		}{
+			{
+				Title:    "Project Commands:",
+				Commands: []*cobra.Command{lsCmd, upCmd, downCmd, removeCmd, psCmd},
+			},
+			{
+				Title:    "Service Commands:",
+				Commands: []*cobra.Command{logsCmd, restartCmd, buildCmd},
+			},
+			{
+				Title:    "Daemon & Dashboards:",
+				Commands: []*cobra.Command{tuiCmd, webCmd, daemonCmd},
+			},
+		}
+	})
+
+	rootCmd.SetHelpTemplate(`{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+
+{{end}}Usage:
+  {{.UseLine}}{{if .HasAvailableSubCommands}} [command]{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableSubCommands}}
+
+{{range commandGroups}}{{.Title}}
+{{range .Commands}}  {{rpad .Name .NamePadding}} {{.Short}}
+{{end}}
+{{end}}{{end}}{{if .HasHelpSubCommands}}
+Additional help topics:
+{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}
+`)
 }
 
 // isDaemonChild reports whether the binary was invoked as

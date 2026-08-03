@@ -248,18 +248,51 @@ func (d *Daemon) StopDaemon() error {
 }
 
 // ListProjects returns a snapshot of all known projects (both running and stopped)
-// and their statuses.
+// and their statuses, service counts, and auto-cleans any stale projects whose
+// config files no longer exist on disk.
 func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	out := make([]protocol.ProjectInfo, 0, len(d.projects))
+	var stale []string
+
 	for name, p := range d.projects {
-		out = append(out, protocol.ProjectInfo{
+		if _, err := os.Stat(p.ConfigPath); err != nil {
+			stale = append(stale, name)
+			continue
+		}
+
+		info := protocol.ProjectInfo{
 			Name:       name,
 			Status:     p.Status(),
 			ConfigPath: p.ConfigPath,
-		})
+		}
+
+		if p.Sup != nil && p.Status() == "running" {
+			states := p.Sup.States()
+			info.TotalServices = len(states)
+			for _, st := range states {
+				if st.Status == supervisor.StatusRunning || st.Status == supervisor.StatusStarting {
+					info.RunningServices++
+				}
+			}
+		} else {
+			if cfg, err := loadConfig(p.ConfigPath, ""); err == nil {
+				info.TotalServices = len(cfg.File.Services)
+			}
+		}
+
+		out = append(out, info)
+	}
+
+	for _, name := range stale {
+		delete(d.projects, name)
+		locs, err := project.Resolve(name)
+		if err == nil {
+			_ = os.RemoveAll(locs.Runtime)
+			_ = os.RemoveAll(locs.State)
+		}
 	}
 
 	sort.Slice(out, func(i, j int) bool {

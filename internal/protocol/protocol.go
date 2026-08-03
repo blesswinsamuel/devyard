@@ -94,9 +94,11 @@ type ServiceState struct {
 // known to the daemon, whether its supervisor is currently running, and the
 // config path it was started from.
 type ProjectInfo struct {
-	Name       string `json:"name"`
-	Status     string `json:"status"`      // running | stopped
-	ConfigPath string `json:"config_path"` // absolute path to local-compose.yml
+	Name            string `json:"name"`
+	Status          string `json:"status"`      // running | stopped
+	ConfigPath      string `json:"config_path"` // absolute path to local-compose.yml
+	RunningServices int    `json:"running_services"`
+	TotalServices   int    `json:"total_services"`
 }
 
 // ServiceStat is the wire form of a per-service resource snapshot returned by

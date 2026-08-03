@@ -39,14 +39,15 @@ var lsCmd = &cobra.Command{
 
 func printProjects(projects []protocol.ProjectInfo) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tCONFIG PATH")
+	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tSERVICES\tCONFIG PATH")
 	if len(projects) == 0 {
 		_, _ = fmt.Fprintln(w, "(no projects)")
 		_ = w.Flush()
 		return
 	}
 	for _, p := range projects {
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", p.Name, p.Status, p.ConfigPath)
+		svcSummary := fmt.Sprintf("%d/%d running", p.RunningServices, p.TotalServices)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name, p.Status, svcSummary, p.ConfigPath)
 	}
 	_ = w.Flush()
 }

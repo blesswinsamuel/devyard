@@ -360,3 +360,57 @@ func TestRemoveProject(t *testing.T) {
 		t.Fatalf("ListProjects = %+v, want empty after RemoveProject", projects)
 	}
 }
+
+func TestListProjectsServiceCounts(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	cfg := `version: "1"
+name: lc-counts
+services:
+  web:
+    command: "sleep 60"
+  worker:
+    command: "sleep 60"
+`
+	configPath := writeConfig(t, cfg)
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+
+	projects := d.ListProjects()
+	if len(projects) != 1 {
+		t.Fatalf("ListProjects = %+v, want 1 project", projects)
+	}
+	if projects[0].TotalServices != 2 || projects[0].RunningServices != 2 {
+		t.Fatalf("Service counts = %d/%d, want 2/2", projects[0].RunningServices, projects[0].TotalServices)
+	}
+
+	_ = d.StopProject("lc-counts")
+	projects = d.ListProjects()
+	if len(projects) != 1 {
+		t.Fatalf("ListProjects after stop = %+v, want 1 project", projects)
+	}
+	if projects[0].RunningServices != 0 || projects[0].TotalServices != 2 {
+		t.Fatalf("Stopped service counts = %d/%d, want 0/2", projects[0].RunningServices, projects[0].TotalServices)
+	}
+}
+
+func TestListProjectsStaleCleanup(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	configPath := writeConfig(t, shortSleepConfig)
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	_ = d.StopProject("lc-test")
+
+	// Delete config file on disk
+	if err := os.Remove(configPath); err != nil {
+		t.Fatalf("remove config: %v", err)
+	}
+
+	projects := d.ListProjects()
+	if len(projects) != 0 {
+		t.Fatalf("ListProjects = %+v, want 0 (auto-cleaned stale project)", projects)
+	}
+}

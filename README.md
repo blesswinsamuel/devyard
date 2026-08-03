@@ -126,8 +126,10 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 
 | Command | Description |
 | --- | --- |
-| `logs [service] [-f]` | Output or tail logs for a service (or all services in the project). |
+| `start [service]` | Start or resume one service, or all services in the project. |
+| `stop [service]` | Stop one service in place, or all services in the project when omitted. |
 | `restart [service]` | Restart one service, or all services in the project when omitted. |
+| `logs [service] [-f]` | Output or tail logs for a service (or all services in the project). |
 | `build [service...]` | Run build commands for named services (or all services with build steps). |
 | `tui` | Open the interactive terminal UI (shows all projects if `-f` is omitted). |
 

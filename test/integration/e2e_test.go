@@ -123,6 +123,26 @@ func (e *env) run(t *testing.T, ctx context.Context, args ...string) (string, st
 	return stdout.String(), stderr.String(), exitCode
 }
 
+func (e *env) runFromDir(t *testing.T, ctx context.Context, dir string, args ...string) (string, string, int) {
+	t.Helper()
+	cmd := exec.CommandContext(ctx, binPath, args...)
+	cmd.Dir = dir
+	cmd.Env = e.environ()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			t.Fatalf("runFromDir %q: %v", strings.Join(args, " "), err)
+		}
+	}
+	return stdout.String(), stderr.String(), exitCode
+}
+
 // environ returns the inherited environment with XDG_RUNTIME_DIR and
 // XDG_STATE_HOME overridden to the isolated per-test dirs so the daemon
 // re-exec child (which inherits os.Environ()) lands in the same sandbox.
@@ -752,4 +772,39 @@ services:
 		logsOut, _, r = e2.run(t, context.Background(), "logs", "web")
 		return r == 0 && strings.Contains(logsOut, "PORT=7070")
 	}, "logs web (--env-file) shows PORT=7070")
+}
+
+func TestRegisteredProjectByName(t *testing.T) {
+	cfg := `
+version: "1"
+name: reg-test
+services:
+  app:
+    command: "sleep 60"
+`
+	e := newEnv(t, cfg)
+	// 1. up -d to register project
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+
+	// 2. Stop project
+	_, errOut, code = e.run(t, context.Background(), "stop")
+	if code != 0 {
+		t.Fatalf("stop: exit %d, err=%q", code, errOut)
+	}
+
+	// 3. Run start from outside the config directory using -p reg-test
+	outsideDir := t.TempDir()
+	out, errOut, code := e.runFromDir(t, context.Background(), outsideDir, "-p", "reg-test", "start")
+	if code != 0 {
+		t.Fatalf("start -p reg-test from outside dir: exit %d, stdout=%q, errOut=%q", code, out, errOut)
+	}
+
+	// 4. Verify service is running again via ps -p reg-test
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.runFromDir(t, context.Background(), outsideDir, "-p", "reg-test", "ps")
+		return pidFromPS(t, psOut, "app") != 0
+	}, "ps shows app running after start -p reg-test")
 }

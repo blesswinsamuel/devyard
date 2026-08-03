@@ -55,10 +55,19 @@ func resolveProjectName(configPath, projectName string) (string, error) {
 // walks up from the cwd looking for local-compose.yml.
 func loadConfig(configPath, projectName string) (*loadedConfig, error) {
 	if configPath == "" {
-		var err error
-		configPath, err = config.FindConfig(cwd())
-		if err != nil {
-			return nil, fmt.Errorf("local-compose.yml not found; pass -f <path>: %w", err)
+		if projectName != "" {
+			if regPath, err := project.GetRegisteredConfigPath(projectName); err == nil {
+				if _, statErr := os.Stat(regPath); statErr == nil {
+					configPath = regPath
+				}
+			}
+		}
+		if configPath == "" {
+			var err error
+			configPath, err = config.FindConfig(cwd())
+			if err != nil {
+				return nil, fmt.Errorf("local-compose.yml not found; pass -f <path>: %w", err)
+			}
 		}
 	}
 	abs, err := filepath.Abs(configPath)

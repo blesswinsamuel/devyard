@@ -39,11 +39,26 @@ var startCmd = &cobra.Command{
 
 		if service == "" {
 			if err := client.Restart(projName, ""); err != nil {
+				// If project is stopped/not loaded in memory, try loading & starting it via StartProject
+				cfg, loadErr := loadConfig(flagConfigPath, projName)
+				if loadErr == nil {
+					if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); startErr == nil {
+						fmt.Fprintf(os.Stderr, "local-compose: project %q started\n", projName)
+						return nil
+					}
+				}
 				return err
 			}
 			fmt.Fprintln(os.Stderr, "local-compose: started all services")
 		} else {
 			if err := client.Restart(projName, service); err != nil {
+				cfg, loadErr := loadConfig(flagConfigPath, projName)
+				if loadErr == nil {
+					if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); startErr == nil {
+						fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)
+						return nil
+					}
+				}
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)

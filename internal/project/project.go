@@ -107,6 +107,24 @@ func (l *Locations) MkdirAll() error {
 	return nil
 }
 
+// GetRegisteredConfigPath reads the persisted config-path for the project if it exists.
+func GetRegisteredConfigPath(name string) (string, error) {
+	locs, err := Resolve(name)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(locs.State, "config-path")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("config-path not found for project %q: %w", name, err)
+	}
+	s := strings.TrimSpace(string(data))
+	if s == "" {
+		return "", fmt.Errorf("empty config-path for project %q", name)
+	}
+	return s, nil
+}
+
 // DaemonLocations holds the resolved paths for the global daemon (not
 // per-project). The daemon socket and pidfile live at the app-level XDG
 // runtime dir; the daemon log lives at the app-level XDG state dir.

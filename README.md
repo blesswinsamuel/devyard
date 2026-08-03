@@ -111,27 +111,41 @@ local-compose stop-daemon  # stop all projects and the daemon
 
 ## Commands
 
+### Project-level Commands
+Commands operating on a project context (defaults to `local-compose.yml` in cwd, or explicitly via `-p <name>` / `-f <path>`):
+
 | Command | Description |
 | --- | --- |
-| `up [-d] [--build]` | Start all services (in dependency order). `-d` detaches (doesn't follow logs). `--build` runs build steps first. Auto-starts the daemon if needed. |
-| `down` | Stop all services in the current project. Idempotent — safe to run when nothing's up. |
-| `ps` | List services in the current project with status, PID, restart count, and health. |
-| `ls` | List all projects managed by the local-compose daemon. |
-| `logs [service]` | Output logs for the current project. Use `-f/--follow` to tail. With no service, defaults to the first one. |
-| `restart [service]` | Restart one service, or all when no service is given. |
-| `build [service...]` | Run build commands for the named services (or all that declare one, in start order). |
-| `tui` | Open the interactive terminal UI. Without `-f`, shows all known projects. |
-| `daemon start` | Start the global daemon (manages multiple projects). Usually auto-started by `up`. |
-| `daemon stop` | Stop the global daemon and all projects. |
-| `daemon restart` | Restart/reload the global daemon process with seamless process adoption. |
+| `ls` | List all projects managed by the daemon (both running and stopped). |
+| `up [-d] [--build]` | Start all services in the project (in dependency order). `-d` detaches. `--build` runs build steps first. Auto-starts the daemon if needed. |
+| `down` | Stop all services in the project. Idempotent — safe to run when nothing's up. |
+| `ps [-p project]` | List services in the project with status, PID, restart count, and health. |
+| `remove` / `rm` | Stop and completely remove a project state from the daemon. |
+
+### Service & Interactive Commands
+
+| Command | Description |
+| --- | --- |
+| `logs [service] [-f]` | Output or tail logs for a service (or all services in the project). |
+| `restart [service]` | Restart one service, or all services in the project when omitted. |
+| `build [service...]` | Run build commands for named services (or all services with build steps). |
+| `tui` | Open the interactive terminal UI (shows all projects if `-f` is omitted). |
+
+### Daemon Commands
+
+| Command | Description |
+| --- | --- |
+| `daemon start` | Start the global background daemon. (Usually auto-started by `up`). |
+| `daemon stop` | Stop the global daemon and all managed projects. |
+| `daemon restart` | Seamlessly reload/restart the global daemon process. |
 | `daemon status` | Display current daemon status and active projects. |
 
-Global flags:
+### Global Flags
 
 | Flag | Description |
 | --- | --- |
-| `-f, --file <path>` | Path to `local-compose.yml` (default: walk up from the current directory). |
-| `-p, --project <name>` | Project name (default: the `name:` field, else the config file's directory name). |
+| `-f, --file <path>` | Path to `local-compose.yml` (default: walk up from current directory). |
+| `-p, --project <name>` | Target project name directly (works from any directory without requiring `local-compose.yml` in cwd). |
 
 ### The TUI
 

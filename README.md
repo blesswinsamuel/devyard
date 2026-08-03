@@ -7,7 +7,7 @@
 > Orchestrate local processes the way you orchestrate containers with docker-compose — without Docker.
 
 `local-compose` runs the processes in your `local-compose.yml` on your own machine, with the
-ergonomics you already know: `up`, `down`, `ps`, `logs`, `restart`, `build`, an interactive
+ergonomics you already know: `up`, `down`, `ps`, `top`, `logs`, `restart`, `build`, an interactive
 TUI, and a browser-based web UI. It's a single static binary, built for macOS and Linux, that
 supervises your dev services, streams their output, restarts them on crash, and waits for
 healthchecks before starting dependents.
@@ -29,7 +29,7 @@ a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a
 
 - **Compose-style config** — a single `local-compose.yml` you already know how to read.
 - **Detached lifecycle** — `up -d` runs a background supervisor you can talk back to with `ps`,
-  `logs`, `restart`, and `down`.
+  `top`, `logs`, `restart`, and `down`.
 - **Process-group safety** — each service runs in its own process group, so `down` never leaves
   orphans behind (the bug most lightweight supervisors have).
 - **Health-gated dependencies** — `depends_on: { condition: service_healthy }` waits for a
@@ -130,6 +130,7 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 | `up [-d] [--build]` | Start all services in the project (in dependency order). `-d` detaches. `--build` runs build steps first. Auto-starts the daemon if needed. |
 | `down` | Stop all services in the project. Idempotent — safe to run when nothing's up. |
 | `ps [-p project]` | List services in the project with status, PID, restart count, and health. |
+| `top [service]` | Show CPU and memory usage of each service's process group, sampled over ~1s. `[service]` narrows the view to one service. |
 | `remove` / `rm` | Stop and completely remove a project state from the daemon. |
 
 ### Service & Interactive Commands
@@ -325,7 +326,7 @@ Then start the daemon (`local-compose start-daemon` or `local-compose up -d`) an
 | --- | :-: | :-: | :-: | :-: | :-: |
 | Compose-style YAML config | ✅ | ✅ | — | — | Procfile |
 | Runs locally (no engine) | ✅ | — | ✅ | ✅ | ✅ |
-| Detached `up -d` + `ps`/`down` | ✅ | ✅ | — | — | partial |
+| Detached `up -d` + `ps`/`top`/`down` | ✅ | ✅ | — | — | partial |
 | Multi-project daemon | ✅ | ✅ | — | — | — |
 | Health-gated `depends_on` | ✅ | ✅ | — | — | — |
 | Interactive TUI | ✅ | — | ✅ | — | — |
@@ -335,7 +336,7 @@ Then start the daemon (`local-compose start-daemon` or `local-compose up -d`) an
 
 ## Roadmap
 
-- [x] Core: `up`, `down`, `ps`, `logs`, `restart`, `build`, detached `up -d`
+- [x] Core: `up`, `down`, `ps`, `top`, `logs`, `restart`, `build`, detached `up -d`
 - [x] Healthchecks + `depends_on` conditions
 - [x] Bubble Tea TUI with project selection
 - [x] Global daemon with multi-project orchestrator
@@ -354,7 +355,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full breakdown and non-goals.
 ## Contributing
 
 Contributions are welcome. The project is a standard Go module laid out as a `cmd/` entrypoint
-over `internal/` packages (`config`, `dag`, `supervisor`, `daemon`, `orchestrator`, `control`,
+over `internal/` packages (`config`, `dag`, `supervisor`, `procstat`, `daemon`, `orchestrator`, `control`,
 `protocol`, `health`, `logs`, `tui`, `ui`, `web`, `globalconfig`, `project`).
 
 ```bash

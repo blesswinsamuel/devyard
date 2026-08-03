@@ -25,6 +25,7 @@ import (
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/health"
+	"github.com/blesswinsamuel/local-compose/internal/procstat"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
@@ -107,6 +108,24 @@ type ServiceState struct {
 	HasHealth  bool
 	Health     string // "n/a", or health.State string when HasHealth
 }
+
+// TopStat is a per-service resource snapshot for the `top` command. CPU is a
+// percentage of one core averaged over TopSampleInterval and can exceed 100 on
+// multi-core work; RSS is the aggregate resident set size of every process in
+// the service's process group.
+type TopStat struct {
+	Name   string
+	Status Status
+	PID    int
+	PGID   int
+	Procs  int
+	CPU    float64
+	RSS    uint64
+}
+
+// TopSampleInterval is how long `top` samples a project's process groups: two
+// snapshots are taken this far apart to derive CPU usage.
+const TopSampleInterval = time.Second
 
 // serviceRuntime is the supervisor's mutable per-service state.
 type serviceRuntime struct {
@@ -979,6 +998,57 @@ func (s *Supervisor) LogPath(name string) (string, error) {
 		return "", fmt.Errorf("supervisor: unknown service %q", name)
 	}
 	return filepath.Join(s.opts.Locations.LogsDir, name+".log"), nil
+}
+
+// Top returns a resource snapshot for one service (or every service when
+// service is empty), used by the `top` command. All groups are sampled twice
+// around a single shared interval so CPU usage is a fair delta rather than an
+// average since process start. Services without a live process group report
+// zero processes.
+func (s *Supervisor) Top(service string) ([]TopStat, error) {
+	s.mu.Lock()
+	targets := make([]TopStat, 0, len(s.order))
+	for _, name := range s.order {
+		if service != "" && name != service {
+			continue
+		}
+		rt, ok := s.services[name]
+		if !ok {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("supervisor: unknown service %q", name)
+		}
+		rt.mu.Lock()
+		targets = append(targets, TopStat{
+			Name:   rt.name,
+			Status: rt.status,
+			PID:    rt.pid,
+			PGID:   rt.pgid,
+		})
+		rt.mu.Unlock()
+	}
+	s.mu.Unlock()
+
+	first := make([]procstat.Sample, len(targets))
+	for i, t := range targets {
+		first[i], _ = procstat.SampleGroup(t.PGID)
+	}
+	time.Sleep(TopSampleInterval)
+	second := make([]procstat.Sample, len(targets))
+	for i, t := range targets {
+		second[i], _ = procstat.SampleGroup(t.PGID)
+	}
+
+	for i := range targets {
+		if first[i].Procs == 0 || second[i].Procs == 0 {
+			continue
+		}
+		targets[i].Procs = second[i].Procs
+		targets[i].RSS = second[i].RSS
+		if d := second[i].CPU - first[i].CPU; d > 0 {
+			targets[i].CPU = float64(d) / float64(TopSampleInterval) * 100
+		}
+	}
+	return targets, nil
 }
 
 // isStopping reports whether a global Stop has been initiated.

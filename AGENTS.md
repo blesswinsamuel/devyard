@@ -46,6 +46,7 @@ internal/
   config/      # local-compose.yml schema, parsing, validation, defaults
   project/     # project name + XDG runtime/state dir resolution (per-project + daemon)
   dag/         # depends_on graph, cycle detection, topo order
+  procstat/    # process-group CPU/memory sampling for `top` (procfs + libproc)
   supervisor/  # owns child processes: launch, log capture, restart policy, health, stop
   daemon/      # setsid re-exec for the global daemon, pidfile, liveness checks (build tag: unix)
   orchestrator/ # multi-project manager: owns map[string]*supervisor.Supervisor, autostart

@@ -1,7 +1,7 @@
 # Control protocol
 
 The wire protocol spoken between the global daemon and its clients
-(`local-compose ps`/`logs`/`restart`/`down`, the TUI, and the web UI).
+(`local-compose ps`/`logs`/`restart`/`down`/`top`, the TUI, and the web UI).
 Implementation: `internal/protocol/protocol.go`, `internal/control/server.go`,
 `internal/control/client.go`.
 
@@ -52,6 +52,7 @@ type Request struct {
 | `"stop_service"` | project name | service name | — | Stop one service in place (no restart). Acks with `done`. |
 | `"kill_service"` | project name | service name (empty = all) | `Signal` | Signal one service (empty = all services, in start order) with the named signal; empty `Signal` means `SIGKILL`. No grace period. Acks with `done`. |
 | `"restart"` | project name | service name (empty = all) | — | Restart the named service, or all when empty. Acks with `done`. |
+| `"top"` | project name | service name (empty = all) | — | Sample the service's process group(s) twice over ~1s and return one `stats` response with per-service CPU/memory usage. |
 | `"list_projects"` | — | — | — | Return one `projects` response with a snapshot of all known projects. |
 | `"start_project"` | — | — | `ConfigPath`, `Build` | Load the config at `ConfigPath` and start a supervisor for it. Acks with `done` or `error`. |
 | `"stop_project"` | project name | — | — | Stop the named project's services. Acks with `done`. |
@@ -65,6 +66,7 @@ type Response struct {
     Kind     ResponseKind   `json:"kind"`
     States   []ServiceState `json:"states,omitempty"`   // Kind == "states"
     Projects []ProjectInfo  `json:"projects,omitempty"` // Kind == "projects"
+    Stats    []ServiceStat  `json:"stats,omitempty"`    // Kind == "stats"
     Project  string         `json:"project,omitempty"`   // Kind == "log_line" (which project)
     Service  string         `json:"service,omitempty"`  // Kind == "log_line" (which service)
     Line     string         `json:"line,omitempty"`     // Kind == "log_line"
@@ -77,6 +79,7 @@ type Response struct {
 | --- | --- |
 | `"states"` | A snapshot of every service in a project (one response, `States` populated). |
 | `"projects"` | A snapshot of every known project (`Projects` populated). |
+| `"stats"` | A per-service CPU/memory snapshot (`Stats` populated). Sent in response to `"top"`. |
 | `"log_content"` | Bulk: the entire existing log file text (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. |
 | `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). Sent for each new line during follow. |
 | `"done"` | Request complete; no more frames will follow on this connection. |
@@ -88,7 +91,9 @@ with a single `log_content` frame (bulk existing content), then a sequence of
 failure). A `Logs{follow:false}` stream sends a single `log_content` frame
 followed by `done`. `list`/`stop`/`stop_service`/`kill_service`/`restart` each
 produce a single terminal `states`/`done`/`error`. `list_projects` produces a
-single `projects` response. `start_project`/`stop_project`/`remove_project`/
+single `projects` response. `top` produces a single `stats` response (the
+daemon blocks for ~1s sampling before sending it).
+`start_project`/`stop_project`/`remove_project`/
 `stop_daemon` produce a single `done` or `error`.
 
 ## ServiceState
@@ -121,6 +126,22 @@ type ProjectInfo struct {
 }
 ```
 
+## ServiceStat
+
+```go
+type ServiceStat struct {
+    Name     string  `json:"name"`
+    Status   string  `json:"status"`
+    PID      int     `json:"pid"`
+    PGID     int     `json:"pgid"`
+    Procs    int     `json:"procs"`     // live processes in the service's group; 0 when not running
+    CPU      float64 `json:"cpu"`       // percent of one core over the ~1s sampling interval (can exceed 100)
+    RSSBytes uint64  `json:"rss_bytes"` // aggregate resident set size of the group, in bytes
+}
+```
+
+`CPU`/`RSSBytes`/`Procs` are zero for services with no live process group.
+
 ## Client helpers (`control.Client`)
 
 Prefer these over hand-rolling request/response loops:
@@ -133,6 +154,8 @@ Prefer these over hand-rolling request/response loops:
 - `client.KillService(project, name, signal) error` — `kill_service` (empty
   `signal` = `SIGKILL`).
 - `client.Restart(project, service) error` — `restart` (empty service = all).
+- `client.Top(project, service) ([]ServiceStat, error)` — `top` (empty service
+  = all); blocks ~1s while the daemon samples.
 - `client.ListProjects() ([]ProjectInfo, error)` — `list_projects`.
 - `client.StartProject(configPath, build) error` — `start_project`.
 - `client.StopProject(project) error` — `stop_project`.
@@ -167,6 +190,7 @@ type Backend interface {
     StopService(name string) error
     KillService(name, signal string) error
     Restart(name string) error
+    Top(name string) ([]protocol.ServiceStat, error)
     LogPath(name string) (string, error)
 }
 ```

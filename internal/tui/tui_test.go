@@ -36,6 +36,9 @@ func (b *fakeBackend) KillService(name, signal string) error {
 	return nil
 }
 func (b *fakeBackend) Restart(name string) error { b.restarts = append(b.restarts, name); return nil }
+func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
+	return nil, nil
+}
 func (b *fakeBackend) LogPath(name string) (string, error) {
 	if p, ok := b.logPaths[name]; ok {
 		return p, nil

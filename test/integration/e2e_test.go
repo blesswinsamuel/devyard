@@ -635,3 +635,45 @@ services:
 
 	assertNoOrphans(t, alphaPID, betaPID)
 }
+
+// TestE2E_Top verifies `top` renders CPU/memory usage for every running
+// service's process group and supports a single-service filter. The daemon
+// samples over ~1s, so the command is slow by design.
+func TestE2E_Top(t *testing.T) {
+	e := newEnv(t, threeServiceLoopConfig)
+	_, _, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d", code)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "alpha") != 0 &&
+			pidFromPS(t, psOut, "beta") != 0 &&
+			pidFromPS(t, psOut, "gamma") != 0
+	}, "ps shows all three services running")
+
+	topOut, topErr, rc := e.run(t, context.Background(), "top")
+	if rc != 0 {
+		t.Fatalf("top: exit %d, err=%q", rc, topErr)
+	}
+	if !strings.Contains(topOut, "NAME") || !strings.Contains(topOut, "CPU%") || !strings.Contains(topOut, "MEM") {
+		t.Fatalf("top missing table header, got:\n%s", topOut)
+	}
+	for _, name := range []string{"alpha", "beta", "gamma"} {
+		if !strings.Contains(topOut, name) {
+			t.Fatalf("top missing %q row, got:\n%s", name, topOut)
+		}
+	}
+
+	// A per-service top must include only that service.
+	alphaOut, _, rc := e.run(t, context.Background(), "top", "alpha")
+	if rc != 0 {
+		t.Fatalf("top alpha: exit %d", rc)
+	}
+	if !strings.Contains(alphaOut, "alpha") {
+		t.Fatalf("top alpha missing alpha row:\n%s", alphaOut)
+	}
+	if strings.Contains(alphaOut, "beta") || strings.Contains(alphaOut, "gamma") {
+		t.Fatalf("top alpha leaked other services:\n%s", alphaOut)
+	}
+}

@@ -4,7 +4,7 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Done
 
-- **Core lifecycle** — `up`, `up -d`, `down`, `ps`, `logs [service] [--follow]`,
+- **Core lifecycle** — `up`, `up -d`, `down`, `ps`, `top`, `logs [service] [--follow]`,
   `restart [service]`, `kill [service] [--signal]`, `build [service...]`,
   `up --build`. (`internal/cli`, `internal/supervisor`, `internal/control`)
 - **Global daemon** — a single daemon process owns multiple project
@@ -18,6 +18,10 @@ What's done, what's planned, and where each item lives in the code.
   autostart. (`internal/orchestrator` `Autostart()`)
 - **Process-group safety** — each service in its own `setpgid` group; teardown
   via `killpg` so no orphans. (`internal/supervisor/proc_unix.go`)
+- **`top` resource view** — `local-compose top [service]` aggregates CPU and
+  memory across each service's process group (procfs on Linux, libproc on
+  macOS), sampled over a 1s interval for a live CPU%. (`internal/procstat`,
+  `internal/supervisor`)
 - **Dependency ordering** — `depends_on` graph with cycle detection and
   topological start order. (`internal/dag`)
 - **Healthchecks + conditions** — per-service `starting -> healthy | unhealthy`

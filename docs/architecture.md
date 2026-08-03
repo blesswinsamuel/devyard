@@ -122,6 +122,13 @@ Process groups are mandatory and non-negotiable: `launch` calls
 with a **negative** pid to signal the whole group. This is what prevents
 orphaned children when `command` is a shell pipeline.
 
+`Top` (the `local-compose top [service]` command) aggregates the resource usage
+of each service's process group. It samples every group twice around one shared
+1s interval (`internal/procstat.SampleGroup`, procfs on Linux / libproc on
+macOS) and reports per-service CPU% (delta over the interval) and aggregate
+RSS. Because the group leader is the service's shell, this captures the whole
+`sh -c` tree, not just the supervisor's direct child.
+
 ## Healthchecks (`internal/health`)
 
 State machine: `starting -> healthy | unhealthy`. A `Checker` runs the probe on

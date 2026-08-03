@@ -178,6 +178,26 @@ func (c *Client) Restart(project, service string) error {
 	return c.awaitDone()
 }
 
+// Top sends a Top request for the given project (optionally a single service)
+// and returns the CPU/memory snapshot. The daemon samples the service process
+// groups over a short interval, so the call blocks for roughly a second.
+func (c *Client) Top(project, service string) ([]protocol.ServiceStat, error) {
+	if err := c.Send(protocol.Request{Kind: protocol.KindTop, Project: project, Service: service}); err != nil {
+		return nil, err
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.Kind == protocol.KindError {
+		return nil, errors.New(resp.Error)
+	}
+	if resp.Kind != protocol.KindStats {
+		return nil, fmt.Errorf("control: unexpected response %q, want %q", resp.Kind, protocol.KindStats)
+	}
+	return resp.Stats, nil
+}
+
 // Logs sends a Logs request for the given project + service and calls onLine
 // for each log line received. If follow is true, it blocks until the daemon
 // signals Done (e.g. on shutdown) or the connection drops. If follow is false,

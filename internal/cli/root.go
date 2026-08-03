@@ -40,6 +40,7 @@ func init() {
 	downCmd.GroupID = projectGroup.ID
 	removeCmd.GroupID = projectGroup.ID
 	psCmd.GroupID = projectGroup.ID
+	topCmd.GroupID = projectGroup.ID
 
 	logsCmd.GroupID = serviceGroup.ID
 	startCmd.GroupID = serviceGroup.ID
@@ -52,7 +53,7 @@ func init() {
 	webCmd.GroupID = daemonGroup.ID
 	daemonCmd.GroupID = daemonGroup.ID
 
-	rootCmd.AddCommand(lsCmd, upCmd, downCmd, removeCmd, psCmd)
+	rootCmd.AddCommand(lsCmd, upCmd, downCmd, removeCmd, psCmd, topCmd)
 	rootCmd.AddCommand(logsCmd, startCmd, stopCmd, killCmd, restartCmd, buildCmd)
 	rootCmd.AddCommand(tuiCmd, webCmd, daemonCmd)
 }

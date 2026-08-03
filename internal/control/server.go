@@ -34,6 +34,10 @@ type Backend interface {
 	KillService(name, signal string) error
 	// Restart stops and relaunches one service by name.
 	Restart(name string) error
+	// Top returns a CPU/memory snapshot for one service (or all when name is
+	// empty), used by the `top` command. The implementation samples process
+	// groups over a short interval and blocks for it.
+	Top(name string) ([]protocol.ServiceStat, error)
 	// LogPath returns the absolute path of a service's log file.
 	LogPath(name string) (string, error)
 }
@@ -166,6 +170,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleKillService(w, req)
 	case protocol.KindRestart:
 		s.handleRestart(w, req)
+	case protocol.KindTop:
+		s.handleTop(w, req)
 	case protocol.KindLogs:
 		s.handleLogs(w, req)
 	case protocol.KindListProjects:
@@ -274,6 +280,25 @@ func (s *Server) handleRestart(w io.Writer, req protocol.Request) {
 		}
 	}
 	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleTop(w io.Writer, req protocol.Request) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	stats, err := b.Top(req.Service)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	if err := protocol.WriteFrame(w, protocol.Response{
+		Kind:  protocol.KindStats,
+		Stats: stats,
+	}); err != nil {
+		_ = err
+	}
 }
 
 func (s *Server) handleLogs(w io.Writer, req protocol.Request) {

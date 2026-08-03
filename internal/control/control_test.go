@@ -77,6 +77,27 @@ func (b *fakeBackend) LogPath(name string) (string, error) {
 	return "", errors.New("unknown service " + name)
 }
 
+func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]protocol.ServiceStat, 0, len(b.states))
+	for _, st := range b.states {
+		if name != "" && st.Name != name {
+			continue
+		}
+		out = append(out, protocol.ServiceStat{
+			Name:     st.Name,
+			Status:   st.Status,
+			PID:      st.PID,
+			PGID:     st.PID,
+			Procs:    1,
+			CPU:      12.5,
+			RSSBytes: 4096,
+		})
+	}
+	return out, nil
+}
+
 func (b *fakeBackend) restartsFor(name string) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -298,6 +319,58 @@ func TestRoundtripRestartAll(t *testing.T) {
 	if b.restartsFor("api") != 1 || b.restartsFor("web") != 1 {
 		t.Errorf("restart-all counts: api=%d web=%d, want 1/1",
 			b.restartsFor("api"), b.restartsFor("web"))
+	}
+}
+
+func TestRoundtripTop(t *testing.T) {
+	b := &fakeBackend{
+		states: []protocol.ServiceState{
+			{Name: "api", Status: "running", PID: 123},
+			{Name: "web", Status: "running", PID: 456},
+		},
+	}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	got, err := c.Top("", "")
+	if err != nil {
+		t.Fatalf("Top: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d stats, want 2: %+v", len(got), got)
+	}
+	if got[0].Name != "api" || got[0].PGID != 123 || got[0].CPU != 12.5 || got[0].RSSBytes != 4096 {
+		t.Errorf("api stat: %+v", got[0])
+	}
+	if got[1].Name != "web" || got[1].Procs != 1 {
+		t.Errorf("web stat: %+v", got[1])
+	}
+}
+
+func TestRoundtripTopOneService(t *testing.T) {
+	b := &fakeBackend{
+		states: []protocol.ServiceState{
+			{Name: "api", Status: "running", PID: 123},
+			{Name: "web", Status: "running", PID: 456},
+		},
+	}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	got, err := c.Top("", "web")
+	if err != nil {
+		t.Fatalf("Top: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "web" {
+		t.Fatalf("got %+v, want only the web stat", got)
 	}
 }
 

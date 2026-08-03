@@ -64,6 +64,29 @@ func (b *ControlBackend) Restart(name string) error {
 	return b.s.Restart(name)
 }
 
+// Top returns a wire snapshot of per-service CPU/memory usage for one service
+// (or all when name is empty). It blocks for the supervisor's sampling
+// interval while the daemon derives CPU usage.
+func (b *ControlBackend) Top(name string) ([]protocol.ServiceStat, error) {
+	in, err := b.s.Top(name)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.ServiceStat, len(in))
+	for i, st := range in {
+		out[i] = protocol.ServiceStat{
+			Name:     st.Name,
+			Status:   string(st.Status),
+			PID:      st.PID,
+			PGID:     st.PGID,
+			Procs:    st.Procs,
+			CPU:      st.CPU,
+			RSSBytes: st.RSS,
+		}
+	}
+	return out, nil
+}
+
 // LogPath returns the absolute path of a service's log file.
 func (b *ControlBackend) LogPath(name string) (string, error) {
 	return b.s.LogPath(name)

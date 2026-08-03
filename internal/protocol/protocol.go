@@ -29,6 +29,7 @@ const (
 	KindStopProject   RequestKind = "stop_project"   // stop a project's services
 	KindRemoveProject RequestKind = "remove_project" // stop a project and completely remove it from the daemon
 	KindStopDaemon    RequestKind = "stop_daemon"    // stop all projects and shut down the daemon
+	KindTop           RequestKind = "top"            // sample CPU/memory usage of one service (or all)
 )
 
 // Request is a client -> daemon message.
@@ -44,6 +45,9 @@ const (
 //     Build runs pre-start builds.
 //   - Kind==KindStopProject / KindStopDaemon: Project selects the project (or all
 //     when empty for stop_daemon).
+//   - Kind==KindTop: Project selects the project; Service selects one service
+//     (empty means all). The daemon samples the service process groups twice
+//     over a ~1s interval to derive CPU usage.
 type Request struct {
 	Kind       RequestKind `json:"kind"`
 	Project    string      `json:"project,omitempty"`
@@ -62,6 +66,7 @@ type ResponseKind string
 const (
 	KindStates     ResponseKind = "states"      // a snapshot of every service
 	KindProjects   ResponseKind = "projects"    // a snapshot of every known project
+	KindStats      ResponseKind = "stats"       // a per-service CPU/memory snapshot (KindTop)
 	KindLogLine    ResponseKind = "log_line"    // one line of a service's log
 	KindLogContent ResponseKind = "log_content" // bulk: entire existing log file text
 	KindDone       ResponseKind = "done"        // request complete, no more frames
@@ -92,11 +97,27 @@ type ProjectInfo struct {
 	ConfigPath string `json:"config_path"` // absolute path to local-compose.yml
 }
 
+// ServiceStat is the wire form of a per-service resource snapshot returned by
+// `top`. CPU is a percentage of one core averaged over the daemon's sampling
+// interval and can exceed 100 for multi-core work; RSSBytes is the aggregate
+// resident set size of every process in the service's process group. Procs is
+// zero when the service has no live group, in which case CPU/RSS are zero too.
+type ServiceStat struct {
+	Name     string  `json:"name"`
+	Status   string  `json:"status"`
+	PID      int     `json:"pid"`
+	PGID     int     `json:"pgid"`
+	Procs    int     `json:"procs"`
+	CPU      float64 `json:"cpu"`
+	RSSBytes uint64  `json:"rss_bytes"`
+}
+
 // Response is a daemon -> client message.
 type Response struct {
 	Kind     ResponseKind   `json:"kind"`
 	States   []ServiceState `json:"states,omitempty"`   // Kind==KindStates
 	Projects []ProjectInfo  `json:"projects,omitempty"` // Kind==KindProjects
+	Stats    []ServiceStat  `json:"stats,omitempty"`    // Kind==KindStats
 	Project  string         `json:"project,omitempty"`  // Kind==KindLogLine (which project)
 	Service  string         `json:"service,omitempty"`  // Kind==KindLogLine (which service)
 	Line     string         `json:"line,omitempty"`     // Kind==KindLogLine

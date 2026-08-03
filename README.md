@@ -115,8 +115,9 @@ local-compose stop-daemon  # stop all projects and the daemon
 | --- | --- |
 | `up [-d] [--build]` | Start all services (in dependency order). `-d` detaches (doesn't follow logs). `--build` runs build steps first. Auto-starts the daemon if needed. |
 | `down` | Stop all services in the current project. Idempotent — safe to run when nothing's up. |
-| `ps` | List services with status, PID, restart count, health, and exit code. |
-| `logs [service] [--follow]` | Print a service's logs. `--follow` streams. With no service, defaults to the first one. |
+| `ps` | List services in the current project with status, PID, restart count, and health. |
+| `ls` | List all projects managed by the local-compose daemon. |
+| `logs [service]` | Output logs for the current project. Use `-f/--follow` to tail. With no service, defaults to the first one. |
 | `restart [service]` | Restart one service, or all when no service is given. |
 | `build [service...]` | Run build commands for the named services (or all that declare one, in start order). |
 | `tui` | Open the interactive terminal UI. Without `-f`, shows all known projects. |

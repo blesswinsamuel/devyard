@@ -32,6 +32,7 @@ func init() {
 	rootCmd.AddCommand(downCmd)
 	rootCmd.AddCommand(removeCmd)
 	rootCmd.AddCommand(psCmd)
+	rootCmd.AddCommand(lsCmd)
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(buildCmd)

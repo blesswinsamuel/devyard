@@ -13,7 +13,7 @@ var downCmd = &cobra.Command{
 	Use:   "down",
 	Short: "Stop all services in the current project",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(flagConfigPath, flagProject)
+		projName, err := resolveProjectName(flagConfigPath, flagProject)
 		if err != nil {
 			return err
 		}
@@ -31,7 +31,7 @@ var downCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		if err := client.StopProject(cfg.Project); err != nil {
+		if err := client.StopProject(projName); err != nil {
 			// If the project isn't running in the daemon, treat as success
 			// (idempotent down).
 			fmt.Fprintln(os.Stderr, "local-compose: stopped")

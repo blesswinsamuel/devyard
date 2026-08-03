@@ -21,15 +21,6 @@ var logsCmd = &cobra.Command{
 	Short: "Fetch or stream service logs",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(flagConfigPath, flagProject)
-		if err != nil {
-			return err
-		}
-
-		if len(cfg.Order) == 0 {
-			return fmt.Errorf("no services defined in config")
-		}
-
 		socket, err := dialDaemon()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
@@ -37,6 +28,10 @@ var logsCmd = &cobra.Command{
 		}
 
 		if len(args) == 1 {
+			projName, err := resolveProjectName(flagConfigPath, flagProject)
+			if err != nil {
+				return err
+			}
 			service := args[0]
 			client, err := control.Dial(socket)
 			if err != nil {
@@ -44,7 +39,16 @@ var logsCmd = &cobra.Command{
 				return err
 			}
 			defer func() { _ = client.Close() }()
-			return client.Logs(cfg.Project, service, logsFollow, newLogPrinter(service))
+			return client.Logs(projName, service, logsFollow, newLogPrinter(service))
+		}
+
+		cfg, err := loadConfig(flagConfigPath, flagProject)
+		if err != nil {
+			return err
+		}
+
+		if len(cfg.Order) == 0 {
+			return fmt.Errorf("no services defined in config")
 		}
 
 		if len(cfg.Order) == 1 {

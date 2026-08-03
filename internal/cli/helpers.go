@@ -31,6 +31,21 @@ type loadedConfig struct {
 var flagConfigPath string
 var flagProject string
 
+// resolveProjectName returns the project name to operate on. If projectName
+// (from -p/--project) is non-empty, it is returned immediately without looking
+// for local-compose.yml. Otherwise, it falls back to loadConfig to derive the
+// project name from local-compose.yml in cwd.
+func resolveProjectName(configPath, projectName string) (string, error) {
+	if projectName != "" {
+		return projectName, nil
+	}
+	cfg, err := loadConfig(configPath, projectName)
+	if err != nil {
+		return "", err
+	}
+	return cfg.Project, nil
+}
+
 // loadConfig finds, parses, and validates the config file, derives the project
 // name, and computes the topological start order. If configPath is empty it
 // walks up from the cwd looking for local-compose.yml.

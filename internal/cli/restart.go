@@ -14,7 +14,7 @@ var restartCmd = &cobra.Command{
 	Short: "Restart one or all services",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(flagConfigPath, flagProject)
+		projName, err := resolveProjectName(flagConfigPath, flagProject)
 		if err != nil {
 			return err
 		}
@@ -37,7 +37,7 @@ var restartCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		if err := client.Restart(cfg.Project, service); err != nil {
+		if err := client.Restart(projName, service); err != nil {
 			return err
 		}
 		if service == "" {

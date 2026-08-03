@@ -15,7 +15,7 @@ var psCmd = &cobra.Command{
 	Use:   "ps",
 	Short: "List running services",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(flagConfigPath, flagProject)
+		projName, err := resolveProjectName(flagConfigPath, flagProject)
 		if err != nil {
 			return err
 		}
@@ -33,7 +33,7 @@ var psCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		states, err := client.List(cfg.Project)
+		states, err := client.List(projName)
 		if err != nil {
 			return err
 		}

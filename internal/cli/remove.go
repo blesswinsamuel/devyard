@@ -14,7 +14,7 @@ var removeCmd = &cobra.Command{
 	Aliases: []string{"rm"},
 	Short:   "Stop and completely remove a project from the daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(flagConfigPath, flagProject)
+		projName, err := resolveProjectName(flagConfigPath, flagProject)
 		if err != nil {
 			return err
 		}
@@ -32,7 +32,7 @@ var removeCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		if err := client.RemoveProject(cfg.Project); err != nil {
+		if err := client.RemoveProject(projName); err != nil {
 			fmt.Fprintln(os.Stderr, "local-compose: removed")
 			return nil
 		}

@@ -42,7 +42,8 @@ const (
 //     Signal is the signal name (empty means SIGKILL).
 //   - Kind==KindList / KindStop: Project selects the project.
 //   - Kind==KindStartProject: ConfigPath is the absolute path to local-compose.yml;
-//     Build runs pre-start builds.
+//     Build runs pre-start builds; EnvFile is the absolute path to the env file
+//     (empty means the daemon falls back to .env next to the config file).
 //   - Kind==KindStopProject / KindStopDaemon: Project selects the project (or all
 //     when empty for stop_daemon).
 //   - Kind==KindTop: Project selects the project; Service selects one service
@@ -55,6 +56,7 @@ type Request struct {
 	Signal     string      `json:"signal,omitempty"`
 	Follow     bool        `json:"follow,omitempty"`
 	ConfigPath string      `json:"config_path,omitempty"`
+	EnvFile    string      `json:"env_file,omitempty"`
 	Build      bool        `json:"build,omitempty"`
 }
 

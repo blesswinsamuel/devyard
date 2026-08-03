@@ -20,6 +20,41 @@ services:             # required, non-empty
 - `name` defaults to `filepath.Base(filepath.Dir(configPath))` when omitted.
 - `services` must have at least one entry.
 
+### Env files (`--env-file`, `.env`)
+
+A docker-compose-style env file supplies variables for two purposes:
+
+1. **Config interpolation** — `local-compose.yml` may reference
+   `${VAR}` / `${VAR:-default}` anywhere in its text (command, env values,
+   working_dir, ...). References are expanded from the env file variables
+   overlaid on the process environment (the process environment wins for
+   duplicate keys) before the file is parsed.
+2. **Child process environment** — the env file variables are passed to every
+   service process, layered under the service's own `env` (service `env` wins)
+   and under the parent environment.
+
+The env file is located by default at `.env` next to the config file (optional;
+a missing default `.env` is not an error). Override it with
+`local-compose --env-file <path>` — an explicit path must exist.
+
+Supported env file syntax: `KEY=VALUE` lines, blank lines, `#` comments,
+optional `export ` prefix, and single/double-quoted values.
+
+Interpolation forms:
+
+| Form | Meaning |
+| --- | --- |
+| `${VAR}` | Value of `VAR`; empty + a warning when unset |
+| `${VAR:-def}` | `def` when `VAR` is unset or empty |
+| `${VAR-def}` | `def` when `VAR` is unset |
+| `$$` | Literal `$` |
+
+Bare `$VAR` references (no braces) are left untouched, so shell-style
+`$HOME` inside `command` still reaches the shell.
+
+> Example: `PORT=${PORT:-8080}` in a service `command` becomes `8080` when the
+> env file (or process env) does not define `PORT`.
+
 ## Service
 
 ```yaml

@@ -40,7 +40,7 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := client.StartProject(cfg.ConfigPath, false); err != nil {
+		if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); err != nil {
 			_ = client.Close()
 			return err
 		}

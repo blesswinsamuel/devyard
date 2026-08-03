@@ -69,10 +69,12 @@ func (d *Daemon) StopCh() <-chan struct{} { return d.stopCh }
 
 // StartProject loads the config at configPath, creates a Supervisor for it,
 // starts it, and adds it to the daemon's map. If build is true, pre-start
-// builds are run before starting services. If a project with the same name is
-// already running, it returns an error.
-func (d *Daemon) StartProject(configPath string, build bool) error {
-	cfg, err := loadConfig(configPath)
+// builds are run before starting services. envFile is the absolute path to an
+// env file to layer under service env (empty falls back to .env next to the
+// config file). If a project with the same name is already running, it returns
+// an error.
+func (d *Daemon) StartProject(configPath string, build bool, envFile string) error {
+	cfg, err := loadConfig(configPath, envFile)
 	if err != nil {
 		return err
 	}
@@ -112,6 +114,7 @@ func (d *Daemon) StartProject(configPath string, build bool) error {
 		Order:      cfg.Order,
 		BaseDir:    cfg.BaseDir,
 		Foreground: false,
+		Env:        config.BaseEnv(cfg.DotEnv),
 	})
 	if err != nil {
 		return fmt.Errorf("supervisor: %w", err)
@@ -325,14 +328,20 @@ type loadedConfig struct {
 	Name    string
 	BaseDir string
 	Order   []string
+	EnvFile string
+	DotEnv  map[string]string
 }
 
-func loadConfig(configPath string) (*loadedConfig, error) {
+func loadConfig(configPath, envFile string) (*loadedConfig, error) {
 	abs, err := filepath.Abs(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolve config path: %w", err)
 	}
-	file, err := config.Load(abs)
+	envFile, dotenv, err := config.ResolveDotEnv(abs, envFile)
+	if err != nil {
+		return nil, err
+	}
+	file, err := config.LoadWithEnv(abs, dotenv)
 	if err != nil {
 		return nil, err
 	}
@@ -355,6 +364,8 @@ func loadConfig(configPath string) (*loadedConfig, error) {
 		Name:    file.Name,
 		BaseDir: filepath.Dir(abs),
 		Order:   order,
+		EnvFile: envFile,
+		DotEnv:  dotenv,
 	}, nil
 }
 
@@ -385,7 +396,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 		dir = filepath.Join(cfg.BaseDir, dir)
 	}
 	// Run the build command; output goes to the daemon's stderr (daemon log).
-	return runBuildCommand(shell, spec.Command, dir, spec.Env)
+	return runBuildCommand(shell, spec.Command, dir, config.BaseEnv(cfg.DotEnv), spec.Env)
 }
 
 // writeConfigPath persists the config path in the project's state dir so the
@@ -492,7 +503,7 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 			continue
 		}
 
-		cfg, err := loadConfig(configPath)
+		cfg, err := loadConfig(configPath, "")
 		if err != nil {
 			continue
 		}
@@ -507,7 +518,7 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 			continue
 		}
 
-		if err := d.StartProject(configPath, false); err != nil {
+		if err := d.StartProject(configPath, false, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: autostart: project %q: %v\n", name, err)
 			skipped++
 			continue

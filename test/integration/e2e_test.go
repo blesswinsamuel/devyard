@@ -64,6 +64,7 @@ type env struct {
 	state      string
 	projName   string
 	configPath string
+	envFile    string // optional --env-file passed to every invocation
 }
 
 func newEnv(t *testing.T, configContents string) *env {
@@ -99,7 +100,11 @@ func newEnv(t *testing.T, configContents string) *env {
 // The timeout bounds hangs (e.g. a stuck `logs --follow`).
 func (e *env) run(t *testing.T, ctx context.Context, args ...string) (string, string, int) {
 	t.Helper()
-	full := append([]string{"-p", e.projName, "--file", e.configPath}, args...)
+	prefix := []string{"-p", e.projName, "--file", e.configPath}
+	if e.envFile != "" {
+		prefix = append(prefix, "--env-file", e.envFile)
+	}
+	full := append(prefix, args...)
 	cmd := exec.CommandContext(ctx, binPath, full...)
 	cmd.Dir = e.cfgDir
 	cmd.Env = e.environ()
@@ -676,4 +681,75 @@ func TestE2E_Top(t *testing.T) {
 	if strings.Contains(alphaOut, "beta") || strings.Contains(alphaOut, "gamma") {
 		t.Fatalf("top alpha leaked other services:\n%s", alphaOut)
 	}
+}
+
+// TestE2E_DotEnvAndInterpolation verifies that a .env file next to the config
+// is loaded (fallback), its variables reach child processes under the service
+// env, and ${VAR} / ${VAR:-default} references in the config are interpolated.
+// It also exercises an explicit --env-file.
+func TestE2E_DotEnvAndInterpolation(t *testing.T) {
+	const cfg = `version: "1"
+name: lc-test
+services:
+  web:
+    command: sh -c 'echo PORT=$PORT; echo INTERP=${PORT}; echo DEFAULTED=${MISSING:-fallback}; echo APP_NAME=$APP_NAME; echo OVERRIDDEN=$OVERRIDDEN; sleep 30'
+    env:
+      OVERRIDDEN: svc
+`
+	e := newEnv(t, cfg)
+	dotenv := "PORT=9090\nAPP_NAME=myapp\nOVERRIDDEN=dotenv\n"
+	if err := os.WriteFile(filepath.Join(e.cfgDir, ".env"), []byte(dotenv), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "web") != 0
+	}, "ps shows web running")
+
+	// logs may briefly lag the process start (pre-existing race), so poll
+	// until the service's captured output contains the expected lines.
+	var logsOut string
+	waitForCond(t, 5*time.Second, func() bool {
+		var rc int
+		logsOut, _, rc = e.run(t, context.Background(), "logs", "web")
+		return rc == 0 && strings.Contains(logsOut, "PORT=9090")
+	}, "logs web shows PORT=9090")
+	for _, want := range []string{
+		"PORT=9090",          // dotenv var in child env
+		"INTERP=9090",        // ${VAR} interpolated from dotenv
+		"DEFAULTED=fallback", // ${VAR:-default} when unset
+		"APP_NAME=myapp",     // dotenv var in child env
+		"OVERRIDDEN=svc",     // service env wins over dotenv
+	} {
+		if !strings.Contains(logsOut, want) {
+			t.Fatalf("logs web missing %q, got:\n%s", want, logsOut)
+		}
+	}
+
+	// Explicit --env-file overrides the .env fallback.
+	e2 := newEnv(t, cfg)
+	other := filepath.Join(e2.cfgDir, "custom.env")
+	if err := os.WriteFile(other, []byte("PORT=7070\n"), 0o644); err != nil {
+		t.Fatalf("write custom.env: %v", err)
+	}
+	e2.envFile = other
+
+	_, errOut, code = e2.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d (--env-file): exit %d, err=%q", code, errOut)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e2.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "web") != 0
+	}, "ps shows web running (--env-file)")
+	waitForCond(t, 5*time.Second, func() bool {
+		var r int
+		logsOut, _, r = e2.run(t, context.Background(), "logs", "web")
+		return r == 0 && strings.Contains(logsOut, "PORT=7070")
+	}, "logs web (--env-file) shows PORT=7070")
 }

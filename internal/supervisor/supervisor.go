@@ -90,6 +90,11 @@ type Options struct {
 	// DefaultBackoff() in New.
 	Backoff BackoffConfig
 
+	// Env holds variables from the project's env file, layered under each
+	// service's own env. It is applied on top of the parent environment
+	// (service env still wins). May be nil.
+	Env []string
+
 	// InstallSignalHandler, when true, makes Start install a SIGINT/SIGTERM
 	// handler that triggers a graceful Stop. The daemon and foreground CLI
 	// enable this; tests leave it off.
@@ -572,7 +577,7 @@ func (s *Supervisor) healthConfig(rt *serviceRuntime) health.Config {
 		Timeout:    hc.Timeout,
 		Shell:      rt.spec.Shell,
 		WorkingDir: resolveWorkingDir(s.opts.BaseDir, rt.spec.WorkingDir),
-		Env:        mergeEnv(os.Environ(), rt.spec.Env),
+		Env:        mergeEnv(mergeEnvSlice(os.Environ(), s.opts.Env), rt.spec.Env),
 	}
 }
 
@@ -681,7 +686,7 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 
 	cmd := newCommand(shell, "-c", svc.Command)
 	cmd.dir = resolveWorkingDir(s.opts.BaseDir, svc.WorkingDir)
-	cmd.env = mergeEnv(applyEnvDefaults(os.Environ(), defaultColorEnv()), svc.Env)
+	cmd.env = mergeEnv(applyEnvDefaults(mergeEnvSlice(os.Environ(), s.opts.Env), defaultColorEnv()), svc.Env)
 
 	if svc.TTY {
 		return s.launchPTY(cmd, rt)

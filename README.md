@@ -161,6 +161,7 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 | --- | --- |
 | `-f, --file <path>` | Path to `local-compose.yml` (default: walk up from current directory). |
 | `-p, --project <name>` | Target project name directly (works from any directory without requiring `local-compose.yml` in cwd). |
+| `--env-file <path>` | Path to an env file for variables and config interpolation (default: `.env` next to the config file). |
 
 ### The TUI
 
@@ -242,6 +243,26 @@ build:
 `build` runs once before the service starts on `up`. `local-compose build` runs every service's
 declared build step; `up --build` forces a rebuild. A failed build aborts `up` so services never
 start on top of a broken build.
+
+### Env files and interpolation
+
+A `.env` file next to `local-compose.yml` (or the file given via `--env-file`) is loaded
+automatically. Its variables are passed to every service process — layered under the service's
+own `env` (service `env` wins) — and are available for **config interpolation**:
+
+```yaml
+# .env
+PORT=8080
+
+# local-compose.yml
+services:
+  api:
+    command: cargo run --bin api -- --port ${PORT:-3000}
+```
+
+`${VAR}` and `${VAR:-default}` (also `${VAR-default}`) are expanded anywhere in the config text.
+Unset variables without a default expand to empty with a warning; `$$` escapes a literal `$`;
+bare `$VAR` is left untouched for the shell.
 
 `healthcheck`:
 

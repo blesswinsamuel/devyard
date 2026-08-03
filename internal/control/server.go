@@ -336,7 +336,7 @@ func (s *Server) handleStartProject(w io.Writer, req protocol.Request) {
 		_ = writeError(w, "start_project: config_path is required")
 		return
 	}
-	if err := s.backend.StartProject(req.ConfigPath, req.Build); err != nil {
+	if err := s.backend.StartProject(req.ConfigPath, req.Build, req.EnvFile); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}

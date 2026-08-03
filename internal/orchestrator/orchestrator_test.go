@@ -51,7 +51,7 @@ func TestStartAndStopProject(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -92,12 +92,12 @@ func TestStartProjectAlreadyRunning(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	defer func() { _ = d.StopProject("lc-test") }()
 
-	if err := d.StartProject(configPath, false); err == nil {
+	if err := d.StartProject(configPath, false, ""); err == nil {
 		t.Fatalf("StartProject twice: expected error, got nil")
 	}
 }
@@ -121,7 +121,7 @@ func TestStopDaemonStopsAllProjects(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -146,7 +146,7 @@ func TestProjectStatusTransitionsToStopped(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -166,7 +166,7 @@ func TestStopProjectWritesStoppedMarker(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d.StopProject("lc-test"); err != nil {
@@ -183,7 +183,7 @@ func TestStartProjectRemovesStoppedMarker(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d.StopProject("lc-test"); err != nil {
@@ -193,7 +193,7 @@ func TestStartProjectRemovesStoppedMarker(t *testing.T) {
 		t.Fatalf("expected .stopped marker after StopProject")
 	}
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject second time: %v", err)
 	}
 	if orchestrator.HasProjectStoppedMarker("lc-test") {
@@ -214,7 +214,7 @@ services:
 
 	// Simulate a prior run that wrote the config-path.
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false); err != nil {
+	if err := d1.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d1.StopProject("lc-always"); err != nil {
@@ -250,7 +250,7 @@ services:
 
 	// Simulate a prior run that stopped the project (writes .stopped marker).
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false); err != nil {
+	if err := d1.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d1.StopProject("lc-unless"); err != nil {
@@ -283,7 +283,7 @@ services:
 
 	// Simulate a prior run that didn't stop (no .stopped marker).
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false); err != nil {
+	if err := d1.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	// Don't call StopProject — just stop the daemon so the marker isn't written.
@@ -311,7 +311,7 @@ services:
 `)
 
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false); err != nil {
+	if err := d1.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	_ = d1.StopDaemon()
@@ -346,7 +346,7 @@ func TestRemoveProject(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false); err != nil {
+	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 

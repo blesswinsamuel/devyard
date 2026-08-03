@@ -40,6 +40,11 @@ func testLocations(t *testing.T) *project.Locations {
 
 func newSupervisor(t *testing.T, file *config.File, order []string) *supervisor.Supervisor {
 	t.Helper()
+	return newSupervisorWithEnv(t, file, order, nil)
+}
+
+func newSupervisorWithEnv(t *testing.T, file *config.File, order []string, env []string) *supervisor.Supervisor {
+	t.Helper()
 	s, err := supervisor.New(supervisor.Options{
 		Locations:           testLocations(t),
 		File:                file,
@@ -48,6 +53,7 @@ func newSupervisor(t *testing.T, file *config.File, order []string) *supervisor.
 		Foreground:          false,
 		Backoff:             testBackoff(),
 		GracefulStopTimeout: 2 * time.Second,
+		Env:                 env,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -236,6 +242,48 @@ func TestSupervisorColorEnvServiceOverride(t *testing.T) {
 	data := string(mustReadFile(t, path))
 	if !strings.Contains(data, "CLICOLOR=0") {
 		t.Errorf("log = %q, want CLICOLOR=0 (service override)", data)
+	}
+}
+
+// TestSupervisorEnvFileLayer verifies env-file variables (Options.Env) reach
+// the child environment under the service env.
+func TestSupervisorEnvFileLayer(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"envcheck": {
+			Command: "echo FROM_DOTENV=$FROM_DOTENV FROM_PARENT=$FROM_PARENT OVERRIDDEN=$OVERRIDDEN",
+			Shell:   "sh",
+			Restart: config.RestartNo,
+			Env:     map[string]string{"OVERRIDDEN": "svc"},
+		},
+	})
+	s := newSupervisorWithEnv(t, file, []string{"envcheck"}, []string{
+		"FROM_DOTENV=dotenv",
+		"FROM_PARENT=parent",
+		"OVERRIDDEN=dotenv",
+	})
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s.Wait()
+
+	path, err := s.LogPath("envcheck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := string(mustReadFile(t, path))
+	for _, want := range []string{
+		"FROM_DOTENV=dotenv",
+		"FROM_PARENT=parent",
+		"OVERRIDDEN=svc",
+	} {
+		if !strings.Contains(data, want) {
+			t.Errorf("log = %q, want %q present", data, want)
+		}
 	}
 }
 

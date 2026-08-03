@@ -40,6 +40,9 @@ What's done, what's planned, and where each item lives in the code.
   `web.enabled`, `web.host`, `web.port`. (`internal/globalconfig`)
 - **Config discovery** — `-f`/`-p` flags; walk-up discovery of
   `local-compose.yml`. (`internal/config`, `internal/cli`)
+- **Env files + interpolation** — `.env` next to the config (or `--env-file`)
+  feeds child-process env and `${VAR}` / `${VAR:-default}` config
+  interpolation. (`internal/config/envfile.go`, `internal/cli`)
 - **Tests** — unit tests per package plus a black-box integration suite that
   builds the real binary and drives the full lifecycle. (`test/integration`)
 - **CI + lint** — GitHub Actions workflow (`go vet`, `gofmt`, `golangci-lint`,
@@ -47,7 +50,6 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Planned
 
-- [ ] **`.env` / `--env-file` loading** and `${VAR}` interpolation in config.
 - [ ] **Log rotation** by size in the state dir; `logs --tail N` / `--since`.
 - [ ] **Configurable graceful stop timeout** per service / via flag (currently
       fixed at 10s in `Supervisor`).

@@ -144,20 +144,48 @@ type File struct {
 	Services map[string]Service `yaml:"services"`
 }
 
-// Load reads and validates a config file.
+// Load reads and validates a config file. Environment variable references in
+// the file (${VAR}, ${VAR:-default}) are interpolated from the process
+// environment before parsing. See Interpolate.
 func Load(path string) (*File, error) {
+	return LoadWithEnv(path, nil)
+}
+
+// LoadWithEnv reads and validates a config file, interpolating environment
+// variable references from dotenv overlaid on the process environment (the
+// process environment wins for duplicate keys). dotenv is typically the
+// variables read from a project .env file.
+func LoadWithEnv(path string, dotenv map[string]string) (*File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
+	text := Interpolate(string(data), interpolateEnv(dotenv), func(msg string) {
+		fmt.Fprintf(os.Stderr, "local-compose: warning: %s\n", msg)
+	})
 	var file File
-	if err := yaml.Unmarshal(data, &file); err != nil {
+	if err := yaml.Unmarshal([]byte(text), &file); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	if err := file.Validate(path); err != nil {
 		return nil, err
 	}
 	return &file, nil
+}
+
+// interpolateEnv merges dotenv vars with the process environment for
+// interpolation, with the process environment taking precedence.
+func interpolateEnv(dotenv map[string]string) map[string]string {
+	env := make(map[string]string, len(dotenv))
+	for k, v := range dotenv {
+		env[k] = v
+	}
+	for _, kv := range os.Environ() {
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			env[kv[:i]] = kv[i+1:]
+		}
+	}
+	return env
 }
 
 // Validate checks the loaded config and applies defaults.
@@ -273,17 +301,17 @@ func FindConfig(startDir string) (string, error) {
 	return "", fmt.Errorf("local-compose.yml not found")
 }
 
-// BuildEnv returns the parent environment with svcEnv overlaid (additive,
-// matching the service env rule). Keys present in svcEnv replace the
-// corresponding parent keys; new keys are appended.
-func BuildEnv(svcEnv map[string]string) []string {
-	parent := os.Environ()
+// BuildEnvOver returns base with svcEnv overlaid (additive, matching the
+// service env rule). Keys present in svcEnv replace the corresponding base
+// keys; new keys are appended. base is typically os.Environ() layered with
+// dotenv vars via BaseEnv.
+func BuildEnvOver(base []string, svcEnv map[string]string) []string {
 	if len(svcEnv) == 0 {
-		return parent
+		return base
 	}
 	seen := make(map[string]bool, len(svcEnv))
-	out := make([]string, 0, len(parent)+len(svcEnv))
-	for _, kv := range parent {
+	out := make([]string, 0, len(base)+len(svcEnv))
+	for _, kv := range base {
 		k := kv
 		if i := strings.IndexByte(kv, '='); i >= 0 {
 			k = kv[:i]
@@ -299,6 +327,26 @@ func BuildEnv(svcEnv map[string]string) []string {
 		if !seen[k] {
 			out = append(out, k+"="+v)
 		}
+	}
+	return out
+}
+
+// BaseEnv returns an environment slice built from the process environment
+// with dotenv vars overlaid (dotenv wins for duplicate keys). Service and
+// build env is layered on top via BuildEnvOver.
+func BaseEnv(dotenv map[string]string) []string {
+	merged := make(map[string]string, len(dotenv))
+	for _, kv := range os.Environ() {
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			merged[kv[:i]] = kv[i+1:]
+		}
+	}
+	for k, v := range dotenv {
+		merged[k] = v
+	}
+	out := make([]string, 0, len(merged))
+	for k, v := range merged {
+		out = append(out, k+"="+v)
 	}
 	return out
 }

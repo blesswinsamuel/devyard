@@ -40,6 +40,7 @@ type Request struct {
     Signal     string      `json:"signal,omitempty"`
     Follow     bool        `json:"follow,omitempty"`
     ConfigPath string      `json:"config_path,omitempty"`
+    EnvFile    string      `json:"env_file,omitempty"`
     Build      bool        `json:"build,omitempty"`
 }
 ```
@@ -54,7 +55,7 @@ type Request struct {
 | `"restart"` | project name | service name (empty = all) | — | Restart the named service, or all when empty. Acks with `done`. |
 | `"top"` | project name | service name (empty = all) | — | Sample the service's process group(s) twice over ~1s and return one `stats` response with per-service CPU/memory usage. |
 | `"list_projects"` | — | — | — | Return one `projects` response with a snapshot of all known projects. |
-| `"start_project"` | — | — | `ConfigPath`, `Build` | Load the config at `ConfigPath` and start a supervisor for it. Acks with `done` or `error`. |
+| `"start_project"` | — | — | `ConfigPath`, `EnvFile`, `Build` | Load the config at `ConfigPath` (with env-file variables from `EnvFile`, or `.env` next to the config when empty) and start a supervisor for it. Acks with `done` or `error`. |
 | `"stop_project"` | project name | — | — | Stop the named project's services. Acks with `done`. |
 | `"remove_project"` | project name | — | — | Stop the named project's services, remove it from the daemon, and delete its runtime and state directories. Acks with `done`. |
 | `"stop_daemon"` | — | — | — | Stop all projects and shut down the daemon. Acks with `done`. |

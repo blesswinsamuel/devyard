@@ -145,6 +145,21 @@ func mergeEnv(parent []string, svc map[string]string) []string {
 	return out
 }
 
+// mergeEnvSlice layers an overlay env slice over parent, with overlay keys
+// replacing parent values (used for env-file vars under the service env).
+func mergeEnvSlice(parent, overlay []string) []string {
+	if len(overlay) == 0 {
+		return parent
+	}
+	over := make(map[string]string, len(overlay))
+	for _, kv := range overlay {
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			over[kv[:i]] = kv[i+1:]
+		}
+	}
+	return mergeEnv(parent, over)
+}
+
 // resolveWorkingDir resolves a service working_dir against the config base
 // dir when relative. Empty working_dir defaults to baseDir (the config
 // file's directory).

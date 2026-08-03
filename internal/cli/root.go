@@ -27,6 +27,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().StringVar(&flagConfigPath, "file", "", "Path to local-compose.yml (default: walk up from cwd)")
 	rootCmd.PersistentFlags().StringVarP(&flagProject, "project", "p", "", "Project name (default: config name or config dir name)")
+	rootCmd.PersistentFlags().StringVar(&flagEnvFile, "env-file", "", "Path to an env file for variables and config interpolation (default: .env next to the config file)")
 
 	// Define command groups
 	projectGroup := &cobra.Group{ID: "project", Title: "Project Commands:"}

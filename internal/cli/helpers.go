@@ -15,14 +15,17 @@ import (
 
 // loadedConfig bundles everything the CLI commands need after parsing the
 // config file: the file itself, the resolved project name, the config's base
-// directory (for relative working_dir resolution), and the topological start
-// order derived from depends_on.
+// directory (for relative working_dir resolution), the topological start
+// order derived from depends_on, and the env file variables used for
+// interpolation and child processes.
 type loadedConfig struct {
 	File       *config.File
 	Project    string
 	BaseDir    string
 	ConfigPath string
 	Order      []string
+	EnvFile    string
+	DotEnv     map[string]string
 }
 
 // flagConfigPath and flagProject are bound to the root command's persistent
@@ -30,6 +33,7 @@ type loadedConfig struct {
 // closures can read them without threading state through cobra.
 var flagConfigPath string
 var flagProject string
+var flagEnvFile string
 
 // resolveProjectName returns the project name to operate on. If projectName
 // (from -p/--project) is non-empty, it is returned immediately without looking
@@ -61,7 +65,11 @@ func loadConfig(configPath, projectName string) (*loadedConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve config path: %w", err)
 	}
-	file, err := config.Load(abs)
+	envFile, dotenv, err := config.ResolveDotEnv(abs, flagEnvFile)
+	if err != nil {
+		return nil, err
+	}
+	file, err := config.LoadWithEnv(abs, dotenv)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +90,8 @@ func loadConfig(configPath, projectName string) (*loadedConfig, error) {
 		BaseDir:    filepath.Dir(abs),
 		ConfigPath: abs,
 		Order:      order,
+		EnvFile:    envFile,
+		DotEnv:     dotenv,
 	}, nil
 }
 

@@ -105,9 +105,11 @@ func (c *Client) ListProjects() ([]protocol.ProjectInfo, error) {
 }
 
 // StartProject sends a StartProject request with the given config path. If
-// build is true, pre-start builds are run before starting services.
-func (c *Client) StartProject(configPath string, build bool) error {
-	if err := c.Send(protocol.Request{Kind: protocol.KindStartProject, ConfigPath: configPath, Build: build}); err != nil {
+// build is true, pre-start builds are run before starting services. envFile is
+// the absolute path to an env file (empty falls back to .env next to the
+// config file).
+func (c *Client) StartProject(configPath string, build bool, envFile string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStartProject, ConfigPath: configPath, Build: build, EnvFile: envFile}); err != nil {
 		return err
 	}
 	return c.awaitDone()

@@ -75,7 +75,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	cmd.Env = config.BuildEnv(spec.Env)
+	cmd.Env = config.BuildEnvOver(config.BaseEnv(cfg.DotEnv), spec.Env)
 	cmd.Stdout = prefixWriter(name, os.Stdout)
 	cmd.Stderr = prefixWriter(name, os.Stderr)
 	return cmd.Run()

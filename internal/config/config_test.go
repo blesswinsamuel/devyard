@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,5 +131,123 @@ services:
 	}
 	if file.Services["api"].TTY {
 		t.Fatal("expected api.tty = false (default)")
+	}
+}
+
+func TestInterpolate(t *testing.T) {
+	t.Parallel()
+	env := map[string]string{
+		"PORT":  "8080",
+		"EMPTY": "",
+		"PATH":  "/usr/bin",
+	}
+	cases := []struct {
+		in   string
+		want string
+		warn int
+	}{
+		{in: "port=${PORT}", want: "port=8080", warn: 0},
+		{in: "d=${MISSING}", want: "d=", warn: 1},
+		{in: "d=${MISSING:-9}", want: "d=9", warn: 0},
+		{in: "d=${MISSING-9}", want: "d=9", warn: 0},
+		{in: "e=${EMPTY:-9}", want: "e=9", warn: 0},
+		{in: "e=${EMPTY-9}", want: "e=", warn: 0},
+		{in: "p=${PATH}:/bin", want: "p=/usr/bin:/bin", warn: 0},
+		{in: "$$literal", want: "$literal", warn: 0},
+		{in: "$HOME-bare", want: "$HOME-bare", warn: 0},
+		{in: "nested ${PORT}", want: "nested 8080", warn: 0},
+		{in: "unterminated ${PORT", want: "unterminated ${PORT", warn: 0},
+	}
+	for i, c := range cases {
+		warns := 0
+		got := config.Interpolate(c.in, env, func(string) { warns++ })
+		if got != c.want {
+			t.Errorf("case %d: Interpolate(%q) = %q, want %q", i, c.in, got, c.want)
+		}
+		if warns != c.warn {
+			t.Errorf("case %d: warnings = %d, want %d", i, warns, c.warn)
+		}
+	}
+}
+
+func TestParseDotEnv(t *testing.T) {
+	t.Parallel()
+	data := []byte("# comment\n\nFOO=bar\nSPACED=hello world\n" +
+		"QUOTED=\"double\"\nSINGLE='single'\nexport EXPORTED=yes\nEMPTY=\n")
+	vars, err := config.ParseDotEnv(data)
+	if err != nil {
+		t.Fatalf("ParseDotEnv: %v", err)
+	}
+	want := map[string]string{
+		"FOO":      "bar",
+		"SPACED":   "hello world",
+		"QUOTED":   "double",
+		"SINGLE":   "single",
+		"EXPORTED": "yes",
+		"EMPTY":    "",
+	}
+	if len(vars) != len(want) {
+		t.Fatalf("vars = %v, want %v", vars, want)
+	}
+	for k, v := range want {
+		if vars[k] != v {
+			t.Errorf("vars[%q] = %q, want %q", k, vars[k], v)
+		}
+	}
+}
+
+func TestParseDotEnvMalformed(t *testing.T) {
+	t.Parallel()
+	if _, err := config.ParseDotEnv([]byte("NOKEY\n")); err == nil {
+		t.Fatal("ParseDotEnv with a non-assignment line: expected error, got nil")
+	}
+}
+
+func TestLoadWithEnvInterpolation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "local-compose.yml")
+	content := `version: "1"
+services:
+  api:
+    command: echo port=${PORT:-8080}
+    env:
+      PATH: ${PATH}:/custom/bin
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dotenv := map[string]string{"PORT": "9090"}
+	file, err := config.LoadWithEnv(path, dotenv)
+	if err != nil {
+		t.Fatalf("LoadWithEnv: %v", err)
+	}
+	api := file.Services["api"]
+	if api.Command != "echo port=9090" {
+		t.Errorf("command = %q, want %q", api.Command, "echo port=9090")
+	}
+	if !strings.HasSuffix(api.Env["PATH"], ":/custom/bin") {
+		t.Errorf("env PATH = %q, want suffix %q", api.Env["PATH"], ":/custom/bin")
+	}
+}
+
+func TestBuildEnvOver(t *testing.T) {
+	t.Parallel()
+	base := []string{"PATH=/usr/bin", "FOO=base"}
+	svc := map[string]string{"FOO": "svc", "BAR": "new"}
+	out := config.BuildEnvOver(base, svc)
+	got := map[string]string{}
+	for _, kv := range out {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	if got["FOO"] != "svc" {
+		t.Errorf("FOO = %q, want svc", got["FOO"])
+	}
+	if got["BAR"] != "new" {
+		t.Errorf("BAR = %q, want new", got["BAR"])
+	}
+	if got["PATH"] != "/usr/bin" {
+		t.Errorf("PATH = %q, want /usr/bin", got["PATH"])
 	}
 }

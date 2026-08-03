@@ -54,7 +54,7 @@ func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
 	return out
 }
 
-func (m *fakeMultiBackend) StartProject(configPath string, build bool) error {
+func (m *fakeMultiBackend) StartProject(configPath string, build bool, envFile string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.started = append(m.started, configPath)

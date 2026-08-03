@@ -1764,7 +1764,7 @@ func startProjectCmd(socket, configPath string) tea.Cmd {
 			return actionResultMsg{action: "start", err: err}
 		}
 		defer func() { _ = c.Close() }()
-		if err := c.StartProject(configPath, false); err != nil {
+		if err := c.StartProject(configPath, false, ""); err != nil {
 			return actionResultMsg{action: "start", err: err}
 		}
 		return actionResultMsg{action: "start"}

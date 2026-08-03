@@ -279,6 +279,12 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 	if lsCode != 0 || !strings.Contains(lsOut, "lc-test") || !strings.Contains(lsOut, "running") {
 		t.Fatalf("ls output unexpected: code=%d, output:\n%s", lsCode, lsOut)
 	}
+
+	// project ls: verify subcommand works identically
+	projLsOut, _, projLsCode := e.run(t, context.Background(), "project", "ls")
+	if projLsCode != 0 || !strings.Contains(projLsOut, "lc-test") || !strings.Contains(projLsOut, "running") {
+		t.Fatalf("project ls output unexpected: code=%d, output:\n%s", projLsCode, projLsOut)
+	}
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		if pid := pidFromPS(t, psOut, name); pid == 0 {
 			t.Fatalf("ps: %s has no pid in output:\n%s", name, psOut)

@@ -141,6 +141,7 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 | `daemon stop` | Stop the global daemon and all managed projects. |
 | `daemon restart` | Seamlessly reload/restart the global daemon process. |
 | `daemon status` | Display current daemon status and active projects. |
+| `version` | Print the local-compose version. Also available as `local-compose --version`. |
 
 ### Global Flags
 

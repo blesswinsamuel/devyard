@@ -35,16 +35,17 @@ var flagConfigPath string
 var flagProject string
 var flagEnvFile string
 
-// resolveProjectName returns the project name to operate on. If projectName
-// (from -p/--project) is non-empty, it is returned immediately without looking
-// for local-compose.yml. Otherwise, it falls back to loadConfig to derive the
-// project name from local-compose.yml in cwd.
+// resolveProjectName returns the project name to operate on. The daemon
+// registers projects by the config's declared name, so whenever a config file
+// is resolvable — via --file, discovery in cwd, or a registered config path
+// for -p/--project — the config's name is authoritative. projectName is only a
+// fallback for name-based resolution when no config file exists.
 func resolveProjectName(configPath, projectName string) (string, error) {
-	if projectName != "" {
-		return projectName, nil
-	}
 	cfg, err := loadConfig(configPath, projectName)
 	if err != nil {
+		if projectName != "" {
+			return projectName, nil
+		}
 		return "", err
 	}
 	return cfg.Project, nil
@@ -83,10 +84,9 @@ func loadConfig(configPath, projectName string) (*loadedConfig, error) {
 		return nil, err
 	}
 
-	name := projectName
-	if name == "" {
-		name = file.Name
-	}
+	// The daemon registers projects by the config's declared name; -p is only
+	// a lookup hint for the state dir, never a rename.
+	name := file.Name
 
 	order, err := startOrder(file)
 	if err != nil {

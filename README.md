@@ -160,7 +160,7 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 | Flag | Description |
 | --- | --- |
 | `-f, --file <path>` | Path to `local-compose.yml` (default: walk up from current directory). |
-| `-p, --project <name>` | Target project name directly (works from any directory without requiring `local-compose.yml` in cwd). |
+| `-p, --project <name>` | Resolve a registered project by name from any directory when no `local-compose.yml` is found. When a config file is available, its declared `name` is authoritative. |
 | `--env-file <path>` | Path to an env file for variables and config interpolation (default: `.env` next to the config file). |
 
 ### The TUI

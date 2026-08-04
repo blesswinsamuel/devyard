@@ -17,10 +17,15 @@ createRoot(() => {
 
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
-const [expanded, setExpanded] = createSignal<Set<string>>(new Set());
+/** Projects the user has collapsed; everything else is expanded by default. */
+const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
 const [selectedService, setSelectedService] = createSignal<string | null>(null);
 const [toasts, setToasts] = createSignal<{ id: number; message: string; kind: "error" | "info" }[]>([]);
+
+export function isProjectExpanded(name: string): boolean {
+  return !collapsed().has(name);
+}
 
 let toastId = 0;
 export function pushToast(message: string, kind: "error" | "info" = "error") {
@@ -74,6 +79,15 @@ function prune() {
     }
     return changed ? next : m;
   });
+  setCollapsed((prev) => {
+    let changed = false;
+    const next = new Set<string>();
+    for (const name of prev) {
+      if (names.has(name)) next.add(name);
+      else changed = true;
+    }
+    return changed ? next : prev;
+  });
   const sel = selectedProject();
   if (sel && !names.has(sel)) {
     setSelectedProject(null);
@@ -81,27 +95,39 @@ function prune() {
   }
 }
 
+function refreshServicesForVisible() {
+  const collapsedSet = untrack(collapsed);
+  const needed = new Set<string>();
+  for (const p of untrack(projects)) {
+    if (!collapsedSet.has(p.name)) needed.add(p.name);
+  }
+  const sel = untrack(selectedProject);
+  if (sel) needed.add(sel);
+  for (const p of needed) {
+    sendWS({ type: "list_services", project: p });
+  }
+}
+
 function refreshAll() {
   sendWS({ type: "list_projects" });
-  const needed = new Set<string>();
-  expanded().forEach((p) => {
-    needed.add(p);
-  });
-  const sel = untrack(selectedProject);
-  if (sel) {
-    needed.add(sel);
-  }
-  needed.forEach((p) => {
-    sendWS({ type: "list_services", project: p });
-  });
+  refreshServicesForVisible();
 }
 
 function start() {
   connectWS();
   onWS("projects", (resp) => {
     const next = resp.data as ProjectInfo[];
+    const prevNames = new Set(untrack(projects).map((p) => p.name));
     setProjects((prev) => (sameProjectList(prev, next) ? prev : next));
     prune();
+    // First paint (and newly appeared projects) need a services fetch —
+    // refreshAll() often runs before projects arrive, when the list is empty.
+    const collapsedSet = untrack(collapsed);
+    for (const p of next) {
+      if (!collapsedSet.has(p.name) && (!prevNames.has(p.name) || !untrack(services)[p.name])) {
+        sendWS({ type: "list_services", project: p.name });
+      }
+    }
   });
   onWS("services", (resp) => {
     if (!resp.project) return;
@@ -133,19 +159,26 @@ export function refreshServices(project: string) {
   sendWS({ type: "list_services", project });
 }
 
-export function toggleProject(name: string) {
-  setExpanded((prev) => {
-    const next = new Set(prev);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    return next;
+export function setProjectExpanded(name: string, open: boolean) {
+  setCollapsed((prev) => {
+    const isCollapsed = prev.has(name);
+    if (open && isCollapsed) {
+      const next = new Set(prev);
+      next.delete(name);
+      return next;
+    }
+    if (!open && !isCollapsed) {
+      const next = new Set(prev);
+      next.add(name);
+      return next;
+    }
+    return prev;
   });
-  refreshServices(name);
+  if (open) refreshServices(name);
 }
 
 export function expandProject(name: string) {
-  setExpanded((prev) => (prev.has(name) ? prev : new Set(prev).add(name)));
-  refreshServices(name);
+  setProjectExpanded(name, true);
 }
 
 export function selectProject(name: string) {
@@ -186,7 +219,6 @@ export {
   setTheme,
   projects,
   services,
-  expanded,
   selectedProject,
   selectedService,
   wsStatus,

@@ -3,10 +3,10 @@ import { ChevronRight, Boxes, MoreVertical, Power, RotateCcw, Skull, Sun, Moon }
 import {
   projects,
   services,
-  expanded,
+  isProjectExpanded,
   selectedProject,
   selectedService,
-  toggleProject,
+  setProjectExpanded,
   selectProject,
   selectService,
   stopProject,
@@ -59,12 +59,12 @@ function ServiceRow(props: { project: string; name: string }) {
   return (
     <Show when={service()}>
       {(s) => (
-        <div class="group relative flex items-stretch">
+        <div class="group/svc relative flex items-stretch">
           <button
             type="button"
             onClick={() => selectService(props.project, props.name)}
             class={cn(
-              "flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 pl-7 text-left transition-colors",
+              "flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 pl-7 pr-9 text-left transition-colors",
               "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
               selected() && "bg-muted text-foreground"
             )}
@@ -84,7 +84,9 @@ function ServiceRow(props: { project: string; name: string }) {
           <div
             class={cn(
               "absolute right-1 top-1/2 flex -translate-y-1/2 items-center transition-opacity",
-              selected() ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              selected()
+                ? "opacity-100"
+                : "opacity-0 pointer-events-none group-hover/svc:opacity-100 group-hover/svc:pointer-events-auto"
             )}
           >
             <DropdownMenu>
@@ -92,7 +94,7 @@ function ServiceRow(props: { project: string; name: string }) {
                 as={Button}
                 variant="ghost"
                 size="icon-sm"
-                class="border border-transparent hover:border-border"
+                class="border border-transparent bg-card/80 hover:border-border"
               >
                 <MoreVertical />
                 <span class="sr-only">Actions</span>
@@ -127,45 +129,55 @@ function ProjectItem(props: { name: string }) {
   const serviceNames = createMemo(() =>
     (services()[props.name] ?? []).map((s) => s.name)
   );
-  const isOpen = () => expanded().has(props.name);
-  const selected = () => selectedProject() === props.name;
+  const isOpen = () => isProjectExpanded(props.name);
+  const active = () => selectedProject() === props.name;
+  const selected = () => active() && selectedService() === null;
 
   return (
     <Show when={project()}>
       {(p) => (
         <CollapsibleRoot
           open={isOpen()}
-          onOpenChange={() => toggleProject(props.name)}
+          onOpenChange={(open) => setProjectExpanded(props.name, open)}
         >
           <div
             class={cn(
-              "group flex items-center border-l-2 transition-colors",
-              selected() ? "border-primary bg-muted" : "border-transparent"
+              "group/project flex items-center border-l-2 transition-colors",
+              active() ? "border-primary" : "border-transparent",
+              selected() ? "bg-muted" : "hover:bg-muted/60"
             )}
           >
-            <CollapsibleTrigger class="group flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[expanded]:text-foreground">
-              <ChevronRight class="transition-transform group-data-[expanded]:rotate-90" />
+            <CollapsibleTrigger class="flex h-8 w-7 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[expanded]:text-foreground [&[data-expanded]_svg]:rotate-90">
+              <ChevronRight class="size-4 transition-transform" />
               <span class="sr-only">Toggle</span>
             </CollapsibleTrigger>
             <button
               type="button"
               onClick={() => selectProject(props.name)}
-              class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm font-medium hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <Boxes class="size-3.5 shrink-0 text-muted-foreground" />
               <span class="truncate">{props.name}</span>
-            </button>
-            <div class="flex shrink-0 items-center gap-1 pr-1.5">
-              <Badge variant={statusTone(p().status)} class="capitalize">
+              <Badge variant={statusTone(p().status)} class="ml-auto capitalize">
                 {p().status}
               </Badge>
+            </button>
+            <div class="flex shrink-0 items-center pr-1.5">
               <Tooltip>
                 <TooltipTrigger
                   as={Button}
                   variant="ghost"
                   size="icon-sm"
-                  class="opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={() => stopProject(props.name)}
+                  class={cn(
+                    "transition-opacity",
+                    "opacity-0 pointer-events-none",
+                    "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
+                    "focus-visible:opacity-100 focus-visible:pointer-events-auto"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    stopProject(props.name);
+                  }}
                 >
                   <Power />
                   <span class="sr-only">Stop project</span>

@@ -51,7 +51,10 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Planned
 
-- [ ] **Log rotation** by size in the state dir; `logs --tail N` / `--since`.
+- [ ] **Size-based log rotation** in the state dir; `logs --tail N` / `--since`.
+      (Run-based rotation already ships: each spawn starts a fresh
+      `<service>.log` and the finished run is kept as `<service>.prev.log`,
+      inspectable via `logs --previous`.)
 - [ ] **Configurable graceful stop timeout** per service / via flag (currently
       fixed at 10s in `Supervisor`).
 - [ ] **`on-failure` autostart** — currently `on-failure` does not trigger

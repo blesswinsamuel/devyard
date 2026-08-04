@@ -34,7 +34,8 @@ const (
 
 // Request is a client -> daemon message.
 //
-//   - Kind==KindLogs: Project + Service selects the log file, Follow enables tailing.
+//   - Kind==KindLogs: Project + Service selects the log file, Follow enables tailing,
+//     Previous selects the previous run's log instead of the current one.
 //   - Kind==KindRestart: Project selects the project; Service selects one service
 //     (empty means all).
 //   - Kind==KindStopService: Project + Service selects the service to stop.
@@ -55,6 +56,7 @@ type Request struct {
 	Service    string      `json:"service,omitempty"`
 	Signal     string      `json:"signal,omitempty"`
 	Follow     bool        `json:"follow,omitempty"`
+	Previous   bool        `json:"previous,omitempty"`
 	ConfigPath string      `json:"config_path,omitempty"`
 	EnvFile    string      `json:"env_file,omitempty"`
 	Build      bool        `json:"build,omitempty"`

@@ -395,6 +395,134 @@ func TestSupervisorRestartOnFailure(t *testing.T) {
 	}
 }
 
+// TestSupervisorLogRotationOnRestart verifies that each successful spawn
+// rotates the service's log: the current file holds only the latest run while
+// the immediately preceding run is preserved in <name>.prev.log, and older
+// runs are dropped.
+func TestSupervisorLogRotationOnRestart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	dir := t.TempDir()
+	counter := filepath.Join(dir, "n")
+	// Each run increments a counter; exits non-zero until n>=3, then exits 0.
+	cmd := "n=$(cat " + counter + " 2>/dev/null || echo 0); n=$((n+1)); echo $n > " + counter + "; echo attempt $n; test $n -ge 3"
+	file := fileWith(map[string]config.Service{
+		"flaky": {Command: cmd, Shell: "sh", Restart: config.RestartOnFailure, WorkingDir: dir},
+	})
+	s := newSupervisor(t, file, []string{"flaky"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s.Wait()
+
+	cur, err := s.LogPath("flaky")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev, err := s.PreviousLogPath("flaky")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	curData := string(mustReadFile(t, cur))
+	if !strings.Contains(curData, "attempt 3") {
+		t.Errorf("current log missing attempt 3: %q", curData)
+	}
+	for _, stale := range []string{"attempt 1", "attempt 2"} {
+		if strings.Contains(curData, stale) {
+			t.Errorf("current log contains %q from an older run: %q", stale, curData)
+		}
+	}
+
+	prevData := string(mustReadFile(t, prev))
+	if !strings.Contains(prevData, "attempt 2") {
+		t.Errorf("previous log missing attempt 2: %q", prevData)
+	}
+	for _, gone := range []string{"attempt 1", "attempt 3"} {
+		if strings.Contains(prevData, gone) {
+			t.Errorf("previous log contains %q from a non-previous run: %q", gone, prevData)
+		}
+	}
+}
+
+// TestSupervisorLogRotationPreservesPreviousOnSpawnFailure verifies that a
+// spawn failure does not rotate away the previous run's log: the current file
+// keeps the old run alongside the failure notice until a spawn actually
+// succeeds, at which point the whole file moves to <name>.prev.log intact.
+func TestSupervisorLogRotationPreservesPreviousOnSpawnFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	locs := testLocations(t)
+	dir := t.TempDir()
+
+	first := fileWith(map[string]config.Service{
+		"svc": {Command: "echo first-run", Shell: "sh", Restart: config.RestartNo, WorkingDir: dir},
+	})
+	s1, err := supervisor.New(supervisor.Options{
+		Locations:           locs,
+		File:                first,
+		Order:               []string{"svc"},
+		BaseDir:             dir,
+		Foreground:          false,
+		Backoff:             testBackoff(),
+		GracefulStopTimeout: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := s1.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s1.Wait()
+	_ = s1.Close()
+
+	// A second session whose shell can never exec: the spawn itself fails, so
+	// it must not clobber the previous run's log (rotation only happens once a
+	// spawn succeeds, which never occurs here).
+	second := fileWith(map[string]config.Service{
+		"svc": {Command: "echo nope", Shell: "/definitely/not/a/real/shell", Restart: config.RestartOnFailure, WorkingDir: dir},
+	})
+	s2, err := supervisor.New(supervisor.Options{
+		Locations:           locs,
+		File:                second,
+		Order:               []string{"svc"},
+		BaseDir:             dir,
+		Foreground:          false,
+		Backoff:             testBackoff(),
+		GracefulStopTimeout: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = s2.Close() })
+	if err := s2.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s2.Wait()
+
+	cur, _ := s2.LogPath("svc")
+	prev, _ := s2.PreviousLogPath("svc")
+
+	// The first run's output must still be intact in the current file (no
+	// successful spawn has rotated it away yet).
+	curData := string(mustReadFile(t, cur))
+	if !strings.Contains(curData, "first-run") {
+		t.Errorf("current log lost first-run after failed spawn: %q", curData)
+	}
+	// The failed spawn notice must be recorded alongside it.
+	if !strings.Contains(curData, "failed to start") {
+		t.Errorf("current log missing failed-to-start notice: %q", curData)
+	}
+	// No previous-run file is created without a successful spawn.
+	if fileExists(prev) {
+		t.Errorf("previous log %s exists but no run ever completed", prev)
+	}
+}
+
 // TestSupervisorStopService starts a long sleep and verifies StopService tears
 // it down and the run loop exits.
 func TestSupervisorStopService(t *testing.T) {

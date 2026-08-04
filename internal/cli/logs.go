@@ -15,12 +15,16 @@ import (
 )
 
 var logsFollow bool
+var logsPrevious bool
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
 	Short: "Fetch or stream service logs",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if logsFollow && logsPrevious {
+			return fmt.Errorf("cannot follow previous logs (the previous run has already ended)")
+		}
 		socket, err := dialDaemon()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
@@ -39,7 +43,7 @@ var logsCmd = &cobra.Command{
 				return err
 			}
 			defer func() { _ = client.Close() }()
-			return client.Logs(projName, service, logsFollow, newLogPrinter(service))
+			return client.Logs(projName, service, logsFollow, logsPrevious, newLogPrinter(service))
 		}
 
 		cfg, err := loadConfig(flagConfigPath, flagProject)
@@ -59,7 +63,7 @@ var logsCmd = &cobra.Command{
 				return err
 			}
 			defer func() { _ = client.Close() }()
-			return client.Logs(cfg.Project, service, logsFollow, newLogPrinter(service))
+			return client.Logs(cfg.Project, service, logsFollow, logsPrevious, newLogPrinter(service))
 		}
 
 		return logsAllServices(socket, cfg.Project, cfg.Order)
@@ -98,7 +102,7 @@ func logsAllSnapshot(socket, project string, order []string) error {
 				return
 			}
 			defer func() { _ = c.Close() }()
-			_ = c.Logs(project, svc, false, func(line string) {
+			_ = c.Logs(project, svc, false, logsPrevious, func(line string) {
 				ts, rest := supervisor.ParseTimestamp(line)
 				mu.Lock()
 				entries = append(entries, logEntry{timestamp: ts, service: svc, line: rest})
@@ -133,7 +137,7 @@ func logsAllFollow(socket, project string, order []string) error {
 				return
 			}
 			defer func() { _ = c.Close() }()
-			_ = c.Logs(project, svc, true, func(line string) {
+			_ = c.Logs(project, svc, true, logsPrevious, func(line string) {
 				_, rest := supervisor.ParseTimestamp(line)
 				prefix := ui.ServicePrefix(svc) + " │ "
 				fmt.Println(prefix + ui.CleanLogLine(rest))
@@ -146,6 +150,7 @@ func logsAllFollow(socket, project string, order []string) error {
 
 func init() {
 	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "Follow log output")
+	logsCmd.Flags().BoolVar(&logsPrevious, "previous", false, "Show the previous run's logs instead of the current run's")
 }
 
 // newLogPrinter returns a callback that prints log lines to stdout with a

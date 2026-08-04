@@ -39,6 +39,7 @@ type Request struct {
     Service    string      `json:"service,omitempty"`
     Signal     string      `json:"signal,omitempty"`
     Follow     bool        `json:"follow,omitempty"`
+    Previous   bool        `json:"previous,omitempty"`
     ConfigPath string      `json:"config_path,omitempty"`
     EnvFile    string      `json:"env_file,omitempty"`
     Build      bool        `json:"build,omitempty"`
@@ -48,7 +49,7 @@ type Request struct {
 | `Kind` | `Project` | `Service` | Other | Behavior |
 | --- | --- | --- | --- | --- |
 | `"list"` | project name | — | — | Return one `states` response with a snapshot of every service in the project. |
-| `"logs"` | project name | service name | `Follow` | Stream the service's log file. `follow:false` streams existing content and ends with `done`; `follow:true` keeps streaming new lines until shutdown/disconnect. |
+| `"logs"` | project name | service name | `Follow`, `Previous` | Stream the service's log file. `previous:true` streams the previous run's log (`<service>.prev.log`) instead of the current one; it errors with `no previous run` when none exists. `follow:false` streams existing content and ends with `done`; `follow:true` keeps streaming new lines until shutdown/disconnect. During follow, the stream transparently reopens the file when the supervisor rotates it (each spawn starts a fresh `<service>.log`), so it keeps following the live run across restarts. |
 | `"stop"` | project name | — | — | Stop every service in the project. Acks with `done` once all groups are torn down. |
 | `"stop_service"` | project name | service name | — | Stop one service in place (no restart). Acks with `done`. |
 | `"kill_service"` | project name | service name (empty = all) | `Signal` | Signal one service (empty = all services, in start order) with the named signal; empty `Signal` means `SIGKILL`. No grace period. Acks with `done`. |
@@ -148,8 +149,8 @@ type ServiceStat struct {
 Prefer these over hand-rolling request/response loops:
 
 - `client.List(project) ([]ServiceState, error)` — `list`.
-- `client.Logs(project, service, follow, onLine)` — `logs`; calls `onLine` per
-  line, returns on `done`/`error`.
+- `client.Logs(project, service, follow, previous, onLine)` — `logs`; calls
+  `onLine` per line, returns on `done`/`error`.
 - `client.Stop(project) error` — `stop` (stop all services in a project).
 - `client.StopService(project, name) error` — `stop_service`.
 - `client.KillService(project, name, signal) error` — `kill_service` (empty
@@ -193,6 +194,7 @@ type Backend interface {
     Restart(name string) error
     Top(name string) ([]protocol.ServiceStat, error)
     LogPath(name string) (string, error)
+    PreviousLogPath(name string) (string, error)
 }
 ```
 

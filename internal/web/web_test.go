@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -132,6 +133,13 @@ func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
 func (b *fakeBackend) LogPath(name string) (string, error) {
 	if p, ok := b.logPaths[name]; ok {
 		return p, nil
+	}
+	return "", fmt.Errorf("unknown service %q", name)
+}
+
+func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
+	if p, ok := b.logPaths[name]; ok {
+		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
 	}
 	return "", fmt.Errorf("unknown service %q", name)
 }

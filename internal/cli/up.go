@@ -109,7 +109,7 @@ func followForeground(socket, project string, order []string) error {
 			followMu.Lock()
 			followClients = append(followClients, c)
 			followMu.Unlock()
-			_ = c.Logs(project, name, true, newLogPrinter(name))
+			_ = c.Logs(project, name, true, false, newLogPrinter(name))
 		}(svc)
 	}
 

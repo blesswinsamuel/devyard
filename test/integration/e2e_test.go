@@ -342,6 +342,25 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 		return got != 0 && got != betaBefore
 	}, "beta got a new pid after restart")
 
+	// logs --previous: after the restart, the prior run's log is preserved in
+	// <name>.prev.log and reachable via --previous.
+	prevOut, _, rc := e.run(t, context.Background(), "logs", "--previous", "beta")
+	if rc != 0 {
+		t.Fatalf("logs --previous beta: exit %d, out=%q", rc, prevOut)
+	}
+	if !strings.Contains(prevOut, "beta-start") {
+		t.Fatalf("logs --previous beta missing prior run's beta-start: %q", prevOut)
+	}
+
+	// logs --previous --follow is rejected (the previous run has already ended).
+	_, prevFollowErr, rc := e.run(t, context.Background(), "logs", "--previous", "--follow", "beta")
+	if rc == 0 {
+		t.Fatalf("logs --previous --follow: expected non-zero exit, got 0")
+	}
+	if !strings.Contains(prevFollowErr, "cannot follow previous logs") {
+		t.Fatalf("logs --previous --follow stderr = %q, want a 'cannot follow previous logs' message", prevFollowErr)
+	}
+
 	// Capture current pids before down so we can check for orphans.
 	finalPS, _, _ := e.run(t, context.Background(), "ps")
 	pids := []int{

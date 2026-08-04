@@ -112,7 +112,8 @@ Then:
 ```bash
 local-compose up -d        # start everything in the background
 local-compose ps           # see status, pids, health
-local-compose logs -f api  # tail the api's output
+local-compose logs -f api        # tail the api's output
+local-compose logs --previous api # inspect the previous run's logs
 local-compose restart web  # restart one service
 local-compose tui          # interactive terminal dashboard
 local-compose down         # stop the current project
@@ -141,7 +142,7 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 | `stop [service]` | Stop one service in place, or all services in the project when omitted. |
 | `restart [service]` | Restart one service, or all services in the project when omitted. |
 | `kill [service] [-s signal]` | Forcefully terminate one service, or all services in the project when omitted. Sends `SIGKILL` by default; pick another signal with `-s/--signal` (e.g. `SIGTERM`). |
-| `logs [service] [-f]` | Output or tail logs for a service (or all services in the project). |
+| `logs [service] [-f] [--previous]` | Output or tail logs for a service (or all services in the project). `--previous` shows the immediately preceding run's log instead of the current one (each spawn starts a fresh log; the finished run's is kept as `<service>.prev.log`). |
 | `build [service...]` | Run build commands for named services (or all services with build steps). |
 | `tui` | Open the interactive terminal UI (shows all projects if `-f` is omitted). |
 
@@ -364,8 +365,9 @@ Then start the daemon (`local-compose start-daemon` or `local-compose up -d`) an
 - [x] Autostart projects based on service restart policies
 - [x] Web UI — browser dashboard (WS + embedded SolidJS SPA with xterm.js logs)
 - [x] Global config (`web.enabled`, `web.host`, `web.port`)
+- [x] Log rotation (current + previous run per service, `logs --previous`)
 - [ ] `.env` / `--env-file` loading and `${VAR}` interpolation in config
-- [ ] Log rotation and `logs --tail` / `--since`
+- [ ] `logs --tail` / `--since`
 - [ ] Graceful stop timeout (SIGTERM → SIGKILL)
 - [ ] `on-failure` autostart
 - [ ] Shell completions and `local-compose version`

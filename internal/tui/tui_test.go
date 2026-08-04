@@ -46,6 +46,13 @@ func (b *fakeBackend) LogPath(name string) (string, error) {
 	return "", errors.New("unknown service " + name)
 }
 
+func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
+	if p, ok := b.logPaths[name]; ok {
+		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
+	}
+	return "", errors.New("unknown service " + name)
+}
+
 // newTestServer starts a control.Server backed by b on a short socket and
 // returns it, cleaning up on test end.
 func newTestServer(t *testing.T, b *fakeBackend) *control.Server {

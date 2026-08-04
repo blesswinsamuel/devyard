@@ -40,6 +40,9 @@ type Backend interface {
 	Top(name string) ([]protocol.ServiceStat, error)
 	// LogPath returns the absolute path of a service's log file.
 	LogPath(name string) (string, error)
+	// PreviousLogPath returns the absolute path of a service's previous-run
+	// log file (the run immediately before the current one).
+	PreviousLogPath(name string) (string, error)
 }
 
 // Server is the Unix-socket control server. It accepts connections from
@@ -311,12 +314,25 @@ func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
 		_ = writeError(w, err.Error())
 		return
 	}
-	path, err := b.LogPath(req.Service)
+	var path string
+	if req.Previous {
+		path, err = b.PreviousLogPath(req.Service)
+	} else {
+		path, err = b.LogPath(req.Service)
+	}
 	if err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}
-	if err := streamLogs(w, path, req.Follow, s.stopCh, req.Project, req.Service); err != nil {
+	if req.Previous {
+		if _, err := os.Stat(path); err != nil {
+			_ = writeError(w, fmt.Sprintf("logs: no previous run for service %q", req.Service))
+			return
+		}
+	}
+	// Follow tails the live file, which rotates between spawns; the previous
+	// log is a completed run, so rotation tracking is unnecessary for it.
+	if err := streamLogs(w, path, req.Follow, !req.Previous, s.stopCh, req.Project, req.Service); err != nil {
 		_ = writeError(w, err.Error())
 	}
 }
@@ -390,16 +406,18 @@ const followPollInterval = 100 * time.Millisecond
 // streamLogs reads the existing content of path, emitting one KindLogLine
 // frame per line, then (if follow) tails the file for new lines until the
 // client disconnects (write error) or stop is closed. A final KindDone frame
-// is sent when the stream ends cleanly. Truncated/rotated files are handled
-// by rewinding to offset 0 when the read offset is past the file size.
-func streamLogs(w io.Writer, path string, follow bool, stop <-chan struct{}, project, service string) error {
+// is sent when the stream ends cleanly. Rotated/truncated files are handled
+// by reopening or rewinding to offset 0 when the file at path no longer
+// matches the open handle (trackRotation) or the read offset is past the file
+// size.
+func streamLogs(w io.Writer, path string, follow, trackRotation bool, stop <-chan struct{}, project, service string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
 
-	if err := tailFile(w, f, follow, stop, project, service); err != nil {
+	if err := tailFile(w, f, path, follow, trackRotation, stop, project, service); err != nil {
 		return err
 	}
 	return protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
@@ -409,7 +427,11 @@ func streamLogs(w io.Writer, path string, follow bool, stop <-chan struct{}, pro
 // optionally keeps tailing for appended content. During the follow phase,
 // incomplete trailing bytes (no newline) are withheld until a newline arrives,
 // so each frame is a complete line.
-func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}, project, service string) error {
+func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, stop <-chan struct{}, project, service string) error {
+	// Close the handle the loop ends up on (possibly a reopened one) so a
+	// rotated file isn't leaked when the stream finishes.
+	defer func() { _ = f.Close() }()
+
 	// Send entire existing content in one frame so the client can render it
 	// instantly without a line-by-line scroll animation.
 	content, err := io.ReadAll(f)
@@ -462,6 +484,16 @@ func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}, projec
 		case <-stop:
 			return nil
 		case <-ticker.C:
+			if trackRotation {
+				nf, err := ReopenIfRotated(f, path)
+				if err != nil {
+					return err
+				}
+				if nf != f {
+					f = nf
+					leftover = leftover[:0]
+				}
+			}
 			if rotated, err := rewindIfRotated(f); err != nil {
 				return err
 			} else if rotated {
@@ -483,6 +515,34 @@ func tailFile(w io.Writer, f *os.File, follow bool, stop <-chan struct{}, projec
 			}
 		}
 	}
+}
+
+// ReopenIfRotated reports whether the file at path is no longer the same file
+// as f (e.g. the supervisor rotated <name>.log to <name>.prev.log and created
+// a fresh <name>.log for the next run) and, if so, returns a handle to the
+// new file positioned at the start. Otherwise it returns f unchanged. Shared
+// with the web UI's log tailer, which faces the same rotation.
+func ReopenIfRotated(f *os.File, path string) (*os.File, error) {
+	cur, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return f, nil
+		}
+		return f, err
+	}
+	held, err := f.Stat()
+	if err != nil {
+		return f, err
+	}
+	if os.SameFile(cur, held) {
+		return f, nil
+	}
+	nf, err := os.Open(path)
+	if err != nil {
+		return f, err
+	}
+	_ = f.Close()
+	return nf, nil
 }
 
 // rewindIfRotated reports whether the file has been truncated/rotated

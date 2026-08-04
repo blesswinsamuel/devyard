@@ -92,5 +92,10 @@ func (b *ControlBackend) LogPath(name string) (string, error) {
 	return b.s.LogPath(name)
 }
 
+// PreviousLogPath returns the absolute path of a service's previous-run log file.
+func (b *ControlBackend) PreviousLogPath(name string) (string, error) {
+	return b.s.PreviousLogPath(name)
+}
+
 // Compile-time assertion that ControlBackend satisfies control.Backend.
 var _ control.Backend = (*ControlBackend)(nil)

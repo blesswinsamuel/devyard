@@ -705,6 +705,12 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 		return nil, nil, fmt.Errorf("start: %w", err)
 	}
 
+	// The spawn succeeded, so the previous run is over: move its log to
+	// <name>.prev.log and start a fresh current file for this run. Best-effort
+	// so rotation never blocks a start; a spawn failure above leaves the
+	// previous run's log untouched.
+	rt.logger.rotate()
+
 	pgid := cmd.processPID() // Setpgid makes pgid == pid
 
 	rt.mu.Lock()
@@ -733,6 +739,9 @@ func (s *Supervisor) launchPTY(cmd *command, rt *serviceRuntime) (*command, *syn
 	if err != nil {
 		return nil, nil, fmt.Errorf("start with PTY: %w", err)
 	}
+
+	// Same rotation as launch(): the new run starts a fresh log file.
+	rt.logger.rotate()
 
 	pgid := cmd.processPID()
 
@@ -1030,6 +1039,15 @@ func (s *Supervisor) LogPath(name string) (string, error) {
 		return "", fmt.Errorf("supervisor: unknown service %q", name)
 	}
 	return filepath.Join(s.opts.Locations.LogsDir, name+".log"), nil
+}
+
+// PreviousLogPath returns the absolute path of a service's previous-run log
+// file (the run immediately before the current one).
+func (s *Supervisor) PreviousLogPath(name string) (string, error) {
+	if _, ok := s.services[name]; !ok {
+		return "", fmt.Errorf("supervisor: unknown service %q", name)
+	}
+	return filepath.Join(s.opts.Locations.LogsDir, name+".prev.log"), nil
 }
 
 // Top returns a resource snapshot for one service (or every service when

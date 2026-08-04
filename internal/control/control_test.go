@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -73,6 +74,15 @@ func (b *fakeBackend) LogPath(name string) (string, error) {
 	defer b.mu.Unlock()
 	if p, ok := b.logPaths[name]; ok {
 		return p, nil
+	}
+	return "", errors.New("unknown service " + name)
+}
+
+func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if p, ok := b.logPaths[name]; ok {
+		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
 	}
 	return "", errors.New("unknown service " + name)
 }
@@ -390,7 +400,7 @@ func TestRoundtripLogsNoFollow(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	var lines []string
-	if err := c.Logs("", "api", false, func(l string) { lines = append(lines, l) }); err != nil {
+	if err := c.Logs("", "api", false, false, func(l string) { lines = append(lines, l) }); err != nil {
 		t.Fatalf("Logs: %v", err)
 	}
 	if len(lines) != 3 || lines[0] != "line1" || lines[2] != "line3" {
@@ -416,7 +426,7 @@ func TestRoundtripLogsFollow(t *testing.T) {
 	lines := make(chan string, 16)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- c.Logs("", "api", true, func(l string) { lines <- l })
+		errCh <- c.Logs("", "api", true, false, func(l string) { lines <- l })
 	}()
 
 	// Expect the pre-existing line quickly.
@@ -458,8 +468,125 @@ func TestLogsUnknownService(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Logs("", "nope", false, nil); err == nil {
+	if err := c.Logs("", "nope", false, false, nil); err == nil {
 		t.Errorf("Logs for unknown service: expected error, got nil")
+	}
+}
+
+// TestRoundtripLogsFollowRotation verifies that a follow stream reopens the
+// log file when the supervisor rotates it (renames <name>.log to
+// <name>.prev.log and starts a fresh file), so it keeps following the live run
+// across a restart instead of freezing on the completed one.
+func TestRoundtripLogsFollowRotation(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "api.log")
+	prevPath := filepath.Join(dir, "api.prev.log")
+	if err := os.WriteFile(logPath, []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
+	srv := newServer(t, b)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	lines := make(chan string, 16)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.Logs("", "api", true, false, func(l string) { lines <- l })
+	}()
+
+	if got := recvLine(t, lines, 2*time.Second); got != "first" {
+		t.Fatalf("first line = %q, want %q", got, "first")
+	}
+
+	// Simulate the supervisor's rotation: current -> previous, fresh current
+	// file holding the next run's output.
+	if err := os.Rename(logPath, prevPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("second\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := recvLine(t, lines, 2*time.Second); got != "second" {
+		t.Fatalf("second line = %q, want %q", got, "second")
+	}
+
+	// Closing the server ends the follow stream with Done.
+	_ = srv.Close()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("Logs returned error after server close: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Errorf("Logs did not return after server close")
+	}
+}
+
+func TestLogsPreviousRun(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "api.log")
+	prevPath := filepath.Join(dir, "api.prev.log")
+	if err := os.WriteFile(logPath, []byte("current\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(prevPath, []byte("previous\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
+	srv := newServer(t, b)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	var prevLines []string
+	if err := c.Logs("", "api", false, true, func(l string) { prevLines = append(prevLines, l) }); err != nil {
+		t.Fatalf("Logs previous: %v", err)
+	}
+	if len(prevLines) != 1 || prevLines[0] != "previous" {
+		t.Errorf("previous lines = %v, want [previous]", prevLines)
+	}
+
+	// The current log must still be reachable without the flag (new
+	// connection: one request per connection).
+	c2, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c2.Close() }()
+	var curLines []string
+	if err := c2.Logs("", "api", false, false, func(l string) { curLines = append(curLines, l) }); err != nil {
+		t.Fatalf("Logs current: %v", err)
+	}
+	if len(curLines) != 1 || curLines[0] != "current" {
+		t.Errorf("current lines = %v, want [current]", curLines)
+	}
+}
+
+func TestLogsPreviousNoneAvailable(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "api.log")
+	if err := os.WriteFile(logPath, []byte("current\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
+	srv := newServer(t, b)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.Logs("", "api", false, true, nil); err == nil {
+		t.Errorf("Logs previous with no previous file: expected error, got nil")
 	}
 }
 

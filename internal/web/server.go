@@ -392,7 +392,9 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 		leftover = leftover[:0]
 	}
 
-	// Follow: poll for new content.
+	// Follow: poll for new content. Reopen the file if it rotates (the
+	// supervisor swaps <name>.log for a fresh file on each spawn) so the
+	// stream keeps following the live run instead of freezing on the old one.
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -400,6 +402,15 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			nf, err := control.ReopenIfRotated(f, path)
+			if err != nil {
+				return
+			}
+			if nf != f {
+				_ = f.Close()
+				f = nf
+				leftover = leftover[:0]
+			}
 			for {
 				select {
 				case <-ctx.Done():

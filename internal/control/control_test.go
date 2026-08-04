@@ -527,6 +527,64 @@ func TestRoundtripLogsFollowRotation(t *testing.T) {
 	}
 }
 
+// TestRoundtripLogsFollowRotationMarker verifies that a follow stream emits a
+// KindLogRotated frame at the moment the log file rotates, so frontends with a
+// scrollback buffer (TUI, web) can reset their view to the fresh run.
+func TestRoundtripLogsFollowRotationMarker(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "api.log")
+	prevPath := filepath.Join(dir, "api.prev.log")
+	if err := os.WriteFile(logPath, []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
+	srv := newServer(t, b)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Service: "api", Follow: true}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	// First the existing content arrives as a bulk frame.
+	resp, err := c.Recv()
+	if err != nil {
+		t.Fatalf("Recv content: %v", err)
+	}
+	if resp.Kind != protocol.KindLogContent {
+		t.Fatalf("first frame kind = %q, want %q", resp.Kind, protocol.KindLogContent)
+	}
+
+	if err := os.Rename(logPath, prevPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("second\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The rotation must be announced by a log_rotated frame...
+	resp, err = c.Recv()
+	if err != nil {
+		t.Fatalf("Recv rotated: %v", err)
+	}
+	if resp.Kind != protocol.KindLogRotated {
+		t.Fatalf("after rotation frame kind = %q, want %q", resp.Kind, protocol.KindLogRotated)
+	}
+
+	// ...followed by the fresh run's lines.
+	resp, err = c.Recv()
+	if err != nil {
+		t.Fatalf("Recv line: %v", err)
+	}
+	if resp.Kind != protocol.KindLogLine || resp.Line != "second" {
+		t.Fatalf("after rotation frame = %+v, want log_line %q", resp, "second")
+	}
+}
+
 func TestLogsPreviousRun(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "api.log")

@@ -73,6 +73,7 @@ const (
 	KindStats      ResponseKind = "stats"       // a per-service CPU/memory snapshot (KindTop)
 	KindLogLine    ResponseKind = "log_line"    // one line of a service's log
 	KindLogContent ResponseKind = "log_content" // bulk: entire existing log file text
+	KindLogRotated ResponseKind = "log_rotated" // a new run started; the previous run's lines are over
 	KindDone       ResponseKind = "done"        // request complete, no more frames
 	KindError      ResponseKind = "error"       // an error occurred (Error has text)
 )

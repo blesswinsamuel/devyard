@@ -492,6 +492,12 @@ func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, 
 				if nf != f {
 					f = nf
 					leftover = leftover[:0]
+					// The previous run's log ended and a fresh one began; tell
+					// frontends with a scrollback buffer to reset their view so
+					// they show only the new run.
+					if err := protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindLogRotated}); err != nil {
+						return err
+					}
 				}
 			}
 			if rotated, err := rewindIfRotated(f); err != nil {

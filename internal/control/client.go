@@ -227,6 +227,9 @@ func (c *Client) Logs(project, service string, follow, previous bool, onLine fun
 					onLine(line)
 				}
 			}
+		case protocol.KindLogRotated:
+			// A new run started; the terminal keeps appending the fresh run's
+			// lines transparently (kubectl-style), so the marker is skipped.
 		case protocol.KindDone:
 			return nil
 		case protocol.KindError:

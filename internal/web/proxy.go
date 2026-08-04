@@ -220,6 +220,12 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 						Line:    line,
 					})
 				}
+			case protocol.KindLogRotated:
+				s.send(c, subCtx, wsResponse{
+					Type:    "log_rotated",
+					Project: resp.Project,
+					Service: resp.Service,
+				})
 			case protocol.KindDone:
 				return
 			case protocol.KindError:

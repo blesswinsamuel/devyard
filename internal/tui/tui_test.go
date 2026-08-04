@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -239,6 +240,36 @@ func TestDownActionRoutesToBackend(t *testing.T) {
 	r, ok := msg.(actionResultMsg)
 	if !ok || r.action != "down" || r.err != nil {
 		t.Fatalf("down result = %+v, want action=down err=nil", r)
+	}
+}
+
+func TestLogRotatedResetsView(t *testing.T) {
+	m := newTestModel(t, "")
+	m.followGen = 7
+	m.states = states("api")
+	m.selected = 0
+
+	for i := 0; i < 3; i++ {
+		m.appendLog(fmt.Sprintf("line-%d", i))
+	}
+	if len(m.logLines) != 3 {
+		t.Fatalf("logLines = %d, want 3 before rotation", len(m.logLines))
+	}
+
+	out, _ := m.Update(logRotatedMsg{gen: 7, service: "api"})
+	m = out.(model)
+	if len(m.logLines) != 1 {
+		t.Fatalf("logLines after rotation = %d, want 1 (separator only)", len(m.logLines))
+	}
+	if !strings.Contains(m.logLines[0], "restart") {
+		t.Errorf("separator = %q, want it to mention restart", m.logLines[0])
+	}
+
+	// A stale generation must not reset the view.
+	out, _ = m.Update(logRotatedMsg{gen: 6, service: "api"})
+	m = out.(model)
+	if len(m.logLines) != 1 {
+		t.Fatalf("stale rotation reset logLines = %d, want 1", len(m.logLines))
 	}
 }
 

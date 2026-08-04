@@ -386,6 +386,51 @@ func TestWSSubscribeLogs(t *testing.T) {
 	}
 }
 
+func TestWSLogRotationEmitsMarker(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "web.log")
+	prevPath := filepath.Join(dir, "web.prev.log")
+	if err := os.WriteFile(logPath, []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := &fakeBackend{logPaths: map[string]string{"web": logPath}}
+	m := newFakeMulti()
+	m.projects["api"] = b
+	srv := newWebServer(t, m)
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]string{"type": "subscribe_logs", "project": "api", "service": "web"})
+
+	resp := recvWSMsg(t, c)
+	if resp["type"] != "log_line" || resp["line"] != "first" {
+		t.Fatalf("first line = %+v, want log_line first", resp)
+	}
+
+	// Simulate the supervisor's rotation: current -> previous, fresh current.
+	if err := os.Rename(logPath, prevPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("second\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, ok := recvWSMsgTimeout(t, c, 2*time.Second)
+	if !ok {
+		t.Fatalf("did not receive log_rotated")
+	}
+	if resp["type"] != "log_rotated" || resp["project"] != "api" || resp["service"] != "web" {
+		t.Fatalf("rotated = %+v, want log_rotated for api/web", resp)
+	}
+
+	resp, ok = recvWSMsgTimeout(t, c, 2*time.Second)
+	if !ok {
+		t.Fatalf("did not receive second line")
+	}
+	if resp["type"] != "log_line" || resp["line"] != "second" {
+		t.Fatalf("second line = %+v, want log_line second", resp)
+	}
+}
+
 func TestHTTPServesIndex(t *testing.T) {
 	m := newFakeMulti()
 	srv := newWebServer(t, m)

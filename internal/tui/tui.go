@@ -182,6 +182,11 @@ type logContentMsg struct {
 	content string
 }
 
+type logRotatedMsg struct {
+	gen     int64
+	service string
+}
+
 type logDoneMsg struct {
 	gen     int64
 	service string
@@ -293,6 +298,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logLines = boundLogLines(m.logLines, ui.CleanLogLine(line), maxLogLineCount)
 			}
 		}
+		m.viewport.SetContent(strings.Join(m.logLines, "\n"))
+		m.viewport.GotoBottom()
+		return m, nil
+
+	case logRotatedMsg:
+		if msg.gen != m.followGen || msg.service != m.selectedName() {
+			return m, nil
+		}
+		// A new run started: drop the finished run's lines and start the view
+		// fresh, with a subtle separator so a quiet restart isn't invisible.
+		if m.copyMode {
+			m.exitCopyMode()
+		}
+		m.logLines = []string{restartSeparator()}
 		m.viewport.SetContent(strings.Join(m.logLines, "\n"))
 		m.viewport.GotoBottom()
 		return m, nil
@@ -807,6 +826,12 @@ func (m *model) closeFollow() {
 		_ = m.follow.Close()
 		m.follow = nil
 	}
+}
+
+// restartSeparator is the faint marker line shown at the top of the log pane
+// when a new run starts, so a restart is visible even if the new run is quiet.
+func restartSeparator() string {
+	return lipgloss.NewStyle().Faint(true).Render("────── restart " + time.Now().Format("15:04:05") + " ──────")
 }
 
 func (m *model) appendLog(line string) {
@@ -1724,6 +1749,8 @@ func pumpLogs(c *control.Client, service string, gen int64, p *tea.Program) {
 			p.Send(logLineMsg{gen: gen, service: service, line: resp.Line})
 		case protocol.KindLogContent:
 			p.Send(logContentMsg{gen: gen, service: service, content: resp.Content})
+		case protocol.KindLogRotated:
+			p.Send(logRotatedMsg{gen: gen, service: service})
 		case protocol.KindDone:
 			p.Send(logDoneMsg{gen: gen, service: service})
 			return

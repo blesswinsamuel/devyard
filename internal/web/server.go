@@ -350,6 +350,21 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 		}
 	}
 
+	// sendRotated tells the browser that a new run started (the log was
+	// rotated), so the SPA can reset its log view to the fresh run.
+	sendRotated := func() {
+		resp, _ := json.Marshal(wsResponse{
+			Type:    "log_rotated",
+			Project: project,
+			Service: service,
+		})
+		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+		defer cancel()
+		if err := c.Write(writeCtx, websocket.MessageText, resp); err != nil {
+			cancel() // connection closed
+		}
+	}
+
 	flush := func(chunk []byte) {
 		data := append(leftover, chunk...)
 		leftover = leftover[:0]
@@ -410,6 +425,7 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 				_ = f.Close()
 				f = nf
 				leftover = leftover[:0]
+				sendRotated()
 			}
 			for {
 				select {

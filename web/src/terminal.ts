@@ -4,6 +4,9 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { theme } from "./store";
 
+// Official Catppuccin ANSI 16-color palettes (Mocha / Latte). Using the
+// palette's ANSI mapping — not surface/text roles — so \e[30m–\e[37m and
+// bright variants match a real Catppuccin terminal.
 const themes: Record<"dark" | "light", ITheme> = {
   dark: {
     background: "#1e1e2e",
@@ -16,17 +19,17 @@ const themes: Record<"dark" | "light", ITheme> = {
     green: "#a6e3a1",
     yellow: "#f9e2af",
     blue: "#89b4fa",
-    magenta: "#cba6f7",
+    magenta: "#f5c2e7",
     cyan: "#94e2d5",
-    white: "#cdd6f4",
+    white: "#bac2de",
     brightBlack: "#585b70",
     brightRed: "#f38ba8",
     brightGreen: "#a6e3a1",
     brightYellow: "#f9e2af",
     brightBlue: "#89b4fa",
-    brightMagenta: "#cba6f7",
+    brightMagenta: "#f5c2e7",
     brightCyan: "#94e2d5",
-    brightWhite: "#eff1f5",
+    brightWhite: "#a6adc8",
   },
   light: {
     background: "#eff1f5",
@@ -34,22 +37,22 @@ const themes: Record<"dark" | "light", ITheme> = {
     cursor: "#1e66f5",
     cursorAccent: "#eff1f5",
     selectionBackground: "#ccd0da",
-    black: "#bcc0cc",
+    black: "#5c5f77",
     red: "#d20f39",
     green: "#40a02b",
     yellow: "#df8e1d",
     blue: "#1e66f5",
-    magenta: "#8839ef",
-    cyan: "#04a5e5",
-    white: "#4c4f69",
-    brightBlack: "#8c8fa1",
+    magenta: "#ea76cb",
+    cyan: "#179299",
+    white: "#acb0be",
+    brightBlack: "#6c6f85",
     brightRed: "#d20f39",
     brightGreen: "#40a02b",
     brightYellow: "#df8e1d",
     brightBlue: "#1e66f5",
-    brightMagenta: "#8839ef",
-    brightCyan: "#04a5e5",
-    brightWhite: "#eff1f5",
+    brightMagenta: "#ea76cb",
+    brightCyan: "#179299",
+    brightWhite: "#bcc0cc",
   },
 };
 

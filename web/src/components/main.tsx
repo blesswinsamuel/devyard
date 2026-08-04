@@ -22,6 +22,7 @@ import {
   TooltipContent,
 } from "~/components/ui/tooltip";
 import { createTerminal, terminalTheme } from "~/terminal";
+import { cleanLogLine } from "~/lib/ansi";
 
 function LogViewer() {
   let container!: HTMLDivElement;
@@ -47,7 +48,10 @@ function LogViewer() {
     return subscribeLogs(
       project,
       service,
-      (line) => t.writeln(line),
+      // Reset SGR before each line so an unclosed color from a prior line
+      // doesn't tint timestamps / following content. Clean non-SGR ANSI the
+      // same way the CLI and TUI do.
+      (line) => t.writeln("\x1b[0m" + cleanLogLine(line)),
       () => t.clear()
     );
   });

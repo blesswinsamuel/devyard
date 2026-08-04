@@ -84,7 +84,7 @@ type Response struct {
 | `"stats"` | A per-service CPU/memory snapshot (`Stats` populated). Sent in response to `"top"`. |
 | `"log_content"` | Bulk: the entire existing log file text (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. |
 | `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). Sent for each new line during follow. |
-| `"log_rotated"` | A new run started: the supervisor rotated the log (`<service>.log` → `<service>.prev.log`) and the previous run's lines are over. Frontends with a scrollback buffer (TUI, web) reset their view on receipt. No payload. |
+| `"log_rotated"` | A new run started: the supervisor rotated the log (`<service>.log` → `<service>.prev.log`) and the previous run's lines are over. Carries `project` and `service` so multi-stream clients can route the reset. Frontends with a scrollback buffer (TUI, web) reset their view on receipt. |
 | `"done"` | Request complete; no more frames will follow on this connection. |
 | `"error"` | An error occurred (`Error` has the message). The connection is now done. |
 

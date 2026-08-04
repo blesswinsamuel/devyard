@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -106,7 +107,9 @@ func (s *Server) spaHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if path != "/" {
-			if _, err := fs.Stat(sub, path); err != nil {
+			// io/fs paths must not start with '/'; Stat the trimmed name.
+			name := strings.TrimPrefix(path, "/")
+			if _, err := fs.Stat(sub, name); err != nil {
 				r.URL.Path = "/"
 			}
 		}
@@ -133,7 +136,7 @@ type wsResponse struct {
 	Service string          `json:"service,omitempty"`
 	Data    json.RawMessage `json:"data,omitempty"`
 	Line    string          `json:"line,omitempty"`
-	Ok      bool            `json:"ok,omitempty"`
+	Ok      bool            `json:"ok"`
 	Error   string          `json:"error,omitempty"`
 }
 

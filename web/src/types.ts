@@ -2,6 +2,8 @@ export interface ProjectInfo {
   name: string;
   status: string;
   config_path: string;
+  running_services?: number;
+  total_services?: number;
 }
 
 export interface ServiceState {

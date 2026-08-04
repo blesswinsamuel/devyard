@@ -68,6 +68,23 @@ function sameServiceList(a: ServiceState[], b: ServiceState[]): boolean {
   return true;
 }
 
+function pruneSelection() {
+  const names = new Set(untrack(projects).map((p) => p.name));
+  const sel = untrack(selectedProject);
+  if (sel && !names.has(sel)) {
+    setSelectedProject(null);
+    setSelectedService(null);
+    return;
+  }
+  const svc = untrack(selectedService);
+  if (sel && svc) {
+    const list = untrack(services)[sel];
+    if (list && !list.some((s) => s.name === svc)) {
+      setSelectedService(null);
+    }
+  }
+}
+
 function prune() {
   const names = new Set(projects().map((p) => p.name));
   setServices((m) => {
@@ -88,11 +105,7 @@ function prune() {
     }
     return changed ? next : prev;
   });
-  const sel = selectedProject();
-  if (sel && !names.has(sel)) {
-    setSelectedProject(null);
-    setSelectedService(null);
-  }
+  pruneSelection();
 }
 
 function refreshServicesForVisible() {
@@ -111,6 +124,10 @@ function refreshServicesForVisible() {
 function refreshAll() {
   sendWS({ type: "list_projects" });
   refreshServicesForVisible();
+}
+
+function isStaleProjectError(message: string): boolean {
+  return /project .+ is not running/.test(message);
 }
 
 function start() {
@@ -138,9 +155,18 @@ function start() {
       if (prev && sameServiceList(prev, next)) return m;
       return { ...m, [project]: next };
     });
+    pruneSelection();
   });
   onWS("error", (resp) => {
-    if (resp.error) pushToast(resp.error);
+    if (!resp.error) return;
+    // Poll races: list_services for a project removed between ticks.
+    if (isStaleProjectError(resp.error)) return;
+    pushToast(resp.error);
+  });
+  onWS("result", (resp) => {
+    if (resp.ok === false || resp.error) {
+      pushToast(resp.error || "action failed");
+    }
   });
 
   // Fetch immediately and again on every reconnect (pending queue covers first open).

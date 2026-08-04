@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
 	"github.com/blesswinsamuel/local-compose/internal/web"
 )
 
@@ -43,6 +44,12 @@ var webCmd = &cobra.Command{
 }
 
 func init() {
-	webCmd.Flags().StringVar(&webHost, "host", "127.0.0.1", "Web UI listen host")
-	webCmd.Flags().IntVar(&webPort, "port", 9090, "Web UI listen port")
+	host := globalconfig.DefaultHost
+	port := globalconfig.DefaultPort
+	if cfg, err := globalconfig.Load(); err == nil {
+		host = cfg.Web.Host
+		port = cfg.Web.Port
+	}
+	webCmd.Flags().StringVar(&webHost, "host", host, "Web UI listen host")
+	webCmd.Flags().IntVar(&webPort, "port", port, "Web UI listen port")
 }

@@ -223,9 +223,7 @@ func (c *Client) Logs(project, service string, follow, previous bool, onLine fun
 			onLine(resp.Line)
 		case protocol.KindLogContent:
 			for _, line := range strings.Split(strings.TrimRight(resp.Content, "\n"), "\n") {
-				if line != "" {
-					onLine(line)
-				}
+				onLine(line)
 			}
 		case protocol.KindLogRotated:
 			// A new run started; the terminal keeps appending the fresh run's

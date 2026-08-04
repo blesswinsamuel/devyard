@@ -445,6 +445,41 @@ func TestHTTPServesIndex(t *testing.T) {
 	}
 }
 
+func TestHTTPServesJSAsset(t *testing.T) {
+	m := newFakeMulti()
+	srv := newWebServer(t, m)
+
+	// Discover a hashed asset path from the embedded dist (Vite fingerprint).
+	entries, err := os.ReadDir("dist/assets")
+	if err != nil {
+		// Tests run with package dir as cwd; fall back for alternate layouts.
+		t.Skipf("dist/assets not readable: %v", err)
+	}
+	var jsName string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".js") {
+			jsName = e.Name()
+			break
+		}
+	}
+	if jsName == "" {
+		t.Fatal("no .js asset in dist/assets")
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/assets/%s", srv.Addr(), jsName))
+	if err != nil {
+		t.Fatalf("GET asset: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if strings.Contains(ct, "text/html") {
+		t.Fatalf("Content-Type = %q, want JS (not HTML SPA fallback)", ct)
+	}
+}
+
 func appendToLog(path, content string) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {

@@ -34,11 +34,11 @@ What's done, what's planned, and where each item lives in the code.
 - **TUI** — Bubble Tea v2 frontend: project selection screen, service list,
   streaming logs, restart/stop/down keybindings, Esc to go back to project
   list. Works without a config file (shows all known projects). (`internal/tui`)
-- **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Served by the
-  daemon when `web.enabled` is true in global config. Loopback-only by default.
+- **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Start with
+  `local-compose web` (proxies to the daemon socket). Loopback-only by default.
   (`internal/web`, `web/`)
 - **Global config** — `$XDG_CONFIG_HOME/local-compose/config.yml` with
-  `web.enabled`, `web.host`, `web.port`. (`internal/globalconfig`)
+  `web.host`, `web.port` defaults for `local-compose web`. (`internal/globalconfig`)
 - **Config discovery** — `-f`/`-p` flags; walk-up discovery of
   `local-compose.yml`. (`internal/config`, `internal/cli`)
 - **Env files + interpolation** — `.env` next to the config (or `--env-file`)

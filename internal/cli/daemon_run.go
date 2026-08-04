@@ -14,9 +14,8 @@ import (
 
 // runDaemonChild is the entry point for the daemonized global daemon. It
 // creates the orchestrator, starts the control server on the daemon socket,
-// optionally starts the web UI (if enabled in global config), installs a
-// signal handler, and blocks until StopDaemon is called or a signal is
-// received.
+// installs a signal handler, and blocks until StopDaemon is called or a
+// signal is received. The web UI is a separate process (`local-compose web`).
 func runDaemonChild() error {
 	locs, err := project.ResolveDaemon()
 	if err != nil {

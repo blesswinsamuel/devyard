@@ -1,7 +1,7 @@
 // Package globalconfig loads and saves the user-level config file at
 // $XDG_CONFIG_HOME/local-compose/config.yml (default
 // ~/.config/local-compose/config.yml). It holds settings that apply across
-// all projects, such as the web UI host/port.
+// all projects, such as the web UI host/port defaults for `local-compose web`.
 package globalconfig
 
 import (
@@ -23,11 +23,8 @@ const DefaultHost = "127.0.0.1"
 // DefaultPort is the default port for the web UI.
 const DefaultPort = 9090
 
-// WebConfig holds web UI settings.
+// WebConfig holds default bind settings for `local-compose web`.
 type WebConfig struct {
-	// Enabled controls whether the daemon serves the web UI. When false,
-	// the daemon only manages projects and serves the control socket.
-	Enabled bool `yaml:"enabled"`
 	// Host is the bind address. Defaults to 127.0.0.1 (loopback only).
 	Host string `yaml:"host"`
 	// Port is the TCP port. Defaults to 9090.
@@ -43,9 +40,8 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		Web: WebConfig{
-			Enabled: false,
-			Host:    DefaultHost,
-			Port:    DefaultPort,
+			Host: DefaultHost,
+			Port: DefaultPort,
 		},
 	}
 }
@@ -174,14 +170,9 @@ func SaveForTest(path string, cfg *Config) error {
 	return saveFile(path, cfg)
 }
 
-// String returns a human-readable summary of the config (for logging at
-// daemon startup).
+// String returns a human-readable summary of the config (for logging).
 func (c *Config) String() string {
 	var sb strings.Builder
-	sb.WriteString("web.enabled=")
-	sb.WriteString(fmt.Sprintf("%v", c.Web.Enabled))
-	if c.Web.Enabled {
-		sb.WriteString(fmt.Sprintf(" web=%s:%d", c.Web.Host, c.Web.Port))
-	}
+	sb.WriteString(fmt.Sprintf("web=%s:%d", c.Web.Host, c.Web.Port))
 	return sb.String()
 }

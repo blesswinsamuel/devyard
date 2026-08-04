@@ -328,19 +328,22 @@ daemon.
 
 ### Web UI
 
-The daemon can serve a browser-based dashboard (SolidJS SPA with xterm.js log streaming) over
-WebSocket. Enable it in the global config:
+Start a browser-based dashboard (SolidJS SPA with xterm.js log streaming) with
+`local-compose web`. It connects to a running daemon over the control socket.
+
+```bash
+local-compose web                  # http://127.0.0.1:9090
+local-compose web --port 8080
+```
+
+Optional defaults in the global config:
 
 ```yaml
 # ~/.config/local-compose/config.yml
 web:
-  enabled: true
   host: 127.0.0.1   # loopback only by default
   port: 9090
 ```
-
-Then start the daemon (`local-compose start-daemon` or `local-compose up -d`) and open
-`http://127.0.0.1:9090`.
 
 ## Comparison
 
@@ -364,7 +367,7 @@ Then start the daemon (`local-compose start-daemon` or `local-compose up -d`) an
 - [x] Global daemon with multi-project orchestrator
 - [x] Autostart projects based on service restart policies
 - [x] Web UI — browser dashboard (WS + embedded SolidJS SPA with xterm.js logs)
-- [x] Global config (`web.enabled`, `web.host`, `web.port`)
+- [x] Global config (`web.host`, `web.port` for `local-compose web`)
 - [x] Log rotation (current + previous run per service, `logs --previous`)
 - [ ] `.env` / `--env-file` loading and `${VAR}` interpolation in config
 - [ ] `logs --tail` / `--since`

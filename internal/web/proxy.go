@@ -205,9 +205,6 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 				})
 			case protocol.KindLogContent:
 				for _, line := range strings.Split(strings.TrimRight(resp.Content, "\n"), "\n") {
-					if line == "" {
-						continue
-					}
 					select {
 					case <-subCtx.Done():
 						return

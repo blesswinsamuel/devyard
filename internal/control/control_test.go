@@ -574,6 +574,9 @@ func TestRoundtripLogsFollowRotationMarker(t *testing.T) {
 	if resp.Kind != protocol.KindLogRotated {
 		t.Fatalf("after rotation frame kind = %q, want %q", resp.Kind, protocol.KindLogRotated)
 	}
+	if resp.Service != "api" {
+		t.Fatalf("log_rotated service = %q, want api", resp.Service)
+	}
 
 	// ...followed by the fresh run's lines.
 	resp, err = c.Recv()

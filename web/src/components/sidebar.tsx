@@ -126,9 +126,9 @@ function ServiceRow(props: { project: string; name: string }) {
 
 function ProjectItem(props: { name: string }) {
   const project = createMemo(() => projects().find((p) => p.name === props.name));
-  const serviceNames = createMemo(() =>
-    (services()[props.name] ?? []).map((s) => s.name)
-  );
+  /** undefined = not fetched yet; [] = fetched empty. */
+  const serviceList = createMemo(() => services()[props.name]);
+  const serviceNames = createMemo(() => (serviceList() ?? []).map((s) => s.name));
   const isOpen = () => isProjectExpanded(props.name);
   const active = () => selectedProject() === props.name;
   const selected = () => active() && selectedService() === null;
@@ -189,14 +189,21 @@ function ProjectItem(props: { name: string }) {
           <CollapsibleContent>
             <div class="border-l border-border py-1">
               <Show
-                when={serviceNames().length > 0}
+                when={serviceList() !== undefined}
                 fallback={
-                  <p class="px-7 py-1 text-xs text-muted-foreground">no services</p>
+                  <p class="px-7 py-1 text-xs text-muted-foreground">loading…</p>
                 }
               >
-                <For each={serviceNames()}>
-                  {(name) => <ServiceRow project={props.name} name={name} />}
-                </For>
+                <Show
+                  when={serviceNames().length > 0}
+                  fallback={
+                    <p class="px-7 py-1 text-xs text-muted-foreground">no services</p>
+                  }
+                >
+                  <For each={serviceNames()}>
+                    {(name) => <ServiceRow project={props.name} name={name} />}
+                  </For>
+                </Show>
               </Show>
             </div>
           </CollapsibleContent>

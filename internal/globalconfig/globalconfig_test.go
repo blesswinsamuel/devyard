@@ -19,9 +19,6 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Web.Enabled != false {
-		t.Errorf("Enabled = %v, want false", cfg.Web.Enabled)
-	}
 	if cfg.Web.Host != globalconfig.DefaultHost {
 		t.Errorf("Host = %q, want %q", cfg.Web.Host, globalconfig.DefaultHost)
 	}
@@ -37,6 +34,53 @@ func TestLoadValidFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	content := `web:
+  host: 0.0.0.0
+  port: 8080
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	cfg, err := globalconfig.LoadForTest(path, &buf)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Web.Host != "0.0.0.0" {
+		t.Errorf("Host = %q, want 0.0.0.0", cfg.Web.Host)
+	}
+	if cfg.Web.Port != 8080 {
+		t.Errorf("Port = %d, want 8080", cfg.Web.Port)
+	}
+}
+
+func TestLoadAppliesDefaultsForEmptyFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	content := `web: {}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	cfg, err := globalconfig.LoadForTest(path, &buf)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Web.Host != globalconfig.DefaultHost {
+		t.Errorf("Host = %q, want %q", cfg.Web.Host, globalconfig.DefaultHost)
+	}
+	if cfg.Web.Port != globalconfig.DefaultPort {
+		t.Errorf("Port = %d, want %d", cfg.Web.Port, globalconfig.DefaultPort)
+	}
+}
+
+func TestLoadIgnoresLegacyEnabled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	// Legacy field is ignored by the schema (no error).
+	content := `web:
   enabled: true
   host: 0.0.0.0
   port: 8080
@@ -50,9 +94,6 @@ func TestLoadValidFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !cfg.Web.Enabled {
-		t.Errorf("Enabled = false, want true")
-	}
 	if cfg.Web.Host != "0.0.0.0" {
 		t.Errorf("Host = %q, want 0.0.0.0", cfg.Web.Host)
 	}
@@ -61,37 +102,11 @@ func TestLoadValidFile(t *testing.T) {
 	}
 }
 
-func TestLoadAppliesDefaultsForEmptyFields(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `web:
-  enabled: true
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if !cfg.Web.Enabled {
-		t.Errorf("Enabled = false, want true")
-	}
-	if cfg.Web.Host != globalconfig.DefaultHost {
-		t.Errorf("Host = %q, want %q", cfg.Web.Host, globalconfig.DefaultHost)
-	}
-	if cfg.Web.Port != globalconfig.DefaultPort {
-		t.Errorf("Port = %d, want %d", cfg.Web.Port, globalconfig.DefaultPort)
-	}
-}
-
 func TestLoadUnknownFieldsWarn(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	content := `web:
-  enabled: true
+  host: 127.0.0.1
 unknown_field: hello
 another_unknown: 42
 `
@@ -104,8 +119,8 @@ another_unknown: 42
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !cfg.Web.Enabled {
-		t.Errorf("Enabled = false, want true")
+	if cfg.Web.Host != "127.0.0.1" {
+		t.Errorf("Host = %q, want 127.0.0.1", cfg.Web.Host)
 	}
 	warnings := buf.String()
 	if !strings.Contains(warnings, "unknown_field") {
@@ -145,7 +160,6 @@ func TestSaveAndLoadRoundtrip(t *testing.T) {
 	path := filepath.Join(dir, "config.yml")
 
 	cfg := globalconfig.Defaults()
-	cfg.Web.Enabled = true
 	cfg.Web.Host = "0.0.0.0"
 	cfg.Web.Port = 12345
 
@@ -157,9 +171,6 @@ func TestSaveAndLoadRoundtrip(t *testing.T) {
 	loaded, err := globalconfig.LoadForTest(path, &buf)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
-	}
-	if loaded.Web.Enabled != true {
-		t.Errorf("Enabled = %v, want true", loaded.Web.Enabled)
 	}
 	if loaded.Web.Host != "0.0.0.0" {
 		t.Errorf("Host = %q, want 0.0.0.0", loaded.Web.Host)

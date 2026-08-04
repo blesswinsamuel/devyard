@@ -13,9 +13,8 @@
 #   local-compose down
 #
 # Then open the Vite app at http://127.0.0.1:5173 (proxies /ws to the Go
-# server on :9090). If the daemon already serves the embedded web UI on
-# :9090 (global config web.enabled), stop that first or pass --port to
-# the web service.
+# server on :9090). The `web` service below is `local-compose web` — if you
+# already have another instance on :9090, stop it or pass --port.
 
 version: "1"
 name: local-compose-dev

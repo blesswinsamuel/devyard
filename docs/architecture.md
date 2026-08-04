@@ -39,8 +39,8 @@ The daemon child is detected in `cli.Execute()` (`internal/cli/root.go`)
 *before* cobra runs, via the hidden `--daemon` flag (`daemon.DaemonFlag`). It
 runs `runDaemonChild` (`internal/cli/daemon_run.go`), not a cobra command.
 `runDaemonChild` creates the orchestrator, starts the control server, runs
-`Autostart()`, optionally starts the web UI (if `web.enabled` in global config),
-and blocks on a signal or `StopDaemon`.
+`Autostart()`, and blocks on a signal or `StopDaemon`. The web UI is started
+separately with `local-compose web`.
 
 Go has no `fork(2)` binding, so we use the re-exec-then-`setsid` idiom instead
 of a double-fork. `setsid` + `cmd.Process.Release()` is sufficient on modern
@@ -180,15 +180,15 @@ Wire format and message kinds are documented in
 
 ## Web UI (`internal/web`)
 
-The web UI is a WebSocket frontend over the same control socket. The daemon
-starts it if `web.enabled` is true in the global config
-(`$XDG_CONFIG_HOME/local-compose/config.yml`). It serves an embedded SolidJS
-SPA (built with bun + Vite, using xterm.js for log rendering) from
-`internal/web/dist/` via `go:embed`. The WS endpoint dispatches JSON messages
-to the same `MultiBackend` interface used by the control server.
+The web UI is a WebSocket frontend over the same control socket. Start it with
+`local-compose web` (proxy mode): it dials the daemon socket and serves an
+embedded SolidJS SPA (built with bun + Vite, using xterm.js for log rendering)
+from `internal/web/dist/` via `go:embed`. The WS endpoint translates browser
+JSON to control-protocol frames.
 
-Default bind address is `127.0.0.1:9090` (loopback only). Users who want
-remote access must explicitly set `web.host: 0.0.0.0` in the global config.
+Default bind address is `127.0.0.1:9090` (loopback only). Override with
+`--host` / `--port`, or set defaults in the global config (`web.host`,
+`web.port`). Users who want remote access must explicitly bind to `0.0.0.0`.
 
 ## State on disk (`internal/project`)
 
@@ -225,13 +225,12 @@ projects:
 
 ```yaml
 web:
-  enabled: true
   host: 127.0.0.1
   port: 9090
 ```
 
-The daemon loads it on startup. Unknown fields produce a warning but don't
-error.
+These are default bind settings for `local-compose web`. Unknown fields
+produce a warning but don't error.
 
 ## Concurrency model
 

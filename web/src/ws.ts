@@ -7,6 +7,7 @@ const [wsStatus, setWsStatus] = createSignal<WSStatus>("connecting");
 export { wsStatus };
 
 let ws: WebSocket | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 const handlers = new Map<string, (resp: WSResponse) => void>();
 const openHandlers = new Set<() => void>();
 const logHandlers = new Map<
@@ -27,23 +28,52 @@ function logKey(project: string, service: string) {
   return `${project}\0${service}`;
 }
 
+function enqueuePending(req: WSRequest) {
+  // Coalesce refresh intents so a long outage doesn't burst hundreds of polls.
+  if (req.type === "list_projects") {
+    pending = pending.filter((p) => p.type !== "list_projects");
+  } else if (req.type === "list_services" && req.project) {
+    pending = pending.filter(
+      (p) => !(p.type === "list_services" && p.project === req.project)
+    );
+  }
+  pending.push(req);
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer != null) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWS();
+  }, 2000);
+}
+
 export function connectWS() {
-  if (ws && ws.readyState <= WebSocket.OPEN) return;
+  if (ws) {
+    const state = ws.readyState;
+    if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) return;
+    // CLOSING: wait for onclose to clear and schedule reconnect.
+    if (state === WebSocket.CLOSING) return;
+  }
 
   setWsStatus("connecting");
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  const socket = new WebSocket(`${proto}//${location.host}/ws`);
+  ws = socket;
 
-  ws.onopen = () => {
+  socket.onopen = () => {
+    if (ws !== socket) return;
     setWsStatus("open");
     const queued = pending;
     pending = [];
     for (const req of queued) {
-      ws!.send(JSON.stringify(req));
+      socket.send(JSON.stringify(req));
     }
-    // Server-side subscriptions die with the old socket; re-issue them.
+    // Server-side subscriptions die with the old socket; clear local views
+    // then re-issue so history isn't appended twice.
     for (const entry of logHandlers.values()) {
-      ws!.send(
+      entry.onRotate?.();
+      socket.send(
         JSON.stringify({
           type: "subscribe_logs",
           project: entry.project,
@@ -60,18 +90,24 @@ export function connectWS() {
     }
     hasOpened = true;
   };
-  ws.onclose = () => {
+  socket.onclose = () => {
+    if (ws !== socket) return;
     ws = null;
     setWsStatus("closed");
-    setTimeout(() => connectWS(), 2000);
+    scheduleReconnect();
   };
-  ws.onerror = () => {
+  socket.onerror = () => {
     // onclose follows; avoid a duplicate reconnect timer.
-    setWsStatus("closed");
+    if (ws === socket) setWsStatus("closed");
   };
 
-  ws.onmessage = (e) => {
-    const resp: WSResponse = JSON.parse(e.data);
+  socket.onmessage = (e) => {
+    let resp: WSResponse;
+    try {
+      resp = JSON.parse(e.data) as WSResponse;
+    } catch {
+      return;
+    }
     if (resp.type === "log_line") {
       const key = logKey(resp.project!, resp.service!);
       logHandlers.get(key)?.onLine(resp.line!);
@@ -91,7 +127,7 @@ export function sendWS(req: WSRequest) {
     ws.send(JSON.stringify(req));
     return;
   }
-  pending.push(req);
+  enqueuePending(req);
   connectWS();
 }
 
@@ -100,7 +136,7 @@ export function onWS(type: string, handler: (resp: WSResponse) => void) {
   return () => handlers.delete(type);
 }
 
-/** Fires on every successful WS open (including reconnects). */
+/** Fires on reconnect opens (not the first successful open). */
 export function onWSOpen(handler: () => void) {
   openHandlers.add(handler);
   return () => openHandlers.delete(handler);

@@ -3,7 +3,7 @@
 The shape of `local-compose.yml`, with the exact validation rules enforced by
 `internal/config/config.go`. Update this doc whenever you change the schema.
 
-For the user-level global config (`web.enabled`, `web.host`, `web.port`), see
+For the user-level global config (`web.host`, `web.port`), see
 [Global config](#global-config) at the bottom of this doc.
 
 ## Top level
@@ -189,23 +189,22 @@ editing configs. (A future strict mode + warning pass is on the roadmap.)
 
 ## Global config
 
-In addition to the per-project `local-compose.yml`, the daemon reads a
+In addition to the per-project `local-compose.yml`, `local-compose web` reads a
 user-level global config at `$XDG_CONFIG_HOME/local-compose/config.yml`
-(default `~/.config/local-compose/config.yml`). It holds settings that apply
-across all projects:
+(default `~/.config/local-compose/config.yml`) for default bind settings:
 
 ```yaml
 web:
-  enabled: true        # serve the web UI from the daemon (default: false)
   host: 127.0.0.1      # bind address (default: 127.0.0.1, loopback only)
   port: 9090           # TCP port (default: 9090)
 ```
 
 | Field | Default | Notes |
 | --- | --- | --- |
-| `web.enabled` | `false` | When true, the daemon serves the web UI (WS + embedded SPA). |
-| `web.host` | `127.0.0.1` | Bind address. Set to `0.0.0.0` for remote access. |
+| `web.host` | `127.0.0.1` | Bind address for `local-compose web`. Set to `0.0.0.0` for remote access. |
 | `web.port` | `9090` | TCP port for the web UI. |
+
+CLI flags `--host` / `--port` override these defaults.
 
 Unknown fields in the global config produce a warning (printed to stderr) but
 do not error, matching the convention for `local-compose.yml`.

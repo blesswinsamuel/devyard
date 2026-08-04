@@ -795,18 +795,30 @@ services:
 		t.Fatalf("stop: exit %d, err=%q", code, errOut)
 	}
 
-	// 3. Run start from outside the config directory using -p reg-test
+	// 3. Verify ls shows 0/1 running when stopped
+	lsOut, _, code := e.run(t, context.Background(), "ls")
+	if code != 0 || !strings.Contains(lsOut, "0/1 running") {
+		t.Fatalf("ls while stopped: code=%d, out=%q", code, lsOut)
+	}
+
+	// 4. Run start from outside the config directory using -p reg-test
 	outsideDir := t.TempDir()
 	out, errOut, code := e.runFromDir(t, context.Background(), outsideDir, "-p", "reg-test", "start")
 	if code != 0 {
 		t.Fatalf("start -p reg-test from outside dir: exit %d, stdout=%q, errOut=%q", code, out, errOut)
 	}
 
-	// 4. Verify service is running again via ps -p reg-test
+	// 5. Verify service is running again via ps -p reg-test
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, _ := e.runFromDir(t, context.Background(), outsideDir, "-p", "reg-test", "ps")
 		return pidFromPS(t, psOut, "app") != 0
 	}, "ps shows app running after start -p reg-test")
+
+	// 6. Verify ls shows 1/1 running
+	waitForCond(t, 5*time.Second, func() bool {
+		lsRunningOut, _, code := e.run(t, context.Background(), "ls")
+		return code == 0 && strings.Contains(lsRunningOut, "1/1 running")
+	}, "ls shows 1/1 running after project start")
 }
 
 func TestPSAllAndAutoFallback(t *testing.T) {

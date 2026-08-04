@@ -25,12 +25,13 @@ import (
 // config path it was started from, and a done channel that is closed when the
 // supervisor's run loops have all exited.
 type Project struct {
-	Name       string
-	ConfigPath string
-	BaseDir    string
-	Sup        *supervisor.Supervisor
-	cancel     context.CancelFunc
-	done       chan struct{}
+	Name          string
+	ConfigPath    string
+	BaseDir       string
+	TotalServices int
+	Sup           *supervisor.Supervisor
+	cancel        context.CancelFunc
+	done          chan struct{}
 }
 
 // Status returns "running" if the supervisor is still active, "stopped" once
@@ -129,12 +130,13 @@ func (d *Daemon) StartProject(configPath string, build bool, envFile string) err
 	}
 
 	p := &Project{
-		Name:       name,
-		ConfigPath: configPath,
-		BaseDir:    cfg.BaseDir,
-		Sup:        sup,
-		cancel:     cancel,
-		done:       make(chan struct{}),
+		Name:          name,
+		ConfigPath:    configPath,
+		BaseDir:       cfg.BaseDir,
+		TotalServices: len(cfg.File.Services),
+		Sup:           sup,
+		cancel:        cancel,
+		done:          make(chan struct{}),
 	}
 
 	d.mu.Lock()
@@ -264,22 +266,21 @@ func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 		}
 
 		info := protocol.ProjectInfo{
-			Name:       name,
-			Status:     p.Status(),
-			ConfigPath: p.ConfigPath,
+			Name:          name,
+			Status:        p.Status(),
+			ConfigPath:    p.ConfigPath,
+			TotalServices: p.TotalServices,
 		}
 
-		if p.Sup != nil && p.Status() == "running" {
+		if p.Sup != nil {
 			states := p.Sup.States()
-			info.TotalServices = len(states)
+			if len(states) > 0 {
+				info.TotalServices = len(states)
+			}
 			for _, st := range states {
 				if st.Status == supervisor.StatusRunning || st.Status == supervisor.StatusStarting || st.Status == supervisor.StatusBackoff {
 					info.RunningServices++
 				}
-			}
-		} else {
-			if cfg, err := loadConfig(p.ConfigPath, ""); err == nil {
-				info.TotalServices = len(cfg.File.Services)
 			}
 		}
 
@@ -511,10 +512,11 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 			d.mu.Lock()
 			if _, exists := d.projects[name]; !exists {
 				d.projects[name] = &Project{
-					Name:       name,
-					ConfigPath: configPath,
-					BaseDir:    cfg.BaseDir,
-					done:       closedChan(),
+					Name:          name,
+					ConfigPath:    configPath,
+					BaseDir:       cfg.BaseDir,
+					TotalServices: len(cfg.File.Services),
+					done:          closedChan(),
 				}
 			}
 			d.mu.Unlock()

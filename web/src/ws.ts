@@ -9,19 +9,33 @@ export { wsStatus };
 let ws: WebSocket | null = null;
 const handlers = new Map<string, (resp: WSResponse) => void>();
 const logHandlers = new Map<string, (line: string) => void>();
+/** Outbound messages buffered while the socket is connecting or reconnecting. */
+let pending: WSRequest[] = [];
 
 export function connectWS() {
   if (ws && ws.readyState <= WebSocket.OPEN) return;
 
+  setWsStatus("connecting");
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(`${proto}//${location.host}/ws`);
 
-  ws.onopen = () => setWsStatus("open");
+  ws.onopen = () => {
+    setWsStatus("open");
+    const queued = pending;
+    pending = [];
+    for (const req of queued) {
+      ws!.send(JSON.stringify(req));
+    }
+  };
   ws.onclose = () => {
+    ws = null;
     setWsStatus("closed");
     setTimeout(() => connectWS(), 2000);
   };
-  ws.onerror = () => setWsStatus("closed");
+  ws.onerror = () => {
+    // onclose follows; avoid a duplicate reconnect timer.
+    setWsStatus("closed");
+  };
 
   ws.onmessage = (e) => {
     const resp: WSResponse = JSON.parse(e.data);
@@ -37,7 +51,10 @@ export function connectWS() {
 export function sendWS(req: WSRequest) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(req));
+    return;
   }
+  pending.push(req);
+  connectWS();
 }
 
 export function onWS(type: string, handler: (resp: WSResponse) => void) {

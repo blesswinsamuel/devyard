@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onCleanup, For, Show, untrack } from "solid-js";
 import type { ProjectInfo, ServiceState } from "./types";
 import { sendWS, onWS, subscribeLogs, wsStatus, connectWS } from "./ws";
 import { createTerminal } from "./terminal";
@@ -26,12 +26,22 @@ export function App() {
         sendWS({ type: "list_services", project: selectedProject()! });
       }
     }, 2000);
-    sendWS({ type: "list_projects" });
     onCleanup(() => {
       off1();
       off2();
       clearInterval(poll);
     });
+  });
+
+  // Fetch as soon as the socket opens (including reconnects). sendWS queues
+  // while connecting, so this also covers the first paint after a refresh.
+  createEffect(() => {
+    if (wsStatus() !== "open") return;
+    sendWS({ type: "list_projects" });
+    const proj = untrack(selectedProject);
+    if (proj) {
+      sendWS({ type: "list_services", project: proj });
+    }
   });
 
   createEffect(() => {
@@ -106,7 +116,9 @@ export function App() {
         </For>
         <Show when={projects().length === 0}>
           <div style={{ padding: "16px", color: "#6c7086", "font-size": "0.85em" }}>
-            No projects. Run <code>local-compose up</code> to start one.
+            <Show when={wsStatus() === "open"} fallback="Connecting…">
+              No projects. Run <code>local-compose up</code> to start one.
+            </Show>
           </div>
         </Show>
       </div>

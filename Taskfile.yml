@@ -1,0 +1,21 @@
+# https://taskfile.dev
+
+version: "3"
+
+tasks:
+  default:
+    desc: Run Go web proxy and Vite frontend for local development
+    deps:
+      - web
+      - frontend
+
+  web:
+    desc: Start the local-compose web UI proxy (needs a running daemon)
+    cmds:
+      - go run ./cmd/local-compose web
+
+  frontend:
+    desc: Start the Vite frontend (bun)
+    dir: web
+    cmds:
+      - bun run dev

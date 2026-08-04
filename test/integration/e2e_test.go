@@ -661,6 +661,71 @@ services:
 	assertNoOrphans(t, alphaPID, betaPID)
 }
 
+// TestE2E_DownThenUpAndStart verifies that explicit up/start after down clear
+// stopped markers and resume unless-stopped services (markers only suppress
+// daemon autostart).
+func TestE2E_DownThenUpAndStart(t *testing.T) {
+	const cfg = `version: "1"
+name: lc-test
+services:
+  alpha:
+    command: sh -c 'echo alpha-start; sleep 300'
+    restart: unless-stopped
+  beta:
+    command: sh -c 'echo beta-start; sleep 300'
+    restart: unless-stopped
+`
+	e := newEnv(t, cfg)
+	_, _, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d", code)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") != 0
+	}, "ps shows both services running")
+
+	_, downErr, rc := e.run(t, context.Background(), "down")
+	if rc != 0 {
+		t.Fatalf("down: exit %d, err=%q", rc, downErr)
+	}
+	waitForCond(t, 3*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "alpha") == 0 && pidFromPS(t, psOut, "beta") == 0
+	}, "ps shows both stopped after down")
+
+	// ls / project list should still know about the project.
+	lsOut, _, lsCode := e.run(t, context.Background(), "ls")
+	if lsCode != 0 {
+		t.Fatalf("ls after down: exit %d", lsCode)
+	}
+	if !strings.Contains(lsOut, "lc-test") {
+		t.Fatalf("ls after down missing project: %q", lsOut)
+	}
+
+	_, upErr, rc := e.run(t, context.Background(), "up", "-d")
+	if rc != 0 {
+		t.Fatalf("up -d after down: exit %d, err=%q", rc, upErr)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") != 0
+	}, "up after down resumes both services")
+
+	_, _, rc = e.run(t, context.Background(), "down")
+	if rc != 0 {
+		t.Fatalf("second down: exit %d", rc)
+	}
+	_, startErr, rc := e.run(t, context.Background(), "start")
+	if rc != 0 {
+		t.Fatalf("start after down: exit %d, err=%q", rc, startErr)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") != 0
+	}, "start after down resumes both services")
+}
+
 // TestE2E_Top verifies `top` renders CPU/memory usage for every running
 // service's process group and supports a single-service filter. The daemon
 // samples over ~1s, so the command is slow by design.

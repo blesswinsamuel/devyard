@@ -23,7 +23,10 @@ import (
 
 // Project is one project managed by the daemon. It holds the supervisor, the
 // config path it was started from, and a done channel that is closed when the
-// supervisor's run loops have all exited.
+// supervisor's run loops have all exited. Stopped projects remain in the
+// daemon map so list commands stay complete; only remove/rm deletes the entry.
+// After StopProject the supervisor is closed but retained so `ps` can still
+// report per-service status until the next StartProject recreates it.
 type Project struct {
 	Name          string
 	ConfigPath    string
@@ -32,11 +35,18 @@ type Project struct {
 	Sup           *supervisor.Supervisor
 	cancel        context.CancelFunc
 	done          chan struct{}
+	stopping      bool // true while StopProject is in progress
 }
 
-// Status returns "running" if the supervisor is still active, "stopped" once
-// all service run loops have exited.
+// Status returns "running", "stopping", or "stopped".
 func (p *Project) Status() string {
+	if p.Sup == nil {
+		// Registered-but-never-started (autostart skip) or cleared entry.
+		return "stopped"
+	}
+	if p.stopping {
+		return "stopping"
+	}
 	select {
 	case <-p.done:
 		return "stopped"
@@ -93,9 +103,20 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 
 	name := cfg.Name
 
-	d.mu.Lock()
-	if p, exists := d.projects[name]; exists {
-		if p.Status() == "running" {
+	for {
+		d.mu.Lock()
+		p, exists := d.projects[name]
+		if !exists {
+			d.mu.Unlock()
+			return d.createAndStartProject(cfg, configPath, build, clearServiceMarkers, nil)
+		}
+		switch p.Status() {
+		case "stopping":
+			done := p.done
+			d.mu.Unlock()
+			<-done
+			continue
+		case "running":
 			sup := p.Sup
 			d.mu.Unlock()
 			if !clearServiceMarkers {
@@ -104,16 +125,37 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 			if sup == nil {
 				return fmt.Errorf("project %q is running but has no supervisor", name)
 			}
-			// Compose-like: `up` on a running project starts any stopped services.
 			if build {
 				if err := runBuilds(cfg); err != nil {
 					return err
 				}
 			}
+			// Clear project marker on resume so a later daemon restart may
+			// autostart again (user explicitly asked to run the project).
+			if locs, locErr := project.Resolve(name); locErr == nil {
+				_ = removeProjectStoppedMarker(locs)
+			}
 			return sup.StartStopped()
+		default: // stopped
+			old := p
+			d.mu.Unlock()
+			return d.createAndStartProject(cfg, configPath, build, clearServiceMarkers, old)
 		}
 	}
-	d.mu.Unlock()
+}
+
+// createAndStartProject builds a new supervisor and installs it in the map.
+// old, if non-nil, is a stopped project entry whose supervisor (if any) is
+// closed before replacement. The project remains listed under the same name.
+func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, build, clearServiceMarkers bool, old *Project) error {
+	name := cfg.Name
+
+	if old != nil && old.Sup != nil {
+		_ = old.Sup.Close()
+		if old.cancel != nil {
+			old.cancel()
+		}
+	}
 
 	locs, err := project.Resolve(name)
 	if err != nil {
@@ -123,8 +165,8 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 		return err
 	}
 
-	// Remove the project-level stopped marker so unless-stopped autostart
-	// will resume this project on the next daemon start.
+	// Remove the project-level stopped marker so autostart will resume this
+	// project on the next daemon start.
 	_ = removeProjectStoppedMarker(locs)
 
 	if clearServiceMarkers {
@@ -167,6 +209,18 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 	}
 
 	d.mu.Lock()
+	if existing, ok := d.projects[name]; ok && existing.Status() == "running" {
+		d.mu.Unlock()
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), supervisor.DefaultGracefulStopTimeout)
+		_ = sup.Stop(stopCtx)
+		stopCancel()
+		_ = sup.Close()
+		cancel()
+		if !clearServiceMarkers {
+			return fmt.Errorf("project %q is already running", name)
+		}
+		return existing.Sup.StartStopped()
+	}
 	d.projects[name] = p
 	d.mu.Unlock()
 
@@ -182,18 +236,31 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 }
 
 // StopProject stops the named project's services, writes a project-level
-// stopped marker (so unless-stopped autostart won't resume it), and closes its
-// supervisor. The project remains in the daemon's map.
+// stopped marker (so autostart won't resume it), and closes its supervisor.
+// The project remains in the daemon's map with Status "stopped"; the closed
+// supervisor is retained so `ps` can still report service states.
 func (d *Daemon) StopProject(name string) error {
 	d.mu.Lock()
 	p, ok := d.projects[name]
-	d.mu.Unlock()
 	if !ok {
+		d.mu.Unlock()
 		return fmt.Errorf("project %q is not running", name)
 	}
-	if p.Status() == "stopped" {
+	switch p.Status() {
+	case "stopped":
+		d.mu.Unlock()
+		return nil
+	case "stopping":
+		done := p.done
+		d.mu.Unlock()
+		<-done
 		return nil
 	}
+	p.stopping = true
+	sup := p.Sup
+	cancelFn := p.cancel
+	done := p.done
+	d.mu.Unlock()
 
 	locs, err := project.Resolve(name)
 	if err == nil {
@@ -202,12 +269,25 @@ func (d *Daemon) StopProject(name string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), supervisor.DefaultGracefulStopTimeout)
 	defer cancel()
-	if err := p.Sup.Stop(ctx); err != nil {
-		return err
+	if sup != nil {
+		if err := sup.Stop(ctx); err != nil {
+			d.mu.Lock()
+			p.stopping = false
+			d.mu.Unlock()
+			return err
+		}
 	}
-	<-p.done
-	_ = p.Sup.Close()
-	p.cancel()
+	<-done
+	if sup != nil {
+		_ = sup.Close()
+	}
+	if cancelFn != nil {
+		cancelFn()
+	}
+
+	d.mu.Lock()
+	p.stopping = false
+	d.mu.Unlock()
 
 	return nil
 }
@@ -220,20 +300,41 @@ func (d *Daemon) RemoveProject(name string) error {
 	d.mu.Unlock()
 
 	if exists {
-		if p.Status() == "running" {
-			locs, err := project.Resolve(name)
-			if err == nil {
-				_ = writeProjectStoppedMarker(locs)
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), supervisor.DefaultGracefulStopTimeout)
-			if err := p.Sup.Stop(ctx); err != nil {
+		status := p.Status()
+		if status == "running" || status == "stopping" {
+			if status == "running" {
+				locs, err := project.Resolve(name)
+				if err == nil {
+					_ = writeProjectStoppedMarker(locs)
+				}
+				d.mu.Lock()
+				p.stopping = true
+				sup := p.Sup
+				cancelFn := p.cancel
+				done := p.done
+				d.mu.Unlock()
+
+				ctx, cancel := context.WithTimeout(context.Background(), supervisor.DefaultGracefulStopTimeout)
+				if sup != nil {
+					if err := sup.Stop(ctx); err != nil {
+						cancel()
+						d.mu.Lock()
+						p.stopping = false
+						d.mu.Unlock()
+						return err
+					}
+				}
 				cancel()
-				return err
+				<-done
+				if sup != nil {
+					_ = sup.Close()
+				}
+				if cancelFn != nil {
+					cancelFn()
+				}
+			} else {
+				<-p.done
 			}
-			cancel()
-			<-p.done
-			_ = p.Sup.Close()
-			p.cancel()
 		}
 
 		d.mu.Lock()
@@ -254,6 +355,8 @@ func (d *Daemon) RemoveProject(name string) error {
 }
 
 // StopDaemon stops all projects and signals the daemon process to exit.
+// Projects remain in the map as stopped; no project .stopped marker is written
+// so unless-stopped autostart can resume after a daemon restart.
 func (d *Daemon) StopDaemon() error {
 	d.stopOnce.Do(func() { close(d.stopCh) })
 
@@ -265,12 +368,35 @@ func (d *Daemon) StopDaemon() error {
 	d.mu.Unlock()
 
 	for _, p := range projects {
+		d.mu.Lock()
+		if p.Sup == nil || p.Status() == "stopped" {
+			d.mu.Unlock()
+			continue
+		}
+		if p.Status() == "stopping" {
+			done := p.done
+			d.mu.Unlock()
+			<-done
+			continue
+		}
+		p.stopping = true
+		sup := p.Sup
+		cancelFn := p.cancel
+		done := p.done
+		d.mu.Unlock()
+
 		ctx, cancel := context.WithTimeout(context.Background(), supervisor.DefaultGracefulStopTimeout)
-		_ = p.Sup.Stop(ctx)
+		_ = sup.Stop(ctx)
 		cancel()
-		<-p.done
-		_ = p.Sup.Close()
-		p.cancel()
+		<-done
+		_ = sup.Close()
+		if cancelFn != nil {
+			cancelFn()
+		}
+
+		d.mu.Lock()
+		p.stopping = false
+		d.mu.Unlock()
 	}
 
 	return nil
@@ -331,7 +457,9 @@ func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 }
 
 // ProjectBackend returns the control.Backend for the named project, or an
-// error if the project is not known.
+// error if the project is not known or has no supervisor. A stopped project's
+// closed supervisor is still returned so `ps` can report service states;
+// mutating calls (Restart, etc.) fail because the supervisor is stopped.
 func (d *Daemon) ProjectBackend(project string) (control.Backend, error) {
 	d.mu.Lock()
 	p, ok := d.projects[project]
@@ -541,7 +669,8 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 		}
 
 		policy := autostartPolicy(cfg.File)
-		shouldAutostart := policy == config.RestartAlways || (policy == config.RestartUnlessStopped && !hasProjectStoppedMarker(locs))
+		shouldAutostart := (policy == config.RestartAlways || policy == config.RestartUnlessStopped) &&
+			!hasProjectStoppedMarker(locs)
 
 		if !shouldAutostart {
 			// Register stopped project in memory so d.projects owns all registered projects.
@@ -573,10 +702,9 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 }
 
 // autostartPolicy returns the restart policy that determines whether a
-// project should autostart. If any service has restart: always, the project
-// autostarts unconditionally. If any service has restart: unless-stopped, the
-// project autostarts unless a .stopped marker exists. Otherwise the project
-// does not autostart.
+// project is eligible for autostart. If any service has restart: always or
+// restart: unless-stopped, the project may autostart (subject to the project
+// .stopped marker). Otherwise the project does not autostart.
 func autostartPolicy(file *config.File) config.RestartPolicy {
 	hasAlways := false
 	hasUnlessStopped := false

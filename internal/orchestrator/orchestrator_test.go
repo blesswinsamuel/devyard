@@ -327,16 +327,13 @@ services:
     restart: always
 `)
 
-	// Simulate a prior run that wrote the config-path.
+	// Simulate a prior run that wrote the config-path, then daemon exit
+	// without down (no .stopped marker).
 	d1 := orchestrator.New()
 	if err := d1.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
-	if err := d1.StopProject("lc-always"); err != nil {
-		t.Fatalf("StopProject: %v", err)
-	}
-	// Remove the .stopped marker so autostart isn't suppressed.
-	_ = orchestrator.RemoveProjectStoppedMarker("lc-always")
+	_ = d1.StopDaemon()
 
 	// A fresh daemon should autostart this project.
 	d2 := orchestrator.New()
@@ -351,6 +348,80 @@ services:
 		t.Fatalf("skipped = %d, want 0", skipped)
 	}
 	_ = d2.StopProject("lc-always")
+}
+
+func TestAutostartAlwaysHonorsProjectStopped(t *testing.T) {
+	setupEnv(t)
+	configPath := writeConfig(t, `version: "1"
+name: lc-always-stopped
+services:
+  svc:
+    command: sh -c 'echo hello; sleep 0.2'
+    restart: always
+`)
+
+	d1 := orchestrator.New()
+	if err := d1.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	if err := d1.StopProject("lc-always-stopped"); err != nil {
+		t.Fatalf("StopProject: %v", err)
+	}
+	if !orchestrator.HasProjectStoppedMarker("lc-always-stopped") {
+		t.Fatalf("expected .stopped marker after StopProject")
+	}
+
+	// Project .stopped must suppress autostart even for restart: always.
+	d2 := orchestrator.New()
+	started, skipped, err := d2.Autostart()
+	if err != nil {
+		t.Fatalf("Autostart: %v", err)
+	}
+	if started != 0 {
+		t.Fatalf("started = %d, want 0 (stopped marker)", started)
+	}
+	if skipped != 1 {
+		t.Fatalf("skipped = %d, want 1", skipped)
+	}
+	projects := d2.ListProjects()
+	if len(projects) != 1 || projects[0].Name != "lc-always-stopped" || projects[0].Status != "stopped" {
+		t.Fatalf("ListProjects = %+v, want stopped lc-always-stopped still listed", projects)
+	}
+}
+
+func TestProjectBackendAfterStop(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	configPath := writeConfig(t, `version: "1"
+name: lc-backend
+services:
+  svc:
+    command: sleep 30
+`)
+
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	if err := d.StopProject("lc-backend"); err != nil {
+		t.Fatalf("StopProject: %v", err)
+	}
+
+	// Closed supervisor is retained so ps can still list service states.
+	backend, err := d.ProjectBackend("lc-backend")
+	if err != nil {
+		t.Fatalf("ProjectBackend after stop: %v", err)
+	}
+	states := backend.States()
+	if len(states) != 1 {
+		t.Fatalf("States after stop = %+v, want 1 service", states)
+	}
+	if err := backend.Restart("svc"); err == nil {
+		t.Fatalf("Restart after stop: want error, got nil")
+	}
+	projects := d.ListProjects()
+	if len(projects) != 1 || projects[0].Status != "stopped" {
+		t.Fatalf("ListProjects after stop = %+v, want stopped project still listed", projects)
+	}
 }
 
 func TestAutostartUnlessStoppedWithMarker(t *testing.T) {

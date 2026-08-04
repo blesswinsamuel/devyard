@@ -13,9 +13,10 @@ What's done, what's planned, and where each item lives in the code.
   `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. (`internal/orchestrator`,
   `internal/daemon`, `internal/cli/daemon_run.go`)
 - **Autostart** — on daemon startup, projects with `restart: always` or
-  `restart: unless-stopped` services are started automatically (unless a
-  project-level `.stopped` marker exists). `on-failure` does not trigger
-  autostart. (`internal/orchestrator` `Autostart()`)
+  `restart: unless-stopped` services are started automatically **unless** a
+  project-level `.stopped` marker exists (honored for both policies).
+  `on-failure` does not trigger autostart. (`internal/orchestrator`
+  `Autostart()`)
 - **Process-group safety** — each service in its own `setpgid` group; teardown
   via `killpg` so no orphans. (`internal/supervisor/proc_unix.go`)
 - **`top` resource view** — `local-compose top [service]` aggregates CPU and

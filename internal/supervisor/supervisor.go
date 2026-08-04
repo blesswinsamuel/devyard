@@ -946,6 +946,9 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Du
 // Restart stops a single service (without persisting a stop marker) and then
 // launches a fresh run loop for it.
 func (s *Supervisor) Restart(name string) error {
+	if s.isStopping() {
+		return fmt.Errorf("supervisor: stopped")
+	}
 	rt, ok := s.services[name]
 	if !ok {
 		return fmt.Errorf("supervisor: unknown service %q", name)
@@ -970,6 +973,9 @@ func (s *Supervisor) Restart(name string) error {
 // backing off, or stopping are left alone. Used by `up` when the project is
 // already loaded in the daemon.
 func (s *Supervisor) StartStopped() error {
+	if s.isStopping() {
+		return fmt.Errorf("supervisor: stopped")
+	}
 	for _, name := range s.order {
 		rt := s.services[name]
 		rt.mu.Lock()

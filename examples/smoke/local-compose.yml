@@ -21,13 +21,13 @@
 #   - crasher depends on api (service_started), exits 7, and is restarted by the
 #     on-failure policy until the backoff cap is hit.
 #
-# Note: api uses `restart: always` (not `unless-stopped`) deliberately. With
-# `unless-stopped`, the first Ctrl-C / `down` writes an "api.stopped" marker in
-# the XDG state dir, and every subsequent `up` SKIPS api (it won't auto-resume
-# until you `restart api`). That's intended `unless-stopped` semantics — and
-# dependents are now skipped cleanly with an "skipped: dependency api is
-# stopped" message and `up` exits 0 — but for a smoke test you typically want
-# `up` to actually start api every time, so `always` is the better fit here.
+# Note: api uses `restart: always` (not `unless-stopped`) deliberately so a
+# hard daemon kill (no `down`) still brings api back on the next daemon
+# autostart. With `unless-stopped`, an explicit `stop`/`down` writes markers
+# that suppress resume on **daemon autostart only**; the next explicit `up` /
+# `start` clears those markers and starts the service again. For a smoke test
+# you typically want api to come back after a daemon restart without an
+# intervening `up`, so `always` is the better fit here.
 
 version: "1"
 name: smoke

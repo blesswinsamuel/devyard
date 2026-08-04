@@ -62,21 +62,27 @@ Key methods:
   `Supervisor`, starts it, and adds it to the map. Writes a `config-path` file
   in the project's state dir (for autostart discovery). Removes any
   project-level `.stopped` marker and per-service unless-stopped markers so
-  explicit `up` resumes previously stopped services. If the project is already
-  running, resumes stopped/exited services without recreating the supervisor.
+  explicit `up`/`start` resumes previously stopped services. If the project is
+  already running, resumes stopped/exited services without recreating the
+  supervisor. If a stop is in progress, waits for it then recreates.
 - **`StopProject(name)`** — stops the supervisor, writes a project-level
-  `.stopped` marker, closes the supervisor, and keeps the project in the map.
-- **`StopDaemon()`** — stops all projects and signals the daemon process to
-  exit (closes `StopCh`).
-- **`ListProjects()`** — returns a snapshot of all known projects and their
-  statuses.
+  `.stopped` marker, closes the supervisor (retained for `ps` state queries),
+  and **keeps the project in the map** (`status: stopped`) so list commands
+  still show it.
+- **`StopDaemon()`** — stops all projects (nils each `Sup`, keeps map entries)
+  and signals the daemon process to exit (closes `StopCh`). Does not write
+  project `.stopped` markers.
+- **`ListProjects()`** — returns a snapshot of all known projects (running and
+  stopped) and their statuses.
 - **`ProjectBackend(project)`** — returns the `control.Backend` for the named
-  project (used by the control server to route per-project requests).
+  project. A stopped project's closed supervisor is still returned so `ps`
+  works; mutating calls error because the supervisor is stopped.
 - **`Autostart()`** — scans `$XDG_STATE_HOME/local-compose/*/` for
   `config-path` files, reads each project's config, and starts projects whose
-  services have `restart: always` or `restart: unless-stopped` (unless a
-  project-level `.stopped` marker exists). Per-service stopped markers are
-  still honored so an explicit service stop survives daemon restart.
+  services have `restart: always` or `restart: unless-stopped` **unless** a
+  project-level `.stopped` marker exists (honored for both policies). Skipped
+  projects are still registered in the map as stopped. Per-service stopped
+  markers are still honored so an explicit service stop survives daemon restart.
 
 ## Supervisor (`internal/supervisor`)
 

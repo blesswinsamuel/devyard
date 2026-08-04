@@ -592,6 +592,38 @@ func TestSupervisorUnlessStoppedMarker(t *testing.T) {
 	_ = s2.Stop(ctx)
 }
 
+func TestSupervisorRestartAfterStopErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "sleep 30", Shell: "sh", Restart: config.RestartNo},
+	})
+	s := newSupervisor(t, file, []string{"svc"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !waitFor(t, 3*time.Second, func() bool {
+		st := s.States()
+		return len(st) == 1 && st[0].Status == supervisor.StatusRunning
+	}) {
+		t.Fatalf("never running: %+v", s.States())
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.Stop(ctx); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if err := s.Restart("svc"); err == nil {
+		t.Fatalf("Restart after Stop: want error, got nil")
+	}
+	if err := s.StartStopped(); err == nil {
+		t.Fatalf("StartStopped after Stop: want error, got nil")
+	}
+}
+
 // TestSupervisorUnlessStoppedSkipsDependents verifies that when a unless-stopped
 // service is skipped at Start because of a persisted stop marker (daemon
 // autostart path), its dependents are skipped transitively (not reported as

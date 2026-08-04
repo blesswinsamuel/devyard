@@ -110,12 +110,15 @@ that socket. The daemon autostarts projects whose services declare
 - **Autostart**: on daemon startup, `Autostart()` scans
   `$XDG_STATE_HOME/local-compose/*/` for `config-path` files, reads each
   project's config, and starts projects whose services have `restart: always`
-  or `restart: unless-stopped` (unless a project-level `.stopped` marker
-  exists). `on-failure` does not trigger autostart.
+  or `restart: unless-stopped` **unless** a project-level `.stopped` marker
+  exists (honored for both policies). Skipped projects are still registered in
+  memory as stopped so list commands stay complete. `on-failure` does not
+  trigger autostart.
 - **Project-level vs service-level stopped markers**: `StopProject` writes a
   project-level `$XDG_STATE_HOME/local-compose/<project>/.stopped` marker (so
-  autostart won't resume the project). `StartProject` removes it. This is
-  distinct from the per-service `<svc>.stopped` markers used by the
+  autostart won't resume the project) and keeps the project in the daemon map
+  (closed supervisor retained for `ps`). `StartProject` removes the marker.
+  This is distinct from the per-service `<svc>.stopped` markers used by the
   supervisor's `unless-stopped` restart policy.
 - **`unless-stopped`** (service-level) persists a per-service "stopped" marker
   in the state dir so a service doesn't auto-resume on **daemon autostart**.

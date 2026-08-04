@@ -38,31 +38,31 @@ var startCmd = &cobra.Command{
 		defer func() { _ = client.Close() }()
 
 		if service == "" {
-			if err := client.Restart(projName, ""); err != nil {
-				// If project is stopped/not loaded in memory, try loading & starting it via StartProject
-				cfg, loadErr := loadConfig(flagConfigPath, projName)
-				if loadErr == nil {
-					if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); startErr == nil {
-						fmt.Fprintf(os.Stderr, "local-compose: project %q started\n", projName)
-						return nil
-					}
-				}
+			// Same resume semantics as `up`: clear markers and start stopped
+			// services (or recreate the supervisor if the project is down).
+			cfg, loadErr := loadConfig(flagConfigPath, projName)
+			if loadErr != nil {
+				return loadErr
+			}
+			if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, "local-compose: started all services")
-		} else {
-			if err := client.Restart(projName, service); err != nil {
-				cfg, loadErr := loadConfig(flagConfigPath, projName)
-				if loadErr == nil {
-					if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); startErr == nil {
-						fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)
-						return nil
-					}
-				}
-				return err
-			}
-			fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)
+			fmt.Fprintf(os.Stderr, "local-compose: project %q started\n", projName)
+			return nil
 		}
+
+		if err := client.Restart(projName, service); err != nil {
+			// Project may be stopped (no live supervisor); load & start it.
+			cfg, loadErr := loadConfig(flagConfigPath, projName)
+			if loadErr == nil {
+				if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); startErr == nil {
+					fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)
+					return nil
+				}
+			}
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)
 		return nil
 	},
 }
@@ -100,6 +100,7 @@ var stopCmd = &cobra.Command{
 		}
 
 		if err := client.StopProject(projName); err != nil {
+			// Idempotent: treat unknown/already-stopped as success.
 			fmt.Fprintln(os.Stderr, "local-compose: stopped")
 			return nil
 		}

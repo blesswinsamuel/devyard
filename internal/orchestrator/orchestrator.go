@@ -273,7 +273,7 @@ func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 			states := p.Sup.States()
 			info.TotalServices = len(states)
 			for _, st := range states {
-				if st.Status == supervisor.StatusRunning || st.Status == supervisor.StatusStarting {
+				if st.Status == supervisor.StatusRunning || st.Status == supervisor.StatusStarting || st.Status == supervisor.StatusBackoff {
 					info.RunningServices++
 				}
 			}

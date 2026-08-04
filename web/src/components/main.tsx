@@ -44,7 +44,12 @@ function LogViewer() {
 
     t.clear();
     t.reset();
-    return subscribeLogs(project, service, (line) => t.writeln(line));
+    return subscribeLogs(
+      project,
+      service,
+      (line) => t.writeln(line),
+      () => t.clear()
+    );
   });
 
   createEffect(() => {

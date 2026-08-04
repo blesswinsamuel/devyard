@@ -11,7 +11,12 @@ const handlers = new Map<string, (resp: WSResponse) => void>();
 const openHandlers = new Set<() => void>();
 const logHandlers = new Map<
   string,
-  { project: string; service: string; onLine: (line: string) => void }
+  {
+    project: string;
+    service: string;
+    onLine: (line: string) => void;
+    onRotate?: () => void;
+  }
 >();
 /** Outbound messages buffered while the socket is connecting or reconnecting. */
 let pending: WSRequest[] = [];
@@ -70,6 +75,11 @@ export function connectWS() {
     if (resp.type === "log_line") {
       const key = logKey(resp.project!, resp.service!);
       logHandlers.get(key)?.onLine(resp.line!);
+    } else if (resp.type === "log_rotated") {
+      // A new run started; the previous run's lines are over. Let the
+      // subscriber reset its view so only the fresh run is shown.
+      const key = logKey(resp.project!, resp.service!);
+      logHandlers.get(key)?.onRotate?.();
     } else {
       handlers.get(resp.type)?.(resp);
     }
@@ -99,10 +109,11 @@ export function onWSOpen(handler: () => void) {
 export function subscribeLogs(
   project: string,
   service: string,
-  onLine: (line: string) => void
+  onLine: (line: string) => void,
+  onRotate?: () => void
 ) {
   const key = logKey(project, service);
-  logHandlers.set(key, { project, service, onLine });
+  logHandlers.set(key, { project, service, onLine, onRotate });
   sendWS({ type: "subscribe_logs", project, service });
   return () => {
     const current = logHandlers.get(key);

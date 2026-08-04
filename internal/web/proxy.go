@@ -168,6 +168,12 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 		}
 		defer conn.Close()
 
+		// Unblock ReadFrame when the subscription is cancelled.
+		go func() {
+			<-subCtx.Done()
+			_ = conn.Close()
+		}()
+
 		if err := protocol.WriteFrame(conn, protocol.Request{
 			Kind:    protocol.KindLogs,
 			Project: req.Project,
@@ -179,6 +185,12 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 		}
 
 		for {
+			select {
+			case <-subCtx.Done():
+				return
+			default:
+			}
+
 			var resp protocol.Response
 			if err := protocol.ReadFrame(conn, &resp); err != nil {
 				return
@@ -193,14 +205,20 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 				})
 			case protocol.KindLogContent:
 				for _, line := range strings.Split(strings.TrimRight(resp.Content, "\n"), "\n") {
-					if line != "" {
-						s.send(c, subCtx, wsResponse{
-							Type:    "log_line",
-							Project: resp.Project,
-							Service: resp.Service,
-							Line:    line,
-						})
+					if line == "" {
+						continue
 					}
+					select {
+					case <-subCtx.Done():
+						return
+					default:
+					}
+					s.send(c, subCtx, wsResponse{
+						Type:    "log_line",
+						Project: resp.Project,
+						Service: resp.Service,
+						Line:    line,
+					})
 				}
 			case protocol.KindDone:
 				return

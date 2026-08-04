@@ -8,9 +8,19 @@ export { wsStatus };
 
 let ws: WebSocket | null = null;
 const handlers = new Map<string, (resp: WSResponse) => void>();
-const logHandlers = new Map<string, (line: string) => void>();
+const openHandlers = new Set<() => void>();
+const logHandlers = new Map<
+  string,
+  { project: string; service: string; onLine: (line: string) => void }
+>();
 /** Outbound messages buffered while the socket is connecting or reconnecting. */
 let pending: WSRequest[] = [];
+/** True after the first successful open; used to distinguish reconnects. */
+let hasOpened = false;
+
+function logKey(project: string, service: string) {
+  return `${project}\0${service}`;
+}
 
 export function connectWS() {
   if (ws && ws.readyState <= WebSocket.OPEN) return;
@@ -26,6 +36,24 @@ export function connectWS() {
     for (const req of queued) {
       ws!.send(JSON.stringify(req));
     }
+    // Server-side subscriptions die with the old socket; re-issue them.
+    for (const entry of logHandlers.values()) {
+      ws!.send(
+        JSON.stringify({
+          type: "subscribe_logs",
+          project: entry.project,
+          service: entry.service,
+        })
+      );
+    }
+    // Reconnect only — first open is covered by the caller's initial fetch
+    // (already flushed from `pending` above).
+    if (hasOpened) {
+      for (const h of openHandlers) {
+        h();
+      }
+    }
+    hasOpened = true;
   };
   ws.onclose = () => {
     ws = null;
@@ -40,8 +68,8 @@ export function connectWS() {
   ws.onmessage = (e) => {
     const resp: WSResponse = JSON.parse(e.data);
     if (resp.type === "log_line") {
-      const key = `${resp.project}/${resp.service}`;
-      logHandlers.get(key)?.(resp.line!);
+      const key = logKey(resp.project!, resp.service!);
+      logHandlers.get(key)?.onLine(resp.line!);
     } else {
       handlers.get(resp.type)?.(resp);
     }
@@ -62,16 +90,26 @@ export function onWS(type: string, handler: (resp: WSResponse) => void) {
   return () => handlers.delete(type);
 }
 
+/** Fires on every successful WS open (including reconnects). */
+export function onWSOpen(handler: () => void) {
+  openHandlers.add(handler);
+  return () => openHandlers.delete(handler);
+}
+
 export function subscribeLogs(
   project: string,
   service: string,
   onLine: (line: string) => void
 ) {
-  const key = `${project}/${service}`;
-  logHandlers.set(key, onLine);
+  const key = logKey(project, service);
+  logHandlers.set(key, { project, service, onLine });
   sendWS({ type: "subscribe_logs", project, service });
   return () => {
-    logHandlers.delete(key);
-    sendWS({ type: "unsubscribe_logs", project, service });
+    const current = logHandlers.get(key);
+    // Only tear down if we still own the slot (a newer subscribe may have replaced us).
+    if (current?.onLine === onLine) {
+      logHandlers.delete(key);
+      sendWS({ type: "unsubscribe_logs", project, service });
+    }
   };
 }

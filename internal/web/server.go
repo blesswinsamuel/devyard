@@ -364,8 +364,13 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 		}
 	}
 
-	// Drain existing content.
+	// Drain existing content, aborting promptly on unsubscribe/disconnect.
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		n, err := f.Read(buf)
 		if n > 0 {
 			flush(buf[:n])
@@ -373,6 +378,12 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 		if err != nil {
 			break
 		}
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	default:
 	}
 
 	// Emit trailing partial line.
@@ -390,6 +401,11 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 			return
 		case <-ticker.C:
 			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 				n, err := f.Read(buf)
 				if n > 0 {
 					flush(buf[:n])

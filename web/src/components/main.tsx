@@ -1,4 +1,4 @@
-import { createEffect, createMemo, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import type { Terminal } from "@xterm/xterm";
 import { Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
 import {
@@ -24,29 +24,32 @@ import {
 import { createTerminal, terminalTheme } from "~/terminal";
 
 function LogViewer() {
-  let container: HTMLDivElement | undefined;
-  let term: Terminal | null = null;
+  let container!: HTMLDivElement;
+  const [term, setTerm] = createSignal<Terminal | null>(null);
+
+  onMount(() => {
+    const t = createTerminal(container);
+    setTerm(t);
+    onCleanup(() => {
+      t.dispose();
+      setTerm(null);
+    });
+  });
 
   createEffect(() => {
     const project = selectedProject();
     const service = selectedService();
-    if (!project || !service || !container) return;
+    const t = term();
+    if (!project || !service || !t) return;
 
-    term = createTerminal(container!);
-    const unsubscribe = subscribeLogs(project, service, (line) =>
-      term?.writeln(line)
-    );
-
-    return () => {
-      unsubscribe();
-      term?.dispose();
-      term = null;
-    };
+    t.clear();
+    t.reset();
+    return subscribeLogs(project, service, (line) => t.writeln(line));
   });
 
   createEffect(() => {
-    const t = theme();
-    if (term) term.options.theme = terminalTheme(t);
+    const t = term();
+    if (t) t.options.theme = terminalTheme(theme());
   });
 
   return (
@@ -55,18 +58,18 @@ function LogViewer() {
 }
 
 function ServiceHeader() {
-  const project = selectedProject()!;
-  const service = selectedService()!;
+  const project = () => selectedProject()!;
+  const service = () => selectedService()!;
   const state = createMemo(() =>
-    (services()[project] ?? []).find((s) => s.name === service)
+    (services()[project()] ?? []).find((s) => s.name === service())
   );
 
   return (
     <>
       <div class="flex min-w-0 items-center gap-2">
-        <span class="truncate text-xs text-muted-foreground">{project}</span>
+        <span class="truncate text-xs text-muted-foreground">{project()}</span>
         <span class="text-muted-foreground">/</span>
-        <span class="truncate font-semibold">{service}</span>
+        <span class="truncate font-semibold">{service()}</span>
         <Show when={state()}>
           {(s) => (
             <>
@@ -86,7 +89,7 @@ function ServiceHeader() {
             as={Button}
             variant="secondary"
             size="sm"
-            onClick={() => restartService(project, service)}
+            onClick={() => restartService(project(), service())}
           >
             <RotateCcw />
             Restart
@@ -98,7 +101,7 @@ function ServiceHeader() {
             as={Button}
             variant="outline"
             size="sm"
-            onClick={() => stopService(project, service)}
+            onClick={() => stopService(project(), service())}
           >
             <Power />
             Stop
@@ -111,7 +114,7 @@ function ServiceHeader() {
             variant="outline"
             size="icon"
             class="text-destructive hover:text-destructive"
-            onClick={() => killService(project, service)}
+            onClick={() => killService(project(), service())}
           >
             <Skull />
             <span class="sr-only">Kill service</span>
@@ -124,13 +127,13 @@ function ServiceHeader() {
 }
 
 function ProjectHeader() {
-  const project = selectedProject()!;
-  const info = createMemo(() => projects().find((p) => p.name === project));
+  const project = () => selectedProject()!;
+  const info = createMemo(() => projects().find((p) => p.name === project()));
 
   return (
     <>
       <div class="flex min-w-0 items-center gap-2">
-        <span class="truncate font-semibold">{project}</span>
+        <span class="truncate font-semibold">{project()}</span>
         <Show when={info()}>
           {(p) => (
             <Badge variant={statusTone(p().status)} class="capitalize">
@@ -140,7 +143,7 @@ function ProjectHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
-        <Button variant="outline" size="sm" onClick={() => stopProject(project)}>
+        <Button variant="outline" size="sm" onClick={() => stopProject(project())}>
           <Power />
           Stop project
         </Button>

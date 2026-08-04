@@ -311,6 +311,9 @@ func (d *Daemon) ProjectBackend(project string) (control.Backend, error) {
 	if !ok {
 		return nil, fmt.Errorf("project %q is not running", project)
 	}
+	if p.Sup == nil {
+		return nil, fmt.Errorf("project %q is stopped", project)
+	}
 	return supervisor.NewControlBackend(p.Sup), nil
 }
 

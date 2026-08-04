@@ -808,3 +808,32 @@ services:
 		return pidFromPS(t, psOut, "app") != 0
 	}, "ps shows app running after start -p reg-test")
 }
+
+func TestPSAllAndAutoFallback(t *testing.T) {
+	cfg := `
+version: "1"
+name: ps-all-test
+services:
+  srv1:
+    command: "sleep 60"
+`
+	e := newEnv(t, cfg)
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+
+	outsideDir := t.TempDir()
+
+	// 1. ps -a inside project dir should include PROJECT header and project name
+	waitForCond(t, 5*time.Second, func() bool {
+		psAllOut, _, code := e.run(t, context.Background(), "ps", "-a")
+		return code == 0 && strings.Contains(psAllOut, "PROJECT") && strings.Contains(psAllOut, "ps-all-test") && strings.Contains(psAllOut, "srv1")
+	}, "ps -a shows srv1 under ps-all-test")
+
+	// 2. ps outside project dir should auto-fallback to all projects
+	waitForCond(t, 5*time.Second, func() bool {
+		psOutsideOut, _, code := e.runFromDir(t, context.Background(), outsideDir, "ps")
+		return code == 0 && strings.Contains(psOutsideOut, "PROJECT") && strings.Contains(psOutsideOut, "ps-all-test") && strings.Contains(psOutsideOut, "srv1")
+	}, "ps outside dir auto-fallback shows srv1 under ps-all-test")
+}

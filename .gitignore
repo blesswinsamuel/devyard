@@ -2,6 +2,7 @@
 /local-compose
 /bin/
 /dist/
+/internal/web/dist/
 
 # Go
 *.exe

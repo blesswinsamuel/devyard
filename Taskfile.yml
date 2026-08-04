@@ -1,4 +1,7 @@
 # https://taskfile.dev
+#
+# Same workflow as the root local-compose.yml (preferred):
+#   local-compose up
 
 version: "3"
 

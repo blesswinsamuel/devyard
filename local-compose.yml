@@ -1,0 +1,40 @@
+# Local development for the web UI: Go proxy + Vite (SolidJS) frontend.
+#
+# Prerequisites:
+#   - Go toolchain (for `go run`)
+#   - bun (see web/bun.lock)
+#   - A running local-compose daemon (started automatically by `up`)
+#
+# Usage (from repo root):
+#
+#   local-compose up          # foreground; Ctrl-C stops both
+#   local-compose up -d       # detached
+#   local-compose logs -f
+#   local-compose down
+#
+# Then open the Vite app at http://127.0.0.1:5173 (proxies /ws to the Go
+# server on :9090). If the daemon already serves the embedded web UI on
+# :9090 (global config web.enabled), stop that first or pass --port to
+# the web service.
+
+version: "1"
+name: local-compose-dev
+
+services:
+  web:
+    command: go run ./cmd/local-compose web --host 127.0.0.1 --port 9090
+    working_dir: .
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9090/ >/dev/null"]
+      interval: 1s
+      timeout: 2s
+      retries: 60
+    restart: unless-stopped
+
+  frontend:
+    command: bun run dev
+    working_dir: ./web
+    depends_on:
+      web: { condition: service_healthy }
+    build: bun install
+    restart: unless-stopped

@@ -118,13 +118,15 @@ that socket. The daemon autostarts projects whose services declare
   distinct from the per-service `<svc>.stopped` markers used by the
   supervisor's `unless-stopped` restart policy.
 - **`unless-stopped`** (service-level) persists a per-service "stopped" marker
-  in the state dir so a service doesn't auto-resume on the next `up`. `Restart`
-  removes it. If you touch restart/stop logic, keep the marker in sync. When a
-  service is skipped because of the marker, its dependents are skipped
-  transitively (`waitForDep` returns `errDependencyStopped`) and `up` exits 0 —
-  an explicit stop is not a failure, so `Failed()` stays false. Only a
-  dependency that genuinely exits or goes unhealthy sets `Failed()`; a
-  user-initiated shutdown (`errSupervisorStopping`) doesn't either.
+  in the state dir so a service doesn't auto-resume on **daemon autostart**.
+  Explicit `up`/`start` clears the marker and starts the service; `Restart`
+  also removes it. If you touch restart/stop logic, keep the marker in sync.
+  When a service is skipped at autostart because of the marker, its dependents
+  are skipped transitively (`waitForDep` returns `errDependencyStopped`) and
+  startup exits 0 — an explicit stop is not a failure, so `Failed()` stays
+  false. Only a dependency that genuinely exits or goes unhealthy sets
+  `Failed()`; a user-initiated shutdown (`errSupervisorStopping`) doesn't
+  either.
 - **Health checker lifecycle**: the checker is created before
   `depends_on: service_healthy` waiters poll it, so they see `starting` instead
   of nil. Don't reorder checker creation after `waitForDeps`.

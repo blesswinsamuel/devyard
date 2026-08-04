@@ -90,16 +90,131 @@ func TestStartAndStopProject(t *testing.T) {
 func TestStartProjectAlreadyRunning(t *testing.T) {
 	setupEnv(t)
 	d := orchestrator.New()
-	configPath := writeConfig(t, shortSleepConfig)
+	configPath := writeConfig(t, `version: "1"
+name: lc-test
+services:
+  svc:
+    command: sleep 30
+`)
 
 	if err := d.StartProject(configPath, false, ""); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	defer func() { _ = d.StopProject("lc-test") }()
 
-	if err := d.StartProject(configPath, false, ""); err == nil {
-		t.Fatalf("StartProject twice: expected error, got nil")
+	// Compose-like: up on an already-running project is a no-op when all
+	// services are running.
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject twice: %v", err)
 	}
+}
+
+func TestStartProjectAfterStopResumesUnlessStopped(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	configPath := writeConfig(t, `version: "1"
+name: lc-resume
+services:
+  svc:
+    command: sleep 30
+    restart: unless-stopped
+`)
+
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	backend, err := d.ProjectBackend("lc-resume")
+	if err != nil {
+		t.Fatalf("ProjectBackend: %v", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		states := backend.States()
+		if len(states) == 1 && states[0].Status == "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := d.StopProject("lc-resume"); err != nil {
+		t.Fatalf("StopProject: %v", err)
+	}
+
+	// Explicit up must clear the unless-stopped service marker and start again.
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject after stop: %v", err)
+	}
+	defer func() { _ = d.StopProject("lc-resume") }()
+
+	backend, err = d.ProjectBackend("lc-resume")
+	if err != nil {
+		t.Fatalf("ProjectBackend after restart: %v", err)
+	}
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		states := backend.States()
+		if len(states) == 1 && states[0].Status == "running" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("service did not resume after stop+up: %+v", backend.States())
+}
+
+func TestStartProjectResumesStoppedServiceWhileRunning(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	configPath := writeConfig(t, `version: "1"
+name: lc-partial
+services:
+  a:
+    command: sleep 30
+    restart: unless-stopped
+  b:
+    command: sleep 30
+    restart: unless-stopped
+`)
+
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	defer func() { _ = d.StopProject("lc-partial") }()
+
+	backend, err := d.ProjectBackend("lc-partial")
+	if err != nil {
+		t.Fatalf("ProjectBackend: %v", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		states := backend.States()
+		if len(states) == 2 && states[0].Status == "running" && states[1].Status == "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if err := backend.StopService("a"); err != nil {
+		t.Fatalf("StopService: %v", err)
+	}
+
+	if err := d.StartProject(configPath, false, ""); err != nil {
+		t.Fatalf("StartProject while running: %v", err)
+	}
+
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		states := backend.States()
+		running := 0
+		for _, st := range states {
+			if st.Status == "running" {
+				running++
+			}
+		}
+		if running == 2 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("stopped service did not resume on up: %+v", backend.States())
 }
 
 func TestStopProjectNotRunning(t *testing.T) {

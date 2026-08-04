@@ -789,6 +789,11 @@ services:
 		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
 	}
 
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "-p", "reg-test", "ps")
+		return strings.Contains(psOut, "app")
+	}, "ps shows app")
+
 	// 2. Stop project
 	_, errOut, code = e.run(t, context.Background(), "stop")
 	if code != 0 {
@@ -796,10 +801,11 @@ services:
 	}
 
 	// 3. Verify ls shows 0/1 running when stopped
-	lsOut, _, code := e.run(t, context.Background(), "ls")
-	if code != 0 || !strings.Contains(lsOut, "0/1 running") {
-		t.Fatalf("ls while stopped: code=%d, out=%q", code, lsOut)
-	}
+	waitForCond(t, 5*time.Second, func() bool {
+		lsOut, errOut, code := e.run(t, context.Background(), "ls")
+		t.Logf("ls output: code=%d out=%q err=%q", code, lsOut, errOut)
+		return code == 0 && strings.Contains(lsOut, "0/1 running") && strings.Contains(lsOut, "stopped")
+	}, "ls shows stopped and 0/1 running after stop")
 
 	// 4. Run start from outside the config directory using -p reg-test
 	outsideDir := t.TempDir()

@@ -287,7 +287,7 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 		rt := s.services[name]
 		if rt.spec.Restart == config.RestartUnlessStopped && s.hasStoppedMarker(name) {
 			if rt.logger != nil {
-				rt.logger.writeLine(fmt.Sprintf("local-compose: skipping stopped service %s (use `restart %s` to resume)", name, name))
+				rt.logger.writeLine(fmt.Sprintf("local-compose: skipping stopped service %s (use `up` or `restart %s` to resume)", name, name))
 			}
 			rt.mu.Lock()
 			rt.status = StatusStopped
@@ -770,7 +770,7 @@ func (s *Supervisor) pipeLines(r io.ReadCloser, rt *serviceRuntime, wg *sync.Wai
 // Stop gracefully stops every service: marks them stopped, SIGTERMs each
 // group, waits up to GracefulStopTimeout, then SIGKILLs any survivors. It
 // also writes "stopped" marker files for unless-stopped services so they are
-// not auto-resumed on the next `up`.
+// not auto-resumed on the next daemon autostart (explicit `up` clears them).
 func (s *Supervisor) Stop(ctx context.Context) error {
 	if !s.stopped.CompareAndSwap(false, true) {
 		return nil
@@ -962,6 +962,27 @@ func (s *Supervisor) Restart(name string) error {
 	rt.done = make(chan struct{})
 	s.wg.Add(1)
 	go s.runService(context.Background(), rt)
+	return nil
+}
+
+// StartStopped resumes any services that are currently stopped or exited,
+// clearing unless-stopped markers. Services that are starting, running,
+// backing off, or stopping are left alone. Used by `up` when the project is
+// already loaded in the daemon.
+func (s *Supervisor) StartStopped() error {
+	for _, name := range s.order {
+		rt := s.services[name]
+		rt.mu.Lock()
+		st := rt.status
+		rt.mu.Unlock()
+		switch st {
+		case StatusStarting, StatusRunning, StatusBackoff, StatusStopping:
+			continue
+		}
+		if err := s.Restart(name); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

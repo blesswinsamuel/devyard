@@ -73,9 +73,19 @@ func (d *Daemon) StopCh() <-chan struct{} { return d.stopCh }
 // starts it, and adds it to the daemon's map. If build is true, pre-start
 // builds are run before starting services. envFile is the absolute path to an
 // env file to layer under service env (empty falls back to .env next to the
-// config file). If a project with the same name is already running, it returns
-// an error.
+// config file). Explicit `up`/`start` clears per-service unless-stopped markers
+// so previously stopped services are started. If the project is already
+// running, stopped services are resumed and running ones are left alone.
 func (d *Daemon) StartProject(configPath string, build bool, envFile string) error {
+	return d.startProject(configPath, build, envFile, true)
+}
+
+// startProject is the shared implementation for StartProject and Autostart.
+// When clearServiceMarkers is true (user-initiated up/start), per-service
+// unless-stopped markers are removed so Stop then Up starts everything.
+// Autostart passes false so an explicit stop continues to suppress resume
+// across daemon restarts.
+func (d *Daemon) startProject(configPath string, build bool, envFile string, clearServiceMarkers bool) error {
 	cfg, err := loadConfig(configPath, envFile)
 	if err != nil {
 		return err
@@ -86,8 +96,21 @@ func (d *Daemon) StartProject(configPath string, build bool, envFile string) err
 	d.mu.Lock()
 	if p, exists := d.projects[name]; exists {
 		if p.Status() == "running" {
+			sup := p.Sup
 			d.mu.Unlock()
-			return fmt.Errorf("project %q is already running; run 'local-compose stop' first", name)
+			if !clearServiceMarkers {
+				return fmt.Errorf("project %q is already running", name)
+			}
+			if sup == nil {
+				return fmt.Errorf("project %q is running but has no supervisor", name)
+			}
+			// Compose-like: `up` on a running project starts any stopped services.
+			if build {
+				if err := runBuilds(cfg); err != nil {
+					return err
+				}
+			}
+			return sup.StartStopped()
 		}
 	}
 	d.mu.Unlock()
@@ -103,6 +126,10 @@ func (d *Daemon) StartProject(configPath string, build bool, envFile string) err
 	// Remove the project-level stopped marker so unless-stopped autostart
 	// will resume this project on the next daemon start.
 	_ = removeProjectStoppedMarker(locs)
+
+	if clearServiceMarkers {
+		clearServiceStoppedMarkers(locs, cfg.File.Services)
+	}
 
 	if build {
 		if err := runBuilds(cfg); err != nil {
@@ -272,7 +299,7 @@ func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 			TotalServices: p.TotalServices,
 		}
 
-		if p.Sup != nil {
+		if p.Sup != nil && info.Status == "running" {
 			states := p.Sup.States()
 			if len(states) > 0 {
 				info.TotalServices = len(states)
@@ -425,6 +452,15 @@ func removeProjectStoppedMarker(locs *project.Locations) error {
 	return err
 }
 
+// clearServiceStoppedMarkers removes per-service unless-stopped markers so an
+// explicit `up`/`start` launches services that were previously stopped.
+func clearServiceStoppedMarkers(locs *project.Locations, services map[string]config.Service) {
+	for name := range services {
+		path := filepath.Join(locs.State, name+".stopped")
+		_ = os.Remove(path)
+	}
+}
+
 // HasProjectStoppedMarker reports whether the named project has a project-level
 // ".stopped" marker in its state dir.
 func HasProjectStoppedMarker(name string) bool {
@@ -524,7 +560,9 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 			continue
 		}
 
-		if err := d.StartProject(configPath, false, ""); err != nil {
+		// Do not clear per-service stopped markers: an explicit `stop` should
+		// still suppress resume across daemon restarts for unless-stopped.
+		if err := d.startProject(configPath, false, "", false); err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: autostart: project %q: %v\n", name, err)
 			skipped++
 			continue

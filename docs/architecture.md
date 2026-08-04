@@ -61,10 +61,11 @@ Key methods:
 - **`StartProject(configPath, build)`** — loads the config, creates a
   `Supervisor`, starts it, and adds it to the map. Writes a `config-path` file
   in the project's state dir (for autostart discovery). Removes any
-  project-level `.stopped` marker.
+  project-level `.stopped` marker and per-service unless-stopped markers so
+  explicit `up` resumes previously stopped services. If the project is already
+  running, resumes stopped/exited services without recreating the supervisor.
 - **`StopProject(name)`** — stops the supervisor, writes a project-level
-  `.stopped` marker, closes the supervisor, and removes the project from the
-  map.
+  `.stopped` marker, closes the supervisor, and keeps the project in the map.
 - **`StopDaemon()`** — stops all projects and signals the daemon process to
   exit (closes `StopCh`).
 - **`ListProjects()`** — returns a snapshot of all known projects and their
@@ -74,7 +75,8 @@ Key methods:
 - **`Autostart()`** — scans `$XDG_STATE_HOME/local-compose/*/` for
   `config-path` files, reads each project's config, and starts projects whose
   services have `restart: always` or `restart: unless-stopped` (unless a
-  project-level `.stopped` marker exists).
+  project-level `.stopped` marker exists). Per-service stopped markers are
+  still honored so an explicit service stop survives daemon restart.
 
 ## Supervisor (`internal/supervisor`)
 
@@ -108,11 +110,12 @@ for `unless-stopped` services, `SIGTERM`s every group, waits up to
 re-launches a fresh run loop for that service. `Restart` removes any stopped
 marker so the service resumes normally afterward.
 
-On the next `up`, any `unless-stopped` service with a persisted marker is
-skipped at `Start` (status `stopped`, `startedOnce` stays false). `waitForDep`
-distinguishes a skipped dependency (`errDependencyStopped`) from one that
-genuinely exited: skipped dependents are skipped transitively and `Failed()`
-stays false, so `up` exits 0. A dependency that exits or goes unhealthy before
+On **daemon autostart**, any `unless-stopped` service with a persisted marker is
+skipped at `Start` (status `stopped`, `startedOnce` stays false). Explicit
+`up`/`start` clears those markers before starting so stop-then-up resumes
+services. `waitForDep` distinguishes a skipped dependency (`errDependencyStopped`)
+from one that genuinely exited: skipped dependents are skipped transitively and
+`Failed()` stays false. A dependency that exits or goes unhealthy before
 satisfying its condition is a real failure (`Failed()` -> non-zero `up`). A
 user-initiated shutdown during startup (`errSupervisorStopping`) is also not a
 failure.

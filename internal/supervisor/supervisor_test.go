@@ -593,11 +593,12 @@ func TestSupervisorUnlessStoppedMarker(t *testing.T) {
 }
 
 // TestSupervisorUnlessStoppedSkipsDependents verifies that when a unless-stopped
-// service is skipped on `up` because of a persisted stop marker, its dependents
-// are skipped transitively (not reported as failures), the supervisor does NOT
-// record a failure, and the per-service logs explain the skip. This is the UX
-// fix for the old behavior where dependents died with a misleading "dependency
-// exited before satisfying" message and `up` exited non-zero.
+// service is skipped at Start because of a persisted stop marker (daemon
+// autostart path), its dependents are skipped transitively (not reported as
+// failures), the supervisor does NOT record a failure, and the per-service
+// logs explain the skip. This is the UX fix for the old behavior where
+// dependents died with a misleading "dependency exited before satisfying"
+// message and startup exited non-zero.
 func TestSupervisorUnlessStoppedSkipsDependents(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix-only")

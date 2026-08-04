@@ -21,6 +21,8 @@ export interface WSRequest {
   project?: string;
   service?: string;
   config_path?: string;
+  signal?: string;
+  env_file?: string;
 }
 
 export interface WSResponse {

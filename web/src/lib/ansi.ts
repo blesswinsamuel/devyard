@@ -54,3 +54,30 @@ export function cleanLogLine(s: string): string {
   }
   return out;
 }
+
+const ISO_TIMESTAMP_REGEX = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\s+(.*)$/;
+
+/**
+ * Parses an ISO 8601/RFC3339 timestamp from the beginning of a raw log line,
+ * formats it in local time (`HH:mm:ss`) wrapped in dim gray ANSI styling (`\x1b[90m`),
+ * and cleans the remainder of the line.
+ */
+export function formatLogLine(rawLine: string): string {
+  const match = rawLine.match(ISO_TIMESTAMP_REGEX);
+  if (!match) {
+    return cleanLogLine(rawLine);
+  }
+  const [, rawTs, content] = match;
+  const date = new Date(rawTs!);
+  if (isNaN(date.getTime())) {
+    return cleanLogLine(rawLine);
+  }
+  const timeStr = date.toLocaleTimeString([], {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return `\x1b[90m${timeStr}\x1b[0m ${cleanLogLine(content!)}`;
+}
+

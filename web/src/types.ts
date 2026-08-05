@@ -55,6 +55,7 @@ export interface SplitPaneNode {
   id: string;
   direction: "horizontal" | "vertical";
   children: PaneNode[];
+  sizes?: number[];
 }
 
 export type PaneNode = TerminalPaneNode | SplitPaneNode;

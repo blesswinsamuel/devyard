@@ -1,7 +1,7 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { Columns2, Rows2, X } from "lucide-solid";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { Columns2, GripVertical, Rows2, X } from "lucide-solid";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
-import { theme } from "~/store";
+import { theme, moveShellPane } from "~/store";
 import {
   subscribeTerminal,
   spawnTerminal,
@@ -22,6 +22,7 @@ export function ShellPane(props: {
   let container!: HTMLDivElement;
   let term: AppTerminal | null = null;
   const [exited, setExited] = createSignal(false);
+  const [dropZone, setDropZone] = createSignal<"left" | "right" | "top" | "bottom" | "swap" | null>(null);
 
   onMount(() => {
     const t = createTerminal(container);
@@ -94,16 +95,70 @@ export function ShellPane(props: {
     }
   });
 
+  const handleDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer?.types.includes("application/x-local-compose-pane")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const w = rect.width;
+    const h = rect.height;
+
+    if (x < w * 0.25) setDropZone("left");
+    else if (x > w * 0.75) setDropZone("right");
+    else if (y < h * 0.25) setDropZone("top");
+    else if (y > h * 0.75) setDropZone("bottom");
+    else setDropZone("swap");
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    const sourceId = e.dataTransfer?.getData("application/x-local-compose-pane");
+    const zone = dropZone();
+    setDropZone(null);
+    if (!sourceId || !zone || sourceId === props.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moveShellPane(props.project, sourceId, props.id, zone);
+  };
+
   return (
     <div
       class="group relative flex h-full w-full flex-col overflow-hidden border border-border/40 bg-background"
       onClick={() => term?.focus()}
+      onDragOver={handleDragOver}
+      onDragLeave={() => setDropZone(null)}
+      onDrop={handleDrop}
     >
+      {/* Visual Drop Zone Highlight */}
+      <Show when={dropZone()}>
+        <div
+          class="pointer-events-none absolute inset-0 z-30 bg-primary/20 border-2 border-primary transition-all"
+          classList={{
+            "right-1/2": dropZone() === "left",
+            "left-1/2": dropZone() === "right",
+            "bottom-1/2": dropZone() === "top",
+            "top-1/2": dropZone() === "bottom",
+          }}
+        />
+      </Show>
+
       {/* Pane Header */}
       <div class="flex h-7 shrink-0 items-center justify-between border-b border-border/40 bg-muted/30 px-2 text-xs text-muted-foreground">
-        <span class="truncate font-mono text-[11px]">
-          {props.id} {exited() ? "(exited)" : ""}
-        </span>
+        <div
+          class="flex items-center gap-1.5 cursor-grab active:cursor-grabbing select-none"
+          draggable="true"
+          onDragStart={(e) => {
+            e.dataTransfer?.setData("application/x-local-compose-pane", props.id);
+          }}
+          title="Drag to move or split pane"
+        >
+          <GripVertical class="size-3.5 text-muted-foreground/60 hover:text-foreground" />
+          <span class="truncate font-mono text-[11px]">
+            {props.id} {exited() ? "(exited)" : ""}
+          </span>
+        </div>
+
         <div class="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
           <Button
             variant="ghost"

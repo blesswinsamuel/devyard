@@ -590,6 +590,161 @@ export function closeShellPane(project: string, targetPaneId: string) {
   }));
 }
 
+export function reorderShellTabs(project: string, fromIndex: number, toIndex: number) {
+  const state = getProjectShellState(project);
+  if (
+    fromIndex < 0 ||
+    fromIndex >= state.tabs.length ||
+    toIndex < 0 ||
+    toIndex >= state.tabs.length ||
+    fromIndex === toIndex
+  ) {
+    return;
+  }
+  const nextTabs = [...state.tabs];
+  const [moved] = nextTabs.splice(fromIndex, 1);
+  nextTabs.splice(toIndex, 0, moved);
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: { ...state, tabs: nextTabs },
+  }));
+}
+
+function updateSizesInTree(node: PaneNode, splitId: string, sizes: number[]): PaneNode {
+  if (node.type === "terminal") return node;
+  if (node.id === splitId) {
+    return { ...node, sizes };
+  }
+  return {
+    ...node,
+    children: node.children.map((c) => updateSizesInTree(c, splitId, sizes)),
+  };
+}
+
+export function updateSplitSizes(project: string, splitId: string, sizes: number[]) {
+  const state = getProjectShellState(project);
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: {
+      ...state,
+      tabs: state.tabs.map((t) => ({
+        ...t,
+        rootPane: updateSizesInTree(t.rootPane, splitId, sizes),
+      })),
+    },
+  }));
+}
+
+function swapNodesInTree(node: PaneNode, idA: string, idB: string): PaneNode {
+  if (node.type === "terminal") {
+    if (node.id === idA) return { type: "terminal", id: idB };
+    if (node.id === idB) return { type: "terminal", id: idA };
+    return node;
+  }
+  return {
+    ...node,
+    children: node.children.map((c) => swapNodesInTree(c, idA, idB)),
+  };
+}
+
+function insertNodeAtTarget(
+  node: PaneNode,
+  targetId: string,
+  sourceNode: PaneNode,
+  position: "left" | "right" | "top" | "bottom"
+): PaneNode {
+  if (node.type === "terminal") {
+    if (node.id === targetId) {
+      const direction = position === "left" || position === "right" ? "vertical" : "horizontal";
+      const children =
+        position === "left" || position === "top"
+          ? [sourceNode, node]
+          : [node, sourceNode];
+      return {
+        type: "split",
+        id: `split-${Date.now()}-${Math.random()}`,
+        direction,
+        children,
+      };
+    }
+    return node;
+  }
+  return {
+    ...node,
+    children: node.children.map((c) => insertNodeAtTarget(c, targetId, sourceNode, position)),
+  };
+}
+
+export function moveShellPane(
+  project: string,
+  sourcePaneId: string,
+  targetPaneId: string,
+  position: "left" | "right" | "top" | "bottom" | "swap"
+) {
+  if (sourcePaneId === targetPaneId) return;
+  const state = getProjectShellState(project);
+  const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (!activeTab) return;
+
+  if (position === "swap") {
+    const updatedRoot = swapNodesInTree(activeTab.rootPane, sourcePaneId, targetPaneId);
+    setShellWorkspaces((prev) => ({
+      ...prev,
+      [project]: {
+        ...state,
+        tabs: state.tabs.map((t) => (t.id === activeTab.id ? { ...t, rootPane: updatedRoot } : t)),
+      },
+    }));
+    return;
+  }
+
+  const sourceNode: PaneNode = { type: "terminal", id: sourcePaneId };
+  const rootWithoutSource = removeNode(activeTab.rootPane, sourcePaneId);
+  if (!rootWithoutSource) return;
+
+  const updatedRoot = insertNodeAtTarget(rootWithoutSource, targetPaneId, sourceNode, position);
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: {
+      ...state,
+      tabs: state.tabs.map((t) => (t.id === activeTab.id ? { ...t, rootPane: updatedRoot } : t)),
+    },
+  }));
+}
+
+export function movePaneToNewTab(project: string, sourcePaneId: string) {
+  const state = getProjectShellState(project);
+  const tabWithPane = state.tabs.find((t) => collectPaneIds(t.rootPane).includes(sourcePaneId));
+  if (!tabWithPane) return;
+
+  const rootWithoutSource = removeNode(tabWithPane.rootPane, sourcePaneId);
+
+  const newTab: ShellTab = {
+    id: `tab-${Date.now()}`,
+    title: `Shell ${state.tabs.length + 1}`,
+    rootPane: { type: "terminal", id: sourcePaneId },
+  };
+
+  const updatedTabs = state.tabs
+    .map((t) => {
+      if (t.id === tabWithPane.id) {
+        return rootWithoutSource ? { ...t, rootPane: rootWithoutSource } : null;
+      }
+      return t;
+    })
+    .filter((t): t is ShellTab => t !== null);
+
+  updatedTabs.push(newTab);
+
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: {
+      tabs: updatedTabs,
+      activeTabId: newTab.id,
+    },
+  }));
+}
+
 export type PanelTab = "shell" | "git" | "agents";
 
 const [panelOpen, setPanelOpen] = createSignal(false);

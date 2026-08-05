@@ -43,17 +43,56 @@ function LogViewer() {
     const t = term();
     if (!project || !service || !t) return;
 
-    t.clear();
-    t.reset();
-    return subscribeLogs(
+    let buffer: string[] = [];
+    let rafId: number | null = null;
+
+    const flush = () => {
+      if (buffer.length > 0) {
+        t.write(buffer.join("\r\n") + "\r\n");
+        buffer = [];
+      }
+      rafId = null;
+    };
+
+    const scheduleFlush = () => {
+      if (rafId === null) {
+        rafId = requestAnimationFrame(flush);
+      }
+    };
+
+    const resetView = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      buffer = [];
+      t.clear();
+      t.write("\x1b[2J\x1b[3J\x1b[H");
+    };
+
+    resetView();
+
+    const unsubscribe = subscribeLogs(
       project,
       service,
       // Reset SGR before each line so an unclosed color from a prior line
       // doesn't tint timestamps / following content. Clean non-SGR ANSI the
       // same way the CLI and TUI do.
-      (line) => t.writeln("\x1b[0m" + formatLogLine(line)),
-      () => t.clear()
+      (line) => {
+        buffer.push("\x1b[0m" + formatLogLine(line));
+        scheduleFlush();
+      },
+      resetView
     );
+
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      buffer = [];
+      unsubscribe();
+    };
   });
 
   createEffect(() => {

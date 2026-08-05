@@ -1,18 +1,18 @@
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Bot, FileText, GitBranch, Play, Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
+import { Play, Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
 import {
   projects,
   services,
   selectedProject,
   selectedService,
-  activeView,
-  setActiveView,
   startProject,
   stopProject,
   restartService,
   stopService,
   killService,
   theme,
+  panelOpen,
+  togglePanel,
 } from "~/store";
 import { subscribeLogs } from "~/ws";
 import { statusLabel, statusTone, healthTone, serviceMeta } from "~/lib/status";
@@ -25,7 +25,7 @@ import {
 } from "~/components/ui/tooltip";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { formatLogLine } from "~/lib/ansi";
-import { ShellWorkspace } from "~/components/shell_workspace";
+import { BottomPanel } from "~/components/bottom_panel";
 
 function ServiceTerminal(props: {
   project: string;
@@ -73,9 +73,6 @@ function ServiceTerminal(props: {
     const unsubLogs = subscribeLogs(
       props.project,
       props.service,
-      // Reset SGR before each line so an unclosed color from a prior line
-      // doesn't tint timestamps / following content. Clean non-SGR ANSI the
-      // same way the CLI and TUI do.
       (line) => {
         buffer.push("\x1b[0m" + formatLogLine(line));
         scheduleFlush();
@@ -186,6 +183,19 @@ function ServiceHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            as={Button}
+            variant={panelOpen() ? "secondary" : "outline"}
+            size="sm"
+            onClick={togglePanel}
+          >
+            <SquareTerminal class="size-4" />
+            Terminal
+          </TooltipTrigger>
+          <TooltipContent>Toggle Terminal Panel</TooltipContent>
+        </Tooltip>
+
         <Show
           when={state()?.status === "stopped" || state()?.status === "exited"}
           fallback={
@@ -266,6 +276,19 @@ function ProjectHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            as={Button}
+            variant={panelOpen() ? "secondary" : "outline"}
+            size="sm"
+            onClick={togglePanel}
+          >
+            <SquareTerminal class="size-4" />
+            Terminal
+          </TooltipTrigger>
+          <TooltipContent>Toggle Terminal Panel</TooltipContent>
+        </Tooltip>
+
         <Show
           when={!isStopped()}
           fallback={
@@ -319,65 +342,9 @@ function EmptyState() {
   );
 }
 
-function ViewTabs() {
-  return (
-    <div class="flex items-center gap-1 border-b border-border bg-muted/20 px-4 py-1 text-xs">
-      <button
-        class="flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors cursor-pointer"
-        classList={{
-          "bg-background font-medium text-foreground shadow-sm": activeView() === "logs",
-          "text-muted-foreground hover:text-foreground": activeView() !== "logs",
-        }}
-        onClick={() => setActiveView("logs")}
-      >
-        <FileText class="size-3.5" />
-        <span>Logs</span>
-      </button>
-
-      <button
-        class="flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors cursor-pointer"
-        classList={{
-          "bg-background font-medium text-foreground shadow-sm": activeView() === "shell",
-          "text-muted-foreground hover:text-foreground": activeView() !== "shell",
-        }}
-        onClick={() => setActiveView("shell")}
-      >
-        <SquareTerminal class="size-3.5" />
-        <span>Shell</span>
-      </button>
-
-      <Tooltip>
-        <TooltipTrigger
-          as="button"
-          disabled
-          class="flex cursor-not-allowed items-center gap-1.5 rounded px-2.5 py-1 text-muted-foreground/50 opacity-60"
-        >
-          <GitBranch class="size-3.5" />
-          <span>Git</span>
-          <span class="rounded bg-muted px-1 text-[10px]">Soon</span>
-        </TooltipTrigger>
-        <TooltipContent>Git graph, diffs & commits coming soon!</TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger
-          as="button"
-          disabled
-          class="flex cursor-not-allowed items-center gap-1.5 rounded px-2.5 py-1 text-muted-foreground/50 opacity-60"
-        >
-          <Bot class="size-3.5" />
-          <span>Agents</span>
-          <span class="rounded bg-muted px-1 text-[10px]">Soon</span>
-        </TooltipTrigger>
-        <TooltipContent>AI Coding agents coming soon!</TooltipContent>
-      </Tooltip>
-    </div>
-  );
-}
-
 export function Main() {
   return (
-    <main class="flex h-full min-w-0 flex-1 flex-col bg-background">
+    <main class="flex h-full min-w-0 flex-1 flex-col bg-background overflow-hidden">
       <header class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
         <Show
           when={selectedProject()}
@@ -389,26 +356,15 @@ export function Main() {
         </Show>
       </header>
 
-      {/* Project-level view navigation (Logs/Shell/Git/Agents) */}
-      <Show when={selectedProject() && !selectedService()}>
-        <ViewTabs />
-      </Show>
-
-      <div class="relative min-h-0 flex-1">
-        <Show
-          when={selectedService()}
-          fallback={
-            <Show
-              when={activeView() === "shell"}
-              fallback={<EmptyState />}
-            >
-              <ShellWorkspace />
-            </Show>
-          }
-        >
+      {/* Main Upper Area: Logs are ALWAYS visible when a service or project is selected */}
+      <div class="relative min-h-0 flex-1 overflow-hidden">
+        <Show when={selectedService()} fallback={<EmptyState />}>
           <LogViewer />
         </Show>
       </div>
+
+      {/* Bottom Panel for Shell/Git/Agents */}
+      <BottomPanel />
     </main>
   );
 }

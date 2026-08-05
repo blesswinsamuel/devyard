@@ -576,6 +576,26 @@ export function closeShellPane(project: string, targetPaneId: string) {
   }));
 }
 
+export type PanelTab = "shell" | "git" | "agents";
+
+const [panelOpen, setPanelOpen] = createSignal(false);
+const [panelTab, setPanelTab] = createSignal<PanelTab>("shell");
+const [panelHeight, setPanelHeight] = createSignal(320);
+const [panelMaximized, setPanelMaximized] = createSignal(false);
+
+export function togglePanel() {
+  setPanelOpen((open) => !open);
+}
+
+export function openPanelTab(tab: PanelTab) {
+  setPanelTab(tab);
+  setPanelOpen(true);
+}
+
+export function togglePanelMaximized() {
+  setPanelMaximized((m) => !m);
+}
+
 export {
   theme,
   setTheme,
@@ -585,6 +605,13 @@ export {
   selectedService,
   activeView,
   setActiveView,
+  panelOpen,
+  setPanelOpen,
+  panelTab,
+  setPanelTab,
+  panelHeight,
+  setPanelHeight,
+  panelMaximized,
   keyboardCursor,
   showHelp,
   wsStatus,

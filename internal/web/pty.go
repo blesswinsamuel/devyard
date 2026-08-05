@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/creack/pty"
@@ -48,7 +49,23 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+
+	envMap := make(map[string]string)
+	for _, e := range os.Environ() {
+		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+	envMap["TERM"] = "xterm-256color"
+	envMap["COLORTERM"] = "truecolor"
+	if lang, ok := envMap["LANG"]; !ok || lang == "" || lang == "C" || lang == "POSIX" {
+		envMap["LANG"] = "en_US.UTF-8"
+	}
+	cmdEnv := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		cmdEnv = append(cmdEnv, k+"="+v)
+	}
+	cmd.Env = cmdEnv
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {

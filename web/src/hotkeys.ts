@@ -17,7 +17,8 @@ import {
 } from "./store";
 
 function isXtermTextarea(el: EventTarget | null): boolean {
-  return el instanceof HTMLElement && el.classList.contains("xterm-helper-textarea");
+  if (!(el instanceof Element)) return false;
+  return el.classList.contains("xterm-helper-textarea") || Boolean(el.closest(".xterm"));
 }
 
 function isEditableTarget(el: EventTarget | null): boolean {

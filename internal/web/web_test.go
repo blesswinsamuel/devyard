@@ -562,4 +562,3 @@ var _ control.Backend = (*fakeBackend)(nil)
 
 // Suppress unused warning for net import used by type assertion.
 var _ = net.Listen
-

@@ -49,8 +49,17 @@ export function ShellPane(props: {
       }
     );
 
+    // Initial fit before spawn to send correct dimensions
+    t.fit();
+
     // Initial PTY spawn
     spawnTerminal(props.id, props.project, t.cols, t.rows);
+
+    if (props.active) {
+      requestAnimationFrame(() => {
+        t.focus();
+      });
+    }
 
     createEffect(() => {
       t.options.theme = terminalTheme(theme());
@@ -80,12 +89,16 @@ export function ShellPane(props: {
     if (props.active && term) {
       requestAnimationFrame(() => {
         term?.fit();
+        term?.focus();
       });
     }
   });
 
   return (
-    <div class="group relative flex h-full w-full flex-col overflow-hidden border border-border/40 bg-background">
+    <div
+      class="group relative flex h-full w-full flex-col overflow-hidden border border-border/40 bg-background"
+      onClick={() => term?.focus()}
+    >
       {/* Pane Header */}
       <div class="flex h-7 shrink-0 items-center justify-between border-b border-border/40 bg-muted/30 px-2 text-xs text-muted-foreground">
         <span class="truncate font-mono text-[11px]">
@@ -123,7 +136,7 @@ export function ShellPane(props: {
       </div>
 
       {/* XTerm Container */}
-      <div class="relative min-h-0 flex-1 p-1">
+      <div class="relative min-h-0 flex-1 p-1" onClick={() => term?.focus()}>
         <div ref={container} class="h-full w-full overflow-hidden bg-background" />
       </div>
     </div>

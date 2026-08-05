@@ -66,7 +66,8 @@ export interface AppTerminal extends Terminal {
 
 export function createTerminal(container: HTMLElement): AppTerminal {
   const term = new Terminal({
-    fontFamily: "ui-monospace, SF Mono, SFMono-Regular, Menlo, monospace",
+    fontFamily:
+      '"FiraCode Nerd Font", "JetBrainsMono Nerd Font", "Fira Code Nerd Font", "JetBrains Mono Nerd Font", "Hack Nerd Font", "MesloLGS NF", "DejaVuSansMono Nerd Font", "Symbols Nerd Font", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     fontSize: 13,
     scrollback: 5000,
     convertEol: true,

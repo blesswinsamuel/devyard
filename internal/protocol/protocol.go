@@ -13,12 +13,12 @@ import (
 // snapshot but still small enough to be defensive.
 const FrameMaxLen = 16 << 20
 
-// DefaultLogTail is the history window interactive frontends (TUI, web) and
+// DefaultLogTail is the history window interactive frontends (web) and
 // foreground `up` request. CLI `logs` defaults to 0 (all, subject to the
 // server's byte cap).
 const DefaultLogTail = 5000
 
-// RequestKind discriminates Request payloads sent from a client (CLI/TUI/web)
+// RequestKind discriminates Request payloads sent from a client (CLI/web)
 // to the supervisor.
 type RequestKind string
 

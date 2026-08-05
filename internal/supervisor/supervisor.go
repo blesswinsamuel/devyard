@@ -101,7 +101,7 @@ type Options struct {
 	InstallSignalHandler bool
 }
 
-// ServiceState is a point-in-time snapshot of a service used by ps/tui/web.
+// ServiceState is a point-in-time snapshot of a service used by ps/web.
 type ServiceState struct {
 	Name       string
 	Status     Status

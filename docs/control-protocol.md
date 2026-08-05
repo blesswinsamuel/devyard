@@ -1,7 +1,7 @@
 # Control protocol
 
 The wire protocol spoken between the global daemon and its clients
-(`local-compose ps`/`logs`/`restart`/`down`/`top`, the TUI, and the web UI).
+(`local-compose ps`/`logs`/`restart`/`down`/`top` and the web UI).
 Implementation: `internal/protocol/protocol.go`, `internal/control/server.go`,
 `internal/control/client.go`.
 
@@ -85,7 +85,7 @@ type Response struct {
 | `"stats"` | A per-service CPU/memory snapshot (`Stats` populated). Sent in response to `"top"`. |
 | `"log_content"` | Bulk: existing log history (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. May be a tailed/byte-capped window rather than the entire file. |
 | `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). Sent for each new line during follow. |
-| `"log_rotated"` | A new run started: the supervisor rotated the log (`<service>.log` → `<service>.prev.log`) and the previous run's lines are over. Carries `project` and `service` so multi-stream clients can route the reset. Frontends with a scrollback buffer (TUI, web) reset their view on receipt. |
+| `"log_rotated"` | A new run started: the supervisor rotated the log (`<service>.log` → `<service>.prev.log`) and the previous run's lines are over. Carries `project` and `service` so multi-stream clients can route the reset. Frontends with a scrollback buffer (web) reset their view on receipt. |
 | `"done"` | Request complete; no more frames will follow on this connection. |
 | `"error"` | An error occurred (`Error` has the message). The connection is now done. |
 
@@ -94,8 +94,8 @@ A single request may produce many responses. A `Logs{follow:true}` stream starts
  `tail` and always byte-capped), then a sequence of `log_line` frames for new
  lines — with a `log_rotated` frame between runs when the service restarts —
  ending in `done` (on shutdown) or `error` (on failure). A `Logs{follow:false}`
- stream sends a single `log_content` frame followed by `done`. Interactive
- frontends (TUI, web) and foreground `up` send `tail: 5000`
+  stream sends a single `log_content` frame followed by `done`. Foreground
+  `up` sends `tail: 5000`
  (`protocol.DefaultLogTail`); CLI `logs` defaults to `0` (all within the byte
  cap) and accepts `--tail N`. `list`/`stop`/`stop_service`/`kill_service`/`restart`
  each produce a single terminal `states`/`done`/`error`. `list_projects` produces a
@@ -172,7 +172,7 @@ Prefer these over hand-rolling request/response loops:
 - `client.StopDaemon() error` — `stop_daemon`.
 
 Each method sends one request and drains responses until a terminal frame. For
-anything not covered (e.g. the TUI's long-lived follow that needs to be
+anything not covered (e.g. a long-lived follow that needs to be
 cancelled mid-stream), use `client.Send` + `client.Recv` directly and close the
 client to cancel.
 
@@ -225,4 +225,4 @@ tests).
    plus an integration case in `test/integration/` if user-facing.
 
 Keep messages frontend-agnostic — no terminal-specific fields. The same
-protocol serves the CLI, the TUI, and the web UI.
+protocol serves the CLI and the web UI.

@@ -1,5 +1,5 @@
 // Package web serves the HTTP and WebSocket browser frontend. It is a fourth
-// frontend over the same control protocol used by the CLI and TUI: the WS
+// frontend over the same control protocol used by the CLI: the WS
 // server dispatches JSON messages to the daemon's MultiBackend, bridging
 // project/service management and log streaming to the browser.
 package web
@@ -383,7 +383,7 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 		}
 	}
 
-	// Drain tailed history (same window as the control protocol / TUI).
+	// Drain tailed history (same window as the control protocol).
 	history, err := control.ReadLogHistory(f, protocol.DefaultLogTail)
 	if err != nil {
 		return

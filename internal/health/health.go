@@ -11,8 +11,8 @@
 // wholesale after Timeout.
 //
 // Checkers are frontend-agnostic: the supervisor owns them and exposes their
-// State via the control protocol's ServiceState.Health field, so the CLI, TUI,
-// and web UI all read the same value.
+// State via the control protocol's ServiceState.Health field, so the CLI and
+// web UI both read the same value.
 package health
 
 import (

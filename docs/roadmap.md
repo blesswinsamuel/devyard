@@ -10,8 +10,8 @@ What's done, what's planned, and where each item lives in the code.
   and server-side history tailing keep huge logs from flooding clients.
   (`internal/cli`, `internal/supervisor`, `internal/control`)
 - **Global daemon** — a single daemon process owns multiple project
-  supervisors (`map[string]*supervisor.Supervisor`). All CLI commands, the TUI,
-  and the web UI are thin clients over one Unix socket at
+  supervisors (`map[string]*supervisor.Supervisor`). All CLI commands and the
+  web UI are thin clients over one Unix socket at
   `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. (`internal/orchestrator`,
   `internal/daemon`, `internal/cli/daemon_run.go`)
 - **Autostart** — on daemon startup, projects with `restart: always` or
@@ -33,9 +33,6 @@ What's done, what's planned, and where each item lives in the code.
 - **Restart policies** — `no` / `on-failure` / `always` / `unless-stopped` with
   exponential backoff + jitter; `unless-stopped` persists a stopped marker so
   it doesn't auto-resume. (`internal/supervisor/restart.go`)
-- **TUI** — Bubble Tea v2 frontend: project selection screen, service list,
-  streaming logs, restart/stop/down keybindings, Esc to go back to project
-  list. Works without a config file (shows all known projects). (`internal/tui`)
 - **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Start with
   `local-compose web` (proxies to the daemon socket). Loopback-only by default.
   (`internal/web`, `web/`)

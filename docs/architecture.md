@@ -14,13 +14,13 @@ local-compose up  ──►  ensureDaemon() ──►  global Daemon (setsid, ba
                                             ▼
                           $XDG_RUNTIME_DIR/local-compose/daemon.sock
 
-local-compose ps / logs / restart / down / tui / web  ──►  control.Client (socket)
+local-compose ps / logs / restart / down / web  ──►  control.Client (socket)
 ```
 
 There is exactly one **global daemon** process. It owns one
 `*supervisor.Supervisor` per project and serves a single **Unix-socket control
 protocol** at `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. Every CLI command
-(`ps`, `logs`, `restart`, `down`), the TUI, and the web UI are thin **Client**
+(`ps`, `logs`, `restart`, `down`) and the web UI are thin **Client**
 connections over that socket. The daemon autostarts projects whose services
 declare `restart: always` or `restart: unless-stopped` on startup. See
 [control-protocol.md](control-protocol.md) for the wire format.
@@ -153,7 +153,7 @@ Probe forms (from `healthcheck.test`):
 The checker inherits the service's `shell`, `working_dir`, and `env` so a
 `CMD-SHELL` probe runs in the same context as the service. Checkers are
 frontend-agnostic: the supervisor exposes `chk.State()` via
-`ServiceState.Health`, so CLI, TUI, and web UI all read the same value.
+`ServiceState.Health`, so CLI and web UI both read the same value.
 
 Defaults (applied in `config.Validate`): `interval 5s`, `timeout 2s`,
 `retries 3`.
@@ -170,9 +170,9 @@ lets tests drive the server with a fake. A `Logs{follow:true}` request holds
 the connection open and streams `log_line` frames as the file grows, ending
 with `done` on shutdown or client disconnect.
 
-`Client` is the matching thin client used by every CLI command, the TUI, and
-the web UI. One client owns one connection and serves one request at a time —
-**not** safe for concurrent use. The TUI opens separate connections for its
+`Client` is the matching thin client used by every CLI command and the web
+UI. One client owns one connection and serves one request at a time — **not**
+safe for concurrent use. The web proxy opens separate connections for its
 periodic `List` polls and its long-lived log-follow stream.
 
 Wire format and message kinds are documented in

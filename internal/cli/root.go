@@ -50,13 +50,12 @@ func init() {
 	restartCmd.GroupID = serviceGroup.ID
 	buildCmd.GroupID = serviceGroup.ID
 
-	tuiCmd.GroupID = daemonGroup.ID
 	webCmd.GroupID = daemonGroup.ID
 	daemonCmd.GroupID = daemonGroup.ID
 
 	rootCmd.AddCommand(lsCmd, upCmd, downCmd, removeCmd, psCmd, topCmd)
 	rootCmd.AddCommand(logsCmd, startCmd, stopCmd, killCmd, restartCmd, buildCmd)
-	rootCmd.AddCommand(tuiCmd, webCmd, daemonCmd)
+	rootCmd.AddCommand(webCmd, daemonCmd)
 }
 
 // isDaemonChild reports whether the binary was invoked as

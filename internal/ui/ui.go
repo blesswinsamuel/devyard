@@ -25,8 +25,8 @@ func DefaultStyle() lipgloss.Style {
 }
 
 // StatusColor maps a supervisor status string to a representative color shared
-// by the CLI table, TUI, and web frontends so lifecycle states read
-// consistently everywhere.
+// by the CLI table and web frontend so lifecycle states read consistently
+// everywhere.
 func StatusColor(status string) color.Color {
 	switch status {
 	case "running":

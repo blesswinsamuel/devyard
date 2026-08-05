@@ -11,7 +11,7 @@ the existing commands are wired. Use this as a checklist.
   "Adding a new request kind".
 - **Local command** (no daemon needed): `build` — runs against the config
   directly. No protocol change.
-- **Frontend command**: `tui`, and the web UI — long-running clients of the
+- **Frontend command**: the web UI — a long-running client of the
   control socket.
 - **Daemon-management command**: `start-daemon`, `stop-daemon` — manage the
   global daemon process itself.
@@ -123,7 +123,6 @@ rootCmd.AddCommand(pauseCmd)
 | A control one-shot (`restart`, `down`) | `internal/cli/restart.go`, `down.go` |
 | A streaming command (`logs`) | `internal/cli/logs.go` + `client.Logs` |
 | A local command (`build`) | `internal/cli/build.go` (no socket) |
-| A frontend (`tui`) | `internal/cli/tui.go` + `internal/tui/` |
 | A daemon-management command | `internal/cli/start_daemon.go`, `stop_daemon.go` |
 
 ## Key helpers

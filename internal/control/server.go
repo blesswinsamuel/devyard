@@ -16,17 +16,17 @@ import (
 
 // Backend is the surface the control server needs from the supervisor. The
 // interface keeps control decoupled from internal/supervisor so the same
-// server can be driven by a fake in tests, and so CLI/TUI/web clients that
-// only import the Client don't transitively pull the supervisor package.
+// server can be driven by a fake in tests, and so CLI/web clients that only
+// import the Client don't transitively pull the supervisor package.
 type Backend interface {
 	// States returns a snapshot of every service, in start order.
 	States() []protocol.ServiceState
 	// Stop gracefully stops every service. Used by `down`.
 	Stop(ctx context.Context) error
-	// StopService stops a single service in place (no restart). Used by the
-	// TUI's "stop selected" keybinding. markStopped semantics are owned by the
-	// implementation; the supervisor treats it as an explicit stop so
-	// unless-stopped does not auto-resume it.
+	// StopService stops a single service in place (no restart), used by
+	// `stop <service>`. markStopped semantics are owned by the implementation;
+	// the supervisor treats it as an explicit stop so unless-stopped does not
+	// auto-resume it.
 	StopService(name string) error
 	// KillService sends signal to a single service's process group without a
 	// grace period. signal is a signal name (e.g. "SIGKILL", "SIGTERM"); empty
@@ -46,7 +46,7 @@ type Backend interface {
 }
 
 // Server is the Unix-socket control server. It accepts connections from
-// CLI/TUI/web clients, dispatches each request to the MultiBackend, and
+// CLI/web clients, dispatches each request to the MultiBackend, and
 // streams responses back as length-prefixed JSON frames. Each connection serves
 // a single request; streaming requests (Logs follow) hold the connection until
 // the stream ends or the client disconnects.

@@ -562,7 +562,7 @@ func TestRoundtripLogsFollowRotation(t *testing.T) {
 
 // TestRoundtripLogsFollowRotationMarker verifies that a follow stream emits a
 // KindLogRotated frame at the moment the log file rotates, so frontends with a
-// scrollback buffer (TUI, web) can reset their view to the fresh run.
+// scrollback buffer (web) can reset their view to the fresh run.
 func TestRoundtripLogsFollowRotationMarker(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "api.log")

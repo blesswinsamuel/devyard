@@ -53,8 +53,7 @@ internal/
   control/     # Unix-socket server (MultiBackend interface) + thin Client
   protocol/    # wire frames: Request/Response, length-prefixed JSON
   health/      # per-service healthcheck state machine (starting -> healthy | unhealthy)
-  tui/         # Bubble Tea v2 frontend (charm.land/bubbletea/v2)
-  ui/          # shared status color/label helpers used by cli, tui, web
+  ui/          # shared status color/label helpers used by cli and web
   web/         # WS server + embedded SolidJS SPA (xterm.js logs)
   globalconfig/ # user-level config ($XDG_CONFIG_HOME/local-compose/config.yml)
 test/integration/  # black-box e2e tests
@@ -66,7 +65,7 @@ A single **global daemon** process (`local-compose --daemon`, spawned by `up`
 or `start-daemon`) owns a `map[string]*supervisor.Supervisor` — one supervisor
 per project. It serves one **Unix-socket control protocol** at
 `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. Every CLI command (`ps`, `logs`,
-`restart`, `down`), the TUI, and the web UI are thin **Client** connections over
+`restart`, `down`), and the web UI are thin **Client** connections over
 that socket. The daemon autostarts projects whose services declare
 `restart: always` or `restart: unless-stopped` on startup. See
 [docs/architecture.md](docs/architecture.md) and
@@ -74,7 +73,7 @@ that socket. The daemon autostarts projects whose services declare
 
 ## Conventions
 
-- **Commit style**: conventional commits — `feat(tui): ...`, `fix(supervisor): ...`,
+- **Commit style**: conventional commits — `feat(web): ...`, `fix(supervisor): ...`,
   `test(config): ...`, `docs: ...`. Keep commits focused and build-clean.
 - **Go style**: `gofmt`'d, errors wrapped with `%w` and a leading package context
   (`fmt.Errorf("supervisor: ...: %w", err)`), `context.Context` for cancellation,
@@ -91,7 +90,7 @@ that socket. The daemon autostarts projects whose services declare
   `$XDG_CONFIG_HOME/local-compose/config.yml`.
 - **Protocol changes**: update `internal/protocol/protocol.go`, both sides in
   `internal/control`, and [docs/control-protocol.md](docs/control-protocol.md).
-  The protocol is shared by the CLI, TUI, and web UI — keep messages
+  The protocol is shared by the CLI and web UI — keep messages
   frontend-agnostic (no terminal-specific fields).
 - **Tests**: add unit tests in the package you changed. For cross-cutting
   behavior, prefer a black-box case in `test/integration/`.
@@ -147,5 +146,5 @@ that socket. The daemon autostarts projects whose services declare
 
 ## Roadmap
 
-See [docs/roadmap.md](docs/roadmap.md). Core, health, TUI, global daemon, web
+See [docs/roadmap.md](docs/roadmap.md). Core, health, global daemon, web
 UI, and autostart are done; several polish items remain.

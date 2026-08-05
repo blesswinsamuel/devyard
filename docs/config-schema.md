@@ -143,7 +143,7 @@ The probe inherits the service's `shell`, `working_dir`, and `env`, so a
 | `always` | Restart forever, any exit. |
 | `unless-stopped` | Restart forever, **but** an explicit `stop`/`down` writes a "stopped" marker so the service does not auto-resume on the next **daemon autostart**. Explicit `up`/`start` (all services) clears markers and starts the service; `start <svc>` / `restart` also clear it. When a service is skipped at autostart this way, its dependents are skipped transitively (logged as `skipped: dependency "X" is stopped`) and startup exits 0 — an explicit stop is not a failure. |
 
-Note: a **project-level** `.stopped` marker (written by `down` / `stop` with no service) suppresses **daemon autostart** for the whole project, including services with `restart: always`. Explicit `up`/`start` clears it. Stopped projects remain listed in `ls` / the TUI.
+Note: a **project-level** `.stopped` marker (written by `down` / `stop` with no service) suppresses **daemon autostart** for the whole project, including services with `restart: always`. Explicit `up`/`start` clears it. Stopped projects remain listed in `ls` / the web UI.
 
 Backoff is exponential with jitter (`internal/supervisor` `BackoffConfig`).
 

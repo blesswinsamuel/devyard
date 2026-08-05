@@ -7,8 +7,8 @@
 > Orchestrate local processes the way you orchestrate containers with docker-compose — without Docker.
 
 `local-compose` runs the processes in your `local-compose.yml` on your own machine, with the
-ergonomics you already know: `up`, `down`, `ps`, `top`, `logs`, `restart`, `build`, an interactive
-TUI, and a browser-based web UI. It's a single static binary, built for macOS and Linux, that
+ergonomics you already know: `up`, `down`, `ps`, `top`, `logs`, `restart`, `build`, and a
+browser-based web UI. It's a single static binary, built for macOS and Linux, that
 supervises your dev services, streams their output, restarts them on crash, and waits for
 healthchecks before starting dependents.
 
@@ -23,7 +23,7 @@ dev server, a local DB, a worker — without spinning up a container runtime.
 container runtime, images, builds, volumes, and a network — when all you really want is "start
 these three commands and show me their logs together." Existing lightweight tools (`mprocs`,
 `overmind`, `hivemind`, `foreman`) cover pieces of this, but none combine a compose-style config,
-a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a TUI in one tool.
+a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a web UI in one tool.
 
 `local-compose` fills that gap:
 
@@ -34,7 +34,6 @@ a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a
   orphans behind (the bug most lightweight supervisors have).
 - **Health-gated dependencies** — `depends_on: { condition: service_healthy }` waits for a
   healthcheck to pass before starting dependents.
-- **A real TUI** — drive everything from the terminal with live logs and one-key actions.
 - **Web UI** — a browser dashboard over the same control protocol, with xterm.js log streaming.
 - **Multi-project daemon** — a single daemon manages multiple projects; autostarts projects
   with `restart: always` or `restart: unless-stopped` on daemon startup.
@@ -116,7 +115,6 @@ local-compose logs -f api        # tail the api's output
 local-compose logs --tail 100 api # last 100 lines only
 local-compose logs --previous api # inspect the previous run's logs
 local-compose restart web  # restart one service
-local-compose tui          # interactive terminal dashboard
 local-compose down         # stop the current project
 local-compose stop-daemon  # stop all projects and the daemon
 ```
@@ -145,7 +143,6 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 | `kill [service] [-s signal]` | Forcefully terminate one service, or all services in the project when omitted. Sends `SIGKILL` by default; pick another signal with `-s/--signal` (e.g. `SIGTERM`). |
 | `logs [service] [-f] [--tail N] [--previous]` | Output or tail logs for a service (or all services in the project). `--tail N` limits history to the last N lines (`0` / omitted = all, still byte-capped). `--previous` shows the immediately preceding run's log instead of the current one (each spawn starts a fresh log; the finished run's is kept as `<service>.prev.log`). |
 | `build [service...]` | Run build commands for named services (or all services with build steps). |
-| `tui` | Open the interactive terminal UI (shows all projects if `-f` is omitted). |
 
 ### Daemon Commands
 
@@ -165,48 +162,11 @@ Commands operating on a project context (defaults to `local-compose.yml` in cwd,
 | `-p, --project <name>` | Resolve a registered project by name from any directory when no `local-compose.yml` is found. When a config file is available, its declared `name` is authoritative. |
 | `--env-file <path>` | Path to an env file for variables and config interpolation (default: `.env` next to the config file). |
 
-### The TUI
+### The Web UI
 
-The TUI has two views: a **project list** (shown when started without `-f`)
-and a **service view** for the selected project.
-
-**Project list:**
-
-```
-┌─ Projects ────────────── ┐
-│ PROJECT      STATUS
-│ ▸ myapp      running
-│   api        stopped
-│   web        running
-└────────────────────────── ┘
- ↑/↓ select · Enter open · s start · q quit
-```
-
-**Service view (after selecting a project):**
-
-```
-┌─ Services ─────────────── ┐ ┌─ Logs: api ───────────────────────────────────┐
-│ SERVICE      STATUS    PID │ │                                                │
-│ ▸ api        running  4821 │ │  INFO listening on :8080                       │
-│   web        running  4822 │ │  INFO connected to db                          │
-│   db         healthy  4820 │ │  ...                                           │
-└────────────────────────── ┘ └────────────────────────────────────────────────┘
- ↑/↓ select · Tab logs · r restart · s stop · d down · Esc back · q quit
-```
-
-| Key | Action |
-| --- | --- |
-| `↑` / `↓` (or `k` / `j`) | Select a project or service |
-| `g` / `G` | Jump to top / bottom |
-| `Enter` / `→` / `l` | Open project / focus the logs pane |
-| `Esc` / `←` / `h` | Back to project list (from service view) or service list (from logs pane) |
-| `Tab` | Switch panes |
-| `r` | Restart the selected service |
-| `s` | Stop the selected service (or start a stopped project from the project list) |
-| `d` | Stop the current project (`down`) |
-| `q` / `Ctrl+C` | Quit (detaches only — the daemon keeps running) |
-
-If no daemon is running, the TUI offers to start one.
+The web UI is a browser-based dashboard over the same control protocol — project/service
+listing, live xterm.js logs, and start/stop/restart actions. Start it with `local-compose web`
+and open the printed URL (loopback-only by default).
 
 ## Config reference
 
@@ -289,7 +249,7 @@ config honest about what `local-compose` actually does.
 
 `local-compose` has a small, focused architecture: one **global daemon** process owns a
 supervisor per project, and exposes a single **Unix socket** control protocol; every other
-command (`ps`, `logs`, `restart`, `down`), the TUI, and the web UI are thin clients over that
+command (`ps`, `logs`, `restart`, `down`) and the web UI are thin clients over that
 socket.
 
 ```
@@ -300,7 +260,7 @@ local-compose up  ──►  ensureDaemon()  ──►  Global Daemon (setsid, b
                                               ▼
                             $XDG_RUNTIME_DIR/local-compose/daemon.sock
 
-local-compose ps / logs / restart / down / tui / web  ──►  socket client
+local-compose ps / logs / restart / down / web  ──►  socket client
 ```
 
 - **`up`** auto-starts the daemon if it's not running, sends `start_project` over the socket,
@@ -355,7 +315,6 @@ web:
 | Detached `up -d` + `ps`/`top`/`down` | ✅ | ✅ | — | — | partial |
 | Multi-project daemon | ✅ | ✅ | — | — | — |
 | Health-gated `depends_on` | ✅ | ✅ | — | — | — |
-| Interactive TUI | ✅ | — | ✅ | — | — |
 | Web UI | ✅ | — | — | — | — |
 | Restart policies | ✅ | ✅ | — | — | — |
 | Single static binary | ✅ | — | ✅ | ✅ | depends on runtime |
@@ -364,14 +323,13 @@ web:
 
 - [x] Core: `up`, `down`, `ps`, `top`, `logs`, `restart`, `build`, detached `up -d`
 - [x] Healthchecks + `depends_on` conditions
-- [x] Bubble Tea TUI with project selection
 - [x] Global daemon with multi-project orchestrator
 - [x] Autostart projects based on service restart policies
 - [x] Web UI — browser dashboard (WS + embedded SolidJS SPA with xterm.js logs)
 - [x] Global config (`web.host`, `web.port` for `local-compose web`)
 - [x] Log rotation (current + previous run per service, `logs --previous`; size-based soft cap)
 - [ ] `.env` / `--env-file` loading and `${VAR}` interpolation in config
-- [x] `logs --tail N` (server-side; TUI/web default to 5000)
+- [x] `logs --tail N` (server-side; web default to 5000)
 - [ ] `logs --since`
 - [ ] Graceful stop timeout (SIGTERM → SIGKILL)
 - [ ] `on-failure` autostart
@@ -384,7 +342,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full breakdown and non-goals.
 
 Contributions are welcome. The project is a standard Go module laid out as a `cmd/` entrypoint
 over `internal/` packages (`config`, `dag`, `supervisor`, `procstat`, `daemon`, `orchestrator`, `control`,
-`protocol`, `health`, `logs`, `tui`, `ui`, `web`, `globalconfig`, `project`).
+`protocol`, `health`, `logs`, `ui`, `web`, `globalconfig`, `project`).
 
 ```bash
 git clone https://github.com/blesswinsamuel/local-compose.git
@@ -400,7 +358,7 @@ Before opening a PR:
 
 - Run `gofmt`, `go vet`, and `go test ./...` and make sure they're clean.
 - Keep commits focused and use [conventional commit](https://www.conventionalcommits.org/)
-  messages (`feat(tui): ...`, `fix(supervisor): ...`, `test(config): ...`).
+  messages (`feat(web): ...`, `fix(supervisor): ...`, `test(config): ...`).
 - Add tests for new behavior — there are unit tests per package and a black-box integration suite
   in `test/integration/`.
 

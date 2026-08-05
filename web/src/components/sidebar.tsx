@@ -1,5 +1,5 @@
 import { For, Show, createMemo } from "solid-js";
-import { ChevronRight, Boxes, MoreVertical, Power, RotateCcw, Skull, Sun, Moon } from "lucide-solid";
+import { ChevronRight, Boxes, MoreVertical, Play, Power, RotateCcw, Skull, Sun, Moon } from "lucide-solid";
 import {
   projects,
   services,
@@ -12,6 +12,7 @@ import {
   setProjectExpanded,
   selectProject,
   selectService,
+  startProject,
   stopProject,
   restartService,
   stopService,
@@ -133,16 +134,29 @@ function ServiceRow(props: { project: string; name: string }) {
                 <span class="sr-only">Actions</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onSelect={() => restartService(props.project, props.name)}>
-                  <RotateCcw />
-                  Restart
-                  <span class="ml-auto text-xs text-muted-foreground">r</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => stopService(props.project, props.name)}>
-                  <Power />
-                  Stop
-                  <span class="ml-auto text-xs text-muted-foreground">s</span>
-                </DropdownMenuItem>
+                <Show
+                  when={s().status === "stopped" || s().status === "exited"}
+                  fallback={
+                    <>
+                      <DropdownMenuItem onSelect={() => restartService(props.project, props.name)}>
+                        <RotateCcw />
+                        Restart
+                        <span class="ml-auto text-xs text-muted-foreground">r</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => stopService(props.project, props.name)}>
+                        <Power />
+                        Stop
+                        <span class="ml-auto text-xs text-muted-foreground">s</span>
+                      </DropdownMenuItem>
+                    </>
+                  }
+                >
+                  <DropdownMenuItem onSelect={() => restartService(props.project, props.name)}>
+                    <Play />
+                    Start
+                    <span class="ml-auto text-xs text-muted-foreground">r</span>
+                  </DropdownMenuItem>
+                </Show>
                 <DropdownMenuItem
                   class="text-destructive focus:text-destructive"
                   onSelect={() => killService(props.project, props.name)}
@@ -233,27 +247,54 @@ function ProjectItem(props: { name: string }) {
               </div>
             </button>
             <div class="flex shrink-0 items-center pr-1.5">
-              <Tooltip>
-                <TooltipTrigger
-                  as={Button}
-                  variant="ghost"
-                  size="icon-sm"
-                  class={cn(
-                    "transition-opacity",
-                    "opacity-0 pointer-events-none",
-                    "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
-                    "focus-visible:opacity-100 focus-visible:pointer-events-auto"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    stopProject(props.name);
-                  }}
-                >
-                  <Power />
-                  <span class="sr-only">Stop project</span>
-                </TooltipTrigger>
-                <TooltipContent>Stop project (d)</TooltipContent>
-              </Tooltip>
+              <Show
+                when={p().status !== "stopped"}
+                fallback={
+                  <Tooltip>
+                    <TooltipTrigger
+                      as={Button}
+                      variant="ghost"
+                      size="icon-sm"
+                      class={cn(
+                        "transition-opacity",
+                        "opacity-0 pointer-events-none",
+                        "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
+                        "focus-visible:opacity-100 focus-visible:pointer-events-auto"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startProject(props.name);
+                      }}
+                    >
+                      <Play />
+                      <span class="sr-only">Start project</span>
+                    </TooltipTrigger>
+                    <TooltipContent>Start project (d)</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <Tooltip>
+                  <TooltipTrigger
+                    as={Button}
+                    variant="ghost"
+                    size="icon-sm"
+                    class={cn(
+                      "transition-opacity",
+                      "opacity-0 pointer-events-none",
+                      "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
+                      "focus-visible:opacity-100 focus-visible:pointer-events-auto"
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      stopProject(props.name);
+                    }}
+                  >
+                    <Power />
+                    <span class="sr-only">Stop project</span>
+                  </TooltipTrigger>
+                  <TooltipContent>Stop project (d)</TooltipContent>
+                </Tooltip>
+              </Show>
             </div>
           </div>
           <CollapsibleContent>

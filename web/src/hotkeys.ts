@@ -7,8 +7,10 @@ import {
   moveKeyboardCursor,
   moveKeyboardCursorToEnd,
   navigateKeyboardHorizontal,
+  projects,
   restartService,
   showHelp,
+  startProject,
   stopProject,
   stopService,
   toggleHelp,
@@ -147,7 +149,12 @@ function handleKeyDown(e: KeyboardEvent) {
       const project = actionProject();
       if (!project) return;
       e.preventDefault();
-      stopProject(project);
+      const info = projects().find((p) => p.name === project);
+      if (info?.status === "stopped") {
+        startProject(project);
+      } else {
+        stopProject(project);
+      }
       break;
     }
     case "?":

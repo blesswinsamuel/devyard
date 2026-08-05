@@ -1,10 +1,11 @@
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
+import { Play, Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
 import {
   projects,
   services,
   selectedProject,
   selectedService,
+  startProject,
   stopProject,
   restartService,
   stopService,
@@ -182,30 +183,50 @@ function ServiceHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
-        <Tooltip>
-          <TooltipTrigger
-            as={Button}
-            variant="secondary"
-            size="sm"
-            onClick={() => restartService(project(), service())}
-          >
-            <RotateCcw />
-            Restart
-          </TooltipTrigger>
-          <TooltipContent>Restart service (r)</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            as={Button}
-            variant="outline"
-            size="sm"
-            onClick={() => stopService(project(), service())}
-          >
-            <Power />
-            Stop
-          </TooltipTrigger>
-          <TooltipContent>Stop service (s)</TooltipContent>
-        </Tooltip>
+        <Show
+          when={state()?.status === "stopped" || state()?.status === "exited"}
+          fallback={
+            <>
+              <Tooltip>
+                <TooltipTrigger
+                  as={Button}
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => restartService(project(), service())}
+                >
+                  <RotateCcw />
+                  Restart
+                </TooltipTrigger>
+                <TooltipContent>Restart service (r)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  as={Button}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => stopService(project(), service())}
+                >
+                  <Power />
+                  Stop
+                </TooltipTrigger>
+                <TooltipContent>Stop service (s)</TooltipContent>
+              </Tooltip>
+            </>
+          }
+        >
+          <Tooltip>
+            <TooltipTrigger
+              as={Button}
+              variant="default"
+              size="sm"
+              onClick={() => restartService(project(), service())}
+            >
+              <Play />
+              Start
+            </TooltipTrigger>
+            <TooltipContent>Start service (r)</TooltipContent>
+          </Tooltip>
+        </Show>
         <Tooltip>
           <TooltipTrigger
             as={Button}
@@ -227,6 +248,7 @@ function ServiceHeader() {
 function ProjectHeader() {
   const project = () => selectedProject()!;
   const info = createMemo(() => projects().find((p) => p.name === project()));
+  const isStopped = () => info()?.status === "stopped";
 
   return (
     <>
@@ -241,18 +263,36 @@ function ProjectHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
-        <Tooltip>
-          <TooltipTrigger
-            as={Button}
-            variant="outline"
-            size="sm"
-            onClick={() => stopProject(project())}
-          >
-            <Power />
-            Stop project
-          </TooltipTrigger>
-          <TooltipContent>Stop project (d)</TooltipContent>
-        </Tooltip>
+        <Show
+          when={!isStopped()}
+          fallback={
+            <Tooltip>
+              <TooltipTrigger
+                as={Button}
+                variant="default"
+                size="sm"
+                onClick={() => startProject(project())}
+              >
+                <Play />
+                Start project
+              </TooltipTrigger>
+              <TooltipContent>Start project (d)</TooltipContent>
+            </Tooltip>
+          }
+        >
+          <Tooltip>
+            <TooltipTrigger
+              as={Button}
+              variant="outline"
+              size="sm"
+              onClick={() => stopProject(project())}
+            >
+              <Power />
+              Stop project
+            </TooltipTrigger>
+            <TooltipContent>Stop project (d)</TooltipContent>
+          </Tooltip>
+        </Show>
       </div>
     </>
   );

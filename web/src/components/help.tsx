@@ -16,10 +16,10 @@ const SECTIONS: { title: string; rows: { keys: string; label: string }[] }[] = [
   {
     title: "Actions",
     rows: [
-      { keys: "r", label: "Restart service" },
+      { keys: "r", label: "Start / restart service" },
       { keys: "s", label: "Stop service" },
       { keys: "k", label: "Kill service (SIGKILL)" },
-      { keys: "d", label: "Stop project" },
+      { keys: "d", label: "Start / stop project" },
     ],
   },
   {

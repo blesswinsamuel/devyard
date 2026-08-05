@@ -393,6 +393,14 @@ export function stopProject(project: string) {
   refreshServices(project);
 }
 
+export function startProject(project: string, configPath?: string) {
+  const path = configPath || projects().find((p) => p.name === project)?.config_path;
+  if (!path) return;
+  sendWS({ type: "start_project", config_path: path });
+  sendWS({ type: "list_projects" });
+  refreshServices(project);
+}
+
 export {
   theme,
   setTheme,

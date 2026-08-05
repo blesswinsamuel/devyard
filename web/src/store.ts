@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState } from "./types";
+import type { ProjectInfo, ServiceState, ViewMode, ShellTab, PaneNode } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS } from "./ws";
 
 export type Theme = "dark" | "light";
@@ -25,6 +25,8 @@ const [services, setServices] = createSignal<Record<string, ServiceState[]>>({})
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
 const [selectedService, setSelectedService] = createSignal<string | null>(null);
+/** Active main view tab ("logs" | "shell" | "git" | "agents"). Defaults to "logs". */
+const [activeView, setActiveView] = createSignal<ViewMode>("logs");
 /** Keyboard focus in the sidebar (highlight); Enter commits to selection. */
 const [keyboardCursor, setKeyboardCursor] = createSignal<NavItem | null>(null);
 const [showHelp, setShowHelp] = createSignal(false);
@@ -340,6 +342,7 @@ export function selectProject(name: string) {
 export function selectService(project: string, service: string) {
   setSelectedProject(project);
   setSelectedService(service);
+  setActiveView("logs");
   expandProject(project);
   setKeyboardCursor({ kind: "service", project, service });
 }
@@ -405,6 +408,174 @@ export function startProjectByPath(configPath: string, envFile?: string) {
   sendWS({ type: "list_projects" });
 }
 
+export interface ProjectShellState {
+  tabs: ShellTab[];
+  activeTabId: string;
+}
+
+const [shellWorkspaces, setShellWorkspaces] = createSignal<Record<string, ProjectShellState>>({});
+
+let paneIdCounter = 0;
+export function generatePaneId(): string {
+  return `term-${Date.now()}-${++paneIdCounter}`;
+}
+
+export function getProjectShellState(project: string): ProjectShellState {
+  const current = shellWorkspaces()[project];
+  if (current && current.tabs.length > 0) return current;
+
+  const firstPaneId = generatePaneId();
+  const initialTab: ShellTab = {
+    id: `tab-${Date.now()}`,
+    title: "Shell 1",
+    rootPane: { type: "terminal", id: firstPaneId },
+  };
+
+  const newState: ProjectShellState = {
+    tabs: [initialTab],
+    activeTabId: initialTab.id,
+  };
+
+  setShellWorkspaces((prev) => ({ ...prev, [project]: newState }));
+  return newState;
+}
+
+export function addShellTab(project: string) {
+  const state = getProjectShellState(project);
+  const newPaneId = generatePaneId();
+  const newTab: ShellTab = {
+    id: `tab-${Date.now()}`,
+    title: `Shell ${state.tabs.length + 1}`,
+    rootPane: { type: "terminal", id: newPaneId },
+  };
+
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: {
+      tabs: [...state.tabs, newTab],
+      activeTabId: newTab.id,
+    },
+  }));
+}
+
+export function selectShellTab(project: string, tabId: string) {
+  const state = getProjectShellState(project);
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: { ...state, activeTabId: tabId },
+  }));
+}
+
+export function closeShellTab(project: string, tabId: string) {
+  const state = getProjectShellState(project);
+  const remaining = state.tabs.filter((t) => t.id !== tabId);
+
+  if (remaining.length === 0) {
+    const newPaneId = generatePaneId();
+    const fallbackTab: ShellTab = {
+      id: `tab-${Date.now()}`,
+      title: "Shell 1",
+      rootPane: { type: "terminal", id: newPaneId },
+    };
+    setShellWorkspaces((prev) => ({
+      ...prev,
+      [project]: { tabs: [fallbackTab], activeTabId: fallbackTab.id },
+    }));
+    return;
+  }
+
+  const nextActive =
+    state.activeTabId === tabId ? remaining[remaining.length - 1].id : state.activeTabId;
+
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: { tabs: remaining, activeTabId: nextActive },
+  }));
+}
+
+function splitNode(
+  node: PaneNode,
+  targetId: string,
+  direction: "horizontal" | "vertical",
+  newPaneId: string
+): PaneNode {
+  if (node.type === "terminal") {
+    if (node.id === targetId) {
+      return {
+        type: "split",
+        id: `split-${Date.now()}-${Math.random()}`,
+        direction,
+        children: [node, { type: "terminal", id: newPaneId }],
+      };
+    }
+    return node;
+  }
+  return {
+    ...node,
+    children: node.children.map((child) =>
+      splitNode(child, targetId, direction, newPaneId)
+    ),
+  };
+}
+
+function removeNode(node: PaneNode, targetId: string): PaneNode | null {
+  if (node.type === "terminal") {
+    return node.id === targetId ? null : node;
+  }
+  const nextChildren = node.children
+    .map((child) => removeNode(child, targetId))
+    .filter((child): child is PaneNode => child !== null);
+
+  if (nextChildren.length === 0) return null;
+  if (nextChildren.length === 1) return nextChildren[0];
+  return { ...node, children: nextChildren };
+}
+
+export function splitShellPane(
+  project: string,
+  targetPaneId: string,
+  direction: "horizontal" | "vertical"
+) {
+  const state = getProjectShellState(project);
+  const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (!activeTab) return;
+
+  const newPaneId = generatePaneId();
+  const updatedRoot = splitNode(activeTab.rootPane, targetPaneId, direction, newPaneId);
+
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: {
+      ...state,
+      tabs: state.tabs.map((t) =>
+        t.id === activeTab.id ? { ...t, rootPane: updatedRoot } : t
+      ),
+    },
+  }));
+}
+
+export function closeShellPane(project: string, targetPaneId: string) {
+  const state = getProjectShellState(project);
+  const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (!activeTab) return;
+
+  const updatedRoot = removeNode(activeTab.rootPane, targetPaneId);
+  if (!updatedRoot) {
+    closeShellTab(project, activeTab.id);
+    return;
+  }
+
+  setShellWorkspaces((prev) => ({
+    ...prev,
+    [project]: {
+      ...state,
+      tabs: state.tabs.map((t) =>
+        t.id === activeTab.id ? { ...t, rootPane: updatedRoot } : t
+      ),
+    },
+  }));
+}
+
 export {
   theme,
   setTheme,
@@ -412,9 +583,12 @@ export {
   services,
   selectedProject,
   selectedService,
+  activeView,
+  setActiveView,
   keyboardCursor,
   showHelp,
   wsStatus,
   start,
   toasts,
 };
+

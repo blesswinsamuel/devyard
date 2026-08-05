@@ -116,6 +116,10 @@ export function connectWS() {
       // subscriber reset its view so only the fresh run is shown.
       const key = logKey(resp.project!, resp.service!);
       logHandlers.get(key)?.onRotate?.();
+    } else if (resp.type === "terminal_output") {
+      terminalHandlers.get(resp.id!)?.onOutput(resp.output!);
+    } else if (resp.type === "terminal_exit") {
+      terminalHandlers.get(resp.id!)?.onExit();
     } else {
       handlers.get(resp.type)?.(resp);
     }
@@ -160,3 +164,41 @@ export function subscribeLogs(
     }
   };
 }
+
+const terminalHandlers = new Map<
+  string,
+  { onOutput: (output: string) => void; onExit: () => void }
+>();
+
+export function subscribeTerminal(
+  id: string,
+  onOutput: (output: string) => void,
+  onExit: () => void
+) {
+  terminalHandlers.set(id, { onOutput, onExit });
+  return () => {
+    terminalHandlers.delete(id);
+  };
+}
+
+export function spawnTerminal(
+  id: string,
+  project: string,
+  cols: number,
+  rows: number
+) {
+  sendWS({ type: "spawn_terminal", id, project, cols, rows });
+}
+
+export function sendTerminalInput(id: string, data: string) {
+  sendWS({ type: "terminal_input", id, data });
+}
+
+export function resizeTerminal(id: string, cols: number, rows: number) {
+  sendWS({ type: "terminal_resize", id, cols, rows });
+}
+
+export function closeTerminal(id: string) {
+  sendWS({ type: "close_terminal", id });
+}
+

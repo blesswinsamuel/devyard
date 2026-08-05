@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,12 @@ type wsRequest struct {
 	Signal     string `json:"signal,omitempty"`
 	ConfigPath string `json:"config_path,omitempty"`
 	EnvFile    string `json:"env_file,omitempty"`
+
+	// Terminal/PTY fields
+	ID   string `json:"id,omitempty"`
+	Data string `json:"data,omitempty"`
+	Cols uint16 `json:"cols,omitempty"`
+	Rows uint16 `json:"rows,omitempty"`
 }
 
 // wsResponse is a JSON message from the daemon to the browser.
@@ -139,6 +146,10 @@ type wsResponse struct {
 	Line    string          `json:"line,omitempty"`
 	Ok      bool            `json:"ok"`
 	Error   string          `json:"error,omitempty"`
+
+	// Terminal/PTY fields
+	ID     string `json:"id,omitempty"`
+	Output string `json:"output,omitempty"`
 }
 
 // handleWS upgrades to WebSocket and runs the JSON message loop.
@@ -157,6 +168,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	subs := newSubTracker()
 	defer subs.closeAll()
 
+	ptys := newPTYManager()
+	defer ptys.closeAll()
+
 	for {
 		_, msg, err := c.Read(ctx)
 		if err != nil {
@@ -168,14 +182,14 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if s.socketPath != "" {
-			s.proxyDispatch(c, ctx, &req, subs)
+			s.proxyDispatch(c, ctx, &req, subs, ptys)
 		} else {
-			s.dispatchWS(c, ctx, &req, subs)
+			s.dispatchWS(c, ctx, &req, subs, ptys)
 		}
 	}
 }
 
-func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
+func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker, ptys *ptyManager) {
 	switch req.Type {
 	case "list_projects":
 		s.handleListProjects(c, ctx)
@@ -195,8 +209,62 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleSubscribeLogs(c, ctx, req, subs)
 	case "unsubscribe_logs":
 		s.handleUnsubscribeLogs(req, subs)
+	case "spawn_terminal":
+		s.handleSpawnTerminal(c, ctx, req, ptys)
+	case "terminal_input":
+		_ = ptys.write(req.ID, req.Data)
+	case "terminal_resize":
+		_ = ptys.resize(req.ID, req.Cols, req.Rows)
+	case "close_terminal":
+		ptys.closeSession(req.ID)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
+	}
+}
+
+func (s *Server) resolveProjectDir(project string) string {
+	if project == "" {
+		dir, _ := os.Getwd()
+		return dir
+	}
+	var configPath string
+	if s.backend != nil {
+		for _, p := range s.backend.ListProjects() {
+			if p.Name == project {
+				configPath = p.ConfigPath
+				break
+			}
+		}
+	} else if s.socketPath != "" {
+		resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindListProjects})
+		if err == nil && resp.Kind != protocol.KindError {
+			for _, p := range resp.Projects {
+				if p.Name == project {
+					configPath = p.ConfigPath
+					break
+				}
+			}
+		}
+	}
+	if configPath != "" {
+		return filepath.Dir(configPath)
+	}
+	dir, _ := os.Getwd()
+	return dir
+}
+
+func (s *Server) handleSpawnTerminal(c *websocket.Conn, ctx context.Context, req *wsRequest, ptys *ptyManager) {
+	dir := s.resolveProjectDir(req.Project)
+	err := ptys.spawn(ctx, req.ID, dir, req.Cols, req.Rows,
+		func(output string) {
+			s.send(c, ctx, wsResponse{Type: "terminal_output", ID: req.ID, Output: output})
+		},
+		func() {
+			s.send(c, ctx, wsResponse{Type: "terminal_exit", ID: req.ID})
+		},
+	)
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
 	}
 }
 

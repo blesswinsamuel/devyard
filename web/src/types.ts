@@ -25,6 +25,10 @@ export interface WSRequest {
   config_path?: string;
   signal?: string;
   env_file?: string;
+  id?: string;
+  data?: string;
+  cols?: number;
+  rows?: number;
 }
 
 export interface WSResponse {
@@ -35,4 +39,28 @@ export interface WSResponse {
   line?: string;
   ok?: boolean;
   error?: string;
+  id?: string;
+  output?: string;
+}
+
+export type ViewMode = "logs" | "shell" | "git" | "agents";
+
+export interface TerminalPaneNode {
+  type: "terminal";
+  id: string;
+}
+
+export interface SplitPaneNode {
+  type: "split";
+  id: string;
+  direction: "horizontal" | "vertical";
+  children: PaneNode[];
+}
+
+export type PaneNode = TerminalPaneNode | SplitPaneNode;
+
+export interface ShellTab {
+  id: string;
+  title: string;
+  rootPane: PaneNode;
 }

@@ -1,10 +1,12 @@
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Play, Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
+import { Bot, FileText, GitBranch, Play, Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
 import {
   projects,
   services,
   selectedProject,
   selectedService,
+  activeView,
+  setActiveView,
   startProject,
   stopProject,
   restartService,
@@ -23,6 +25,7 @@ import {
 } from "~/components/ui/tooltip";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { formatLogLine } from "~/lib/ansi";
+import { ShellWorkspace } from "~/components/shell_workspace";
 
 function ServiceTerminal(props: {
   project: string;
@@ -316,6 +319,62 @@ function EmptyState() {
   );
 }
 
+function ViewTabs() {
+  return (
+    <div class="flex items-center gap-1 border-b border-border bg-muted/20 px-4 py-1 text-xs">
+      <button
+        class="flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors cursor-pointer"
+        classList={{
+          "bg-background font-medium text-foreground shadow-sm": activeView() === "logs",
+          "text-muted-foreground hover:text-foreground": activeView() !== "logs",
+        }}
+        onClick={() => setActiveView("logs")}
+      >
+        <FileText class="size-3.5" />
+        <span>Logs</span>
+      </button>
+
+      <button
+        class="flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors cursor-pointer"
+        classList={{
+          "bg-background font-medium text-foreground shadow-sm": activeView() === "shell",
+          "text-muted-foreground hover:text-foreground": activeView() !== "shell",
+        }}
+        onClick={() => setActiveView("shell")}
+      >
+        <SquareTerminal class="size-3.5" />
+        <span>Shell</span>
+      </button>
+
+      <Tooltip>
+        <TooltipTrigger
+          as="button"
+          disabled
+          class="flex cursor-not-allowed items-center gap-1.5 rounded px-2.5 py-1 text-muted-foreground/50 opacity-60"
+        >
+          <GitBranch class="size-3.5" />
+          <span>Git</span>
+          <span class="rounded bg-muted px-1 text-[10px]">Soon</span>
+        </TooltipTrigger>
+        <TooltipContent>Git graph, diffs & commits coming soon!</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger
+          as="button"
+          disabled
+          class="flex cursor-not-allowed items-center gap-1.5 rounded px-2.5 py-1 text-muted-foreground/50 opacity-60"
+        >
+          <Bot class="size-3.5" />
+          <span>Agents</span>
+          <span class="rounded bg-muted px-1 text-[10px]">Soon</span>
+        </TooltipTrigger>
+        <TooltipContent>AI Coding agents coming soon!</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 export function Main() {
   return (
     <main class="flex h-full min-w-0 flex-1 flex-col bg-background">
@@ -330,9 +389,20 @@ export function Main() {
         </Show>
       </header>
 
+      <Show when={selectedProject()}>
+        <ViewTabs />
+      </Show>
+
       <div class="relative min-h-0 flex-1">
-        <Show when={selectedService()} fallback={<EmptyState />}>
-          <LogViewer />
+        <Show
+          when={activeView() === "shell"}
+          fallback={
+            <Show when={selectedService()} fallback={<EmptyState />}>
+              <LogViewer />
+            </Show>
+          }
+        >
+          <ShellWorkspace />
         </Show>
       </div>
     </main>

@@ -490,6 +490,70 @@ func appendToLog(path, content string) error {
 	return err
 }
 
+func TestWSTerminal(t *testing.T) {
+	m := newFakeMulti()
+	srv := newWebServer(t, m)
+
+	wsURL := fmt.Sprintf("ws://%s/ws", srv.Addr())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	c, _, err := websocket.Dial(ctx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial WS: %v", err)
+	}
+	defer func() { _ = c.CloseNow() }()
+
+	// Spawn terminal
+	spawnMsg, _ := json.Marshal(map[string]any{
+		"type": "spawn_terminal",
+		"id":   "term-test-1",
+		"cols": 80,
+		"rows": 24,
+	})
+	if err := c.Write(ctx, websocket.MessageText, spawnMsg); err != nil {
+		t.Fatalf("write spawn_terminal: %v", err)
+	}
+
+	// Send terminal input
+	inputMsg, _ := json.Marshal(map[string]any{
+		"type": "terminal_input",
+		"id":   "term-test-1",
+		"data": "echo hello_pty\n",
+	})
+	if err := c.Write(ctx, websocket.MessageText, inputMsg); err != nil {
+		t.Fatalf("write terminal_input: %v", err)
+	}
+
+	// Read responses until output contains hello_pty
+	found := false
+	for i := 0; i < 20; i++ {
+		_, msg, err := c.Read(ctx)
+		if err != nil {
+			t.Fatalf("read frame: %v", err)
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(msg, &resp); err == nil {
+			if resp["type"] == "terminal_output" && resp["id"] == "term-test-1" {
+				if out, ok := resp["output"].(string); ok && strings.Contains(out, "hello_pty") {
+					found = true
+					break
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("did not receive expected terminal output 'hello_pty'")
+	}
+
+	// Close terminal
+	closeMsg, _ := json.Marshal(map[string]any{
+		"type": "close_terminal",
+		"id":   "term-test-1",
+	})
+	_ = c.Write(ctx, websocket.MessageText, closeMsg)
+}
+
 // Ensure fakeMultiBackend satisfies control.MultiBackend.
 var _ control.MultiBackend = (*fakeMultiBackend)(nil)
 
@@ -498,3 +562,4 @@ var _ control.Backend = (*fakeBackend)(nil)
 
 // Suppress unused warning for net import used by type assertion.
 var _ = net.Listen
+

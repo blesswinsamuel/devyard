@@ -31,7 +31,7 @@ func (s *Server) dialAndSend(req protocol.Request) (protocol.Response, error) {
 
 // proxyDispatch routes a browser WS message to the daemon via the control
 // protocol, translating between the browser JSON format and wire frames.
-func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
+func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker, ptys *ptyManager) {
 	switch req.Type {
 	case "list_projects":
 		s.proxyListProjects(c, ctx)
@@ -51,6 +51,14 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxySubscribeLogs(c, ctx, req, subs)
 	case "unsubscribe_logs":
 		s.handleUnsubscribeLogs(req, subs)
+	case "spawn_terminal":
+		s.handleSpawnTerminal(c, ctx, req, ptys)
+	case "terminal_input":
+		_ = ptys.write(req.ID, req.Data)
+	case "terminal_resize":
+		_ = ptys.resize(req.ID, req.Cols, req.Rows)
+	case "close_terminal":
+		ptys.closeSession(req.ID)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}

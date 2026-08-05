@@ -615,10 +615,13 @@ function updateSizesInTree(node: PaneNode, splitId: string, sizes: number[]): Pa
   if (node.id === splitId) {
     return { ...node, sizes };
   }
-  return {
-    ...node,
-    children: node.children.map((c) => updateSizesInTree(c, splitId, sizes)),
-  };
+  let changed = false;
+  const newChildren = node.children.map((c) => {
+    const updated = updateSizesInTree(c, splitId, sizes);
+    if (updated !== c) changed = true;
+    return updated;
+  });
+  return changed ? { ...node, children: newChildren } : node;
 }
 
 export function updateSplitSizes(project: string, splitId: string, sizes: number[]) {

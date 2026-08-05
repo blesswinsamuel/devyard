@@ -11,11 +11,60 @@ import (
 	"github.com/creack/pty"
 )
 
+const maxHistorySize = 512 * 1024 // 512KB history buffer per terminal session
+
 type ptySession struct {
 	id     string
 	cmd    *exec.Cmd
 	ptmx   *os.File
 	cancel context.CancelFunc
+
+	mu        sync.Mutex
+	history   []byte
+	listeners map[uint64]func(output string)
+	nextID    uint64
+}
+
+func (s *ptySession) addListener(fn func(output string)) (func(), []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id := s.nextID
+	s.nextID++
+	if s.listeners == nil {
+		s.listeners = make(map[uint64]func(output string))
+	}
+	s.listeners[id] = fn
+
+	histCopy := make([]byte, len(s.history))
+	copy(histCopy, s.history)
+
+	unsubscribe := func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		delete(s.listeners, id)
+	}
+
+	return unsubscribe, histCopy
+}
+
+func (s *ptySession) broadcast(data []byte) {
+	s.mu.Lock()
+	s.history = append(s.history, data...)
+	if len(s.history) > maxHistorySize {
+		s.history = s.history[len(s.history)-maxHistorySize:]
+	}
+
+	listeners := make([]func(string), 0, len(s.listeners))
+	for _, fn := range s.listeners {
+		listeners = append(listeners, fn)
+	}
+	s.mu.Unlock()
+
+	str := string(data)
+	for _, fn := range listeners {
+		fn(str)
+	}
 }
 
 type ptyManager struct {
@@ -31,11 +80,23 @@ func newPTYManager() *ptyManager {
 
 func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint16, onOutput func(output string), onExit func()) error {
 	m.mu.Lock()
-	if _, exists := m.sessions[id]; exists {
-		m.mu.Unlock()
+	sess, exists := m.sessions[id]
+	m.mu.Unlock()
+
+	if exists {
+		if cols > 0 && rows > 0 {
+			_ = pty.Setsize(sess.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
+		}
+		unsub, history := sess.addListener(onOutput)
+		if len(history) > 0 {
+			onOutput(string(history))
+		}
+		go func() {
+			<-ctx.Done()
+			unsub()
+		}()
 		return nil
 	}
-	m.mu.Unlock()
 
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -77,12 +138,18 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 	}
 
 	subCtx, cancel := context.WithCancel(ctx)
-	sess := &ptySession{
+	sess = &ptySession{
 		id:     id,
 		cmd:    cmd,
 		ptmx:   ptmx,
 		cancel: cancel,
 	}
+
+	unsub, _ := sess.addListener(onOutput)
+	go func() {
+		<-ctx.Done()
+		unsub()
+	}()
 
 	m.mu.Lock()
 	m.sessions[id] = sess
@@ -103,7 +170,7 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 			}
 			n, err := ptmx.Read(buf)
 			if n > 0 {
-				onOutput(string(buf[:n]))
+				sess.broadcast(buf[:n])
 			}
 			if err != nil {
 				return

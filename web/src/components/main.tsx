@@ -389,20 +389,24 @@ export function Main() {
         </Show>
       </header>
 
-      <Show when={selectedProject()}>
+      {/* Project-level view navigation (Logs/Shell/Git/Agents) */}
+      <Show when={selectedProject() && !selectedService()}>
         <ViewTabs />
       </Show>
 
       <div class="relative min-h-0 flex-1">
         <Show
-          when={activeView() === "shell"}
+          when={selectedService()}
           fallback={
-            <Show when={selectedService()} fallback={<EmptyState />}>
-              <LogViewer />
+            <Show
+              when={activeView() === "shell"}
+              fallback={<EmptyState />}
+            >
+              <ShellWorkspace />
             </Show>
           }
         >
-          <ShellWorkspace />
+          <LogViewer />
         </Show>
       </div>
     </main>

@@ -60,7 +60,11 @@ export function terminalTheme(t: "dark" | "light"): ITheme {
   return themes[t];
 }
 
-export function createTerminal(container: HTMLElement): Terminal {
+export interface AppTerminal extends Terminal {
+  fit: () => void;
+}
+
+export function createTerminal(container: HTMLElement): AppTerminal {
   const term = new Terminal({
     fontFamily: "ui-monospace, SF Mono, SFMono-Regular, Menlo, monospace",
     fontSize: 13,
@@ -72,16 +76,25 @@ export function createTerminal(container: HTMLElement): Terminal {
   term.loadAddon(fitAddon);
   term.loadAddon(new WebLinksAddon());
   term.open(container);
-  fitAddon.fit();
+  if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+    fitAddon.fit();
+  }
 
-  const resizeObserver = new ResizeObserver(() => fitAddon.fit());
+  const safeFit = () => {
+    if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+      fitAddon.fit();
+    }
+  };
+
+  const resizeObserver = new ResizeObserver(safeFit);
   resizeObserver.observe(container);
 
   const origDispose = term.dispose.bind(term);
+  (term as any).fit = safeFit;
   term.dispose = () => {
     resizeObserver.disconnect();
     origDispose();
   };
 
-  return term;
+  return term as AppTerminal;
 }

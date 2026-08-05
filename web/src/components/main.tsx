@@ -1,5 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import type { Terminal } from "@xterm/xterm";
+import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
 import {
   projects,
@@ -21,34 +20,29 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "~/components/ui/tooltip";
-import { createTerminal, terminalTheme } from "~/terminal";
+import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { formatLogLine } from "~/lib/ansi";
 
-function LogViewer() {
+function ServiceTerminal(props: {
+  project: string;
+  service: string;
+  active: boolean;
+}) {
   let container!: HTMLDivElement;
-  const [term, setTerm] = createSignal<Terminal | null>(null);
+  let term: AppTerminal | null = null;
 
   onMount(() => {
     const t = createTerminal(container);
-    setTerm(t);
-    onCleanup(() => {
-      t.dispose();
-      setTerm(null);
-    });
-  });
-
-  createEffect(() => {
-    const project = selectedProject();
-    const service = selectedService();
-    const t = term();
-    if (!project || !service || !t) return;
+    term = t;
 
     let buffer: string[] = [];
     let rafId: number | null = null;
 
     const flush = () => {
       if (buffer.length > 0) {
-        t.write(buffer.join("\r\n") + "\r\n");
+        t.write(buffer.join("\r\n") + "\r\n", () => {
+          t.scrollToBottom();
+        });
         buffer = [];
       }
       rafId = null;
@@ -72,9 +66,9 @@ function LogViewer() {
 
     resetView();
 
-    const unsubscribe = subscribeLogs(
-      project,
-      service,
+    const unsubLogs = subscribeLogs(
+      props.project,
+      props.service,
       // Reset SGR before each line so an unclosed color from a prior line
       // doesn't tint timestamps / following content. Clean non-SGR ANSI the
       // same way the CLI and TUI do.
@@ -85,23 +79,74 @@ function LogViewer() {
       resetView
     );
 
-    return () => {
+    createEffect(() => {
+      t.options.theme = terminalTheme(theme());
+    });
+
+    onCleanup(() => {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
-        rafId = null;
       }
-      buffer = [];
-      unsubscribe();
-    };
+      unsubLogs();
+      t.dispose();
+      term = null;
+    });
   });
 
   createEffect(() => {
-    const t = term();
-    if (t) t.options.theme = terminalTheme(theme());
+    if (props.active && term) {
+      requestAnimationFrame(() => {
+        term?.fit();
+      });
+    }
   });
 
   return (
-    <div ref={container} class="h-full w-full overflow-hidden bg-background" />
+    <div
+      ref={container}
+      class="h-full w-full overflow-hidden bg-background"
+      classList={{ hidden: !props.active }}
+    />
+  );
+}
+
+function LogViewer() {
+  const [activeServices, setActiveServices] = createSignal<
+    { project: string; service: string; key: string }[]
+  >([]);
+
+  const activeKey = () => {
+    const p = selectedProject();
+    const s = selectedService();
+    return p && s ? `${p}/${s}` : null;
+  };
+
+  createEffect(() => {
+    const p = selectedProject();
+    const s = selectedService();
+    if (!p || !s) return;
+    const key = `${p}/${s}`;
+    setActiveServices((prev) => {
+      const filtered = prev.filter((item) => item.project === p);
+      if (!filtered.some((item) => item.key === key)) {
+        return [...filtered, { project: p, service: s, key }];
+      }
+      return filtered;
+    });
+  });
+
+  return (
+    <div class="relative h-full w-full">
+      <For each={activeServices()}>
+        {(item) => (
+          <ServiceTerminal
+            project={item.project}
+            service={item.service}
+            active={activeKey() === item.key}
+          />
+        )}
+      </For>
+    </div>
   );
 }
 

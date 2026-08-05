@@ -19,52 +19,9 @@ type ptySession struct {
 	ptmx   *os.File
 	cancel context.CancelFunc
 
-	mu        sync.Mutex
-	history   []byte
-	listeners map[uint64]func(output string)
-	nextID    uint64
-}
-
-func (s *ptySession) addListener(fn func(output string)) (func(), []byte) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	id := s.nextID
-	s.nextID++
-	if s.listeners == nil {
-		s.listeners = make(map[uint64]func(output string))
-	}
-	s.listeners[id] = fn
-
-	histCopy := make([]byte, len(s.history))
-	copy(histCopy, s.history)
-
-	unsubscribe := func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		delete(s.listeners, id)
-	}
-
-	return unsubscribe, histCopy
-}
-
-func (s *ptySession) broadcast(data []byte) {
-	s.mu.Lock()
-	s.history = append(s.history, data...)
-	if len(s.history) > maxHistorySize {
-		s.history = s.history[len(s.history)-maxHistorySize:]
-	}
-
-	listeners := make([]func(string), 0, len(s.listeners))
-	for _, fn := range s.listeners {
-		listeners = append(listeners, fn)
-	}
-	s.mu.Unlock()
-
-	str := string(data)
-	for _, fn := range listeners {
-		fn(str)
-	}
+	mu       sync.Mutex
+	history  []byte
+	onOutput func(output string)
 }
 
 type ptyManager struct {
@@ -87,14 +44,15 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 		if cols > 0 && rows > 0 {
 			_ = pty.Setsize(sess.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
 		}
-		unsub, history := sess.addListener(onOutput)
-		if len(history) > 0 {
-			onOutput(string(history))
+		sess.mu.Lock()
+		sess.onOutput = onOutput
+		histCopy := make([]byte, len(sess.history))
+		copy(histCopy, sess.history)
+		sess.mu.Unlock()
+
+		if len(histCopy) > 0 {
+			onOutput(string(histCopy))
 		}
-		go func() {
-			<-ctx.Done()
-			unsub()
-		}()
 		return nil
 	}
 
@@ -139,17 +97,12 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 
 	subCtx, cancel := context.WithCancel(ctx)
 	sess = &ptySession{
-		id:     id,
-		cmd:    cmd,
-		ptmx:   ptmx,
-		cancel: cancel,
+		id:       id,
+		cmd:      cmd,
+		ptmx:     ptmx,
+		cancel:   cancel,
+		onOutput: onOutput,
 	}
-
-	unsub, _ := sess.addListener(onOutput)
-	go func() {
-		<-ctx.Done()
-		unsub()
-	}()
 
 	m.mu.Lock()
 	m.sessions[id] = sess
@@ -170,7 +123,18 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 			}
 			n, err := ptmx.Read(buf)
 			if n > 0 {
-				sess.broadcast(buf[:n])
+				chunk := buf[:n]
+				sess.mu.Lock()
+				sess.history = append(sess.history, chunk...)
+				if len(sess.history) > maxHistorySize {
+					sess.history = sess.history[len(sess.history)-maxHistorySize:]
+				}
+				cb := sess.onOutput
+				sess.mu.Unlock()
+
+				if cb != nil {
+					cb(string(chunk))
+				}
 			}
 			if err != nil {
 				return

@@ -70,8 +70,13 @@ export function healthDot(hasHealth: boolean, health: string): string {
 
 export function serviceMeta(s: ServiceState): string {
   const parts: string[] = [];
-  parts.push(s.pid > 0 ? `pid ${s.pid}` : "no pid");
-  parts.push(`${s.restarts} restart${s.restarts === 1 ? "" : "s"}`);
+  if (s.pid > 0) {
+    parts.push(`pid ${s.pid}`);
+  }
+  if (s.restarts > 0) {
+    parts.push(`${s.restarts} restart${s.restarts === 1 ? "" : "s"}`);
+  }
   return parts.join("  ·  ");
 }
+
 

@@ -82,31 +82,36 @@ function ServiceRow(props: { project: string; name: string }) {
             type="button"
             onClick={() => selectService(props.project, props.name)}
             class={cn(
-              "flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 pl-7 pr-9 text-left transition-colors",
+              "flex h-7 min-w-0 flex-1 items-center gap-2 px-3 pl-7 pr-9 text-left text-sm transition-colors",
               "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
               selected() && "bg-muted text-foreground",
               cursor() && !selected() && "bg-muted/40 ring-1 ring-inset ring-ring/60",
               cursor() && selected() && "ring-1 ring-inset ring-ring"
             )}
           >
-            <span class="flex min-w-0 items-center gap-2 text-sm">
-              <span class={cn("inline-block size-1.5 shrink-0", statusDot(s().status))} />
-              <span class="truncate font-medium">{props.name}</span>
-              <Show when={s().status === "exited" && s().exit_code !== 0}>
-                <span class="text-destructive">({s().exit_code})</span>
-              </Show>
+            <span class={cn("inline-block size-1.5 shrink-0", statusDot(s().status))} />
+            <span class="truncate font-medium">{props.name}</span>
+            <Show when={s().status === "exited" && s().exit_code !== 0}>
+              <span class="shrink-0 text-xs text-destructive">({s().exit_code})</span>
+            </Show>
+            <Show when={s().restarts > 0}>
+              <span class="shrink-0 text-xs text-muted-foreground" title={`${s().restarts} restart(s)`}>
+                ↺{s().restarts}
+              </span>
+            </Show>
+            <div class="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <Show when={s().has_health}>
                 <Tooltip>
-                  <TooltipTrigger as="span" class="ml-auto flex items-center shrink-0 pr-1">
+                  <TooltipTrigger class="flex shrink-0 items-center">
                     <span class={cn("inline-block size-2 rounded-full shrink-0", healthDot(s().has_health, s().health))} />
                   </TooltipTrigger>
                   <TooltipContent>health: {s().health}</TooltipContent>
                 </Tooltip>
               </Show>
-            </span>
-            <span class="truncate pl-3.5 text-xs text-muted-foreground">
-              {serviceMeta(s())}
-            </span>
+              <Show when={s().pid > 0}>
+                <span class="font-mono text-[11px] opacity-80">{s().pid}</span>
+              </Show>
+            </div>
           </button>
 
           <div

@@ -13,7 +13,7 @@ import {
   theme,
 } from "~/store";
 import { subscribeLogs } from "~/ws";
-import { statusLabel, statusTone, serviceMeta } from "~/lib/status";
+import { statusLabel, statusTone, healthTone, serviceMeta } from "~/lib/status";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
@@ -85,6 +85,11 @@ function ServiceHeader() {
               <Badge variant={statusTone(s().status)}>
                 {statusLabel(s().status, s().exit_code)}
               </Badge>
+              <Show when={s().has_health}>
+                <Badge variant={healthTone(s().has_health, s().health)}>
+                  health: {s().health}
+                </Badge>
+              </Show>
               <span class="hidden truncate text-xs text-muted-foreground md:inline">
                 {serviceMeta(s())}
               </span>

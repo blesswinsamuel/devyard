@@ -54,16 +54,24 @@ export function healthTone(hasHealth: boolean, health: string): StatusTone {
   }
 }
 
-export function healthLabel(hasHealth: boolean, health: string): string {
-  if (!hasHealth) return "-";
-  if (!health) return "n/a";
-  return health;
+export function healthDot(hasHealth: boolean, health: string): string {
+  if (!hasHealth) return "";
+  switch (healthTone(hasHealth, health)) {
+    case "success":
+      return "bg-success";
+    case "warning":
+      return "bg-warning animate-pulse";
+    case "destructive":
+      return "bg-destructive animate-pulse";
+    default:
+      return "bg-muted-foreground/60";
+  }
 }
 
 export function serviceMeta(s: ServiceState): string {
   const parts: string[] = [];
   parts.push(s.pid > 0 ? `pid ${s.pid}` : "no pid");
   parts.push(`${s.restarts} restart${s.restarts === 1 ? "" : "s"}`);
-  parts.push(`health ${healthLabel(s.has_health, s.health)}`);
   return parts.join("  ·  ");
 }
+

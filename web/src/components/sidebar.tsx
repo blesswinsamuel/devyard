@@ -21,7 +21,7 @@ import {
   wsStatus,
   toggleHelp,
 } from "~/store";
-import { statusDot, statusTone, serviceMeta } from "~/lib/status";
+import { statusDot, statusTone, healthDot, serviceMeta } from "~/lib/status";
 import { cn } from "~/lib/utils";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -95,6 +95,14 @@ function ServiceRow(props: { project: string; name: string }) {
               <Show when={s().status === "exited" && s().exit_code !== 0}>
                 <span class="text-destructive">({s().exit_code})</span>
               </Show>
+              <Show when={s().has_health}>
+                <Tooltip>
+                  <TooltipTrigger as="span" class="ml-auto flex items-center shrink-0 pr-1">
+                    <span class={cn("inline-block size-2 rounded-full shrink-0", healthDot(s().has_health, s().health))} />
+                  </TooltipTrigger>
+                  <TooltipContent>health: {s().health}</TooltipContent>
+                </Tooltip>
+              </Show>
             </span>
             <span class="truncate pl-3.5 text-xs text-muted-foreground">
               {serviceMeta(s())}
@@ -158,6 +166,22 @@ function ProjectItem(props: { name: string }) {
   const cursor = () =>
     sameNavItem(keyboardCursor(), { kind: "project", project: props.name });
 
+  const projectHealth = createMemo(() => {
+    const svcs = serviceList() ?? [];
+    const withHealth = svcs.filter((s) => s.has_health);
+    if (withHealth.length === 0) return null;
+    if (withHealth.some((s) => s.health === "unhealthy")) {
+      return { status: "unhealthy", label: "health: unhealthy" };
+    }
+    if (withHealth.some((s) => s.health === "starting" || s.health === "starting_healthy")) {
+      return { status: "starting", label: "health: starting" };
+    }
+    if (withHealth.every((s) => s.health === "healthy")) {
+      return { status: "healthy", label: "health: healthy" };
+    }
+    return null;
+  });
+
   return (
     <Show when={project()}>
       {(p) => (
@@ -187,9 +211,21 @@ function ProjectItem(props: { name: string }) {
             >
               <Boxes class="size-3.5 shrink-0 text-muted-foreground" />
               <span class="truncate">{props.name}</span>
-              <Badge variant={statusTone(p().status)} class="ml-auto capitalize">
-                {p().status}
-              </Badge>
+              <div class="ml-auto flex items-center gap-1.5">
+                <Show when={projectHealth()}>
+                  {(ph) => (
+                    <Tooltip>
+                      <TooltipTrigger class="flex shrink-0 items-center">
+                        <span class={cn("inline-block size-2 rounded-full shrink-0", healthDot(true, ph().status))} />
+                      </TooltipTrigger>
+                      <TooltipContent>{ph().label}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </Show>
+                <Badge variant={statusTone(p().status)} class="capitalize">
+                  {p().status}
+                </Badge>
+              </div>
             </button>
             <div class="flex shrink-0 items-center pr-1.5">
               <Tooltip>

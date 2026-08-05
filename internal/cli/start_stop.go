@@ -24,15 +24,13 @@ var startCmd = &cobra.Command{
 			service = args[0]
 		}
 
-		socket, err := dialDaemon()
+		socket, err := ensureDaemon()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
 			return err
 		}
 
 		client, err := control.Dial(socket)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
 			return err
 		}
 		defer func() { _ = client.Close() }()

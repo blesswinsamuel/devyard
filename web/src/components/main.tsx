@@ -276,7 +276,7 @@ function ProjectHeader() {
                 <Play />
                 Start project
               </TooltipTrigger>
-              <TooltipContent>Start project (d)</TooltipContent>
+              <TooltipContent>Start project (u)</TooltipContent>
             </Tooltip>
           }
         >

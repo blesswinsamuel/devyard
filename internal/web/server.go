@@ -149,7 +149,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer c.CloseNow()
+	defer func() { _ = c.CloseNow() }()
 
 	ctx := r.Context()
 
@@ -218,6 +218,14 @@ func (s *Server) handleListServices(c *websocket.Conn, ctx context.Context, req 
 }
 
 func (s *Server) handleStartProject(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	if req.ConfigPath == "" && req.Project != "" {
+		for _, p := range s.backend.ListProjects() {
+			if p.Name == req.Project {
+				req.ConfigPath = p.ConfigPath
+				break
+			}
+		}
+	}
 	if req.ConfigPath == "" {
 		s.sendError(c, ctx, "config_path is required")
 		return

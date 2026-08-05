@@ -19,7 +19,8 @@ const SECTIONS: { title: string; rows: { keys: string; label: string }[] }[] = [
       { keys: "r", label: "Start / restart service" },
       { keys: "s", label: "Stop service" },
       { keys: "k", label: "Kill service (SIGKILL)" },
-      { keys: "d", label: "Start / stop project" },
+      { keys: "u", label: "Start project" },
+      { keys: "d", label: "Stop project" },
     ],
   },
   {

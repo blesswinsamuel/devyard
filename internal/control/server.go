@@ -348,6 +348,14 @@ func (s *Server) handleListProjects(w io.Writer) {
 }
 
 func (s *Server) handleStartProject(w io.Writer, req protocol.Request) {
+	if req.ConfigPath == "" && req.Project != "" {
+		for _, p := range s.backend.ListProjects() {
+			if p.Name == req.Project {
+				req.ConfigPath = p.ConfigPath
+				break
+			}
+		}
+	}
 	if req.ConfigPath == "" {
 		_ = writeError(w, "start_project: config_path is required")
 		return

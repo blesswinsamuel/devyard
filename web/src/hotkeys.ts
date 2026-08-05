@@ -144,17 +144,20 @@ function handleKeyDown(e: KeyboardEvent) {
       killService(t.project, t.service);
       break;
     }
+    case "u":
+    case "U": {
+      const project = actionProject();
+      if (!project) return;
+      e.preventDefault();
+      startProject(project);
+      break;
+    }
     case "d":
     case "D": {
       const project = actionProject();
       if (!project) return;
       e.preventDefault();
-      const info = projects().find((p) => p.name === project);
-      if (info?.status === "stopped") {
-        startProject(project);
-      } else {
-        stopProject(project);
-      }
+      stopProject(project);
       break;
     }
     case "?":

@@ -1,5 +1,5 @@
-import { For, Show, createMemo } from "solid-js";
-import { ChevronRight, Boxes, MoreVertical, Play, Power, RotateCcw, Skull, Sun, Moon } from "lucide-solid";
+import { For, Show, createMemo, createSignal } from "solid-js";
+import { ChevronRight, Boxes, MoreVertical, Play, Plus, Power, RotateCcw, Skull, Sun, Moon, X } from "lucide-solid";
 import {
   projects,
   services,
@@ -13,6 +13,7 @@ import {
   selectProject,
   selectService,
   startProject,
+  startProjectByPath,
   stopProject,
   restartService,
   stopService,
@@ -269,7 +270,7 @@ function ProjectItem(props: { name: string }) {
                       <Play />
                       <span class="sr-only">Start project</span>
                     </TooltipTrigger>
-                    <TooltipContent>Start project (d)</TooltipContent>
+                    <TooltipContent>Start project (u)</TooltipContent>
                   </Tooltip>
                 }
               >
@@ -335,8 +336,88 @@ function ThemeToggle() {
   );
 }
 
+function AddProjectModal(props: { open: boolean; onClose: () => void }) {
+  const [configPath, setConfigPath] = createSignal("");
+  const [envFile, setEnvFile] = createSignal("");
+
+  const handleSubmit = (e: SubmitEvent) => {
+    e.preventDefault();
+    const path = configPath().trim();
+    if (!path) return;
+    startProjectByPath(path, envFile().trim() || undefined);
+    setConfigPath("");
+    setEnvFile("");
+    props.onClose();
+  };
+
+  return (
+    <Show when={props.open}>
+      <div
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) props.onClose();
+        }}
+      >
+        <div class="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-lg">
+          <div class="flex items-center justify-between pb-3 border-b border-border mb-4">
+            <h3 class="font-semibold text-base">Add Project</h3>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => props.onClose()}
+            >
+              <X class="size-4" />
+            </Button>
+          </div>
+          <form onSubmit={handleSubmit} class="space-y-4">
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-muted-foreground">
+                Config Path (local-compose.yml)
+              </label>
+              <input
+                type="text"
+                required
+                value={configPath()}
+                onInput={(e) => setConfigPath(e.currentTarget.value)}
+                placeholder="/path/to/local-compose.yml"
+                class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-muted-foreground">
+                Env File (Optional)
+              </label>
+              <input
+                type="text"
+                value={envFile()}
+                onInput={(e) => setEnvFile(e.currentTarget.value)}
+                placeholder="/path/to/.env"
+                class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => props.onClose()}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm">
+                Add & Start
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Show>
+  );
+}
+
 export function Sidebar() {
   const projectNames = createMemo(() => projects().map((p) => p.name));
+  const [showAddModal, setShowAddModal] = createSignal(false);
 
   return (
     <aside class="flex h-full w-72 shrink-0 flex-col border-r border-border bg-card">
@@ -354,15 +435,26 @@ export function Sidebar() {
         data-sidebar-nav
         tabindex="-1"
       >
-        <p class="px-4 pb-1 text-xs uppercase tracking-wider text-muted-foreground">
-          Projects
-        </p>
+        <div class="flex items-center justify-between px-4 pb-1">
+          <p class="text-xs uppercase tracking-wider text-muted-foreground">
+            Projects
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none"
+            title="Add Project"
+          >
+            <Plus class="size-3.5" />
+            <span>Add Project</span>
+          </button>
+        </div>
         <For each={projectNames()}>
           {(name) => <ProjectItem name={name} />}
         </For>
         <Show when={projectNames().length === 0}>
           <p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
-            No projects running. Start one with <code class="text-foreground">local-compose up</code>.
+            No projects running. Add one above or start with <code class="text-foreground">local-compose up</code>.
           </p>
         </Show>
       </nav>
@@ -379,6 +471,8 @@ export function Sidebar() {
         </button>
         <ThemeToggle />
       </footer>
+
+      <AddProjectModal open={showAddModal()} onClose={() => setShowAddModal(false)} />
     </aside>
   );
 }

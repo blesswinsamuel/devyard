@@ -18,7 +18,7 @@ func (s *Server) dialAndSend(req protocol.Request) (protocol.Response, error) {
 	if err != nil {
 		return protocol.Response{}, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if err := protocol.WriteFrame(conn, req); err != nil {
 		return protocol.Response{}, err
 	}
@@ -85,6 +85,17 @@ func (s *Server) proxyListServices(c *websocket.Conn, ctx context.Context, req *
 }
 
 func (s *Server) proxyStartProject(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	if req.ConfigPath == "" && req.Project != "" {
+		resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindListProjects})
+		if err == nil && resp.Kind != protocol.KindError {
+			for _, p := range resp.Projects {
+				if p.Name == req.Project {
+					req.ConfigPath = p.ConfigPath
+					break
+				}
+			}
+		}
+	}
 	if req.ConfigPath == "" {
 		s.sendError(c, ctx, "config_path is required")
 		return
@@ -166,7 +177,7 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Unblock ReadFrame when the subscription is cancelled.
 		go func() {

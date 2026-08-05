@@ -395,10 +395,14 @@ export function stopProject(project: string) {
 
 export function startProject(project: string, configPath?: string) {
   const path = configPath || projects().find((p) => p.name === project)?.config_path;
-  if (!path) return;
-  sendWS({ type: "start_project", config_path: path });
+  sendWS({ type: "start_project", project, config_path: path || "" });
   sendWS({ type: "list_projects" });
   refreshServices(project);
+}
+
+export function startProjectByPath(configPath: string, envFile?: string) {
+  sendWS({ type: "start_project", config_path: configPath, env_file: envFile || "" });
+  sendWS({ type: "list_projects" });
 }
 
 export {

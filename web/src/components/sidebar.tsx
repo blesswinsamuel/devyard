@@ -6,6 +6,9 @@ import {
   isProjectExpanded,
   selectedProject,
   selectedService,
+  keyboardCursor,
+  sameNavItem,
+  navItemKey,
   setProjectExpanded,
   selectProject,
   selectService,
@@ -16,6 +19,7 @@ import {
   theme,
   setTheme,
   wsStatus,
+  toggleHelp,
 } from "~/store";
 import { statusDot, statusTone, serviceMeta } from "~/lib/status";
 import { cn } from "~/lib/utils";
@@ -55,18 +59,34 @@ function ServiceRow(props: { project: string; name: string }) {
   );
   const selected = () =>
     selectedService() === props.name && selectedProject() === props.project;
+  const cursor = () =>
+    sameNavItem(keyboardCursor(), {
+      kind: "service",
+      project: props.project,
+      service: props.name,
+    });
 
   return (
     <Show when={service()}>
       {(s) => (
-        <div class="group/svc relative flex items-stretch">
+        <div
+          class="group/svc relative flex items-stretch"
+          data-nav-key={navItemKey({
+            kind: "service",
+            project: props.project,
+            service: props.name,
+          })}
+          data-kbd-cursor={cursor() ? "" : undefined}
+        >
           <button
             type="button"
             onClick={() => selectService(props.project, props.name)}
             class={cn(
               "flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-1.5 pl-7 pr-9 text-left transition-colors",
               "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              selected() && "bg-muted text-foreground"
+              selected() && "bg-muted text-foreground",
+              cursor() && !selected() && "bg-muted/40 ring-1 ring-inset ring-ring/60",
+              cursor() && selected() && "ring-1 ring-inset ring-ring"
             )}
           >
             <span class="flex min-w-0 items-center gap-2 text-sm">
@@ -103,10 +123,12 @@ function ServiceRow(props: { project: string; name: string }) {
                 <DropdownMenuItem onSelect={() => restartService(props.project, props.name)}>
                   <RotateCcw />
                   Restart
+                  <span class="ml-auto text-xs text-muted-foreground">r</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => stopService(props.project, props.name)}>
                   <Power />
                   Stop
+                  <span class="ml-auto text-xs text-muted-foreground">s</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   class="text-destructive focus:text-destructive"
@@ -114,6 +136,7 @@ function ServiceRow(props: { project: string; name: string }) {
                 >
                   <Skull />
                   Kill
+                  <span class="ml-auto text-xs text-muted-foreground">k</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -132,6 +155,8 @@ function ProjectItem(props: { name: string }) {
   const isOpen = () => isProjectExpanded(props.name);
   const active = () => selectedProject() === props.name;
   const selected = () => active() && selectedService() === null;
+  const cursor = () =>
+    sameNavItem(keyboardCursor(), { kind: "project", project: props.name });
 
   return (
     <Show when={project()}>
@@ -144,8 +169,12 @@ function ProjectItem(props: { name: string }) {
             class={cn(
               "group/project flex items-center border-l-2 transition-colors",
               active() ? "border-primary" : "border-transparent",
-              selected() ? "bg-muted" : "hover:bg-muted/60"
+              selected() ? "bg-muted" : "hover:bg-muted/60",
+              cursor() && !selected() && "bg-muted/40 ring-1 ring-inset ring-ring/60",
+              cursor() && selected() && "ring-1 ring-inset ring-ring"
             )}
+            data-nav-key={navItemKey({ kind: "project", project: props.name })}
+            data-kbd-cursor={cursor() ? "" : undefined}
           >
             <CollapsibleTrigger class="flex h-8 w-7 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[expanded]:text-foreground [&[data-expanded]_svg]:rotate-90">
               <ChevronRight class="size-4 transition-transform" />
@@ -182,7 +211,7 @@ function ProjectItem(props: { name: string }) {
                   <Power />
                   <span class="sr-only">Stop project</span>
                 </TooltipTrigger>
-                <TooltipContent>Stop project</TooltipContent>
+                <TooltipContent>Stop project (d)</TooltipContent>
               </Tooltip>
             </div>
           </div>
@@ -238,7 +267,11 @@ export function Sidebar() {
         </span>
       </header>
 
-      <nav class="flex-1 overflow-y-auto py-2">
+      <nav
+        class="flex-1 overflow-y-auto py-2 outline-none"
+        data-sidebar-nav
+        tabindex="-1"
+      >
         <p class="px-4 pb-1 text-xs uppercase tracking-wider text-muted-foreground">
           Projects
         </p>
@@ -252,8 +285,16 @@ export function Sidebar() {
         </Show>
       </nav>
 
-      <footer class="flex h-11 shrink-0 items-center justify-between border-t border-border px-3">
-        <span class="text-xs text-muted-foreground">{theme() === "dark" ? "Dark" : "Light"}</span>
+      <footer class="flex h-11 shrink-0 items-center justify-between gap-2 border-t border-border px-3">
+        <button
+          type="button"
+          class="text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          onClick={() => toggleHelp()}
+          title="Keyboard shortcuts"
+        >
+          <kbd class="border border-border bg-muted px-1 py-px font-mono">?</kbd>
+          <span class="ml-1.5">shortcuts</span>
+        </button>
         <ThemeToggle />
       </footer>
     </aside>

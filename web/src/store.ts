@@ -15,16 +15,137 @@ createRoot(() => {
   });
 });
 
+export type NavItem =
+  | { kind: "project"; project: string }
+  | { kind: "service"; project: string; service: string };
+
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
 /** Projects the user has collapsed; everything else is expanded by default. */
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
 const [selectedService, setSelectedService] = createSignal<string | null>(null);
+/** Keyboard focus in the sidebar (highlight); Enter commits to selection. */
+const [keyboardCursor, setKeyboardCursor] = createSignal<NavItem | null>(null);
+const [showHelp, setShowHelp] = createSignal(false);
 const [toasts, setToasts] = createSignal<{ id: number; message: string; kind: "error" | "info" }[]>([]);
 
 export function isProjectExpanded(name: string): boolean {
   return !collapsed().has(name);
+}
+
+export function sameNavItem(a: NavItem | null, b: NavItem | null): boolean {
+  if (!a || !b) return a === b;
+  if (a.kind !== b.kind || a.project !== b.project) return false;
+  if (a.kind === "service" && b.kind === "service") return a.service === b.service;
+  return true;
+}
+
+export function navItemKey(item: NavItem): string {
+  return item.kind === "project" ? `p:${item.project}` : `s:${item.project}/${item.service}`;
+}
+
+/** Flat list of visible sidebar rows (projects + services of expanded projects). */
+export function navItems(): NavItem[] {
+  const items: NavItem[] = [];
+  for (const p of projects()) {
+    items.push({ kind: "project", project: p.name });
+    if (!collapsed().has(p.name)) {
+      for (const s of services()[p.name] ?? []) {
+        items.push({ kind: "service", project: p.name, service: s.name });
+      }
+    }
+  }
+  return items;
+}
+
+function selectionAsNavItem(): NavItem | null {
+  const proj = selectedProject();
+  if (!proj) return null;
+  const svc = selectedService();
+  if (svc) return { kind: "service", project: proj, service: svc };
+  return { kind: "project", project: proj };
+}
+
+function pruneCursor() {
+  const cur = untrack(keyboardCursor);
+  if (!cur) return;
+  const items = untrack(navItems);
+  if (!items.some((it) => sameNavItem(it, cur))) {
+    setKeyboardCursor(selectionAsNavItem());
+  }
+}
+
+/** Ensure a cursor exists, seeded from selection or the first nav item. */
+export function ensureKeyboardCursor(): NavItem | null {
+  const cur = keyboardCursor();
+  const items = navItems();
+  if (items.length === 0) {
+    setKeyboardCursor(null);
+    return null;
+  }
+  if (cur && items.some((it) => sameNavItem(it, cur))) return cur;
+  const seeded = selectionAsNavItem();
+  if (seeded && items.some((it) => sameNavItem(it, seeded))) {
+    setKeyboardCursor(seeded);
+    return seeded;
+  }
+  setKeyboardCursor(items[0]);
+  return items[0];
+}
+
+export function moveKeyboardCursor(delta: number) {
+  const items = navItems();
+  if (items.length === 0) {
+    setKeyboardCursor(null);
+    return;
+  }
+  const cur = ensureKeyboardCursor();
+  if (!cur) return;
+  const idx = items.findIndex((it) => sameNavItem(it, cur));
+  const next = Math.max(0, Math.min(items.length - 1, (idx < 0 ? 0 : idx) + delta));
+  setKeyboardCursor(items[next]);
+}
+
+export function moveKeyboardCursorToEnd(toEnd: boolean) {
+  const items = navItems();
+  if (items.length === 0) {
+    setKeyboardCursor(null);
+    return;
+  }
+  setKeyboardCursor(toEnd ? items[items.length - 1] : items[0]);
+}
+
+export function commitKeyboardCursor() {
+  const cur = ensureKeyboardCursor();
+  if (!cur) return;
+  if (cur.kind === "project") selectProject(cur.project);
+  else selectService(cur.project, cur.service);
+}
+
+/** Service targeted by action keys: cursor service, else selected service. */
+export function actionService(): { project: string; service: string } | null {
+  const cur = keyboardCursor();
+  if (cur?.kind === "service") return { project: cur.project, service: cur.service };
+  const proj = selectedProject();
+  const svc = selectedService();
+  if (proj && svc) return { project: proj, service: svc };
+  return null;
+}
+
+/** Project targeted by project-level action keys. */
+export function actionProject(): string | null {
+  const cur = keyboardCursor();
+  if (cur) return cur.project;
+  return selectedProject();
+}
+
+export function toggleHelp() {
+  setShowHelp((v) => !v);
+}
+
+export function closeHelp() {
+  setShowHelp(false);
 }
 
 let toastId = 0;
@@ -74,6 +195,7 @@ function pruneSelection() {
   if (sel && !names.has(sel)) {
     setSelectedProject(null);
     setSelectedService(null);
+    pruneCursor();
     return;
   }
   const svc = untrack(selectedService);
@@ -83,6 +205,7 @@ function pruneSelection() {
       setSelectedService(null);
     }
   }
+  pruneCursor();
 }
 
 function prune() {
@@ -211,12 +334,42 @@ export function selectProject(name: string) {
   setSelectedProject(name);
   setSelectedService(null);
   expandProject(name);
+  setKeyboardCursor({ kind: "project", project: name });
 }
 
 export function selectService(project: string, service: string) {
   setSelectedProject(project);
   setSelectedService(service);
   expandProject(project);
+  setKeyboardCursor({ kind: "service", project, service });
+}
+
+/** ArrowRight: expand project under cursor (or step into first service). ArrowLeft: collapse, or jump to parent. */
+export function navigateKeyboardHorizontal(dir: "left" | "right") {
+  const cur = ensureKeyboardCursor();
+  if (!cur) return;
+  if (dir === "right") {
+    if (cur.kind !== "project") return;
+    if (!isProjectExpanded(cur.project)) {
+      setProjectExpanded(cur.project, true);
+      return;
+    }
+    const items = navItems();
+    const idx = items.findIndex((it) => sameNavItem(it, cur));
+    const next = items[idx + 1];
+    if (next?.kind === "service" && next.project === cur.project) {
+      setKeyboardCursor(next);
+    }
+    return;
+  }
+  // left
+  if (cur.kind === "service") {
+    setKeyboardCursor({ kind: "project", project: cur.project });
+    return;
+  }
+  if (isProjectExpanded(cur.project)) {
+    setProjectExpanded(cur.project, false);
+  }
 }
 
 export function restartService(project: string, service: string) {
@@ -247,6 +400,8 @@ export {
   services,
   selectedProject,
   selectedService,
+  keyboardCursor,
+  showHelp,
   wsStatus,
   start,
   toasts,

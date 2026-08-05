@@ -103,7 +103,7 @@ function ServiceHeader() {
             <RotateCcw />
             Restart
           </TooltipTrigger>
-          <TooltipContent>Restart service</TooltipContent>
+          <TooltipContent>Restart service (r)</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -115,7 +115,7 @@ function ServiceHeader() {
             <Power />
             Stop
           </TooltipTrigger>
-          <TooltipContent>Stop service</TooltipContent>
+          <TooltipContent>Stop service (s)</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -128,7 +128,7 @@ function ServiceHeader() {
             <Skull />
             <span class="sr-only">Kill service</span>
           </TooltipTrigger>
-          <TooltipContent>Kill service (SIGKILL)</TooltipContent>
+          <TooltipContent>Kill service (k)</TooltipContent>
         </Tooltip>
       </div>
     </>
@@ -152,10 +152,18 @@ function ProjectHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
-        <Button variant="outline" size="sm" onClick={() => stopProject(project())}>
-          <Power />
-          Stop project
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            as={Button}
+            variant="outline"
+            size="sm"
+            onClick={() => stopProject(project())}
+          >
+            <Power />
+            Stop project
+          </TooltipTrigger>
+          <TooltipContent>Stop project (d)</TooltipContent>
+        </Tooltip>
       </div>
     </>
   );

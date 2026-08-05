@@ -71,7 +71,6 @@ export function ShellPane(props: {
       dataSub.dispose();
       resizeSub.dispose();
       unsubWS();
-      closeTerminal(props.id);
       t.dispose();
       term = null;
     });

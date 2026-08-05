@@ -1,6 +1,6 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
 import type { ProjectInfo, ServiceState, ViewMode, ShellTab, PaneNode } from "./types";
-import { sendWS, onWS, onWSOpen, wsStatus, connectWS } from "./ws";
+import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 
 export type Theme = "dark" | "light";
 
@@ -466,8 +466,20 @@ export function selectShellTab(project: string, tabId: string) {
   }));
 }
 
+function collectPaneIds(node: PaneNode): string[] {
+  if (node.type === "terminal") return [node.id];
+  return node.children.flatMap(collectPaneIds);
+}
+
 export function closeShellTab(project: string, tabId: string) {
   const state = getProjectShellState(project);
+  const closingTab = state.tabs.find((t) => t.id === tabId);
+  if (closingTab) {
+    for (const id of collectPaneIds(closingTab.rootPane)) {
+      closeTerminal(id);
+    }
+  }
+
   const remaining = state.tabs.filter((t) => t.id !== tabId);
 
   if (remaining.length === 0) {
@@ -555,6 +567,8 @@ export function splitShellPane(
 }
 
 export function closeShellPane(project: string, targetPaneId: string) {
+  closeTerminal(targetPaneId);
+
   const state = getProjectShellState(project);
   const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
   if (!activeTab) return;

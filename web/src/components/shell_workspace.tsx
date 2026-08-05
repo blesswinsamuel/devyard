@@ -1,6 +1,6 @@
 import { For, Show, createMemo } from "solid-js";
 import { Plus, X } from "lucide-solid";
-import type { PaneNode } from "~/types";
+import type { PaneNode, SplitPaneNode, TerminalPaneNode } from "~/types";
 import {
   selectedProject,
   getProjectShellState,
@@ -20,51 +20,46 @@ function PaneTree(props: { node: PaneNode; project: string; active: boolean }) {
       fallback={
         <div class="h-full w-full min-h-0 min-w-0 flex-1">
           <ShellPane
-            id={(props.node as { type: "terminal"; id: string }).id}
+            id={(props.node as TerminalPaneNode).id}
             project={props.project}
             active={props.active}
             onSplitRight={() =>
               splitShellPane(
                 props.project,
-                (props.node as { type: "terminal"; id: string }).id,
+                (props.node as TerminalPaneNode).id,
                 "vertical"
               )
             }
             onSplitDown={() =>
               splitShellPane(
                 props.project,
-                (props.node as { type: "terminal"; id: string }).id,
+                (props.node as TerminalPaneNode).id,
                 "horizontal"
               )
             }
             onClose={() =>
               closeShellPane(
                 props.project,
-                (props.node as { type: "terminal"; id: string }).id
+                (props.node as TerminalPaneNode).id
               )
             }
           />
         </div>
       }
     >
-      {(splitNode) => {
-        const isVertical = () => splitNode().direction === "vertical";
-        return (
-          <div
-            class="flex h-full w-full min-h-0 min-w-0 flex-1 gap-1"
-            classList={{
-              "flex-row": isVertical(),
-              "flex-col": !isVertical(),
-            }}
-          >
-            <For each={splitNode().children}>
-              {(child) => (
-                <PaneTree node={child} project={props.project} active={props.active} />
-              )}
-            </For>
-          </div>
-        );
-      }}
+      <div
+        class="flex h-full w-full min-h-0 min-w-0 flex-1 gap-1"
+        classList={{
+          "flex-row": (props.node as SplitPaneNode).direction === "vertical",
+          "flex-col": (props.node as SplitPaneNode).direction === "horizontal",
+        }}
+      >
+        <For each={(props.node as SplitPaneNode).children}>
+          {(child) => (
+            <PaneTree node={child} project={props.project} active={props.active} />
+          )}
+        </For>
+      </div>
     </Show>
   );
 }
@@ -74,12 +69,6 @@ export function ShellWorkspace() {
   const shellState = createMemo(() => {
     const p = project();
     return p ? getProjectShellState(p) : null;
-  });
-
-  const activeTab = createMemo(() => {
-    const s = shellState();
-    if (!s) return null;
-    return s.tabs.find((t) => t.id === s.activeTabId) || s.tabs[0];
   });
 
   return (
@@ -92,7 +81,7 @@ export function ShellWorkspace() {
               const isActive = () => tab.id === shellState()!.activeTabId;
               return (
                 <div
-                  class="group flex h-7 items-center gap-1.5 rounded-t border px-2.5 text-xs transition-colors cursor-pointer"
+                  class="group flex h-7 items-center gap-1.5 rounded-t border px-2.5 text-xs transition-colors cursor-pointer select-none"
                   classList={{
                     "border-border bg-background font-medium text-foreground": isActive(),
                     "border-transparent bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground": !isActive(),
@@ -100,10 +89,9 @@ export function ShellWorkspace() {
                   onClick={() => selectShellTab(project()!, tab.id)}
                 >
                   <span>{tab.title}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="size-4 rounded-full p-0 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100 transition-opacity"
+                  <button
+                    type="button"
+                    class="flex size-4 items-center justify-center rounded-full p-0 text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground hover:opacity-100 transition-opacity"
                     onClick={(e) => {
                       e.stopPropagation();
                       closeShellTab(project()!, tab.id);
@@ -111,7 +99,7 @@ export function ShellWorkspace() {
                     title="Close Tab"
                   >
                     <X class="size-3" />
-                  </Button>
+                  </button>
                 </div>
               );
             }}
@@ -128,13 +116,21 @@ export function ShellWorkspace() {
           </Button>
         </div>
 
-        {/* Workspace Content */}
+        {/* Workspace Content: Render all tabs, toggle hidden for inactive ones */}
         <div class="relative min-h-0 flex-1 p-1">
-          <Show when={activeTab()}>
-            {(tab) => (
-              <PaneTree node={tab().rootPane} project={project()!} active={true} />
-            )}
-          </Show>
+          <For each={shellState()!.tabs}>
+            {(tab) => {
+              const isActive = () => tab.id === shellState()!.activeTabId;
+              return (
+                <div
+                  class="h-full w-full"
+                  classList={{ hidden: !isActive() }}
+                >
+                  <PaneTree node={tab.rootPane} project={project()!} active={isActive()} />
+                </div>
+              );
+            }}
+          </For>
         </div>
       </div>
     </Show>

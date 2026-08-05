@@ -17,6 +17,12 @@ import (
 // comparison and are easy to parse back.
 const LogTimestampFormat = time.RFC3339Nano
 
+// MaxLogFileBytes is the soft size cap for a single service's current log
+// file. When a write would exceed it, the logger rotates (current →
+// <name>.prev.log, fresh current) so disk and history dumps stay bounded.
+// Run-based rotation on spawn uses the same previous-run slot.
+const MaxLogFileBytes = 10 << 20 // 10 MiB
+
 // ParseTimestamp strips a LogTimestampFormat prefix from a line and returns the
 // parsed time and the remainder. If the line has no recognizable prefix the
 // zero time is returned and the original line is the remainder.
@@ -48,12 +54,15 @@ func previousLogPath(path string) string {
 // serviceLogger appends a service's output to a log file and, in foreground
 // mode, also writes prefixed colored lines to stdout. One logger is created
 // per service in openLoggers and reused across restarts; rotate() moves the
-// finished run's file aside so the current file always holds one run.
+// finished run's file aside so the current file always holds one run (or one
+// size-rotated chunk of a long-lived run).
 type serviceLogger struct {
 	mu         sync.Mutex
 	file       *os.File
 	path       string
 	prevPath   string
+	size       int64 // bytes written to the current file handle
+	maxSize    int64 // soft cap; 0 means MaxLogFileBytes
 	stdout     io.Writer
 	prefix     string
 	prefixStr  string
@@ -65,11 +74,17 @@ func newServiceLogger(path, name string, stdout io.Writer, foreground bool) (*se
 	if err != nil {
 		return nil, err
 	}
+	var size int64
+	if info, err := f.Stat(); err == nil {
+		size = info.Size()
+	}
 	prefixStr := ui.ServicePrefix(name)
 	return &serviceLogger{
 		file:       f,
 		path:       path,
 		prevPath:   previousLogPath(path),
+		size:       size,
+		maxSize:    MaxLogFileBytes,
 		stdout:     stdout,
 		prefix:     name,
 		prefixStr:  prefixStr,
@@ -80,21 +95,35 @@ func newServiceLogger(path, name string, stdout io.Writer, foreground bool) (*se
 // rotate moves the current log to the previous-run file (overwriting the prior
 // previous run) and starts a fresh current log. It is called once per
 // successful process spawn so the current file holds exactly one run and the
-// previous file holds the run before it. If the current file is empty (a
-// freshly opened logger, or a run that produced no output) the existing
-// previous run is kept. Best-effort: a failure leaves the logger pointing at
-// the previous content rather than taking supervision down.
+// previous file holds the run before it. Size-based rotation uses the same
+// path when a long-lived process would otherwise unbounded-grow the file. If
+// the current file is empty (a freshly opened logger, or a run that produced
+// no output) the existing previous run is kept. Best-effort: a failure leaves
+// the logger pointing at the previous content rather than taking supervision
+// down.
 func (l *serviceLogger) rotate() {
-	if l == nil || l.file == nil {
+	if l == nil {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if info, err := l.file.Stat(); err == nil && info.Size() == 0 {
+	l.rotateLocked()
+}
+
+func (l *serviceLogger) rotateLocked() {
+	if l.file == nil {
 		return
+	}
+	if l.size == 0 {
+		info, err := l.file.Stat()
+		if err != nil || info.Size() == 0 {
+			return
+		}
+		l.size = info.Size()
 	}
 	_ = l.file.Close()
 	l.file = nil
+	l.size = 0
 	if err := os.Rename(l.path, l.prevPath); err != nil && !os.IsNotExist(err) {
 		// Rename failed (e.g. permissions); truncate so the new run still
 		// starts from a clean slate.
@@ -105,6 +134,7 @@ func (l *serviceLogger) rotate() {
 		return
 	}
 	l.file = f
+	l.size = 0
 }
 
 // writeLine writes one logical line (without trailing newline) to the log
@@ -116,10 +146,25 @@ func (l *serviceLogger) writeLine(line string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	ts := time.Now().UTC().Format(LogTimestampFormat)
+	record := ts + " " + line + "\n"
 	if l.file != nil {
-		if _, err := l.file.WriteString(ts + " " + line + "\n"); err != nil {
-			// Best-effort; a full disk shouldn't take down supervision.
-			_ = err
+		maxSize := l.maxSize
+		if maxSize <= 0 {
+			maxSize = MaxLogFileBytes
+		}
+		// Rotate before writing when the current chunk is non-empty and this
+		// record would push it over the soft cap. A single oversized record
+		// is still written into a fresh file (size starts at 0).
+		if l.size > 0 && l.size+int64(len(record)) > maxSize {
+			l.rotateLocked()
+		}
+		if l.file != nil {
+			if _, err := l.file.WriteString(record); err != nil {
+				// Best-effort; a full disk shouldn't take down supervision.
+				_ = err
+			} else {
+				l.size += int64(len(record))
+			}
 		}
 	}
 	if l.foreground {

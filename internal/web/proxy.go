@@ -179,6 +179,7 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 			Project: req.Project,
 			Service: req.Service,
 			Follow:  true,
+			Tail:    protocol.DefaultLogTail,
 		}); err != nil {
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return

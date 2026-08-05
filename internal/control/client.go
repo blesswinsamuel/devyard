@@ -205,12 +205,20 @@ func (c *Client) Top(project, service string) ([]protocol.ServiceStat, error) {
 // run's log is streamed instead of the current one. If follow is true, it
 // blocks until the daemon signals Done (e.g. on shutdown) or the connection
 // drops. If follow is false, it returns after the existing log content has
-// been streamed.
-func (c *Client) Logs(project, service string, follow, previous bool, onLine func(string)) error {
+// been streamed. tail limits history to the last N lines (0 = all, subject to
+// the server's byte cap).
+func (c *Client) Logs(project, service string, follow, previous bool, tail int, onLine func(string)) error {
 	if onLine == nil {
 		onLine = func(string) {}
 	}
-	if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Project: project, Service: service, Follow: follow, Previous: previous}); err != nil {
+	if err := c.Send(protocol.Request{
+		Kind:     protocol.KindLogs,
+		Project:  project,
+		Service:  service,
+		Follow:   follow,
+		Previous: previous,
+		Tail:     tail,
+	}); err != nil {
 		return err
 	}
 	for {

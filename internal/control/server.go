@@ -332,7 +332,7 @@ func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
 	}
 	// Follow tails the live file, which rotates between spawns; the previous
 	// log is a completed run, so rotation tracking is unnecessary for it.
-	if err := streamLogs(w, path, req.Follow, !req.Previous, s.stopCh, req.Project, req.Service); err != nil {
+	if err := streamLogs(w, path, req.Follow, !req.Previous, req.Tail, s.stopCh, req.Project, req.Service); err != nil {
 		_ = writeError(w, err.Error())
 	}
 }
@@ -403,38 +403,39 @@ func writeError(w io.Writer, msg string) error {
 // followPollInterval is how often the follow tailer checks for new log content.
 const followPollInterval = 100 * time.Millisecond
 
-// streamLogs reads the existing content of path, emitting one KindLogLine
-// frame per line, then (if follow) tails the file for new lines until the
-// client disconnects (write error) or stop is closed. A final KindDone frame
-// is sent when the stream ends cleanly. Rotated/truncated files are handled
-// by reopening or rewinding to offset 0 when the file at path no longer
-// matches the open handle (trackRotation) or the read offset is past the file
-// size.
-func streamLogs(w io.Writer, path string, follow, trackRotation bool, stop <-chan struct{}, project, service string) error {
+// streamLogs reads existing content of path (honoring tail), emitting one
+// KindLogContent frame, then (if follow) tails the file for new lines until
+// the client disconnects (write error) or stop is closed. A final KindDone
+// frame is sent when the stream ends cleanly. Rotated/truncated files are
+// handled by reopening or rewinding to offset 0 when the file at path no
+// longer matches the open handle (trackRotation) or the read offset is past
+// the file size.
+func streamLogs(w io.Writer, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
 
-	if err := tailFile(w, f, path, follow, trackRotation, stop, project, service); err != nil {
+	if err := tailFile(w, f, path, follow, trackRotation, tail, stop, project, service); err != nil {
 		return err
 	}
 	return protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
 }
 
-// tailFile sends the existing file content as a single bulk frame and
-// optionally keeps tailing for appended content. During the follow phase,
-// incomplete trailing bytes (no newline) are withheld until a newline arrives,
-// so each frame is a complete line.
-func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, stop <-chan struct{}, project, service string) error {
+// tailFile sends existing file content as a single bulk frame (last `tail`
+// lines when tail > 0, else all subject to MaxLogContentBytes) and optionally
+// keeps tailing for appended content. During the follow phase, incomplete
+// trailing bytes (no newline) are withheld until a newline arrives, so each
+// frame is a complete line.
+func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service string) error {
 	// Close the handle the loop ends up on (possibly a reopened one) so a
 	// rotated file isn't leaked when the stream finishes.
 	defer func() { _ = f.Close() }()
 
-	// Send entire existing content in one frame so the client can render it
-	// instantly without a line-by-line scroll animation.
-	content, err := io.ReadAll(f)
+	// Send history in one frame so the client can render it instantly without
+	// a line-by-line scroll animation.
+	content, err := ReadLogHistory(f, tail)
 	if err != nil {
 		return err
 	}

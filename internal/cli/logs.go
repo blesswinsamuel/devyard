@@ -16,6 +16,7 @@ import (
 
 var logsFollow bool
 var logsPrevious bool
+var logsTail int
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
@@ -43,7 +44,7 @@ var logsCmd = &cobra.Command{
 				return err
 			}
 			defer func() { _ = client.Close() }()
-			return client.Logs(projName, service, logsFollow, logsPrevious, newLogPrinter(service))
+			return client.Logs(projName, service, logsFollow, logsPrevious, logsTail, newLogPrinter(service))
 		}
 
 		cfg, err := loadConfig(flagConfigPath, flagProject)
@@ -63,7 +64,7 @@ var logsCmd = &cobra.Command{
 				return err
 			}
 			defer func() { _ = client.Close() }()
-			return client.Logs(cfg.Project, service, logsFollow, logsPrevious, newLogPrinter(service))
+			return client.Logs(cfg.Project, service, logsFollow, logsPrevious, logsTail, newLogPrinter(service))
 		}
 
 		return logsAllServices(socket, cfg.Project, cfg.Order)
@@ -102,7 +103,7 @@ func logsAllSnapshot(socket, project string, order []string) error {
 				return
 			}
 			defer func() { _ = c.Close() }()
-			_ = c.Logs(project, svc, false, logsPrevious, func(line string) {
+			_ = c.Logs(project, svc, false, logsPrevious, logsTail, func(line string) {
 				ts, rest := supervisor.ParseTimestamp(line)
 				mu.Lock()
 				entries = append(entries, logEntry{timestamp: ts, service: svc, line: rest})
@@ -137,7 +138,7 @@ func logsAllFollow(socket, project string, order []string) error {
 				return
 			}
 			defer func() { _ = c.Close() }()
-			_ = c.Logs(project, svc, true, logsPrevious, func(line string) {
+			_ = c.Logs(project, svc, true, logsPrevious, logsTail, func(line string) {
 				_, rest := supervisor.ParseTimestamp(line)
 				prefix := ui.ServicePrefix(svc) + " │ "
 				fmt.Println(prefix + ui.CleanLogLine(rest))
@@ -151,6 +152,7 @@ func logsAllFollow(socket, project string, order []string) error {
 func init() {
 	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "Follow log output")
 	logsCmd.Flags().BoolVar(&logsPrevious, "previous", false, "Show the previous run's logs instead of the current run's")
+	logsCmd.Flags().IntVar(&logsTail, "tail", 0, "Number of lines to show from the end of the logs (0 = all, subject to a size cap)")
 }
 
 // newLogPrinter returns a callback that prints log lines to stdout with a

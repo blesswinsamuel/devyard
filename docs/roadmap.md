@@ -4,9 +4,11 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Done
 
-- **Core lifecycle** — `up`, `up -d`, `down`, `ps`, `top`, `logs [service] [--follow]`,
+- **Core lifecycle** — `up`, `up -d`, `down`, `ps`, `top`, `logs [service] [--follow] [--tail N] [--previous]`,
   `restart [service]`, `kill [service] [--signal]`, `build [service...]`,
-  `up --build`. (`internal/cli`, `internal/supervisor`, `internal/control`)
+  `up --build`. Size-based log rotation (10 MiB soft cap per current run file)
+  and server-side history tailing keep huge logs from flooding clients.
+  (`internal/cli`, `internal/supervisor`, `internal/control`)
 - **Global daemon** — a single daemon process owns multiple project
   supervisors (`map[string]*supervisor.Supervisor`). All CLI commands, the TUI,
   and the web UI are thin clients over one Unix socket at
@@ -51,10 +53,6 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Planned
 
-- [ ] **Size-based log rotation** in the state dir; `logs --tail N` / `--since`.
-      (Run-based rotation already ships: each spawn starts a fresh
-      `<service>.log` and the finished run is kept as `<service>.prev.log`,
-      inspectable via `logs --previous`.)
 - [ ] **Configurable graceful stop timeout** per service / via flag (currently
       fixed at 10s in `Supervisor`).
 - [ ] **`on-failure` autostart** — currently `on-failure` does not trigger
@@ -63,6 +61,8 @@ What's done, what's planned, and where each item lives in the code.
 - [ ] **Strict config mode** that warns on unknown fields (today `yaml.v3`
       silently ignores them).
 - [ ] **Prebuilt release binaries** (GoReleaser).
+- [ ] **`logs --since`** time filter (size-based rotation and `logs --tail N`
+      already ship).
 
 ## Non-goals
 

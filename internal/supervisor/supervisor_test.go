@@ -209,8 +209,13 @@ func TestSupervisorColorEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := string(mustReadFile(t, path))
-	if !strings.Contains(data, "CLICOLOR=1 CLICOLOR_FORCE=1 TERM=xterm-256color") {
-		t.Errorf("log = %q, want color env vars present", data)
+	if !strings.Contains(data, "CLICOLOR=1") || !strings.Contains(data, "CLICOLOR_FORCE=1") {
+		t.Errorf("log = %q, want CLICOLOR=1 and CLICOLOR_FORCE=1", data)
+	}
+	// TERM comes from the parent environment when set (defaults only fill
+	// missing keys); just require that some TERM value reached the child.
+	if !strings.Contains(data, "TERM=") {
+		t.Errorf("log = %q, want TERM to be present", data)
 	}
 }
 

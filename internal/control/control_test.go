@@ -384,6 +384,39 @@ func TestRoundtripTopOneService(t *testing.T) {
 	}
 }
 
+func TestRoundtripLogsTail(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "api.log")
+	var b strings.Builder
+	for i := 1; i <= 20; i++ {
+		b.WriteString("line")
+		b.WriteByte(byte('0' + i%10))
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(logPath, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backend := &fakeBackend{logPaths: map[string]string{"api": logPath}}
+	srv := newServer(t, backend)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	var lines []string
+	if err := c.Logs("", "api", false, false, 3, func(l string) { lines = append(lines, l) }); err != nil {
+		t.Fatalf("Logs: %v", err)
+	}
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3: %v", len(lines), lines)
+	}
+	if lines[0] != "line8" || lines[1] != "line9" || lines[2] != "line0" {
+		t.Errorf("lines = %v, want [line8 line9 line0]", lines)
+	}
+}
+
 func TestRoundtripLogsNoFollow(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "api.log")
@@ -400,7 +433,7 @@ func TestRoundtripLogsNoFollow(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	var lines []string
-	if err := c.Logs("", "api", false, false, func(l string) { lines = append(lines, l) }); err != nil {
+	if err := c.Logs("", "api", false, false, 0, func(l string) { lines = append(lines, l) }); err != nil {
 		t.Fatalf("Logs: %v", err)
 	}
 	if len(lines) != 3 || lines[0] != "line1" || lines[2] != "line3" {
@@ -426,7 +459,7 @@ func TestRoundtripLogsFollow(t *testing.T) {
 	lines := make(chan string, 16)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- c.Logs("", "api", true, false, func(l string) { lines <- l })
+		errCh <- c.Logs("", "api", true, false, 0, func(l string) { lines <- l })
 	}()
 
 	// Expect the pre-existing line quickly.
@@ -468,7 +501,7 @@ func TestLogsUnknownService(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Logs("", "nope", false, false, nil); err == nil {
+	if err := c.Logs("", "nope", false, false, 0, nil); err == nil {
 		t.Errorf("Logs for unknown service: expected error, got nil")
 	}
 }
@@ -496,7 +529,7 @@ func TestRoundtripLogsFollowRotation(t *testing.T) {
 	lines := make(chan string, 16)
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- c.Logs("", "api", true, false, func(l string) { lines <- l })
+		errCh <- c.Logs("", "api", true, false, 0, func(l string) { lines <- l })
 	}()
 
 	if got := recvLine(t, lines, 2*time.Second); got != "first" {
@@ -608,7 +641,7 @@ func TestLogsPreviousRun(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	var prevLines []string
-	if err := c.Logs("", "api", false, true, func(l string) { prevLines = append(prevLines, l) }); err != nil {
+	if err := c.Logs("", "api", false, true, 0, func(l string) { prevLines = append(prevLines, l) }); err != nil {
 		t.Fatalf("Logs previous: %v", err)
 	}
 	if len(prevLines) != 1 || prevLines[0] != "previous" {
@@ -623,7 +656,7 @@ func TestLogsPreviousRun(t *testing.T) {
 	}
 	defer func() { _ = c2.Close() }()
 	var curLines []string
-	if err := c2.Logs("", "api", false, false, func(l string) { curLines = append(curLines, l) }); err != nil {
+	if err := c2.Logs("", "api", false, false, 0, func(l string) { curLines = append(curLines, l) }); err != nil {
 		t.Fatalf("Logs current: %v", err)
 	}
 	if len(curLines) != 1 || curLines[0] != "current" {
@@ -646,7 +679,7 @@ func TestLogsPreviousNoneAvailable(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	if err := c.Logs("", "api", false, true, nil); err == nil {
+	if err := c.Logs("", "api", false, true, 0, nil); err == nil {
 		t.Errorf("Logs previous with no previous file: expected error, got nil")
 	}
 }

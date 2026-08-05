@@ -20,6 +20,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
+	"github.com/blesswinsamuel/local-compose/internal/protocol"
 )
 
 //go:embed dist/*
@@ -317,9 +318,9 @@ func (s *Server) sendError(c *websocket.Conn, ctx context.Context, msg string) {
 
 const writeTimeout = 5 * time.Second
 
-// streamLogFile reads existing log content and tails for new lines, sending
-// log_line WS messages for each line. It returns when the context is
-// cancelled (unsubscribe or disconnect).
+// streamLogFile reads existing log content (last DefaultLogTail lines) and
+// tails for new lines, sending log_line WS messages for each line. It returns
+// when the context is cancelled (unsubscribe or disconnect).
 func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, service string) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -382,19 +383,16 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 		}
 	}
 
-	// Drain existing content, aborting promptly on unsubscribe/disconnect.
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		n, err := f.Read(buf)
-		if n > 0 {
-			flush(buf[:n])
-		}
-		if err != nil {
-			break
+	// Drain tailed history (same window as the control protocol / TUI).
+	history, err := control.ReadLogHistory(f, protocol.DefaultLogTail)
+	if err != nil {
+		return
+	}
+	if len(history) > 0 {
+		flush(history)
+		if len(leftover) > 0 {
+			sendLine(string(leftover))
+			leftover = leftover[:0]
 		}
 	}
 
@@ -402,12 +400,6 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 	case <-ctx.Done():
 		return
 	default:
-	}
-
-	// Emit trailing partial line.
-	if len(leftover) > 0 {
-		sendLine(string(leftover))
-		leftover = leftover[:0]
 	}
 
 	// Follow: poll for new content. Reopen the file if it rotates (the

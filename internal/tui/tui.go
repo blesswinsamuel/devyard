@@ -9,6 +9,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -298,7 +299,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logLines = boundLogLines(m.logLines, ui.CleanLogLine(line), maxLogLineCount)
 			}
 		}
-		m.viewport.SetContent(strings.Join(m.logLines, "\n"))
+		m.setLogViewport()
 		m.viewport.GotoBottom()
 		return m, nil
 
@@ -312,7 +313,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exitCopyMode()
 		}
 		m.logLines = []string{restartSeparator()}
-		m.viewport.SetContent(strings.Join(m.logLines, "\n"))
+		m.setLogViewport()
 		m.viewport.GotoBottom()
 		return m, nil
 
@@ -844,13 +845,20 @@ func (m *model) appendLog(line string) {
 		m.clampCursor()
 	}
 	atBottom := m.viewport.AtBottom()
-	m.viewport.SetContent(strings.Join(m.logLines, "\n"))
+	m.setLogViewport()
 	if atBottom {
 		m.viewport.GotoBottom()
 	}
 	if m.copyMode {
 		m.applySelectionHighlights()
 	}
+}
+
+// setLogViewport pushes logLines into the viewport without joining into a
+// single string (SetContent would Split again). Clone so the viewport's
+// internal mutations cannot alias m.logLines.
+func (m *model) setLogViewport() {
+	m.viewport.SetContentLines(slices.Clone(m.logLines))
 }
 
 func boundLogLines(lines []string, line string, max int) []string {
@@ -1727,7 +1735,13 @@ func startFollowCmd(socket, project, service string, gen int64, p *tea.Program) 
 		if err != nil {
 			return logDoneMsg{gen: gen, service: service, err: err}
 		}
-		if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Project: project, Service: service, Follow: true}); err != nil {
+		if err := c.Send(protocol.Request{
+			Kind:    protocol.KindLogs,
+			Project: project,
+			Service: service,
+			Follow:  true,
+			Tail:    protocol.DefaultLogTail,
+		}); err != nil {
 			_ = c.Close()
 			return logDoneMsg{gen: gen, service: service, err: err}
 		}

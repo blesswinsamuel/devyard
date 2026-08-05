@@ -40,6 +40,7 @@ type Request struct {
     Signal     string      `json:"signal,omitempty"`
     Follow     bool        `json:"follow,omitempty"`
     Previous   bool        `json:"previous,omitempty"`
+    Tail       int         `json:"tail,omitempty"` // last N lines of history; 0 = all (byte-capped)
     ConfigPath string      `json:"config_path,omitempty"`
     EnvFile    string      `json:"env_file,omitempty"`
     Build      bool        `json:"build,omitempty"`
@@ -49,7 +50,7 @@ type Request struct {
 | `Kind` | `Project` | `Service` | Other | Behavior |
 | --- | --- | --- | --- | --- |
 | `"list"` | project name | — | — | Return one `states` response with a snapshot of every service in the project. |
-| `"logs"` | project name | service name | `Follow`, `Previous` | Stream the service's log file. `previous:true` streams the previous run's log (`<service>.prev.log`) instead of the current one; it errors with `no previous run` when none exists. `follow:false` streams existing content and ends with `done`; `follow:true` keeps streaming new lines until shutdown/disconnect. During follow, the stream transparently reopens the file when the supervisor rotates it (each spawn starts a fresh `<service>.log`), so it keeps following the live run across restarts; a `log_rotated` frame announces each new run. |
+| `"logs"` | project name | service name | `Follow`, `Previous`, `Tail` | Stream the service's log file. `previous:true` streams the previous run's log (`<service>.prev.log`) instead of the current one; it errors with `no previous run` when none exists. `tail` limits the initial history dump to the last N lines (`0` / omitted = all, still capped at ~8 MiB of trailing content so the frame stays under `FrameMaxLen`). `follow:false` streams that history and ends with `done`; `follow:true` keeps streaming new lines until shutdown/disconnect. During follow, the stream transparently reopens the file when the supervisor rotates it (each spawn starts a fresh `<service>.log`, and size-based rotation uses the same slot), so it keeps following the live run across restarts; a `log_rotated` frame announces each new run. |
 | `"stop"` | project name | — | — | Stop every service in the project. Acks with `done` once all groups are torn down. |
 | `"stop_service"` | project name | service name | — | Stop one service in place (no restart). Acks with `done`. |
 | `"kill_service"` | project name | service name (empty = all) | `Signal` | Signal one service (empty = all services, in start order) with the named signal; empty `Signal` means `SIGKILL`. No grace period. Acks with `done`. |
@@ -82,19 +83,22 @@ type Response struct {
 | `"states"` | A snapshot of every service in a project (one response, `States` populated). |
 | `"projects"` | A snapshot of every known project (`Projects` populated). |
 | `"stats"` | A per-service CPU/memory snapshot (`Stats` populated). Sent in response to `"top"`. |
-| `"log_content"` | Bulk: the entire existing log file text (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. |
+| `"log_content"` | Bulk: existing log history (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. May be a tailed/byte-capped window rather than the entire file. |
 | `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). Sent for each new line during follow. |
 | `"log_rotated"` | A new run started: the supervisor rotated the log (`<service>.log` → `<service>.prev.log`) and the previous run's lines are over. Carries `project` and `service` so multi-stream clients can route the reset. Frontends with a scrollback buffer (TUI, web) reset their view on receipt. |
 | `"done"` | Request complete; no more frames will follow on this connection. |
 | `"error"` | An error occurred (`Error` has the message). The connection is now done. |
 
 A single request may produce many responses. A `Logs{follow:true}` stream starts
- with a single `log_content` frame (bulk existing content), then a sequence of
- `log_line` frames for new lines — with a `log_rotated` frame between runs when
- the service restarts — ending in `done` (on shutdown) or `error` (on
- failure). A `Logs{follow:false}` stream sends a single `log_content` frame
- followed by `done`. `list`/`stop`/`stop_service`/`kill_service`/`restart` each
- produce a single terminal `states`/`done`/`error`. `list_projects` produces a
+ with a single `log_content` frame (bulk existing content, optionally limited by
+ `tail` and always byte-capped), then a sequence of `log_line` frames for new
+ lines — with a `log_rotated` frame between runs when the service restarts —
+ ending in `done` (on shutdown) or `error` (on failure). A `Logs{follow:false}`
+ stream sends a single `log_content` frame followed by `done`. Interactive
+ frontends (TUI, web) and foreground `up` send `tail: 5000`
+ (`protocol.DefaultLogTail`); CLI `logs` defaults to `0` (all within the byte
+ cap) and accepts `--tail N`. `list`/`stop`/`stop_service`/`kill_service`/`restart`
+ each produce a single terminal `states`/`done`/`error`. `list_projects` produces a
  single `projects` response. `top` produces a single `stats` response (the
  daemon blocks for ~1s sampling before sending it).
 `start_project`/`stop_project`/`remove_project`/
@@ -151,8 +155,9 @@ type ServiceStat struct {
 Prefer these over hand-rolling request/response loops:
 
 - `client.List(project) ([]ServiceState, error)` — `list`.
-- `client.Logs(project, service, follow, previous, onLine)` — `logs`; calls
-  `onLine` per line, returns on `done`/`error`.
+- `client.Logs(project, service, follow, previous, tail, onLine)` — `logs`;
+  calls `onLine` per line, returns on `done`/`error`. `tail` is last N lines of
+  history (`0` = all, byte-capped).
 - `client.Stop(project) error` — `stop` (stop all services in a project).
 - `client.StopService(project, name) error` — `stop_service`.
 - `client.KillService(project, name, signal) error` — `kill_service` (empty

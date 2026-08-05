@@ -13,6 +13,11 @@ import (
 // snapshot but still small enough to be defensive.
 const FrameMaxLen = 16 << 20
 
+// DefaultLogTail is the history window interactive frontends (TUI, web) and
+// foreground `up` request. CLI `logs` defaults to 0 (all, subject to the
+// server's byte cap).
+const DefaultLogTail = 5000
+
 // RequestKind discriminates Request payloads sent from a client (CLI/TUI/web)
 // to the supervisor.
 type RequestKind string
@@ -35,7 +40,8 @@ const (
 // Request is a client -> daemon message.
 //
 //   - Kind==KindLogs: Project + Service selects the log file, Follow enables tailing,
-//     Previous selects the previous run's log instead of the current one.
+//     Previous selects the previous run's log instead of the current one,
+//     Tail limits history to the last N lines (0 = all, subject to a byte cap).
 //   - Kind==KindRestart: Project selects the project; Service selects one service
 //     (empty means all).
 //   - Kind==KindStopService: Project + Service selects the service to stop.
@@ -57,6 +63,7 @@ type Request struct {
 	Signal     string      `json:"signal,omitempty"`
 	Follow     bool        `json:"follow,omitempty"`
 	Previous   bool        `json:"previous,omitempty"`
+	Tail       int         `json:"tail,omitempty"` // last N lines of history; 0 = all (byte-capped)
 	ConfigPath string      `json:"config_path,omitempty"`
 	EnvFile    string      `json:"env_file,omitempty"`
 	Build      bool        `json:"build,omitempty"`
@@ -72,7 +79,7 @@ const (
 	KindProjects   ResponseKind = "projects"    // a snapshot of every known project
 	KindStats      ResponseKind = "stats"       // a per-service CPU/memory snapshot (KindTop)
 	KindLogLine    ResponseKind = "log_line"    // one line of a service's log
-	KindLogContent ResponseKind = "log_content" // bulk: entire existing log file text
+	KindLogContent ResponseKind = "log_content" // bulk: existing log history (possibly tailed)
 	KindLogRotated ResponseKind = "log_rotated" // a new run started; the previous run's lines are over
 	KindDone       ResponseKind = "done"        // request complete, no more frames
 	KindError      ResponseKind = "error"       // an error occurred (Error has text)

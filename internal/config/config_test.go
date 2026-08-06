@@ -251,3 +251,46 @@ func TestBuildEnvOver(t *testing.T) {
 		t.Errorf("PATH = %q, want /usr/bin", got["PATH"])
 	}
 }
+
+func TestActionsParsingAndValidation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "local-compose.yml")
+	content := `version: "1"
+services:
+  db:
+    command: echo db
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+actions:
+  migrate: npx prisma db push
+  seed:
+    command: node scripts/seed.js
+    working_dir: ./backend
+    env:
+      NODE_ENV: development
+    depends_on:
+      db: { condition: service_healthy }
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(file.Actions) != 2 {
+		t.Fatalf("Actions length = %d, want 2", len(file.Actions))
+	}
+	migrate := file.Actions["migrate"]
+	if migrate.Spec.Command != "npx prisma db push" || migrate.Spec.Shell != "sh" {
+		t.Errorf("migrate action: %+v", migrate.Spec)
+	}
+	seed := file.Actions["seed"]
+	if seed.Spec.Command != "node scripts/seed.js" || seed.Spec.WorkingDir != "./backend" || seed.Spec.Env["NODE_ENV"] != "development" {
+		t.Errorf("seed action: %+v", seed.Spec)
+	}
+	if seed.Spec.DependsOn.Entries["db"].Condition != config.ConditionServiceHealthy {
+		t.Errorf("seed depends_on db condition: %+v", seed.Spec.DependsOn)
+	}
+}

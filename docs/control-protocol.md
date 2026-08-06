@@ -37,6 +37,8 @@ type Request struct {
     Kind       RequestKind `json:"kind"`
     Project    string      `json:"project,omitempty"`
     Service    string      `json:"service,omitempty"`
+    Action     string      `json:"action,omitempty"`
+    Args       []string    `json:"args,omitempty"`
     Signal     string      `json:"signal,omitempty"`
     Follow     bool        `json:"follow,omitempty"`
     Previous   bool        `json:"previous,omitempty"`
@@ -61,6 +63,8 @@ type Request struct {
 | `"stop_project"` | project name | — | — | Stop the named project's services. Acks with `done`. |
 | `"remove_project"` | project name | — | — | Stop the named project's services, remove it from the daemon, and delete its runtime and state directories. Acks with `done`. |
 | `"stop_daemon"` | — | — | — | Stop all projects and shut down the daemon. Acks with `done`. |
+| `"list_actions"` | project name | — | — | Return one `actions` response with a snapshot of defined actions for the project. |
+| `"run_action"` | project name | — | `Action`, `Args` | Execute the named action command with optional extra CLI args, streaming output lines (`log_line`) and ending with `done` carrying `action_exit_code`. |
 
 ## Response (daemon -> client)
 

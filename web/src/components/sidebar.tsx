@@ -3,6 +3,7 @@ import { ChevronRight, Boxes, MoreVertical, Play, Plus, Power, RotateCcw, Skull,
 import {
   projects,
   services,
+  actions,
   isProjectExpanded,
   selectedProject,
   selectedService,
@@ -18,6 +19,7 @@ import {
   restartService,
   stopService,
   killService,
+  runAction,
   theme,
   setTheme,
   wsStatus,
@@ -202,6 +204,8 @@ function ProjectItem(props: { name: string }) {
     return null;
   });
 
+  const actionList = createMemo(() => actions()[props.name] ?? []);
+
   return (
     <Show when={project()}>
       {(p) => (
@@ -316,6 +320,28 @@ function ProjectItem(props: { name: string }) {
                     {(name) => <ServiceRow project={props.name} name={name} />}
                   </For>
                 </Show>
+              </Show>
+              <Show when={actionList().length > 0}>
+                <div class="mt-2 border-t border-border/50 pt-2 px-3">
+                  <div class="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase mb-1">
+                    Actions
+                  </div>
+                  <For each={actionList()}>
+                    {(act) => (
+                      <div class="flex items-center justify-between py-1 text-xs hover:bg-muted/40 rounded px-2">
+                        <span class="font-medium truncate" title={act.command}>{act.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          title={`Run action ${act.name}`}
+                          onClick={() => runAction(props.name, act.name)}
+                        >
+                          <Play class="size-3 text-primary" />
+                        </Button>
+                      </div>
+                    )}
+                  </For>
+                </div>
               </Show>
             </div>
           </CollapsibleContent>

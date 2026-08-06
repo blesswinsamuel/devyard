@@ -246,6 +246,59 @@ func (c *Client) Logs(project, service string, follow, previous bool, tail int, 
 	}
 }
 
+// ListActions sends a ListActions request and returns the actions defined in the project.
+func (c *Client) ListActions(project string) ([]protocol.ActionInfo, error) {
+	if err := c.Send(protocol.Request{Kind: protocol.KindListActions, Project: project}); err != nil {
+		return nil, err
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.Kind == protocol.KindError {
+		return nil, errors.New(resp.Error)
+	}
+	if resp.Kind != protocol.KindActions {
+		return nil, fmt.Errorf("control: unexpected response %q, want %q", resp.Kind, protocol.KindActions)
+	}
+	return resp.Actions, nil
+}
+
+// RunAction sends a RunAction request for project + action, streaming output lines to onLine.
+// Returns the exit code of the action process.
+func (c *Client) RunAction(project, action string, args []string, onLine func(string)) (int, error) {
+	if onLine == nil {
+		onLine = func(string) {}
+	}
+	if err := c.Send(protocol.Request{
+		Kind:    protocol.KindRunAction,
+		Project: project,
+		Action:  action,
+		Args:    args,
+	}); err != nil {
+		return 1, err
+	}
+	for {
+		resp, err := c.Recv()
+		if err != nil {
+			return 1, err
+		}
+		switch resp.Kind {
+		case protocol.KindLogLine:
+			onLine(resp.Line)
+		case protocol.KindDone:
+			if resp.ActionExitCode != nil {
+				return *resp.ActionExitCode, nil
+			}
+			return 0, nil
+		case protocol.KindError:
+			return 1, errors.New(resp.Error)
+		default:
+			return 1, fmt.Errorf("control: unexpected response %q", resp.Kind)
+		}
+	}
+}
+
 // awaitDone reads frames until a KindDone (success) or KindError arrives.
 func (c *Client) awaitDone() error {
 	for {

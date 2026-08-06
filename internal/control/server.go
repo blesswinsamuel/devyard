@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,11 @@ type Backend interface {
 	// empty), used by the `top` command. The implementation samples process
 	// groups over a short interval and blocks for it.
 	Top(name string) ([]protocol.ServiceStat, error)
+	// ListActions returns a snapshot of defined actions for the project.
+	ListActions() []protocol.ActionInfo
+	// RunAction executes a named action with extra CLI args, streaming output to out.
+	// Returns the exit code of the action process.
+	RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error)
 	// LogPath returns the absolute path of a service's log file.
 	LogPath(name string) (string, error)
 	// PreviousLogPath returns the absolute path of a service's previous-run
@@ -187,6 +193,10 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleRemoveProject(w, req)
 	case protocol.KindStopDaemon:
 		s.handleStopDaemon(w)
+	case protocol.KindListActions:
+		s.handleListActions(w, req)
+	case protocol.KindRunAction:
+		s.handleRunAction(ctx, w, req)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
 	}
@@ -582,4 +592,87 @@ func rewindIfRotated(f *os.File) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (s *Server) handleListActions(w io.Writer, req protocol.Request) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	actions := b.ListActions()
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:    protocol.KindActions,
+		Actions: actions,
+	})
+}
+
+type actionLineFrameWriter struct {
+	w       io.Writer
+	project string
+	action  string
+	buf     bytes.Buffer
+	mu      sync.Mutex
+}
+
+func (l *actionLineFrameWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := len(p)
+	l.buf.Write(p)
+	for {
+		line, err := l.buf.ReadString('\n')
+		if err != nil {
+			l.buf.WriteString(line)
+			break
+		}
+		line = strings.TrimRight(line, "\r\n")
+		_ = protocol.WriteFrame(l.w, protocol.Response{
+			Kind:    protocol.KindLogLine,
+			Project: l.project,
+			Action:  l.action,
+			Line:    line,
+		})
+	}
+	return n, nil
+}
+
+func (l *actionLineFrameWriter) Flush() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.buf.Len() > 0 {
+		line := strings.TrimRight(l.buf.String(), "\r\n")
+		l.buf.Reset()
+		if line != "" {
+			_ = protocol.WriteFrame(l.w, protocol.Response{
+				Kind:    protocol.KindLogLine,
+				Project: l.project,
+				Action:  l.action,
+				Line:    line,
+			})
+		}
+	}
+}
+
+func (s *Server) handleRunAction(ctx context.Context, w io.Writer, req protocol.Request) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	writer := &actionLineFrameWriter{
+		w:       w,
+		project: req.Project,
+		action:  req.Action,
+	}
+	exitCode, err := b.RunAction(ctx, req.Action, req.Args, writer)
+	writer.Flush()
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:           protocol.KindDone,
+		ActionExitCode: &exitCode,
+	})
 }

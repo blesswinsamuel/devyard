@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -142,6 +143,14 @@ func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
 		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
 	}
 	return "", fmt.Errorf("unknown service %q", name)
+}
+
+func (b *fakeBackend) ListActions() []protocol.ActionInfo {
+	return nil
+}
+
+func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
+	return 0, nil
 }
 
 func newWebServer(t *testing.T, backend control.MultiBackend) *web.Server {

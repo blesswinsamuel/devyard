@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState, ViewMode, ShellTab, PaneNode } from "./types";
+import type { ProjectInfo, ServiceState, ActionInfo, ViewMode, ShellTab, PaneNode } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 
 export type Theme = "dark" | "light";
@@ -21,6 +21,8 @@ export type NavItem =
 
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
+const [actions, setActions] = createSignal<Record<string, ActionInfo[]>>({});
+export { actions };
 /** Projects the user has collapsed; everything else is expanded by default. */
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
@@ -266,8 +268,13 @@ function start() {
     // refreshAll() often runs before projects arrive, when the list is empty.
     const collapsedSet = untrack(collapsed);
     for (const p of next) {
-      if (!collapsedSet.has(p.name) && (!prevNames.has(p.name) || !untrack(services)[p.name])) {
-        sendWS({ type: "list_services", project: p.name });
+      if (!collapsedSet.has(p.name)) {
+        if (!prevNames.has(p.name) || !untrack(services)[p.name]) {
+          sendWS({ type: "list_services", project: p.name });
+        }
+        if (!untrack(actions)[p.name]) {
+          sendWS({ type: "list_actions", project: p.name });
+        }
       }
     }
   });
@@ -281,6 +288,19 @@ function start() {
       return { ...m, [project]: next };
     });
     pruneSelection();
+  });
+  onWS("actions", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    const next = (resp.data ?? []) as ActionInfo[];
+    setActions((m) => ({ ...m, [project]: next }));
+  });
+  onWS("action_done", (resp) => {
+    if (resp.ok === false || resp.error) {
+      pushToast(resp.error || `Action '${resp.action}' failed`, "error");
+    } else {
+      pushToast(`Action '${resp.action}' finished (exit code ${resp.exit_code ?? 0})`, "info");
+    }
   });
   onWS("error", (resp) => {
     if (!resp.error) return;
@@ -308,6 +328,15 @@ function start() {
 
 export function refreshServices(project: string) {
   sendWS({ type: "list_services", project });
+}
+
+export function refreshActions(project: string) {
+  sendWS({ type: "list_actions", project });
+}
+
+export function runAction(project: string, actionName: string, args?: string[]) {
+  sendWS({ type: "run_action", project, action: actionName, args });
+  pushToast(`Started action '${actionName}'`, "info");
 }
 
 export function setProjectExpanded(name: string, open: boolean) {

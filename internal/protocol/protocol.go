@@ -35,6 +35,8 @@ const (
 	KindRemoveProject RequestKind = "remove_project" // stop a project and completely remove it from the daemon
 	KindStopDaemon    RequestKind = "stop_daemon"    // stop all projects and shut down the daemon
 	KindTop           RequestKind = "top"            // sample CPU/memory usage of one service (or all)
+	KindRunAction     RequestKind = "run_action"     // run a one-off action
+	KindListActions   RequestKind = "list_actions"   // list defined actions for a project
 )
 
 // Request is a client -> daemon message.
@@ -56,10 +58,14 @@ const (
 //   - Kind==KindTop: Project selects the project; Service selects one service
 //     (empty means all). The daemon samples the service process groups twice
 //     over a ~1s interval to derive CPU usage.
+//   - Kind==KindRunAction: Project + Action selects the action to run; Args contains extra CLI flags/args.
+//   - Kind==KindListActions: Project selects the project.
 type Request struct {
 	Kind       RequestKind `json:"kind"`
 	Project    string      `json:"project,omitempty"`
 	Service    string      `json:"service,omitempty"`
+	Action     string      `json:"action,omitempty"`
+	Args       []string    `json:"args,omitempty"`
 	Signal     string      `json:"signal,omitempty"`
 	Follow     bool        `json:"follow,omitempty"`
 	Previous   bool        `json:"previous,omitempty"`
@@ -77,8 +83,9 @@ type ResponseKind string
 const (
 	KindStates     ResponseKind = "states"      // a snapshot of every service
 	KindProjects   ResponseKind = "projects"    // a snapshot of every known project
+	KindActions    ResponseKind = "actions"     // a list of defined actions
 	KindStats      ResponseKind = "stats"       // a per-service CPU/memory snapshot (KindTop)
-	KindLogLine    ResponseKind = "log_line"    // one line of a service's log
+	KindLogLine    ResponseKind = "log_line"    // one line of a service's log or action output
 	KindLogContent ResponseKind = "log_content" // bulk: existing log history (possibly tailed)
 	KindLogRotated ResponseKind = "log_rotated" // a new run started; the previous run's lines are over
 	KindDone       ResponseKind = "done"        // request complete, no more frames
@@ -98,6 +105,14 @@ type ServiceState struct {
 	FinishedAt string `json:"finished_at,omitempty"`
 	HasHealth  bool   `json:"has_health"`
 	Health     string `json:"health"`
+}
+
+// ActionInfo is the wire form of a project action.
+type ActionInfo struct {
+	Name       string   `json:"name"`
+	Command    string   `json:"command"`
+	WorkingDir string   `json:"working_dir,omitempty"`
+	DependsOn  []string `json:"depends_on,omitempty"`
 }
 
 // ProjectInfo is the wire form of a project snapshot. It describes one project
@@ -128,15 +143,18 @@ type ServiceStat struct {
 
 // Response is a daemon -> client message.
 type Response struct {
-	Kind     ResponseKind   `json:"kind"`
-	States   []ServiceState `json:"states,omitempty"`   // Kind==KindStates
-	Projects []ProjectInfo  `json:"projects,omitempty"` // Kind==KindProjects
-	Stats    []ServiceStat  `json:"stats,omitempty"`    // Kind==KindStats
-	Project  string         `json:"project,omitempty"`  // Kind==KindLogLine (which project)
-	Service  string         `json:"service,omitempty"`  // Kind==KindLogLine (which service)
-	Line     string         `json:"line,omitempty"`     // Kind==KindLogLine
-	Content  string         `json:"content,omitempty"`  // Kind==KindLogContent (bulk file text)
-	Error    string         `json:"error,omitempty"`    // Kind==KindError
+	Kind           ResponseKind   `json:"kind"`
+	States         []ServiceState `json:"states,omitempty"`           // Kind==KindStates
+	Projects       []ProjectInfo  `json:"projects,omitempty"`         // Kind==KindProjects
+	Actions        []ActionInfo   `json:"actions,omitempty"`          // Kind==KindActions
+	Stats          []ServiceStat  `json:"stats,omitempty"`            // Kind==KindStats
+	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
+	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)
+	Action         string         `json:"action,omitempty"`           // Kind==KindLogLine (which action)
+	Line           string         `json:"line,omitempty"`             // Kind==KindLogLine
+	Content        string         `json:"content,omitempty"`          // Kind==KindLogContent (bulk file text)
+	ActionExitCode *int           `json:"action_exit_code,omitempty"` // Kind==KindDone for KindRunAction
+	Error          string         `json:"error,omitempty"`            // Kind==KindError
 }
 
 // WriteFrame writes v as a length-prefixed JSON frame: a 4-byte big-endian

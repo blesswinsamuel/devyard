@@ -49,12 +49,14 @@ func init() {
 	killCmd.GroupID = serviceGroup.ID
 	restartCmd.GroupID = serviceGroup.ID
 	buildCmd.GroupID = serviceGroup.ID
+	runCmd.GroupID = serviceGroup.ID
+	actionCmd.GroupID = serviceGroup.ID
 
 	webCmd.GroupID = daemonGroup.ID
 	daemonCmd.GroupID = daemonGroup.ID
 
 	rootCmd.AddCommand(lsCmd, upCmd, downCmd, removeCmd, psCmd, topCmd)
-	rootCmd.AddCommand(logsCmd, startCmd, stopCmd, killCmd, restartCmd, buildCmd)
+	rootCmd.AddCommand(logsCmd, startCmd, stopCmd, killCmd, restartCmd, buildCmd, runCmd, actionCmd)
 	rootCmd.AddCommand(webCmd, daemonCmd)
 }
 

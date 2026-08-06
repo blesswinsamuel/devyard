@@ -137,11 +137,54 @@ func (d *DependsOn) UnmarshalYAML(value *yaml.Node) error {
 	}
 }
 
+// ActionSpec describes a one-off task or command.
+type ActionSpec struct {
+	Command    string            `yaml:"command"`
+	WorkingDir string            `yaml:"working_dir,omitempty"`
+	Env        map[string]string `yaml:"env,omitempty"`
+	Shell      string            `yaml:"shell,omitempty"`
+	DependsOn  DependsOn         `yaml:"depends_on,omitempty"`
+}
+
+// Action accepts either a command string or an ActionSpec object in YAML.
+type Action struct {
+	Spec ActionSpec
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler for Action.
+func (a *Action) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var cmd string
+		if err := value.Decode(&cmd); err != nil {
+			return err
+		}
+		a.Spec = ActionSpec{Command: cmd, Shell: DefaultShell}
+		return nil
+	case yaml.MappingNode:
+		var spec ActionSpec
+		if err := value.Decode(&spec); err != nil {
+			return err
+		}
+		if strings.TrimSpace(spec.Command) == "" {
+			return fmt.Errorf("action.command is required")
+		}
+		if spec.Shell == "" {
+			spec.Shell = DefaultShell
+		}
+		a.Spec = spec
+		return nil
+	default:
+		return fmt.Errorf("action must be a string or object")
+	}
+}
+
 // File is the top-level local-compose.yml schema.
 type File struct {
 	Version  string             `yaml:"version"`
 	Name     string             `yaml:"name,omitempty"`
 	Services map[string]Service `yaml:"services"`
+	Actions  map[string]Action  `yaml:"actions,omitempty"`
 }
 
 // Load reads and validates a config file. Environment variable references in
@@ -254,6 +297,36 @@ func (f *File) Validate(configPath string) error {
 			}
 		}
 		f.Services[name] = svc
+	}
+	for name, act := range f.Actions {
+		if strings.TrimSpace(act.Spec.Command) == "" {
+			return fmt.Errorf("action %q: command is required", name)
+		}
+		if act.Spec.Shell == "" {
+			act.Spec.Shell = DefaultShell
+		}
+		for depName, entry := range act.Spec.DependsOn.Entries {
+			if _, ok := f.Services[depName]; !ok {
+				return fmt.Errorf("action %q: depends_on references unknown service %q", name, depName)
+			}
+			if err := validateCondition(entry.Condition); err != nil {
+				return fmt.Errorf("action %q depends_on %q: %w", name, depName, err)
+			}
+			if entry.Condition == ConditionServiceHealthy {
+				dep := f.Services[depName]
+				if dep.Healthcheck == nil {
+					return fmt.Errorf("action %q depends_on %q with service_healthy but %q has no healthcheck", name, depName, depName)
+				}
+			}
+		}
+		if act.Spec.Env != nil {
+			for k := range act.Spec.Env {
+				if strings.TrimSpace(k) == "" {
+					return fmt.Errorf("action %q: env key must be non-empty", name)
+				}
+			}
+		}
+		f.Actions[name] = act
 	}
 	return nil
 }

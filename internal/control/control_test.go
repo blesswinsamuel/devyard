@@ -20,16 +20,36 @@ import (
 // fakeBackend is an in-memory control.Backend for exercising the server
 // without spinning up real child processes.
 type fakeBackend struct {
-	mu         sync.Mutex
-	states     []protocol.ServiceState
-	stopErr    error
-	logPaths   map[string]string
-	restarts   []string
-	stopped    bool
-	stoppedSvc []string
-	killedSvc  []string
-	killedSigs []string
-	stopSvcErr error
+	mu          sync.Mutex
+	states      []protocol.ServiceState
+	stopErr     error
+	logPaths    map[string]string
+	restarts    []string
+	stopped     bool
+	stoppedSvc  []string
+	killedSvc   []string
+	killedSigs  []string
+	stopSvcErr  error
+	actions     []protocol.ActionInfo
+	runActionFn func(name string, args []string, out io.Writer) (int, error)
+}
+
+func (b *fakeBackend) ListActions() []protocol.ActionInfo {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]protocol.ActionInfo, len(b.actions))
+	copy(out, b.actions)
+	return out
+}
+
+func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
+	b.mu.Lock()
+	fn := b.runActionFn
+	b.mu.Unlock()
+	if fn != nil {
+		return fn(name, args, out)
+	}
+	return 0, nil
 }
 
 func (b *fakeBackend) States() []protocol.ServiceState {
@@ -190,6 +210,52 @@ func TestRoundtripList(t *testing.T) {
 	}
 	if got[1].Name != "web" || got[1].Status != "exited" {
 		t.Errorf("web state: %+v", got[1])
+	}
+}
+
+func TestRoundtripActions(t *testing.T) {
+	b := &fakeBackend{
+		actions: []protocol.ActionInfo{
+			{Name: "migrate", Command: "npx prisma db push"},
+		},
+		runActionFn: func(name string, args []string, out io.Writer) (int, error) {
+			_, _ = fmt.Fprintln(out, "running migration...")
+			return 0, nil
+		},
+	}
+	srv := newServer(t, b)
+	c1, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c1.Close() }()
+
+	actions, err := c1.ListActions("")
+	if err != nil {
+		t.Fatalf("ListActions: %v", err)
+	}
+	if len(actions) != 1 || actions[0].Name != "migrate" {
+		t.Fatalf("ListActions got %+v", actions)
+	}
+
+	c2, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial 2: %v", err)
+	}
+	defer func() { _ = c2.Close() }()
+
+	var output []string
+	code, err := c2.RunAction("", "migrate", nil, func(line string) {
+		output = append(output, line)
+	})
+	if err != nil {
+		t.Fatalf("RunAction: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+	if len(output) != 1 || output[0] != "running migration..." {
+		t.Errorf("output = %+v, want ['running migration...']", output)
 	}
 }
 

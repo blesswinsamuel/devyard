@@ -123,12 +123,14 @@ func (s *Server) spaHandler() http.Handler {
 
 // wsRequest is a JSON message from the browser to the daemon.
 type wsRequest struct {
-	Type       string `json:"type"`
-	Project    string `json:"project,omitempty"`
-	Service    string `json:"service,omitempty"`
-	Signal     string `json:"signal,omitempty"`
-	ConfigPath string `json:"config_path,omitempty"`
-	EnvFile    string `json:"env_file,omitempty"`
+	Type       string   `json:"type"`
+	Project    string   `json:"project,omitempty"`
+	Service    string   `json:"service,omitempty"`
+	Action     string   `json:"action,omitempty"`
+	Args       []string `json:"args,omitempty"`
+	Signal     string   `json:"signal,omitempty"`
+	ConfigPath string   `json:"config_path,omitempty"`
+	EnvFile    string   `json:"env_file,omitempty"`
 
 	// Terminal/PTY fields
 	ID   string `json:"id,omitempty"`
@@ -139,13 +141,15 @@ type wsRequest struct {
 
 // wsResponse is a JSON message from the daemon to the browser.
 type wsResponse struct {
-	Type    string          `json:"type"`
-	Project string          `json:"project,omitempty"`
-	Service string          `json:"service,omitempty"`
-	Data    json.RawMessage `json:"data,omitempty"`
-	Line    string          `json:"line,omitempty"`
-	Ok      bool            `json:"ok"`
-	Error   string          `json:"error,omitempty"`
+	Type     string          `json:"type"`
+	Project  string          `json:"project,omitempty"`
+	Service  string          `json:"service,omitempty"`
+	Action   string          `json:"action,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
+	Line     string          `json:"line,omitempty"`
+	Ok       bool            `json:"ok"`
+	Error    string          `json:"error,omitempty"`
+	ExitCode *int            `json:"exit_code,omitempty"`
 
 	// Terminal/PTY fields
 	ID     string `json:"id,omitempty"`
@@ -217,6 +221,10 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		_ = ptys.resize(req.ID, req.Cols, req.Rows)
 	case "close_terminal":
 		ptys.closeSession(req.ID)
+	case "list_actions":
+		s.handleListActions(c, ctx, req)
+	case "run_action":
+		s.handleRunAction(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -350,6 +358,56 @@ func (s *Server) handleKillService(c *websocket.Conn, ctx context.Context, req *
 		return
 	}
 	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
+}
+
+func (s *Server) handleListActions(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	actions := b.ListActions()
+	data, _ := json.Marshal(actions)
+	s.send(c, ctx, wsResponse{Type: "actions", Project: req.Project, Data: data})
+}
+
+type wsActionWriter struct {
+	c       *websocket.Conn
+	ctx     context.Context
+	s       *Server
+	project string
+	action  string
+}
+
+func (w *wsActionWriter) Write(p []byte) (int, error) {
+	lines := strings.Split(string(p), "\n")
+	for i, line := range lines {
+		if i == len(lines)-1 && line == "" {
+			continue
+		}
+		w.s.send(w.c, w.ctx, wsResponse{
+			Type:    "log_line",
+			Project: w.project,
+			Service: w.action,
+			Line:    line,
+		})
+	}
+	return len(p), nil
+}
+
+func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	writer := &wsActionWriter{c: c, ctx: ctx, s: s, project: req.Project, action: req.Action}
+	code, err := b.RunAction(ctx, req.Action, req.Args, writer)
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: false, Error: err.Error()})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: true, ExitCode: &code})
 }
 
 func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {

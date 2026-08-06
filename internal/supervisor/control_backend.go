@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"io"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
@@ -95,6 +96,16 @@ func (b *ControlBackend) LogPath(name string) (string, error) {
 // PreviousLogPath returns the absolute path of a service's previous-run log file.
 func (b *ControlBackend) PreviousLogPath(name string) (string, error) {
 	return b.s.PreviousLogPath(name)
+}
+
+// ListActions returns a snapshot of defined actions for the project.
+func (b *ControlBackend) ListActions() []protocol.ActionInfo {
+	return b.s.ListActions()
+}
+
+// RunAction executes a named action command in a dedicated process group, streaming output to out.
+func (b *ControlBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
+	return b.s.RunAction(ctx, name, args, out)
 }
 
 // Compile-time assertion that ControlBackend satisfies control.Backend.

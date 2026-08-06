@@ -59,6 +59,10 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		_ = ptys.resize(req.ID, req.Cols, req.Rows)
 	case "close_terminal":
 		ptys.closeSession(req.ID)
+	case "list_actions":
+		s.proxyListActions(c, ctx, req)
+	case "run_action":
+		s.proxyRunAction(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -251,4 +255,72 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 			}
 		}
 	}()
+}
+
+func (s *Server) proxyListActions(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindListActions, Project: req.Project})
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.sendError(c, ctx, resp.Error)
+		return
+	}
+	data, _ := json.Marshal(resp.Actions)
+	s.send(c, ctx, wsResponse{Type: "actions", Project: req.Project, Data: data})
+}
+
+func (s *Server) proxyRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	conn, err := net.Dial("unix", s.socketPath)
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	defer func() { _ = conn.Close() }()
+
+	if err := protocol.WriteFrame(conn, protocol.Request{
+		Kind:    protocol.KindRunAction,
+		Project: req.Project,
+		Action:  req.Action,
+		Args:    req.Args,
+	}); err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+
+	for {
+		var resp protocol.Response
+		if err := protocol.ReadFrame(conn, &resp); err != nil {
+			s.sendError(c, ctx, err.Error())
+			return
+		}
+		switch resp.Kind {
+		case protocol.KindLogLine:
+			s.send(c, ctx, wsResponse{
+				Type:    "log_line",
+				Project: req.Project,
+				Service: req.Action,
+				Line:    resp.Line,
+			})
+		case protocol.KindDone:
+			s.send(c, ctx, wsResponse{
+				Type:     "action_done",
+				Project:  req.Project,
+				Action:   req.Action,
+				Ok:       true,
+				ExitCode: resp.ActionExitCode,
+			})
+			return
+		case protocol.KindError:
+			s.send(c, ctx, wsResponse{
+				Type:    "action_done",
+				Project: req.Project,
+				Action:  req.Action,
+				Ok:      false,
+				Error:   resp.Error,
+			})
+			return
+		}
+	}
 }

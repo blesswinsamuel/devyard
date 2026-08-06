@@ -10,6 +10,7 @@
 package supervisor
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -27,6 +29,7 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/health"
 	"github.com/blesswinsamuel/local-compose/internal/procstat"
 	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/local-compose/internal/protocol"
 	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
 
@@ -1223,4 +1226,112 @@ func (s *Supervisor) Close() error {
 		}
 	}
 	return firstErr
+}
+
+// ListActions returns a snapshot of defined actions for the project.
+func (s *Supervisor) ListActions() []protocol.ActionInfo {
+	if s.opts.File == nil || len(s.opts.File.Actions) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(s.opts.File.Actions))
+	for name := range s.opts.File.Actions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]protocol.ActionInfo, len(names))
+	for i, name := range names {
+		act := s.opts.File.Actions[name]
+		var deps []string
+		for depName := range act.Spec.DependsOn.Entries {
+			deps = append(deps, depName)
+		}
+		sort.Strings(deps)
+		out[i] = protocol.ActionInfo{
+			Name:       name,
+			Command:    act.Spec.Command,
+			WorkingDir: act.Spec.WorkingDir,
+			DependsOn:  deps,
+		}
+	}
+	return out
+}
+
+// RunAction executes a named action command in a dedicated process group,
+// streaming output lines to out. Returns the exit code of the action process.
+func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []string, out io.Writer) (int, error) {
+	if s.opts.File == nil {
+		return 1, fmt.Errorf("supervisor: no config file loaded")
+	}
+	act, ok := s.opts.File.Actions[name]
+	if !ok {
+		return 1, fmt.Errorf("action %q not found", name)
+	}
+
+	for _, depName := range act.Spec.DependsOn.Order {
+		entry := act.Spec.DependsOn.Entries[depName]
+		if rt, ok := s.services[depName]; ok {
+			if rt.status == StatusStopped || rt.status == StatusExited || !rt.startedOnce.Load() {
+				if err := s.Restart(depName); err != nil {
+					return 1, fmt.Errorf("action %q: failed to start dependency service %q: %w", name, depName, err)
+				}
+			}
+		}
+		if err := s.waitForDep(ctx, depName, entry.Condition); err != nil {
+			return 1, fmt.Errorf("action %q: dependency %q not ready: %w", name, depName, err)
+		}
+	}
+
+	fullCmd := act.Spec.Command
+	if len(extraArgs) > 0 {
+		fullCmd += " " + strings.Join(extraArgs, " ")
+	}
+
+	workDir := resolveWorkingDir(s.opts.BaseDir, act.Spec.WorkingDir)
+
+	baseEnv := config.BaseEnv(nil)
+	if len(s.opts.Env) > 0 {
+		baseEnv = mergeEnvSlice(os.Environ(), s.opts.Env)
+	}
+	env := config.BuildEnvOver(baseEnv, act.Spec.Env)
+
+	shell := act.Spec.Shell
+	if shell == "" {
+		shell = config.DefaultShell
+	}
+
+	cmd := newCommand(shell, "-c", fullCmd)
+	cmd.dir = workDir
+	cmd.env = env
+	applyProcessGroup(cmd)
+
+	stdoutPipe, stderrPipe, err := cmd.pipes()
+	if err != nil {
+		return 1, fmt.Errorf("action %q: pipes: %w", name, err)
+	}
+
+	if err := cmd.start(); err != nil {
+		return 1, fmt.Errorf("action %q: start: %w", name, err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	readLineStream := func(r io.Reader) {
+		defer wg.Done()
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if out != nil {
+				_, _ = fmt.Fprintln(out, line)
+			}
+		}
+	}
+
+	go readLineStream(stdoutPipe)
+	go readLineStream(stderrPipe)
+
+	wg.Wait()
+	waitErr := cmd.Wait()
+	code := exitCodeFrom(waitErr)
+	return code, nil
 }

@@ -18,10 +18,19 @@ export interface ServiceState {
   health: string;
 }
 
+export interface ActionInfo {
+  name: string;
+  command: string;
+  working_dir?: string;
+  depends_on?: string[];
+}
+
 export interface WSRequest {
   type: string;
   project?: string;
   service?: string;
+  action?: string;
+  args?: string[];
   config_path?: string;
   signal?: string;
   env_file?: string;
@@ -35,10 +44,12 @@ export interface WSResponse {
   type: string;
   project?: string;
   service?: string;
-  data?: ProjectInfo[] | ServiceState[];
+  action?: string;
+  data?: ProjectInfo[] | ServiceState[] | ActionInfo[];
   line?: string;
   ok?: boolean;
   error?: string;
+  exit_code?: number;
   id?: string;
   output?: string;
 }

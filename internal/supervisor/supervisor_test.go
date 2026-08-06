@@ -1,6 +1,7 @@
 package supervisor_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -903,6 +904,37 @@ func TestSupervisorRestart(t *testing.T) {
 	}) {
 		st := s.States()[0]
 		t.Fatalf("restart did not produce a new running pid: before=%d after=%+v", pidBefore, st)
+	}
+}
+
+func TestSupervisorRunAction(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "echo service-running", Shell: "sh"},
+	})
+	file.Actions = map[string]config.Action{
+		"echo-test": {
+			Spec: config.ActionSpec{
+				Command: "echo hello action",
+				Shell:   "sh",
+			},
+		},
+	}
+	s := newSupervisor(t, file, []string{"svc"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	var buf bytes.Buffer
+	code, err := s.RunAction(context.Background(), "echo-test", []string{"extra"}, &buf)
+	if err != nil {
+		t.Fatalf("RunAction: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(buf.String(), "hello action extra") {
+		t.Errorf("buf = %q, want 'hello action extra'", buf.String())
 	}
 }
 

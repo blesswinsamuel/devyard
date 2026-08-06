@@ -13,6 +13,8 @@ version: "1"          # required
 name: myapp           # optional; defaults to the config file's directory name
 services:             # required, non-empty
   <name>: <Service>
+actions:              # optional
+  <name>: <Action>
 ```
 
 - `version` **must** be present (any value is accepted today; the field gates
@@ -173,6 +175,34 @@ build:                                       # object form
   broken build.
 - `command` is required in the object form (validation rejects an empty
   command). `env` is additive over the parent env, same rule as service `env`.
+
+## Actions
+
+Actions define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `local-compose run <action>` or the Web UI.
+
+```yaml
+actions:
+  # Short form (string command)
+  migrate: npx prisma db push
+
+  # Long form (object specification)
+  seed:
+    command: node scripts/seed.js
+    working_dir: ./backend
+    env:
+      NODE_ENV: development
+    shell: bash
+    depends_on:
+      db: { condition: service_healthy }
+```
+
+| Field | Required | Default | Notes |
+| --- | :-: | --- | --- |
+| `command` | yes | — | Command to run. Can be extended via CLI args (`local-compose run <action> -- <args>`). |
+| `working_dir` | no | config dir | Relative path resolved against config file directory. |
+| `env` | no | — | Map of environment variables for the action process. |
+| `shell` | no | `sh` | Shell used to run command. |
+| `depends_on` | no | — | Dependent services auto-started and waited for before running the action. |
 
 ## Intentionally absent
 

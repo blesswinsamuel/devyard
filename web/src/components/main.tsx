@@ -3,6 +3,7 @@ import { Play, Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
 import {
   projects,
   services,
+  actions,
   selectedProject,
   selectedService,
   startProject,
@@ -10,6 +11,7 @@ import {
   restartService,
   stopService,
   killService,
+  runAction,
   theme,
   panelOpen,
   togglePanel,
@@ -325,18 +327,49 @@ function ProjectHeader() {
 }
 
 function EmptyState() {
+  const project = () => selectedProject();
+  const actionList = createMemo(() => (project() ? actions()[project()!] ?? [] : []));
+
   return (
-    <div class="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+    <div class="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground p-6">
       <SquareTerminal class="size-10" stroke-width={1} />
       <Show
-        when={selectedProject()}
+        when={project()}
         fallback={<p class="text-sm">Select a project from the sidebar.</p>}
       >
-        <p class="max-w-sm text-center text-sm leading-relaxed">
-          Select a service under{" "}
-          <span class="text-foreground">{selectedProject()}</span> to view its
-          logs.
-        </p>
+        <div class="max-w-md w-full text-center">
+          <p class="text-sm leading-relaxed mb-2">
+            Select a service under <span class="font-semibold text-foreground">{project()}</span> to view its logs.
+          </p>
+          <Show when={actionList().length > 0}>
+            <div class="mt-4 border border-border rounded-lg p-4 bg-card text-card-foreground text-left shadow-sm">
+              <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Project Actions
+              </div>
+              <div class="grid gap-2">
+                <For each={actionList()}>
+                  {(act) => (
+                    <div class="flex items-center justify-between p-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
+                      <div class="min-w-0 pr-2">
+                        <div class="font-medium text-sm text-foreground truncate">{act.name}</div>
+                        <div class="text-xs text-muted-foreground font-mono mt-0.5 truncate">{act.command}</div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => runAction(project()!, act.name)}
+                        class="gap-1.5 shrink-0"
+                      >
+                        <Play class="size-3.5 text-primary" />
+                        Run
+                      </Button>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+        </div>
       </Show>
     </div>
   );

@@ -19,6 +19,15 @@ const logHandlers = new Map<
     onRotate?: () => void;
   }
 >();
+const actionLogHandlers = new Map<
+  string,
+  {
+    project: string;
+    action: string;
+    onLine: (line: string) => void;
+    onRotate?: () => void;
+  }
+>();
 /** Outbound messages buffered while the socket is connecting or reconnecting. */
 let pending: WSRequest[] = [];
 /** True after the first successful open; used to distinguish reconnects. */
@@ -81,6 +90,16 @@ export function connectWS() {
         })
       );
     }
+    for (const entry of actionLogHandlers.values()) {
+      entry.onRotate?.();
+      socket.send(
+        JSON.stringify({
+          type: "subscribe_action_logs",
+          project: entry.project,
+          action: entry.action,
+        })
+      );
+    }
     // Reconnect only — first open is covered by the caller's initial fetch
     // (already flushed from `pending` above).
     if (hasOpened) {
@@ -109,13 +128,19 @@ export function connectWS() {
       return;
     }
     if (resp.type === "log_line") {
-      const key = logKey(resp.project!, resp.service!);
-      logHandlers.get(key)?.onLine(resp.line!);
+      if (resp.action) {
+        actionLogHandlers.get(logKey(resp.project!, resp.action))?.onLine(resp.line!);
+      } else {
+        logHandlers.get(logKey(resp.project!, resp.service!))?.onLine(resp.line!);
+      }
     } else if (resp.type === "log_rotated") {
       // A new run started; the previous run's lines are over. Let the
       // subscriber reset its view so only the fresh run is shown.
-      const key = logKey(resp.project!, resp.service!);
-      logHandlers.get(key)?.onRotate?.();
+      if (resp.action) {
+        actionLogHandlers.get(logKey(resp.project!, resp.action))?.onRotate?.();
+      } else {
+        logHandlers.get(logKey(resp.project!, resp.service!))?.onRotate?.();
+      }
     } else if (resp.type === "terminal_output") {
       terminalHandlers.get(resp.id!)?.onOutput(resp.output!);
     } else if (resp.type === "terminal_exit") {
@@ -161,6 +186,25 @@ export function subscribeLogs(
     if (current?.onLine === onLine) {
       logHandlers.delete(key);
       sendWS({ type: "unsubscribe_logs", project, service });
+    }
+  };
+}
+
+export function subscribeActionLogs(
+  project: string,
+  action: string,
+  onLine: (line: string) => void,
+  onRotate?: () => void
+) {
+  const key = logKey(project, action);
+  actionLogHandlers.set(key, { project, action, onLine, onRotate });
+  sendWS({ type: "subscribe_action_logs", project, action });
+  return () => {
+    const current = actionLogHandlers.get(key);
+    // Only tear down if we still own the slot (a newer subscribe may have replaced us).
+    if (current?.onLine === onLine) {
+      actionLogHandlers.delete(key);
+      sendWS({ type: "unsubscribe_action_logs", project, action });
     }
   };
 }

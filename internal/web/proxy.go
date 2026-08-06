@@ -53,6 +53,10 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxySubscribeLogs(c, ctx, req, subs)
 	case "unsubscribe_logs":
 		s.handleUnsubscribeLogs(req, subs)
+	case "subscribe_action_logs":
+		s.proxySubscribeActionLogs(c, ctx, req, subs)
+	case "unsubscribe_action_logs":
+		s.handleUnsubscribeActionLogs(req, subs)
 	case "spawn_terminal":
 		s.handleSpawnTerminal(c, ctx, req, ptys)
 	case "terminal_input":
@@ -277,6 +281,87 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 	}()
 }
 
+func (s *Server) proxySubscribeActionLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
+	key := actionSubKey(req.Project, req.Action)
+	subs.cancel(key)
+
+	subCtx, cancel := context.WithCancel(ctx)
+	subs.add(key, cancel)
+
+	go func() {
+		conn, err := net.Dial("unix", s.socketPath)
+		if err != nil {
+			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		// Unblock ReadFrame when the subscription is cancelled.
+		go func() {
+			<-subCtx.Done()
+			_ = conn.Close()
+		}()
+
+		if err := protocol.WriteFrame(conn, protocol.Request{
+			Kind:    protocol.KindLogs,
+			Project: req.Project,
+			Action:  req.Action,
+			Follow:  true,
+			Tail:    protocol.DefaultLogTail,
+		}); err != nil {
+			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
+			return
+		}
+
+		for {
+			select {
+			case <-subCtx.Done():
+				return
+			default:
+			}
+
+			var resp protocol.Response
+			if err := protocol.ReadFrame(conn, &resp); err != nil {
+				return
+			}
+			switch resp.Kind {
+			case protocol.KindLogLine:
+				s.send(c, subCtx, wsResponse{
+					Type:    "log_line",
+					Project: resp.Project,
+					Action:  resp.Service, // the daemon labels action frames with the target name
+					Line:    resp.Line,
+				})
+			case protocol.KindLogContent:
+				for _, line := range strings.Split(strings.TrimRight(resp.Content, "\n"), "\n") {
+					select {
+					case <-subCtx.Done():
+						return
+					default:
+					}
+					s.send(c, subCtx, wsResponse{
+						Type:    "log_line",
+						Project: resp.Project,
+						Action:  resp.Service,
+						Line:    line,
+					})
+				}
+			case protocol.KindLogRotated:
+				s.send(c, subCtx, wsResponse{
+					Type:    "log_rotated",
+					Project: resp.Project,
+					Action:  resp.Service,
+				})
+			case protocol.KindDone:
+				return
+			case protocol.KindError:
+				s.sendError(c, subCtx, resp.Error)
+				return
+			}
+		}
+	}()
+}
+
 func (s *Server) proxyListActions(c *websocket.Conn, ctx context.Context, req *wsRequest) {
 	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindListActions, Project: req.Project})
 	if err != nil {
@@ -292,55 +377,55 @@ func (s *Server) proxyListActions(c *websocket.Conn, ctx context.Context, req *w
 }
 
 func (s *Server) proxyRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	conn, err := net.Dial("unix", s.socketPath)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	defer func() { _ = conn.Close() }()
-
-	if err := protocol.WriteFrame(conn, protocol.Request{
-		Kind:    protocol.KindRunAction,
-		Project: req.Project,
-		Action:  req.Action,
-		Args:    req.Args,
-	}); err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-
-	for {
-		var resp protocol.Response
-		if err := protocol.ReadFrame(conn, &resp); err != nil {
+	go func() {
+		conn, err := net.Dial("unix", s.socketPath)
+		if err != nil {
 			s.sendError(c, ctx, err.Error())
 			return
 		}
-		switch resp.Kind {
-		case protocol.KindLogLine:
-			s.send(c, ctx, wsResponse{
-				Type:    "log_line",
-				Project: req.Project,
-				Service: req.Action,
-				Line:    resp.Line,
-			})
-		case protocol.KindDone:
-			s.send(c, ctx, wsResponse{
-				Type:     "action_done",
-				Project:  req.Project,
-				Action:   req.Action,
-				Ok:       true,
-				ExitCode: resp.ActionExitCode,
-			})
-			return
-		case protocol.KindError:
-			s.send(c, ctx, wsResponse{
-				Type:    "action_done",
-				Project: req.Project,
-				Action:  req.Action,
-				Ok:      false,
-				Error:   resp.Error,
-			})
+		defer func() { _ = conn.Close() }()
+
+		if err := protocol.WriteFrame(conn, protocol.Request{
+			Kind:    protocol.KindRunAction,
+			Project: req.Project,
+			Action:  req.Action,
+			Args:    req.Args,
+		}); err != nil {
+			s.sendError(c, ctx, err.Error())
 			return
 		}
-	}
+
+		// The daemon streams the action's output as KindLogLine frames on this
+		// connection. The browser follows the same output through its
+		// subscribe_action_logs stream (which tails the action's log file), so
+		// those frames are drained and dropped to avoid duplicate lines.
+		for {
+			var resp protocol.Response
+			if err := protocol.ReadFrame(conn, &resp); err != nil {
+				return
+			}
+			switch resp.Kind {
+			case protocol.KindLogLine:
+				continue
+			case protocol.KindDone:
+				s.send(c, ctx, wsResponse{
+					Type:     "action_done",
+					Project:  req.Project,
+					Action:   req.Action,
+					Ok:       true,
+					ExitCode: resp.ActionExitCode,
+				})
+				return
+			case protocol.KindError:
+				s.send(c, ctx, wsResponse{
+					Type:    "action_done",
+					Project: req.Project,
+					Action:  req.Action,
+					Ok:      false,
+					Error:   resp.Error,
+				})
+				return
+			}
+		}
+	}()
 }

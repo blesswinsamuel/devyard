@@ -9,6 +9,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -216,6 +217,10 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleSubscribeLogs(c, ctx, req, subs)
 	case "unsubscribe_logs":
 		s.handleUnsubscribeLogs(req, subs)
+	case "subscribe_action_logs":
+		s.handleSubscribeActionLogs(c, ctx, req, subs)
+	case "unsubscribe_action_logs":
+		s.handleUnsubscribeActionLogs(req, subs)
 	case "spawn_terminal":
 		s.handleSpawnTerminal(c, ctx, req, ptys)
 	case "terminal_input":
@@ -391,43 +396,23 @@ func (s *Server) handleListActions(c *websocket.Conn, ctx context.Context, req *
 	s.send(c, ctx, wsResponse{Type: "actions", Project: req.Project, Data: data})
 }
 
-type wsActionWriter struct {
-	c       *websocket.Conn
-	ctx     context.Context
-	s       *Server
-	project string
-	action  string
-}
-
-func (w *wsActionWriter) Write(p []byte) (int, error) {
-	lines := strings.Split(string(p), "\n")
-	for i, line := range lines {
-		if i == len(lines)-1 && line == "" {
-			continue
-		}
-		w.s.send(w.c, w.ctx, wsResponse{
-			Type:    "log_line",
-			Project: w.project,
-			Service: w.action,
-			Line:    line,
-		})
-	}
-	return len(p), nil
-}
-
 func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	writer := &wsActionWriter{c: c, ctx: ctx, s: s, project: req.Project, action: req.Action}
-	code, err := b.RunAction(ctx, req.Action, req.Args, writer)
-	if err != nil {
-		s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: true, ExitCode: &code})
+	go func() {
+		b, err := s.backend.ProjectBackend(req.Project)
+		if err != nil {
+			s.sendError(c, ctx, err.Error())
+			return
+		}
+		// Output is captured to the action's log file by the supervisor; the
+		// browser follows it through the subscribe_action_logs stream (also
+		// initiated by the UI), so nothing is streamed over this message.
+		code, err := b.RunAction(ctx, req.Action, req.Args, io.Discard)
+		if err != nil {
+			s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: false, Error: err.Error()})
+			return
+		}
+		s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: true, ExitCode: &code})
+	}()
 }
 
 func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
@@ -450,13 +435,56 @@ func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		streamLogFile(c, subCtx, path, req.Project, req.Service)
+		streamLogFile(c, subCtx, path, req.Project, req.Service, "")
 	}()
 }
 
 func (s *Server) handleUnsubscribeLogs(req *wsRequest, subs *subTracker) {
 	key := req.Project + "/" + req.Service
 	subs.cancel(key)
+}
+
+// actionSubKey is the subscription-tracker key for an action log stream. It is
+// namespaced separately from service log streams so a service and an action
+// sharing a name don't cancel each other's subscriptions.
+func actionSubKey(project, action string) string {
+	return "a:" + project + "/" + action
+}
+
+// handleSubscribeActionLogs follows an action's log file, waiting for it to
+// appear on the first run. It mirrors handleSubscribeLogs but targets the
+// action's log and tags each streamed line with the action name so the browser
+// routes it to the action pane rather than a service pane.
+func (s *Server) handleSubscribeActionLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
+	key := actionSubKey(req.Project, req.Action)
+
+	subs.cancel(key)
+
+	subCtx, cancel := context.WithCancel(ctx)
+	subs.add(key, cancel)
+
+	go func() {
+		b, err := s.backend.ProjectBackend(req.Project)
+		if err != nil {
+			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
+			return
+		}
+		path, err := control.WaitForActionLog(subCtx, b, req.Action)
+		if err != nil {
+			// The subscription was replaced or the connection closed; there is
+			// nothing to report.
+			if subCtx.Err() != nil {
+				return
+			}
+			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
+			return
+		}
+		streamLogFile(c, subCtx, path, req.Project, "", req.Action)
+	}()
+}
+
+func (s *Server) handleUnsubscribeActionLogs(req *wsRequest, subs *subTracker) {
+	subs.cancel(actionSubKey(req.Project, req.Action))
 }
 
 func (s *Server) send(c *websocket.Conn, ctx context.Context, resp wsResponse) {
@@ -474,14 +502,18 @@ const writeTimeout = 5 * time.Second
 
 // streamLogFile reads existing log content (last DefaultLogTail lines) and
 // tails for new lines, sending log_line WS messages for each line. It returns
-// when the context is cancelled (unsubscribe or disconnect).
-func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, service string) {
+// when the context is cancelled (unsubscribe or disconnect). Exactly one of
+// service and action is non-empty: service logs are tagged with the service
+// name, action logs with the action name, so the browser can route each stream
+// to the right pane.
+func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, service, action string) {
 	f, err := os.Open(path)
 	if err != nil {
 		resp, _ := json.Marshal(wsResponse{
 			Type:    "error",
 			Project: project,
 			Service: service,
+			Action:  action,
 			Error:   err.Error(),
 		})
 		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
@@ -499,6 +531,7 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 			Type:    "log_line",
 			Project: project,
 			Service: service,
+			Action:  action,
 			Line:    line,
 		})
 		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
@@ -515,6 +548,7 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 			Type:    "log_rotated",
 			Project: project,
 			Service: service,
+			Action:  action,
 		})
 		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
 		defer cancel()

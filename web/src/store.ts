@@ -394,6 +394,7 @@ export function refreshActions(project: string) {
 }
 
 export function runAction(project: string, actionName: string, args?: string[]) {
+  selectAction(project, actionName, { skipPush: true });
   sendWS({ type: "run_action", project, action: actionName, args });
   pushToast(`Started action '${actionName}'`, "info");
 }

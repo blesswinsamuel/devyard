@@ -116,13 +116,15 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 
 // fakeBackend is a minimal control.Backend for WS testing.
 type fakeBackend struct {
-	states      []protocol.ServiceState
-	logPaths    map[string]string
-	restarts    []string
-	stopped     []string
-	started     []string
-	killed      []string
-	stoppedProj bool
+	states         []protocol.ServiceState
+	logPaths       map[string]string
+	actions        []protocol.ActionInfo
+	actionLogPaths map[string]string
+	restarts       []string
+	stopped        []string
+	started        []string
+	killed         []string
+	stoppedProj    bool
 }
 
 func (b *fakeBackend) States() []protocol.ServiceState { return b.states }
@@ -161,7 +163,7 @@ func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
 }
 
 func (b *fakeBackend) ListActions() []protocol.ActionInfo {
-	return nil
+	return b.actions
 }
 
 func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
@@ -169,10 +171,14 @@ func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string,
 }
 
 func (b *fakeBackend) ActionLogPath(name string) (string, error) {
-	if p, ok := b.logPaths[name]; ok {
-		return p, nil
+	p, ok := b.actionLogPaths[name]
+	if !ok {
+		return "", fmt.Errorf("unknown action %q", name)
 	}
-	return "", fmt.Errorf("unknown action %q", name)
+	if _, err := os.Stat(p); err != nil {
+		return "", fmt.Errorf("action %q has no log file yet", name)
+	}
+	return p, nil
 }
 
 func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
@@ -483,6 +489,57 @@ func TestWSLogRotationEmitsMarker(t *testing.T) {
 	}
 	if resp["type"] != "log_line" || resp["line"] != "second" {
 		t.Fatalf("second line = %+v, want log_line second", resp)
+	}
+}
+
+func TestWSSubscribeActionLogs(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "migrate.log")
+	b := &fakeBackend{
+		actions:        []protocol.ActionInfo{{Name: "migrate"}},
+		actionLogPaths: map[string]string{"migrate": logPath},
+	}
+	m := newFakeMulti()
+	m.projects["api"] = b
+	srv := newWebServer(t, m)
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]string{"type": "subscribe_action_logs", "project": "api", "action": "migrate"})
+
+	// The action has never run, so no log file exists yet. Simulate a first
+	// run by creating it while the subscription waits; the stream must pick up
+	// the lines tagged with the action name.
+	time.Sleep(300 * time.Millisecond)
+	if err := os.WriteFile(logPath, []byte("action line 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := recvWSMsg(t, c)
+	if resp["type"] != "log_line" || resp["action"] != "migrate" || resp["line"] != "action line 1" {
+		t.Fatalf("first line = %+v, want log_line for action migrate", resp)
+	}
+
+	// Append more content; the follow loop should pick it up.
+	if err := appendToLog(logPath, "action line 2\n"); err != nil {
+		t.Fatal(err)
+	}
+	resp, ok := recvWSMsgTimeout(t, c, 2*time.Second)
+	if !ok {
+		t.Fatalf("did not receive action line 2")
+	}
+	if resp["type"] != "log_line" || resp["action"] != "migrate" || resp["line"] != "action line 2" {
+		t.Fatalf("second line = %+v, want log_line for action migrate", resp)
+	}
+
+	// Unsubscribe.
+	sendWSMsg(t, c, map[string]string{"type": "unsubscribe_action_logs", "project": "api", "action": "migrate"})
+	time.Sleep(200 * time.Millisecond)
+
+	// Append more content; should NOT receive it after unsubscribe.
+	_ = appendToLog(logPath, "action line 3\n")
+	_, ok = recvWSMsgTimeout(t, c, 500*time.Millisecond)
+	if ok {
+		t.Fatalf("received message after unsubscribe")
 	}
 }
 

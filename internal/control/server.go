@@ -150,6 +150,36 @@ func (s *Server) acceptLoop(ln net.Listener) {
 	}
 }
 
+// WaitForActionLog resolves an action's log path, waiting for the log file to
+// exist. An action only creates its log file on the first run, so following an
+// action that has not run yet must wait for the file rather than erroring. The
+// action must be defined in the current config; unknown actions fail
+// immediately instead of polling forever. Cancelling ctx aborts the wait.
+func WaitForActionLog(ctx context.Context, b Backend, action string) (string, error) {
+	known := false
+	for _, a := range b.ListActions() {
+		if a.Name == action {
+			known = true
+			break
+		}
+	}
+	if !known {
+		return "", fmt.Errorf("action %q not found", action)
+	}
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if path, err := b.ActionLogPath(action); err == nil {
+			return path, nil
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 // serveConn handles one request on one connection, then closes it. Streaming
 // requests (Logs follow) block here until the stream ends, the client
 // disconnects (write error), or the server is closed (stopCh).
@@ -189,7 +219,7 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 	case protocol.KindTop:
 		s.handleTop(w, req)
 	case protocol.KindLogs:
-		s.handleLogs(w, req)
+		s.handleLogs(ctx, w, req)
 	case protocol.KindListProjects:
 		s.handleListProjects(w)
 	case protocol.KindStartProject:
@@ -333,7 +363,7 @@ func (s *Server) handleTop(w io.Writer, req protocol.Request) {
 	}
 }
 
-func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
+func (s *Server) handleLogs(ctx context.Context, w io.Writer, req protocol.Request) {
 	target := req.Service
 	if target == "" {
 		target = req.Action
@@ -347,19 +377,33 @@ func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
 		_ = writeError(w, err.Error())
 		return
 	}
+
+	// Following an action that has never run must wait for its log file to be
+	// created by the first run instead of erroring. Cancel the wait when the
+	// daemon shuts down so it doesn't hold the connection open forever.
+	waitCtx, cancel := context.WithCancel(ctx)
+	stop := s.stopCh
+	go func() {
+		select {
+		case <-stop:
+			cancel()
+		case <-waitCtx.Done():
+		}
+	}()
+	defer cancel()
+
 	var path string
-	if req.Action != "" {
-		if req.Previous {
-			path, err = b.ActionPreviousLogPath(req.Action)
-		} else {
-			path, err = b.ActionLogPath(req.Action)
-		}
-	} else {
-		if req.Previous {
-			path, err = b.PreviousLogPath(req.Service)
-		} else {
-			path, err = b.LogPath(req.Service)
-		}
+	switch {
+	case req.Action != "" && req.Previous:
+		path, err = b.ActionPreviousLogPath(req.Action)
+	case req.Action != "" && req.Follow:
+		path, err = WaitForActionLog(waitCtx, b, req.Action)
+	case req.Action != "":
+		path, err = b.ActionLogPath(req.Action)
+	case req.Previous:
+		path, err = b.PreviousLogPath(req.Service)
+	default:
+		path, err = b.LogPath(req.Service)
 	}
 	if err != nil {
 		_ = writeError(w, err.Error())

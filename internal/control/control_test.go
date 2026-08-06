@@ -637,6 +637,71 @@ func TestLogsUnknownService(t *testing.T) {
 	}
 }
 
+// TestRoundtripActionLogsFollowWaitsForFirstRun verifies that following an
+// action's logs waits for the log file to be created by the first run instead
+// of erroring when the action has never run.
+func TestRoundtripActionLogsFollowWaitsForFirstRun(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "migrate.log")
+	b := &fakeBackend{
+		actions:  []protocol.ActionInfo{{Name: "migrate"}},
+		logPaths: map[string]string{},
+	}
+	srv := newServer(t, b)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	lines := make(chan string, 16)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.ActionLogs("", "migrate", true, false, 0, func(l string) { lines <- l })
+	}()
+
+	// Simulate a first run: the action has never produced a log file, so the
+	// follow stream must wait for it rather than erroring. Create the file and
+	// register it only after the subscription is in flight.
+	time.Sleep(300 * time.Millisecond)
+	if err := os.WriteFile(logPath, []byte("hello from migrate\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b.mu.Lock()
+	b.logPaths["migrate"] = logPath
+	b.mu.Unlock()
+
+	if got := recvLine(t, lines, 2*time.Second); got != "hello from migrate" {
+		t.Fatalf("line = %q, want %q", got, "hello from migrate")
+	}
+
+	// Closing the server ends the follow stream with Done.
+	_ = srv.Close()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("ActionLogs returned error after server close: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Errorf("ActionLogs did not return after server close")
+	}
+}
+
+func TestActionLogsUnknownAction(t *testing.T) {
+	b := &fakeBackend{actions: []protocol.ActionInfo{{Name: "migrate"}}}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	// An action that isn't defined must fail immediately instead of waiting.
+	if err := c.ActionLogs("", "nope", true, false, 0, nil); err == nil {
+		t.Errorf("ActionLogs for unknown action: expected error, got nil")
+	}
+}
+
 // TestRoundtripLogsFollowRotation verifies that a follow stream reopens the
 // log file when the supervisor rotates it (renames <name>.log to
 // <name>.prev.log and starts a fresh file), so it keeps following the live run

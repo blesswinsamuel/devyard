@@ -18,7 +18,7 @@ import {
   panelOpen,
   togglePanel,
 } from "~/store";
-import { subscribeLogs } from "~/ws";
+import { subscribeLogs, subscribeActionLogs } from "~/ws";
 import { statusLabel, statusTone, healthTone, serviceMeta } from "~/lib/status";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -31,10 +31,18 @@ import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { formatLogLine } from "~/lib/ansi";
 import { BottomPanel } from "~/components/bottom_panel";
 
-function ServiceTerminal(props: {
+type LogSubscribe = (
+  project: string,
+  target: string,
+  onLine: (line: string) => void,
+  onRotate?: () => void
+) => () => void;
+
+function LogTerminal(props: {
   project: string;
-  service: string;
+  target: string;
   active: boolean;
+  subscribe: LogSubscribe;
 }) {
   let container!: HTMLDivElement;
   let term: AppTerminal | null = null;
@@ -74,9 +82,9 @@ function ServiceTerminal(props: {
 
     resetView();
 
-    const unsubLogs = subscribeLogs(
+    const unsubLogs = props.subscribe(
       props.project,
-      props.service,
+      props.target,
       (line) => {
         buffer.push("\x1b[0m" + formatLogLine(line));
         scheduleFlush();
@@ -115,6 +123,36 @@ function ServiceTerminal(props: {
   );
 }
 
+function ServiceTerminal(props: {
+  project: string;
+  service: string;
+  active: boolean;
+}) {
+  return (
+    <LogTerminal
+      project={props.project}
+      target={props.service}
+      active={props.active}
+      subscribe={subscribeLogs}
+    />
+  );
+}
+
+function ActionTerminal(props: {
+  project: string;
+  action: string;
+  active: boolean;
+}) {
+  return (
+    <LogTerminal
+      project={props.project}
+      target={props.action}
+      active={props.active}
+      subscribe={subscribeActionLogs}
+    />
+  );
+}
+
 function LogViewer() {
   const [activeServices, setActiveServices] = createSignal<
     { project: string; service: string; key: string }[]
@@ -147,6 +185,46 @@ function LogViewer() {
           <ServiceTerminal
             project={item.project}
             service={item.service}
+            active={activeKey() === item.key}
+          />
+        )}
+      </For>
+    </div>
+  );
+}
+
+function ActionLogViewer() {
+  const [activeActions, setActiveActions] = createSignal<
+    { project: string; action: string; key: string }[]
+  >([]);
+
+  const activeKey = () => {
+    const p = selectedProject();
+    const a = selectedAction();
+    return p && a ? `${p}/${a}` : null;
+  };
+
+  createEffect(() => {
+    const p = selectedProject();
+    const a = selectedAction();
+    if (!p || !a) return;
+    const key = `${p}/${a}`;
+    setActiveActions((prev) => {
+      const filtered = prev.filter((item) => item.project === p);
+      if (!filtered.some((item) => item.key === key)) {
+        return [...filtered, { project: p, action: a, key }];
+      }
+      return filtered;
+    });
+  });
+
+  return (
+    <div class="relative h-full w-full">
+      <For each={activeActions()}>
+        {(item) => (
+          <ActionTerminal
+            project={item.project}
+            action={item.action}
             active={activeKey() === item.key}
           />
         )}
@@ -382,7 +460,6 @@ function ActionHeader() {
 
 function EmptyState() {
   const project = () => selectedProject();
-  const actName = () => selectedAction();
   const actionList = createMemo(() => (project() ? actions()[project()!] ?? [] : []));
 
   return (
@@ -392,73 +469,39 @@ function EmptyState() {
         when={project()}
         fallback={<p class="text-sm">Select a project from the sidebar.</p>}
       >
-        <Show
-          when={actName()}
-          fallback={
-            <div class="max-w-md w-full text-center">
-              <p class="text-sm leading-relaxed mb-2">
-                Select a service under <span class="font-semibold text-foreground">{project()}</span> to view its logs.
-              </p>
-              <Show when={actionList().length > 0}>
-                <div class="mt-4 border border-border rounded-lg p-4 bg-card text-card-foreground text-left shadow-sm">
-                  <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                    Project Actions
-                  </div>
-                  <div class="grid gap-2">
-                    <For each={actionList()}>
-                      {(act) => (
-                        <div class="flex items-center justify-between p-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
-                          <div class="min-w-0 pr-2">
-                            <div class="font-medium text-sm text-foreground truncate">{act.name}</div>
-                            <div class="text-xs text-muted-foreground font-mono mt-0.5 truncate">{act.command}</div>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => runAction(project()!, act.name)}
-                            class="gap-1.5 shrink-0"
-                          >
-                            <Play class="size-3.5 text-primary" />
-                            Run
-                          </Button>
-                        </div>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              </Show>
-            </div>
-          }
-        >
-          {(aName) => {
-            const act = createMemo(() =>
-              (actions()[project()!] ?? []).find((a) => a.name === aName())
-            );
-            return (
-              <div class="max-w-md w-full text-center">
-                <div class="border border-border rounded-lg p-5 bg-card text-card-foreground shadow-sm">
-                  <div class="text-xs uppercase tracking-wider text-muted-foreground mb-1 font-medium">Project Action</div>
-                  <div class="text-lg font-semibold text-foreground mb-2">{aName()}</div>
-                  <Show when={act()}>
-                    {(a) => (
-                      <div class="text-xs font-mono text-muted-foreground bg-muted p-2 rounded mb-4 overflow-x-auto">
-                        {a().command}
-                      </div>
-                    )}
-                  </Show>
-                  <Button
-                    size="sm"
-                    onClick={() => runAction(project()!, aName())}
-                    class="gap-1.5"
-                  >
-                    <Play class="size-3.5" />
-                    Run Action
-                  </Button>
-                </div>
+        <div class="max-w-md w-full text-center">
+          <p class="text-sm leading-relaxed mb-2">
+            Select a service under <span class="font-semibold text-foreground">{project()}</span> to view its logs.
+          </p>
+          <Show when={actionList().length > 0}>
+            <div class="mt-4 border border-border rounded-lg p-4 bg-card text-card-foreground text-left shadow-sm">
+              <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Project Actions
               </div>
-            );
-          }}
-        </Show>
+              <div class="grid gap-2">
+                <For each={actionList()}>
+                  {(act) => (
+                    <div class="flex items-center justify-between p-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
+                      <div class="min-w-0 pr-2">
+                        <div class="font-medium text-sm text-foreground truncate">{act.name}</div>
+                        <div class="text-xs text-muted-foreground font-mono mt-0.5 truncate">{act.command}</div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => runAction(project()!, act.name)}
+                        class="gap-1.5 shrink-0"
+                      >
+                        <Play class="size-3.5 text-primary" />
+                        Run
+                      </Button>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+        </div>
       </Show>
     </div>
   );
@@ -487,11 +530,17 @@ export function Main() {
 
       {/* Main Upper Area: Logs are ALWAYS visible when a service or project is selected */}
       <div class="relative min-h-0 flex-1 overflow-hidden">
-        <Show when={selectedService()} fallback={<EmptyState />}>
+        <Show
+          when={selectedService()}
+          fallback={
+            <Show when={selectedAction()} fallback={<EmptyState />}>
+              <ActionLogViewer />
+            </Show>
+          }
+        >
           <LogViewer />
         </Show>
       </div>
-
       {/* Bottom Panel for Shell/Git/Agents */}
       <BottomPanel />
     </main>

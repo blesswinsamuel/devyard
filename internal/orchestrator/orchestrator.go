@@ -72,7 +72,8 @@ type Daemon struct {
 	stopOnce sync.Once
 	exited   chan struct{}
 
-	onStateChange func(project string, state protocol.ServiceState)
+	onStateChange       func(project string, state protocol.ServiceState)
+	onActionStateChange func(project string, state protocol.ActionState)
 }
 
 // New creates a Daemon with no projects. Call StartProject to add projects.
@@ -94,6 +95,14 @@ func (d *Daemon) StopCh() <-chan struct{} { return d.stopCh }
 func (d *Daemon) SetOnStateChange(fn func(project string, state protocol.ServiceState)) {
 	d.mu.Lock()
 	d.onStateChange = fn
+	d.mu.Unlock()
+}
+
+// SetOnActionStateChange registers a callback that fires whenever any action's
+// runtime state changes (started, completed). Same semantics as SetOnStateChange.
+func (d *Daemon) SetOnActionStateChange(fn func(project string, state protocol.ActionState)) {
+	d.mu.Lock()
+	d.onActionStateChange = fn
 	d.mu.Unlock()
 }
 
@@ -277,6 +286,14 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		OnStateChange: func(svc string, state protocol.ServiceState) {
 			d.mu.Lock()
 			fn := d.onStateChange
+			d.mu.Unlock()
+			if fn != nil {
+				fn(name, state)
+			}
+		},
+		OnActionStateChange: func(action string, state protocol.ActionState) {
+			d.mu.Lock()
+			fn := d.onActionStateChange
 			d.mu.Unlock()
 			if fn != nil {
 				fn(name, state)
@@ -595,6 +612,21 @@ func (b stoppedBackend) States() []protocol.ServiceState {
 			st.HasHealth = svc.Healthcheck != nil
 		}
 		out = append(out, st)
+	}
+	return out
+}
+
+func (b stoppedBackend) ActionStates() []protocol.ActionState {
+	if b.file == nil {
+		return nil
+	}
+	out := make([]protocol.ActionState, 0, len(b.file.Actions))
+	for name, act := range b.file.Actions {
+		out = append(out, protocol.ActionState{
+			Name:    name,
+			Command: act.Spec.Command,
+			Status:  "idle",
+		})
 	}
 	return out
 }

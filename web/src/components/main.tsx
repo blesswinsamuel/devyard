@@ -4,6 +4,7 @@ import {
   projects,
   services,
   actions,
+  actionStates,
   selectedProject,
   selectedService,
   selectedAction,
@@ -426,6 +427,13 @@ function ActionHeader() {
   const act = createMemo(() =>
     (actions()[project()] ?? []).find((a) => a.name === actionName())
   );
+  const state = createMemo(() =>
+    (actionStates()[project()] ?? []).find((a) => a.name === actionName())
+  );
+
+  const status = () => state()?.status ?? "idle";
+  const pid = () => state()?.pid ?? 0;
+  const exitCode = () => state()?.exit_code ?? 0;
 
   return (
     <>
@@ -435,12 +443,22 @@ function ActionHeader() {
         <span class="truncate text-xs text-muted-foreground">actions</span>
         <span class="text-muted-foreground">/</span>
         <span class="truncate font-semibold">{actionName()}</span>
+        <Show when={status() !== "idle"}>
+          <Badge variant={statusTone(status())}>
+            {statusLabel(status(), exitCode())}
+          </Badge>
+        </Show>
         <Show when={act()}>
           {(a) => (
             <span class="hidden truncate text-xs text-muted-foreground font-mono md:inline">
               {a().command}
             </span>
           )}
+        </Show>
+        <Show when={pid() > 0}>
+          <span class="text-xs text-muted-foreground font-mono">
+            pid {pid()}
+          </span>
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">

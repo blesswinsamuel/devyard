@@ -114,7 +114,8 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 	return b, nil
 }
 
-func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}
+func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
+func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
 
 // fakeBackend is a minimal control.Backend for WS testing.
 type fakeBackend struct {
@@ -129,8 +130,9 @@ type fakeBackend struct {
 	stoppedProj    bool
 }
 
-func (b *fakeBackend) States() []protocol.ServiceState { return b.states }
-func (b *fakeBackend) Stop(context.Context) error      { b.stoppedProj = true; return nil }
+func (b *fakeBackend) States() []protocol.ServiceState      { return b.states }
+func (b *fakeBackend) ActionStates() []protocol.ActionState { return nil }
+func (b *fakeBackend) Stop(context.Context) error           { b.stoppedProj = true; return nil }
 func (b *fakeBackend) StopService(name string) error {
 	b.stopped = append(b.stopped, name)
 	return nil

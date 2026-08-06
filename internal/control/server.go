@@ -22,6 +22,8 @@ import (
 type Backend interface {
 	// States returns a snapshot of every service, in start order.
 	States() []protocol.ServiceState
+	// ActionStates returns a snapshot of every defined action's runtime state.
+	ActionStates() []protocol.ActionState
 	// Stop gracefully stops every service. Used by `down`.
 	Stop(ctx context.Context) error
 	// StopService stops a single service in place (no restart), used by
@@ -232,6 +234,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleStopDaemon(w)
 	case protocol.KindListActions:
 		s.handleListActions(w, req)
+	case protocol.KindListActionStates:
+		s.handleListActionStates(w, req)
 	case protocol.KindRunAction:
 		s.handleRunAction(ctx, w, req)
 	default:
@@ -683,6 +687,19 @@ func (s *Server) handleListActions(w io.Writer, req protocol.Request) {
 	_ = protocol.WriteFrame(w, protocol.Response{
 		Kind:    protocol.KindActions,
 		Actions: actions,
+	})
+}
+
+func (s *Server) handleListActionStates(w io.Writer, req protocol.Request) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	states := b.ActionStates()
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:         protocol.KindActionStates,
+		ActionStates: states,
 	})
 }
 

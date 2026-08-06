@@ -25,6 +25,16 @@ export interface ActionInfo {
   depends_on?: string[];
 }
 
+export interface ActionState {
+  name: string;
+  command: string;
+  status: string;
+  pid: number;
+  exit_code: number;
+  started_at?: string;
+  finished_at?: string;
+}
+
 export interface WSRequest {
   type: string;
   project?: string;

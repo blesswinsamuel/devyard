@@ -319,6 +319,25 @@ func (c *Client) ListActions(project string) ([]protocol.ActionInfo, error) {
 	return resp.Actions, nil
 }
 
+// ListActionStates sends a ListActionStates request and returns the runtime
+// state of every defined action.
+func (c *Client) ListActionStates(project string) ([]protocol.ActionState, error) {
+	if err := c.Send(protocol.Request{Kind: protocol.KindListActionStates, Project: project}); err != nil {
+		return nil, err
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.Kind == protocol.KindError {
+		return nil, errors.New(resp.Error)
+	}
+	if resp.Kind != protocol.KindActionStates {
+		return nil, fmt.Errorf("control: unexpected response %q, want %q", resp.Kind, protocol.KindActionStates)
+	}
+	return resp.ActionStates, nil
+}
+
 // RunAction sends a RunAction request for project + action, streaming output lines to onLine.
 // Returns the exit code of the action process.
 func (c *Client) RunAction(project, action string, args []string, onLine func(string)) (int, error) {

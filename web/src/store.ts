@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState, ActionInfo, ViewMode, ShellTab, PaneNode } from "./types";
+import type { ProjectInfo, ServiceState, ActionInfo, ActionState, ViewMode, ShellTab, PaneNode } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 import { parseRoute, pushRoute, replaceRoute, listenPopState } from "./router";
 
@@ -24,7 +24,8 @@ export type NavItem =
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
 const [actions, setActions] = createSignal<Record<string, ActionInfo[]>>({});
-export { actions };
+const [actionStates, setActionStates] = createSignal<Record<string, ActionState[]>>({});
+export { actions, actionStates };
 /** Projects the user has collapsed; everything else is expanded by default. */
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
@@ -247,6 +248,15 @@ function prune() {
     }
     return changed ? next : m;
   });
+  setActionStates((m) => {
+    let changed = false;
+    const next: Record<string, ActionState[]> = {};
+    for (const [k, v] of Object.entries(m)) {
+      if (names.has(k)) next[k] = v;
+      else changed = true;
+    }
+    return changed ? next : m;
+  });
   setCollapsed((prev) => {
     let changed = false;
     const next = new Set<string>();
@@ -269,6 +279,7 @@ function refreshServicesForVisible() {
   if (sel) needed.add(sel);
   for (const p of needed) {
     sendWS({ type: "list_services", project: p });
+    sendWS({ type: "list_action_states", project: p });
   }
 }
 
@@ -329,6 +340,7 @@ function start() {
       if (!collapsedSet.has(p.name)) {
         if (!prevNames.has(p.name) || !untrack(services)[p.name]) {
           sendWS({ type: "list_services", project: p.name });
+          sendWS({ type: "list_action_states", project: p.name });
         }
         if (!untrack(actions)[p.name]) {
           sendWS({ type: "list_actions", project: p.name });
@@ -352,6 +364,27 @@ function start() {
     const project = resp.project;
     const next = (resp.data ?? []) as ActionInfo[];
     setActions((m) => ({ ...m, [project]: next }));
+  });
+  onWS("action_states", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    const next = (resp.data ?? []) as ActionState[];
+    setActionStates((m) => {
+      const prev = m[project];
+      if (prev && prev.length === next.length && JSON.stringify(prev) === JSON.stringify(next)) return m;
+      return { ...m, [project]: next };
+    });
+  });
+  onWS("action_state_changed", (resp) => {
+    const next = resp.data as ActionState;
+    const project = resp.project;
+    if (!project) return;
+    setActionStates((m) => {
+      const list = m[project];
+      if (!list) return { ...m, [project]: [next] };
+      const updated = list.map((a) => (a.name === next.name ? next : a));
+      return { ...m, [project]: updated };
+    });
   });
   onWS("state_changed", (resp) => {
     const next = resp.data as ServiceState;
@@ -417,6 +450,10 @@ export function refreshActions(project: string) {
   sendWS({ type: "list_actions", project });
 }
 
+export function refreshActionStates(project: string) {
+  sendWS({ type: "list_action_states", project });
+}
+
 export function runAction(project: string, actionName: string, args?: string[]) {
   selectAction(project, actionName, { skipPush: true });
   sendWS({ type: "run_action", project, action: actionName, args });
@@ -441,6 +478,7 @@ export function setProjectExpanded(name: string, open: boolean) {
   if (open) {
     refreshServices(name);
     refreshActions(name);
+    refreshActionStates(name);
   }
 }
 

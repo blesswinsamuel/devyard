@@ -25,9 +25,24 @@ type ServiceStateSnapshot struct {
 	FinishedAt time.Time `json:"finished_at"`
 }
 
+// ActionStateSnapshot is the JSON-serializable snapshot of an action's
+// most recent run (or in-progress run). Actions are one-shot so only the
+// latest state is persisted — matching how ServiceStateSnapshot records the
+// current spawn.
+type ActionStateSnapshot struct {
+	Name       string    `json:"name"`
+	Command    string    `json:"command,omitempty"`
+	Status     Status    `json:"status"`
+	PID        int       `json:"pid"`
+	ExitCode   int       `json:"exit_code"`
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
+}
+
 // SupervisorStateSnapshot is the JSON-serializable snapshot of all services in a supervisor.
 type SupervisorStateSnapshot struct {
 	Services map[string]ServiceStateSnapshot `json:"services"`
+	Actions  map[string]ActionStateSnapshot  `json:"actions,omitempty"`
 	SavedAt  time.Time                       `json:"saved_at"`
 }
 
@@ -57,8 +72,24 @@ func (s *Supervisor) SaveState() error {
 		rt.mu.Unlock()
 	}
 
+	actions := make(map[string]ActionStateSnapshot, len(s.actionRuntimes))
+	for name, rt := range s.actionRuntimes {
+		rt.mu.Lock()
+		actions[name] = ActionStateSnapshot{
+			Name:       rt.name,
+			Command:    rt.command,
+			Status:     rt.status,
+			PID:        rt.pid,
+			ExitCode:   rt.exitCode,
+			StartedAt:  rt.startedAt,
+			FinishedAt: rt.finishedAt,
+		}
+		rt.mu.Unlock()
+	}
+
 	snap := SupervisorStateSnapshot{
 		Services: services,
+		Actions:  actions,
 		SavedAt:  time.Now(),
 	}
 

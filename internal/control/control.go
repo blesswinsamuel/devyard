@@ -39,6 +39,9 @@ type MultiBackend interface {
 	// per-service state snapshot are passed. Implementations that do not
 	// support push notifications may leave this as a no-op.
 	SetOnStateChange(fn func(project string, state protocol.ServiceState))
+	// SetOnActionStateChange registers a callback that is invoked whenever any
+	// project's action runtime state changes.
+	SetOnActionStateChange(fn func(project string, state protocol.ActionState))
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
@@ -91,3 +94,5 @@ func (s SingleProjectBackend) ProjectBackend(project string) (Backend, error) {
 }
 
 func (s SingleProjectBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}
+
+func (s SingleProjectBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}

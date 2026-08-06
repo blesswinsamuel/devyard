@@ -4,6 +4,7 @@ import {
   projects,
   services,
   actions,
+  actionStates,
   isProjectExpanded,
   selectedProject,
   selectedService,
@@ -180,6 +181,83 @@ function ServiceRow(props: { project: string; name: string }) {
   );
 }
 
+function ActionRow(props: { project: string; name: string }) {
+  const actionState = createMemo(() =>
+    (actionStates()[props.project] ?? []).find((a) => a.name === props.name)
+  );
+  const selected = () =>
+    selectedAction() === props.name && selectedProject() === props.project;
+  const cursor = () =>
+    sameNavItem(keyboardCursor(), {
+      kind: "action",
+      project: props.project,
+      action: props.name,
+    });
+
+  const status = () => actionState()?.status ?? "idle";
+  const pid = () => actionState()?.pid ?? 0;
+  const exitCode = () => actionState()?.exit_code ?? 0;
+
+  return (
+    <div
+      class="group/act relative flex items-stretch"
+      data-nav-key={navItemKey({
+        kind: "action",
+        project: props.project,
+        action: props.name,
+      })}
+      data-kbd-cursor={cursor() ? "" : undefined}
+    >
+      <button
+        type="button"
+        onClick={() => selectAction(props.project, props.name)}
+        class={cn(
+          "flex h-7 min-w-0 flex-1 items-center gap-2 px-3 pl-7 pr-9 text-left text-sm transition-colors",
+          "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          selected() && "bg-muted text-foreground",
+          cursor() && !selected() && "bg-muted/40 ring-1 ring-inset ring-ring/60",
+          cursor() && selected() && "ring-1 ring-inset ring-ring"
+        )}
+      >
+        <span class={cn("inline-block size-1.5 shrink-0", status() === "idle" ? "bg-muted-foreground/60" : statusDot(status()))} />
+        <span class="truncate font-medium">{props.name}</span>
+        <Show when={status() === "exited" && exitCode() !== 0}>
+          <span class="shrink-0 text-xs text-destructive">({exitCode()})</span>
+        </Show>
+        <div class="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <Show when={pid() > 0}>
+            <span class="font-mono text-[11px] opacity-80">{pid()}</span>
+          </Show>
+        </div>
+      </button>
+
+      <div
+        class={cn(
+          "absolute right-1 top-1/2 flex -translate-y-1/2 items-center transition-opacity",
+          selected()
+            ? "opacity-100"
+            : "opacity-0 pointer-events-none group-hover/act:opacity-100 group-hover/act:pointer-events-auto"
+        )}
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class="border border-transparent bg-card/80 hover:border-border"
+          title={`Run action ${props.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            selectAction(props.project, props.name);
+            runAction(props.project, props.name);
+          }}
+        >
+          <Play class="size-3 text-primary" />
+          <span class="sr-only">Run</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ProjectItem(props: { name: string }) {
   const project = createMemo(() => projects().find((p) => p.name === props.name));
   /** undefined = not fetched yet; [] = fetched empty. */
@@ -348,55 +426,9 @@ function ProjectItem(props: { name: string }) {
                 </Show>
               </Show>
               <Show when={actionList().length > 0}>
-                <div class="mt-2 border-t border-border/50 pt-2 px-3">
-                  <div class="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase mb-1">
-                    Actions
-                  </div>
+                <div class="border-t border-border/50 my-1">
                   <For each={actionList()}>
-                    {(act) => {
-                      const selected = () =>
-                        selectedAction() === act.name && selectedProject() === props.name;
-                      const cursor = () =>
-                        sameNavItem(keyboardCursor(), {
-                          kind: "action",
-                          project: props.name,
-                          action: act.name,
-                        });
-
-                      return (
-                        <div
-                          class={cn(
-                            "flex items-center justify-between py-1 px-2 text-xs rounded transition-colors cursor-pointer",
-                            selected()
-                              ? "bg-muted text-foreground"
-                              : "hover:bg-muted/60 text-muted-foreground hover:text-foreground",
-                            cursor() && !selected() && "bg-muted/40 ring-1 ring-inset ring-ring/60",
-                            cursor() && selected() && "ring-1 ring-inset ring-ring"
-                          )}
-                          data-nav-key={navItemKey({
-                            kind: "action",
-                            project: props.name,
-                            action: act.name,
-                          })}
-                          data-kbd-cursor={cursor() ? "" : undefined}
-                          onClick={() => selectAction(props.name, act.name)}
-                        >
-                          <span class="font-medium truncate" title={act.command}>{act.name}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            title={`Run action ${act.name}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              selectAction(props.name, act.name);
-                              runAction(props.name, act.name);
-                            }}
-                          >
-                            <Play class="size-3 text-primary" />
-                          </Button>
-                        </div>
-                      );
-                    }}
+                    {(act) => <ActionRow project={props.name} name={act.name} />}
                   </For>
                 </div>
               </Show>

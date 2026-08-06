@@ -23,21 +23,22 @@ const DefaultLogTail = 5000
 type RequestKind string
 
 const (
-	KindList          RequestKind = "list"           // list services + status + pids
-	KindLogs          RequestKind = "logs"           // stream a service's log file
-	KindStop          RequestKind = "stop"           // stop every service in a project
-	KindStopService   RequestKind = "stop_service"   // stop one service by name
-	KindStartService  RequestKind = "start_service"  // start one service by name (resumes in place or lazy-starts on a stopped project)
-	KindKillService   RequestKind = "kill_service"   // immediately signal one service (Signal; empty = SIGKILL)
-	KindRestart       RequestKind = "restart"        // restart one (Service) or all services
-	KindListProjects  RequestKind = "list_projects"  // list all known projects
-	KindStartProject  RequestKind = "start_project"  // start a project from a config path
-	KindStopProject   RequestKind = "stop_project"   // stop a project's services
-	KindRemoveProject RequestKind = "remove_project" // stop a project and completely remove it from the daemon
-	KindStopDaemon    RequestKind = "stop_daemon"    // stop all projects and shut down the daemon
-	KindTop           RequestKind = "top"            // sample CPU/memory usage of one service (or all)
-	KindRunAction     RequestKind = "run_action"     // run a one-off action
-	KindListActions   RequestKind = "list_actions"   // list defined actions for a project
+	KindList             RequestKind = "list"               // list services + status + pids
+	KindLogs             RequestKind = "logs"               // stream a service's log file
+	KindStop             RequestKind = "stop"               // stop every service in a project
+	KindStopService      RequestKind = "stop_service"       // stop one service by name
+	KindStartService     RequestKind = "start_service"      // start one service by name (resumes in place or lazy-starts on a stopped project)
+	KindKillService      RequestKind = "kill_service"       // immediately signal one service (Signal; empty = SIGKILL)
+	KindRestart          RequestKind = "restart"            // restart one (Service) or all services
+	KindListProjects     RequestKind = "list_projects"      // list all known projects
+	KindStartProject     RequestKind = "start_project"      // start a project from a config path
+	KindStopProject      RequestKind = "stop_project"       // stop a project's services
+	KindRemoveProject    RequestKind = "remove_project"     // stop a project and completely remove it from the daemon
+	KindStopDaemon       RequestKind = "stop_daemon"        // stop all projects and shut down the daemon
+	KindTop              RequestKind = "top"                // sample CPU/memory usage of one service (or all)
+	KindRunAction        RequestKind = "run_action"         // run a one-off action
+	KindListActions      RequestKind = "list_actions"       // list defined actions for a project
+	KindListActionStates RequestKind = "list_action_states" // list action runtime states for a project
 )
 
 // Request is a client -> daemon message.
@@ -62,6 +63,7 @@ const (
 //     over a ~1s interval to derive CPU usage.
 //   - Kind==KindRunAction: Project + Action selects the action to run; Args contains extra CLI flags/args.
 //   - Kind==KindListActions: Project selects the project.
+//   - Kind==KindListActionStates: Project selects the project.
 type Request struct {
 	Kind          RequestKind `json:"kind"`
 	Project       string      `json:"project,omitempty"`
@@ -84,15 +86,16 @@ type Request struct {
 type ResponseKind string
 
 const (
-	KindStates     ResponseKind = "states"      // a snapshot of every service
-	KindProjects   ResponseKind = "projects"    // a snapshot of every known project
-	KindActions    ResponseKind = "actions"     // a list of defined actions
-	KindStats      ResponseKind = "stats"       // a per-service CPU/memory snapshot (KindTop)
-	KindLogLine    ResponseKind = "log_line"    // one line of a service's log or action output
-	KindLogContent ResponseKind = "log_content" // bulk: existing log history (possibly tailed)
-	KindLogRotated ResponseKind = "log_rotated" // a new run started; the previous run's lines are over
-	KindDone       ResponseKind = "done"        // request complete, no more frames
-	KindError      ResponseKind = "error"       // an error occurred (Error has text)
+	KindStates       ResponseKind = "states"        // a snapshot of every service
+	KindProjects     ResponseKind = "projects"      // a snapshot of every known project
+	KindActions      ResponseKind = "actions"       // a list of defined actions
+	KindActionStates ResponseKind = "action_states" // a snapshot of action runtime states
+	KindStats        ResponseKind = "stats"         // a per-service CPU/memory snapshot (KindTop)
+	KindLogLine      ResponseKind = "log_line"      // one line of a service's log or action output
+	KindLogContent   ResponseKind = "log_content"   // bulk: existing log history (possibly tailed)
+	KindLogRotated   ResponseKind = "log_rotated"   // a new run started; the previous run's lines are over
+	KindDone         ResponseKind = "done"          // request complete, no more frames
+	KindError        ResponseKind = "error"         // an error occurred (Error has text)
 )
 
 // ServiceState is the wire form of a service snapshot. Time fields are encoded
@@ -117,6 +120,19 @@ type ActionInfo struct {
 	WorkingDir string   `json:"working_dir,omitempty"`
 	TTY        bool     `json:"tty,omitempty"`
 	DependsOn  []string `json:"depends_on,omitempty"`
+}
+
+// ActionState is the wire form of an action's runtime state. Its shape mirrors
+// ServiceState (status/pid/exit_code/times) so frontends can reuse the same
+// status-dot and label helpers.
+type ActionState struct {
+	Name       string `json:"name"`
+	Command    string `json:"command"`
+	Status     string `json:"status"`
+	PID        int    `json:"pid"`
+	ExitCode   int    `json:"exit_code"`
+	StartedAt  string `json:"started_at,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
 }
 
 // ProjectInfo is the wire form of a project snapshot. It describes one project
@@ -151,6 +167,7 @@ type Response struct {
 	States         []ServiceState `json:"states,omitempty"`           // Kind==KindStates
 	Projects       []ProjectInfo  `json:"projects,omitempty"`         // Kind==KindProjects
 	Actions        []ActionInfo   `json:"actions,omitempty"`          // Kind==KindActions
+	ActionStates   []ActionState  `json:"action_states,omitempty"`    // Kind==KindActionStates
 	Stats          []ServiceStat  `json:"stats,omitempty"`            // Kind==KindStats
 	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
 	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)

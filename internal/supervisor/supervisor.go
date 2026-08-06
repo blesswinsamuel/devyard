@@ -109,6 +109,45 @@ type Options struct {
 	// state transitions (starting → running, running → exited, etc.).
 	// The callback is invoked with the service runtime lock held.
 	OnStateChange func(service string, state protocol.ServiceState)
+
+	// OnActionStateChange, when non-nil, is called whenever an action's
+	// runtime state changes (started, completed).
+	OnActionStateChange func(action string, state protocol.ActionState)
+}
+
+// actionRuntime tracks the mutable state of a running or recently-completed
+// action. It is much simpler than serviceRuntime — actions don't restart and
+// don't have healthchecks.
+type actionRuntime struct {
+	name    string
+	command string
+
+	mu         sync.Mutex
+	pid        int
+	status     Status
+	exitCode   int
+	startedAt  time.Time
+	finishedAt time.Time
+}
+
+// notifyActionStateChange builds a single-action protocol snapshot and fires
+// the OnActionStateChange callback. Safe to call from any goroutine.
+func (s *Supervisor) notifyActionStateChange(rt *actionRuntime) {
+	if s.opts.OnActionStateChange == nil {
+		return
+	}
+	rt.mu.Lock()
+	state := protocol.ActionState{
+		Name:       rt.name,
+		Command:    rt.command,
+		Status:     string(rt.status),
+		PID:        rt.pid,
+		ExitCode:   rt.exitCode,
+		StartedAt:  protocol.FormatTime(rt.startedAt),
+		FinishedAt: protocol.FormatTime(rt.finishedAt),
+	}
+	rt.mu.Unlock()
+	s.opts.OnActionStateChange(rt.name, state)
 }
 
 // ServiceState is a point-in-time snapshot of a service used by ps/web.
@@ -256,6 +295,10 @@ type Supervisor struct {
 	services map[string]*serviceRuntime
 	order    []string
 
+	// actionRuntimes tracks runtime state of actions (running or
+	// recently-completed). guarded by mu.
+	actionRuntimes map[string]*actionRuntime
+
 	// selected, when non-empty, is the set of services to launch at Start.
 	// See Options.Selected. Services not in it are skipped at Start.
 	selected map[string]bool
@@ -326,11 +369,12 @@ func New(opts Options) (*Supervisor, error) {
 	}
 
 	return &Supervisor{
-		opts:     opts,
-		services: services,
-		order:    order,
-		selected: selected,
-		stopCh:   make(chan struct{}),
+		opts:           opts,
+		services:       services,
+		order:          order,
+		selected:       selected,
+		stopCh:         make(chan struct{}),
+		actionRuntimes: make(map[string]*actionRuntime),
 	}, nil
 }
 
@@ -453,6 +497,24 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 			case <-s.stopCh:
 			}
 		}()
+	}
+
+	// Restore action runtime state from the persisted snapshot so ps/web
+	// show the last run's PID, exit code, and timestamps. Actions are
+	// one-shot, so we never re-run them — we only restore metadata.
+	if snap != nil && snap.Actions != nil {
+		s.mu.Lock()
+		for name, as := range snap.Actions {
+			s.actionRuntimes[name] = &actionRuntime{
+				name:       name,
+				status:     as.Status,
+				pid:        as.PID,
+				exitCode:   as.ExitCode,
+				startedAt:  as.StartedAt,
+				finishedAt: as.FinishedAt,
+			}
+		}
+		s.mu.Unlock()
 	}
 
 	for _, name := range s.order {
@@ -1451,8 +1513,47 @@ func (s *Supervisor) ListActions() []protocol.ActionInfo {
 	return ListActionsFromFile(s.opts.File)
 }
 
+// ActionStates returns a snapshot of every defined action's runtime state,
+// merged with the action's command from config. Actions with no runtime entry
+// (never run in this daemon lifetime or loaded from state.json as stopped)
+// show status "idle".
+func (s *Supervisor) ActionStates() []protocol.ActionState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.opts.File == nil {
+		return nil
+	}
+	names := make([]string, 0, len(s.opts.File.Actions))
+	for name := range s.opts.File.Actions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]protocol.ActionState, 0, len(names))
+	for _, name := range names {
+		act := s.opts.File.Actions[name]
+		st := protocol.ActionState{
+			Name:    name,
+			Command: act.Spec.Command,
+			Status:  "idle",
+		}
+		if rt, ok := s.actionRuntimes[name]; ok {
+			rt.mu.Lock()
+			st.Status = string(rt.status)
+			st.PID = rt.pid
+			st.ExitCode = rt.exitCode
+			st.StartedAt = protocol.FormatTime(rt.startedAt)
+			st.FinishedAt = protocol.FormatTime(rt.finishedAt)
+			rt.mu.Unlock()
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
 // RunAction executes a named action command in a dedicated process group,
 // streaming output lines to out. Returns the exit code of the action process.
+// It tracks the action's runtime state (PID, status, timestamps) and fires
+// OnActionStateChange on every transition, matching the service lifecycle.
 func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []string, out io.Writer) (int, error) {
 	if s.opts.File == nil {
 		return 1, fmt.Errorf("supervisor: no config file loaded")
@@ -1494,26 +1595,16 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 		shell = config.DefaultShell
 	}
 
-	cmd := newCommand(shell, "-c", fullCmd)
-	cmd.dir = workDir
-	cmd.env = env
-	applyProcessGroup(cmd)
-
-	stdoutPipe, stderrPipe, err := cmd.pipes()
-	if err != nil {
-		return 1, fmt.Errorf("action %q: pipes: %w", name, err)
-	}
-
-	if err := cmd.start(); err != nil {
-		return 1, fmt.Errorf("action %q: start: %w", name, err)
-	}
-
+	// Open log file before starting the process so the "started" line lands
+	// in the log even if the reader goroutines race.
 	var logFile *os.File
+	var logPath string
 	if s.opts.Locations != nil {
 		actDir := filepath.Join(s.opts.Locations.State, "actions")
 		if err := os.MkdirAll(actDir, 0o755); err == nil {
-			logPath := filepath.Join(actDir, name+".log")
+			logPath = filepath.Join(actDir, name+".log")
 			prevPath := filepath.Join(actDir, name+".prev.log")
+			// Rotate previous log (like services do on spawn).
 			if _, statErr := os.Stat(logPath); statErr == nil {
 				_ = os.Rename(logPath, prevPath)
 			}
@@ -1522,6 +1613,45 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 				defer func() { _ = logFile.Close() }()
 			}
 		}
+	}
+
+	actionCmd := newCommand(shell, "-c", fullCmd)
+	actionCmd.dir = workDir
+	actionCmd.env = env
+	applyProcessGroup(actionCmd)
+
+	stdoutPipe, stderrPipe, err := actionCmd.pipes()
+	if err != nil {
+		return 1, fmt.Errorf("action %q: pipes: %w", name, err)
+	}
+
+	if err := actionCmd.start(); err != nil {
+		return 1, fmt.Errorf("action %q: start: %w", name, err)
+	}
+
+	now := time.Now()
+	pid := actionCmd.processPID()
+
+	// Register runtime state.
+	s.mu.Lock()
+	rt, rtExists := s.actionRuntimes[name]
+	if !rtExists {
+		rt = &actionRuntime{name: name, command: act.Spec.Command}
+		s.actionRuntimes[name] = rt
+	}
+	rt.mu.Lock()
+	rt.pid = pid
+	rt.status = StatusRunning
+	rt.exitCode = 0
+	rt.startedAt = now
+	rt.finishedAt = time.Time{}
+	rt.mu.Unlock()
+	s.mu.Unlock()
+	s.notifyActionStateChange(rt)
+	_ = s.SaveState()
+
+	if logFile != nil {
+		_, _ = fmt.Fprintf(logFile, "%s %s %s\n", ui.Dim("local-compose:"), ui.StatusMessage("started"), ui.Dim("at "+now.UTC().Format(time.RFC3339)))
 	}
 
 	var wg sync.WaitGroup
@@ -1547,8 +1677,23 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	go readLineStream(stderrPipe)
 
 	wg.Wait()
-	waitErr := cmd.Wait()
+	waitErr := actionCmd.Wait()
 	code := exitCodeFrom(waitErr)
+
+	finishTime := time.Now()
+	rt.mu.Lock()
+	rt.pid = 0
+	rt.exitCode = code
+	rt.finishedAt = finishTime
+	rt.status = StatusExited
+	rt.mu.Unlock()
+	s.notifyActionStateChange(rt)
+	_ = s.SaveState()
+
+	if logFile != nil {
+		_, _ = fmt.Fprintf(logFile, "%s %s %s with exit code %d\n", ui.Dim("local-compose:"), ui.StatusMessage("exited"), ui.Dim("at "+finishTime.UTC().Format(time.RFC3339)), code)
+	}
+
 	return code, nil
 }
 

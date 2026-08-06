@@ -44,6 +44,8 @@ func (b *fakeBackend) ListActions() []protocol.ActionInfo {
 	return out
 }
 
+func (b *fakeBackend) ActionStates() []protocol.ActionState { return nil }
+
 func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
 	b.mu.Lock()
 	fn := b.runActionFn
@@ -1052,7 +1054,8 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 	return b, nil
 }
 
-func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}
+func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
+func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
 
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
 	t.Helper()

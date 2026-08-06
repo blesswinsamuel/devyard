@@ -67,6 +67,8 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		ptys.closeSession(req.ID)
 	case "list_actions":
 		s.proxyListActions(c, ctx, req)
+	case "list_action_states":
+		s.proxyListActionStates(c, ctx, req)
 	case "run_action":
 		s.proxyRunAction(c, ctx, req)
 	default:
@@ -374,6 +376,20 @@ func (s *Server) proxyListActions(c *websocket.Conn, ctx context.Context, req *w
 	}
 	data, _ := json.Marshal(resp.Actions)
 	s.send(c, ctx, wsResponse{Type: "actions", Project: req.Project, Data: data})
+}
+
+func (s *Server) proxyListActionStates(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindListActionStates, Project: req.Project})
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.sendError(c, ctx, resp.Error)
+		return
+	}
+	data, _ := json.Marshal(resp.ActionStates)
+	s.send(c, ctx, wsResponse{Type: "action_states", Project: req.Project, Data: data})
 }
 
 func (s *Server) proxyRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

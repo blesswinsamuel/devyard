@@ -85,6 +85,15 @@ func (s *Server) ListenAndServe() error {
 				Data:    data,
 			})
 		})
+		s.backend.SetOnActionStateChange(func(project string, state protocol.ActionState) {
+			data, _ := json.Marshal(state)
+			s.broadcast(wsResponse{
+				Type:    "action_state_changed",
+				Project: project,
+				Action:  state.Name,
+				Data:    data,
+			})
+		})
 	}
 
 	mux := http.NewServeMux()
@@ -255,6 +264,8 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		ptys.closeSession(req.ID)
 	case "list_actions":
 		s.handleListActions(c, ctx, req)
+	case "list_action_states":
+		s.handleListActionStates(c, ctx, req)
 	case "run_action":
 		s.handleRunAction(c, ctx, req)
 	default:
@@ -418,6 +429,17 @@ func (s *Server) handleListActions(c *websocket.Conn, ctx context.Context, req *
 	actions := b.ListActions()
 	data, _ := json.Marshal(actions)
 	s.send(c, ctx, wsResponse{Type: "actions", Project: req.Project, Data: data})
+}
+
+func (s *Server) handleListActionStates(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	b, err := s.backend.ProjectBackend(req.Project)
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	states := b.ActionStates()
+	data, _ := json.Marshal(states)
+	s.send(c, ctx, wsResponse{Type: "action_states", Project: req.Project, Data: data})
 }
 
 func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

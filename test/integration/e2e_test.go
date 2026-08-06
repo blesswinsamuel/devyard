@@ -62,6 +62,7 @@ type env struct {
 	cfgDir     string
 	runtime    string
 	state      string
+	config     string
 	projName   string
 	configPath string
 	envFile    string // optional --env-file passed to every invocation
@@ -83,6 +84,7 @@ func newEnv(t *testing.T, configContents string) *env {
 		// runtime (socket + pidfile), mirroring internal/control's test setup.
 		runtime:    mktempShort(t, "lc-rt"),
 		state:      t.TempDir(),
+		config:     t.TempDir(),
 		projName:   "lc-test",
 		configPath: filepath.Join(cfgDir, "local-compose.yml"),
 	}
@@ -91,6 +93,11 @@ func newEnv(t *testing.T, configContents string) *env {
 	t.Cleanup(func() {
 		_, _, _ = e.run(t, context.Background(), "down")
 		_, _, _ = e.run(t, context.Background(), "stop-daemon")
+		if data, err := os.ReadFile(filepath.Join(e.runtime, "local-compose", "daemon.pid")); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
 	})
 	return e
 }
@@ -143,13 +150,13 @@ func (e *env) runFromDir(t *testing.T, ctx context.Context, dir string, args ...
 	return stdout.String(), stderr.String(), exitCode
 }
 
-// environ returns the inherited environment with XDG_RUNTIME_DIR and
-// XDG_STATE_HOME overridden to the isolated per-test dirs so the daemon
-// re-exec child (which inherits os.Environ()) lands in the same sandbox.
+// environ returns the inherited environment with XDG_RUNTIME_DIR,
+// XDG_STATE_HOME, and XDG_CONFIG_HOME overridden to the isolated per-test dirs.
 func (e *env) environ() []string {
 	out := os.Environ()
 	out = override(out, "XDG_RUNTIME_DIR", e.runtime)
 	out = override(out, "XDG_STATE_HOME", e.state)
+	out = override(out, "XDG_CONFIG_HOME", e.config)
 	return out
 }
 

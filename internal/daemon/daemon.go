@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,9 +20,45 @@ import (
 // instead of dispatching a normal subcommand.
 const DaemonFlag = "--daemon"
 
+// WritePidfile writes pid (followed by a newline) to path with 0o644 perms.
+func WritePidfile(path string, pid int) error {
+	return writePidfile(path, pid)
+}
+
 // writePidfile writes pid (followed by a newline) to path with 0o644 perms.
 func writePidfile(path string, pid int) error {
 	return os.WriteFile(path, []byte(strconv.Itoa(pid)+"\n"), 0o644)
+}
+
+// LockFilePath returns the path to the daemon lock file.
+func LockFilePath(locs *project.DaemonLocations) string {
+	return filepath.Join(locs.Runtime, "daemon.lock")
+}
+
+// LockDaemon attempts to acquire an exclusive non-blocking flock on the daemon lock file.
+// It returns the open *os.File holding the lock, which must remain open for the duration
+// of the daemon process.
+func LockDaemon(locs *project.DaemonLocations) (*os.File, error) {
+	if locs == nil {
+		return nil, errors.New("daemon: DaemonLocations is required")
+	}
+	if err := locs.MkdirAll(); err != nil {
+		return nil, err
+	}
+	lockPath := LockFilePath(locs)
+	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("daemon: open lock file: %w", err)
+	}
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if err != nil {
+		_ = f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			return nil, errors.New("another daemon process is already running")
+		}
+		return nil, fmt.Errorf("daemon: flock lock file: %w", err)
+	}
+	return f, nil
 }
 
 // ReadPidfile reads and parses the pidfile at path. It returns the pid and an

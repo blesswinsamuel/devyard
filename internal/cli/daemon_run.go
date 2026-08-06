@@ -25,6 +25,19 @@ func runDaemonChild() error {
 		return err
 	}
 
+	lockFile, err := daemon.LockDaemon(locs)
+	if err != nil {
+		return fmt.Errorf("local-compose daemon: %w", err)
+	}
+	defer func() {
+		_ = lockFile.Close()
+		_ = daemon.RemoveDaemonPidfile(locs)
+	}()
+
+	if err := daemon.WritePidfile(locs.Pidfile, os.Getpid()); err != nil {
+		return fmt.Errorf("write pidfile: %w", err)
+	}
+
 	d := orchestrator.New()
 
 	srv := control.NewServer(locs.Socket, d)

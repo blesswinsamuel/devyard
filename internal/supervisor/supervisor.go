@@ -257,7 +257,15 @@ func New(opts Options) (*Supervisor, error) {
 	}, nil
 }
 
-// AdoptOrStart checks for existing saved state and adopts living processes; otherwise starts new processes.
+// UpdateFile updates the supervisor's parsed config file (e.g. when config changes on disk).
+func (s *Supervisor) UpdateFile(file *config.File) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.opts.File = file
+}
+
+// AdoptOrStart attaches to running services described in snapshot if their
+// PIDs/PGIDs match live processes, and starts any that aren't running.
 func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 	if !s.started.CompareAndSwap(false, true) {
 		return errors.New("supervisor: already started")

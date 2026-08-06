@@ -37,3 +37,7 @@ services:
       web: { condition: service_healthy }
     build: bun install
     restart: unless-stopped
+
+actions:
+  reload-daemon: go install ./cmd/local-compose/ && local-compose daemon reload
+

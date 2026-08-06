@@ -125,6 +125,7 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 			if sup == nil {
 				return fmt.Errorf("project %q is running but has no supervisor", name)
 			}
+			sup.UpdateFile(cfg.File)
 			if build {
 				if err := runBuilds(cfg); err != nil {
 					return err

@@ -111,7 +111,7 @@ services:
 	}
 }
 
-func TestStartProjectAfterStopResumesUnlessStopped(t *testing.T) {
+func TestStartProjectAfterStopResumes(t *testing.T) {
 	setupEnv(t)
 	d := orchestrator.New()
 	configPath := writeConfig(t, `version: "1"
@@ -119,7 +119,7 @@ name: lc-resume
 services:
   svc:
     command: sleep 30
-    restart: unless-stopped
+    restart: always
 `)
 
 	if err := d.StartProject(configPath, false, "", true); err != nil {
@@ -141,7 +141,7 @@ services:
 		t.Fatalf("StopProject: %v", err)
 	}
 
-	// Explicit up must clear the unless-stopped service marker and start again.
+	// Explicit up must clear the project stopped marker and start again.
 	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject after stop: %v", err)
 	}
@@ -170,10 +170,8 @@ name: lc-partial
 services:
   a:
     command: sleep 30
-    restart: unless-stopped
   b:
     command: sleep 30
-    restart: unless-stopped
 `)
 
 	if err := d.StartProject(configPath, false, "", true); err != nil {
@@ -433,7 +431,6 @@ name: lc-unless
 services:
   svc:
     command: sh -c 'echo hello; sleep 0.2'
-    restart: unless-stopped
 `)
 
 	// Simulate a prior run that stopped the project (writes .stopped marker).
@@ -445,7 +442,7 @@ services:
 		t.Fatalf("StopProject: %v", err)
 	}
 
-	// The .stopped marker should exist, so autostart should skip it.
+	// The .stopped marker should suppress autostart even with no restart policy.
 	d2 := orchestrator.New()
 	started, skipped, err := d2.Autostart()
 	if err != nil {
@@ -459,17 +456,17 @@ services:
 	}
 }
 
-func TestAutostartUnlessStoppedWithoutMarker(t *testing.T) {
+func TestAutostartWithoutMarkerStartsAnyPolicy(t *testing.T) {
 	setupEnv(t)
 	configPath := writeConfig(t, `version: "1"
 name: lc-unless2
 services:
   svc:
     command: sh -c 'echo hello; sleep 0.2'
-    restart: unless-stopped
 `)
 
-	// Simulate a prior run that didn't stop (no .stopped marker).
+	// Simulate a prior run that didn't stop (no .stopped marker). Even with no
+	// restart policy the project autostarts on the next daemon boot.
 	d1 := orchestrator.New()
 	if err := d1.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
@@ -489,31 +486,105 @@ services:
 	_ = d2.StopProject("lc-unless2")
 }
 
-func TestAutostartNoRestartPolicySkipped(t *testing.T) {
+func TestStartServiceOnStoppedProject(t *testing.T) {
 	setupEnv(t)
+	d := orchestrator.New()
 	configPath := writeConfig(t, `version: "1"
-name: lc-norestart
+name: lc-svcstart
 services:
-  svc:
-    command: sh -c 'echo hello; sleep 0.2'
+  api:
+    command: sleep 30
+  worker:
+    command: sleep 30
+    depends_on:
+      api:
+        condition: service_started
+  other:
+    command: sleep 30
 `)
 
-	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false, "", true); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
-	_ = d1.StopDaemon()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		projects := d.ListProjects()
+		if len(projects) == 1 && projects[0].Status == "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := d.StopProject("lc-svcstart"); err != nil {
+		t.Fatalf("StopProject: %v", err)
+	}
+	if !orchestrator.HasProjectStoppedMarker("lc-svcstart") {
+		t.Fatalf("expected .stopped marker after StopProject")
+	}
 
-	d2 := orchestrator.New()
-	started, skipped, err := d2.Autostart()
+	// Lazy start of one service materializes a supervisor that runs just the
+	// requested service plus its depends_on chain.
+	if err := d.StartService("lc-svcstart", "worker"); err != nil {
+		t.Fatalf("StartService: %v", err)
+	}
+	if orchestrator.HasProjectStoppedMarker("lc-svcstart") {
+		t.Fatalf("expected .stopped marker to be removed after StartService")
+	}
+	backend, err := d.ProjectBackend("lc-svcstart")
 	if err != nil {
-		t.Fatalf("Autostart: %v", err)
+		t.Fatalf("ProjectBackend: %v", err)
 	}
-	if started != 0 {
-		t.Fatalf("started = %d, want 0 (restart: no)", started)
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		states := backend.States()
+		running := map[string]bool{}
+		for _, st := range states {
+			running[st.Name] = st.Status == "running"
+		}
+		if running["api"] && running["worker"] && !running["other"] {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	if skipped != 1 {
-		t.Fatalf("skipped = %d, want 1", skipped)
+	states := backend.States()
+	got := map[string]string{}
+	for _, st := range states {
+		got[st.Name] = st.Status
+	}
+	if got["api"] != "running" || got["worker"] != "running" {
+		t.Fatalf("selected services not running: %+v", states)
+	}
+	if got["other"] != "stopped" {
+		t.Fatalf("unselected service status = %q, want stopped: %+v", got["other"], states)
+	}
+	_ = d.StopProject("lc-svcstart")
+}
+
+func TestStartServiceErrors(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	configPath := writeConfig(t, `version: "1"
+name: lc-svcerr
+services:
+  api:
+    command: sleep 30
+`)
+
+	if err := d.StartService("lc-svcerr", "api"); err == nil {
+		t.Fatalf("StartService for unknown project: want error, got nil")
+	}
+	if err := d.StartProject(configPath, false, "", true); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	if err := d.StartService("lc-svcerr", "nope"); err == nil {
+		t.Fatalf("StartService for unknown service: want error, got nil")
+	}
+	_ = d.StopProject("lc-svcerr")
+}
+
+func TestStartServiceUnknownProject(t *testing.T) {
+	d := orchestrator.New()
+	if err := d.StartService("nope", "svc"); err == nil {
+		t.Fatalf("StartService for unknown project: want error, got nil")
 	}
 }
 
@@ -533,11 +604,15 @@ actions:
     command: echo build
 `)
 
-	// Register the project and let the daemon exit without down (no .stopped
-	// marker), so a fresh daemon's autostart registers it as stopped.
+	// Register the project, stop it explicitly (writes the project .stopped
+	// marker), then let the daemon exit, so a fresh daemon's autostart
+	// registers it as stopped.
 	d1 := orchestrator.New()
 	if err := d1.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
+	}
+	if err := d1.StopProject("lc-stopped"); err != nil {
+		t.Fatalf("StopProject: %v", err)
 	}
 	_ = d1.StopDaemon()
 

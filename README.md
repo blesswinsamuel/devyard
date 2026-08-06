@@ -35,8 +35,8 @@ a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a
 - **Health-gated dependencies** — `depends_on: { condition: service_healthy }` waits for a
   healthcheck to pass before starting dependents.
 - **Web UI** — a browser dashboard over the same control protocol, with xterm.js log streaming.
-- **Multi-project daemon** — a single daemon manages multiple projects; autostarts projects
-  with `restart: always` or `restart: unless-stopped` on daemon startup.
+- **Multi-project daemon** — a single daemon manages multiple projects; autostarts every
+  registered project on daemon startup (unless stopped with `down`).
 - **One static binary** — no runtime, no daemon-on-a-daemon, no container engine.
 
 ## Installation
@@ -82,7 +82,7 @@ services:
     build: cargo build --bin api          # run once before first up; --build forces
     depends_on:
       db: { condition: service_healthy }  # wait for db's healthcheck to pass
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s
@@ -188,7 +188,7 @@ Top-level:
 | `shell` | Shell used to run `command` (default `sh`). |
 | `depends_on` | List of names, or a map of `name: { condition: ... }`. Conditions: `service_started` (default), `service_healthy`. |
 | `healthcheck` | Periodic probe; see below. |
-| `restart` | `no` (default), `on-failure`, `always`, or `unless-stopped`. |
+| `restart` | `no` (default), `on-failure`, or `always`. |
 | `build` | A pre-start build step. Accepts a **string** (`build: cargo build`) or an **object** (see below). |
 
 `build` object form:
@@ -266,13 +266,14 @@ local-compose ps / logs / restart / down / web  ──►  socket client
 - **`up`** auto-starts the daemon if it's not running, sends `start_project` over the socket,
   and (in foreground mode) follows logs from all services. `up -d` just starts the project and
   returns.
-- **Autostart**: on daemon startup, projects with `restart: always` or `restart: unless-stopped`
-  services are started automatically (unless explicitly stopped with `down`).
+- **Autostart**: on daemon startup, every registered project is started automatically
+  (unless explicitly stopped with `down` / `stop`, which writes a project `.stopped` marker).
+  `start <svc>` on a stopped project lazily starts just that service (plus its `depends_on` chain).
 - **Process groups**: each service is started with `Setpgid`, so `down`/`stop` uses `killpg` to
   tear down the whole tree — no orphaned children, even when `command` is a shell pipeline.
-- **Restart policy**: `on-failure` only restarts non-zero exits; `unless-stopped` honors an
-  explicit `stop` and won't auto-resume on the next **daemon autostart** (its dependents are
-  skipped transitively). Explicit `up`/`start` clears the marker and starts the service.
+- **Restart policy**: `on-failure` only restarts non-zero exits (capped); `always` restarts
+  indefinitely. `stop <svc>` is ephemeral — the running supervisor honors it, but the next
+  **daemon autostart** resumes the service unless the whole project was stopped.
 
 ### Where state lives
 
@@ -281,7 +282,7 @@ Per the XDG base directory spec:
 | Path | Holds |
 | --- | --- |
 | `$XDG_RUNTIME_DIR/local-compose/` (or `/tmp/local-compose/`) | Daemon control socket + pidfile. Transient — cleared on reboot. |
-| `$XDG_STATE_HOME/local-compose/<project>/` (or `~/.local/state/local-compose/<project>/`) | Per-service log files, config-path, and stopped markers. Persisted. |
+| `$XDG_STATE_HOME/local-compose/<project>/` (or `~/.local/state/local-compose/<project>/`) | Per-service log files, config-path, and the project `.stopped` marker. Persisted. |
 | `$XDG_CONFIG_HOME/local-compose/config.yml` (or `~/.config/local-compose/config.yml`) | Global config (web UI settings). |
 
 Each project is namespaced by project name, so multiple projects can run side by side under one

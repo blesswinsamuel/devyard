@@ -21,8 +21,9 @@ There is exactly one **global daemon** process. It owns one
 `*supervisor.Supervisor` per project and serves a single **Unix-socket control
 protocol** at `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. Every CLI command
 (`ps`, `logs`, `restart`, `down`) and the web UI are thin **Client**
-connections over that socket. The daemon autostarts projects whose services
-declare `restart: always` or `restart: unless-stopped` on startup. See
+connections over that socket. The daemon autostarts every registered project
+on startup unless it carries a project-level `.stopped` marker (written by
+`down` / `stop`). See
 [control-protocol.md](control-protocol.md) for the wire format.
 
 ## The global daemon
@@ -60,11 +61,15 @@ Key methods:
 
 - **`StartProject(configPath, build)`** — loads the config, creates a
   `Supervisor`, starts it, and adds it to the map. Writes a `config-path` file
-  in the project's state dir (for autostart discovery). Removes any
-  project-level `.stopped` marker and per-service unless-stopped markers so
-  explicit `up`/`start` resumes previously stopped services. If the project is
+  in the project's state dir (for autostart discovery). Removes the
+  project-level `.stopped` marker so
+  explicit `up`/`start` resumes previously stopped projects. If the project is
   already running, resumes stopped/exited services without recreating the
   supervisor. If a stop is in progress, waits for it then recreates.
+- **`StartService(project, service)`** — lazily starts a single service on a
+  stopped project: materializes a supervisor limited to that service plus its
+  transitive `depends_on` chain (unselected services are registered as stopped
+  and skipped), and clears the project-level `.stopped` marker.
 - **`StopProject(name)`** — stops the supervisor, writes a project-level
   `.stopped` marker, closes the supervisor (retained for `ps` state queries),
   and **keeps the project in the map** (`status: stopped`) so list commands
@@ -78,11 +83,10 @@ Key methods:
   project. A stopped project's closed supervisor is still returned so `ps`
   works; mutating calls error because the supervisor is stopped.
 - **`Autostart()`** — scans `$XDG_STATE_HOME/local-compose/*/` for
-  `config-path` files, reads each project's config, and starts projects whose
-  services have `restart: always` or `restart: unless-stopped` **unless** a
-  project-level `.stopped` marker exists (honored for both policies). Skipped
-  projects are still registered in the map as stopped. Per-service stopped
-  markers are still honored so an explicit service stop survives daemon restart.
+  `config-path` files, reads each project's config, and starts every project
+  **unless** a project-level `.stopped` marker exists. Skipped
+  projects are still registered in the map as stopped so list commands stay
+  complete.
 
 ## Supervisor (`internal/supervisor`)
 
@@ -104,27 +108,26 @@ Per-service run loop (`runService`):
    `shell`) with `Setpgid`, pipes stdout+stderr to the service logger, records
    pid/pgid, and sets `startedOnce`. Two pipe-reader goroutines drain the lines.
 4. `cmd.Wait()`; record exit code, clear pid/pgid, set `status = exited`.
-5. Apply restart policy (`restart.go`): `no` stops; `always`/`unless-stopped`
-   retry indefinitely; `on-failure` retries up to `Backoff.MaxAttempts`. Backoff
+5. Apply restart policy (`restart.go`): `no` stops; `always`
+   retries indefinitely; `on-failure` retries up to `Backoff.MaxAttempts`. Backoff
    is exponential with jitter (`sleepBackoff`). `stopped`/stopping short-circuits.
 
-`Stop` (used by `down`/`StopProject`): marks every service stopped, writes "stopped" markers
-for `unless-stopped` services, `SIGTERM`s every group, waits up to
+`Stop` (used by `down`/`StopProject`): marks every service stopped,
+`SIGTERM`s every group, waits up to
 `GracefulStopTimeout` (default 10s), then `SIGKILL`s survivors.
 
 `StopService` / `Restart`: stop one service in place; `Restart` resets state and
-re-launches a fresh run loop for that service. `Restart` removes any stopped
-marker so the service resumes normally afterward.
+re-launches a fresh run loop for that service. `StartService` resumes a stopped
+service in place (no-op when it is already running).
 
-On **daemon autostart**, any `unless-stopped` service with a persisted marker is
-skipped at `Start` (status `stopped`, `startedOnce` stays false). Explicit
-`up`/`start` clears those markers before starting so stop-then-up resumes
-services. `waitForDep` distinguishes a skipped dependency (`errDependencyStopped`)
-from one that genuinely exited: skipped dependents are skipped transitively and
-`Failed()` stays false. A dependency that exits or goes unhealthy before
-satisfying its condition is a real failure (`Failed()` -> non-zero `up`). A
-user-initiated shutdown during startup (`errSupervisorStopping`) is also not a
-failure.
+A supervisor can be materialized with a `Selected` set of service names (from
+`start <svc>` on a stopped project): services outside the set are registered as
+`stopped` and skipped at `Start` (`startedOnce` stays false), so only the
+selected service and its `depends_on` chain launch. Skips are logged
+(`skipping service <name>`) and are not failures — `Failed()` stays false.
+Only a dependency that genuinely exits or goes unhealthy before satisfying its
+condition sets `Failed()` (non-zero `up`); a user-initiated shutdown during
+startup (`errSupervisorStopping`) is not a failure.
 
 Process groups are mandatory and non-negotiable: `launch` calls
 `applyProcessGroup` (`proc_unix.go`) and teardown uses `killGroup(pgid, sig)`
@@ -209,9 +212,8 @@ always go through `project.Resolve` / `Locations` (per-project) or
 | Path | Holds | Persisted? |
 | --- | --- | --- |
 | `$XDG_STATE_HOME/local-compose/<project>/config-path` | config file path (for autostart discovery) | yes |
-| `$XDG_STATE_HOME/local-compose/<project>/.stopped` | project-level stopped marker | yes |
+| `$XDG_STATE_HOME/local-compose/<project>/.stopped` | project-level stopped marker (suppresses daemon autostart) | yes |
 | `$XDG_STATE_HOME/local-compose/<project>/logs/<svc>.log` | per-service logs | yes |
-| `$XDG_STATE_HOME/local-compose/<project>/<svc>.stopped` | per-service `unless-stopped` marker | yes |
 
 Fallbacks: `$XDG_RUNTIME_DIR` -> `/tmp/local-compose`; `$XDG_STATE_HOME` ->
 `~/.local/state`. Runtime dirs are `0o700` (they grant control over supervised

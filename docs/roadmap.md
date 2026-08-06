@@ -14,11 +14,9 @@ What's done, what's planned, and where each item lives in the code.
   web UI are thin clients over one Unix socket at
   `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. (`internal/orchestrator`,
   `internal/daemon`, `internal/cli/daemon_run.go`)
-- **Autostart** — on daemon startup, projects with `restart: always` or
-  `restart: unless-stopped` services are started automatically **unless** a
-  project-level `.stopped` marker exists (honored for both policies).
-  `on-failure` does not trigger autostart. (`internal/orchestrator`
-  `Autostart()`)
+- **Autostart** — on daemon startup, every registered project is started
+  automatically **unless** a project-level `.stopped` marker exists (written by
+  `down` / `stop`). (`internal/orchestrator` `Autostart()`)
 - **Process-group safety** — each service in its own `setpgid` group; teardown
   via `killpg` so no orphans. (`internal/supervisor/proc_unix.go`)
 - **`top` resource view** — `local-compose top [service]` aggregates CPU and
@@ -30,9 +28,8 @@ What's done, what's planned, and where each item lives in the code.
 - **Healthchecks + conditions** — per-service `starting -> healthy | unhealthy`
   state machine; `depends_on: { condition: service_healthy }` gates dependents.
   (`internal/health`, `internal/supervisor`)
-- **Restart policies** — `no` / `on-failure` / `always` / `unless-stopped` with
-  exponential backoff + jitter; `unless-stopped` persists a stopped marker so
-  it doesn't auto-resume. (`internal/supervisor/restart.go`)
+- **Restart policies** — `no` / `on-failure` / `always` with
+  exponential backoff + jitter. (`internal/supervisor/restart.go`)
 - **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Start with
   `local-compose web` (proxies to the daemon socket). Loopback-only by default.
   (`internal/web`, `web/`)
@@ -52,8 +49,8 @@ What's done, what's planned, and where each item lives in the code.
 
 - [ ] **Configurable graceful stop timeout** per service / via flag (currently
       fixed at 10s in `Supervisor`).
-- [ ] **`on-failure` autostart** — currently `on-failure` does not trigger
-      autostart; only `always` and `unless-stopped` do.
+- [ ] **`on-failure` autostart** — currently autostart resumes every project
+      regardless of restart policy; a future refinement could gate it on policy.
 - [ ] **Shell completions** (cobra `__complete`) and `local-compose version`.
 - [ ] **Strict config mode** that warns on unknown fields (today `yaml.v3`
       silently ignores them).

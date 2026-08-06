@@ -45,13 +45,6 @@ const (
 	StatusStopped  Status = "stopped" // explicitly stopped; not restarted
 )
 
-// errDependencyStopped is returned by waitForDep when a dependency was skipped
-// at Start because of a persisted "stopped" marker (restart: unless-stopped).
-// It is distinct from a dependency that genuinely exited: a skipped dependency
-// is an explicit user stop, not a failure, so the dependent is skipped
-// transitively and the supervisor does NOT record it as failed.
-var errDependencyStopped = errors.New("dependency is stopped")
-
 // errSupervisorStopping is returned by waitForDep when the supervisor is
 // shutting down (Stop called or context cancelled) while a dependent is still
 // waiting on a dependency. User-initiated cancellation is not a failure, so the
@@ -102,6 +95,15 @@ type Options struct {
 	// handler that triggers a graceful Stop. The daemon and foreground CLI
 	// enable this; tests leave it off.
 	InstallSignalHandler bool
+
+	// Selected, when non-empty, is the subset of Order to launch at Start.
+	// Services not selected are left in the stopped state (no run loop) so
+	// `ps` still lists them but only the selected services run. When empty,
+	// every service is started. Used by `start <service>` on a stopped
+	// project to materialize a supervisor for just one service (and its
+	// depends_on chain). A service selected later via StartService/Restart
+	// launches normally.
+	Selected []string
 }
 
 // ServiceState is a point-in-time snapshot of a service used by ps/web.
@@ -207,6 +209,10 @@ type Supervisor struct {
 	services map[string]*serviceRuntime
 	order    []string
 
+	// selected, when non-empty, is the set of services to launch at Start.
+	// See Options.Selected. Services not in it are skipped at Start.
+	selected map[string]bool
+
 	stopCh   chan struct{}
 	stopOnce sync.Once
 	wg       sync.WaitGroup
@@ -261,10 +267,22 @@ func New(opts Options) (*Supervisor, error) {
 		order = append(order, name)
 	}
 
+	var selected map[string]bool
+	if len(opts.Selected) > 0 {
+		selected = make(map[string]bool, len(opts.Selected))
+		for _, name := range opts.Selected {
+			if _, ok := services[name]; !ok {
+				return nil, fmt.Errorf("supervisor: selected references unknown service %q", name)
+			}
+			selected[name] = true
+		}
+	}
+
 	return &Supervisor{
 		opts:     opts,
 		services: services,
 		order:    order,
+		selected: selected,
 		stopCh:   make(chan struct{}),
 	}, nil
 }
@@ -299,12 +317,11 @@ func (s *Supervisor) Reconcile(file *config.File, order []string, removeOrphans 
 	if len(orphans) > 0 {
 		if removeOrphans {
 			for _, rt := range orphans {
-				_ = s.stopOne(rt, false, s.opts.GracefulStopTimeout)
+				_ = s.stopOne(rt, s.opts.GracefulStopTimeout)
 				if rt.logger != nil {
 					rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped orphan service"), ui.Dim(rt.name)))
 					_ = rt.logger.close()
 				}
-				_ = s.removeStoppedMarker(rt.name)
 			}
 
 			s.mu.Lock()
@@ -393,9 +410,11 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 
 	for _, name := range s.order {
 		rt := s.services[name]
-		if rt.spec.Restart == config.RestartUnlessStopped && s.hasStoppedMarker(name) {
+		if s.selected != nil && !s.selected[name] {
+			// Not selected for this run (lazy `start <service>`): leave the
+			// service stopped so `ps` still lists it, but launch no run loop.
 			if rt.logger != nil {
-				rt.logger.writeLine(fmt.Sprintf("local-compose: skipping stopped service %s (use `up` or `restart %s` to resume)", name, name))
+				rt.logger.writeLine(fmt.Sprintf("local-compose: skipping service %s", name))
 			}
 			rt.mu.Lock()
 			rt.status = StatusStopped
@@ -579,23 +598,17 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 
 	// Block until dependencies satisfy their conditions before launching.
 	if err := s.waitForDeps(ctx, rt); err != nil {
-		stopped := errors.Is(err, errDependencyStopped)
 		cancelled := errors.Is(err, errSupervisorStopping)
 		if rt.logger != nil {
-			if stopped {
-				rt.logger.writeLine(fmt.Sprintf("local-compose: skipped: %v", err))
-			} else {
-				rt.logger.writeLine(fmt.Sprintf("local-compose: not starting: %v", err))
-			}
+			rt.logger.writeLine(fmt.Sprintf("local-compose: not starting: %v", err))
 		}
 		rt.mu.Lock()
 		rt.status = StatusStopped
 		rt.mu.Unlock()
-		// Only a genuine dependency failure (it exited or went unhealthy
-		// before satisfying the condition) is recorded as a failure. An
-		// explicit stop (errDependencyStopped) or user-initiated shutdown
-		// (errSupervisorStopping) is not a failure.
-		if !stopped && !cancelled {
+		// A genuine dependency failure (it exited or went unhealthy before
+		// satisfying the condition) is recorded as a failure; a
+		// user-initiated shutdown (errSupervisorStopping) is not.
+		if !cancelled {
 			s.failed.Store(true)
 		}
 		return
@@ -750,17 +763,6 @@ func (s *Supervisor) waitForDep(ctx context.Context, depName string, cond config
 		// can no longer be satisfied — fail rather than hang forever.
 		select {
 		case <-dep.done:
-			dep.mu.Lock()
-			depStatus := dep.status
-			dep.mu.Unlock()
-			// A dependency that was skipped at Start (stopped marker) never
-			// launched: startedOnce is false and status is Stopped. That is
-			// an explicit user stop, not a failure — surface it as "stopped"
-			// so the dependent is skipped transitively rather than reported
-			// as a failed dependency.
-			if depStatus == StatusStopped && !dep.startedOnce.Load() {
-				return fmt.Errorf("dependency %q is stopped: %w", depName, errDependencyStopped)
-			}
 			return fmt.Errorf("dependency %q exited before satisfying %s", depName, cond)
 		default:
 		}
@@ -885,9 +887,7 @@ func (s *Supervisor) pipeLines(r io.ReadCloser, rt *serviceRuntime, wg *sync.Wai
 }
 
 // Stop gracefully stops every service: marks them stopped, SIGTERMs each
-// group, waits up to GracefulStopTimeout, then SIGKILLs any survivors. It
-// also writes "stopped" marker files for unless-stopped services so they are
-// not auto-resumed on the next daemon autostart (explicit `up` clears them).
+// group, waits up to GracefulStopTimeout, then SIGKILLs any survivors.
 func (s *Supervisor) Stop(ctx context.Context) error {
 	if !s.stopped.CompareAndSwap(false, true) {
 		return nil
@@ -904,13 +904,6 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 			rt.status = StatusStopping
 		}
 		rt.mu.Unlock()
-	}
-
-	for _, name := range s.order {
-		rt := s.services[name]
-		if rt.spec.Restart == config.RestartUnlessStopped {
-			_ = s.writeStoppedMarker(name)
-		}
 	}
 
 	s.signalAll(syscall.SIGTERM)
@@ -952,16 +945,15 @@ func (s *Supervisor) signalAll(sig syscall.Signal) {
 	}
 }
 
-// StopService stops a single service by name. If markStopped is true it
-// writes the unless-stopped marker so the service won't auto-resume. It
-// blocks until the service's run loop has exited (or the grace period
-// elapses, after which the group is SIGKILLed).
-func (s *Supervisor) StopService(name string, markStopped bool) error {
+// StopService stops a single service by name. It blocks until the service's
+// run loop has exited (or the grace period elapses, after which the group is
+// SIGKILLed).
+func (s *Supervisor) StopService(name string) error {
 	rt, ok := s.services[name]
 	if !ok {
 		return fmt.Errorf("supervisor: unknown service %q", name)
 	}
-	if err := s.stopOne(rt, markStopped, s.opts.GracefulStopTimeout); err != nil {
+	if err := s.stopOne(rt, s.opts.GracefulStopTimeout); err != nil {
 		return err
 	}
 	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
@@ -987,9 +979,6 @@ func (s *Supervisor) KillService(name, signal string) error {
 		}
 		return nil
 	}
-	if rt.spec.Restart == config.RestartUnlessStopped {
-		_ = s.writeStoppedMarker(rt.name)
-	}
 	rt.mu.Lock()
 	switch rt.status {
 	case StatusStarting, StatusRunning, StatusBackoff:
@@ -1009,7 +998,7 @@ func (s *Supervisor) KillService(name, signal string) error {
 }
 
 // stopOne stops a single service and waits for its run loop to exit.
-func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Duration) error {
+func (s *Supervisor) stopOne(rt *serviceRuntime, grace time.Duration) error {
 	alreadyStopped := rt.stopped.Swap(true)
 	if alreadyStopped {
 		// Already marked as stopped — but if the process is still
@@ -1020,10 +1009,6 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Du
 			return nil
 		default:
 		}
-	}
-
-	if markStopped && rt.spec.Restart == config.RestartUnlessStopped {
-		_ = s.writeStoppedMarker(rt.name)
 	}
 
 	// Mark as stopping immediately so clients see the transition.
@@ -1060,8 +1045,7 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, markStopped bool, grace time.Du
 	return nil
 }
 
-// Restart stops a single service (without persisting a stop marker) and then
-// launches a fresh run loop for it.
+// Restart stops a single service and then launches a fresh run loop for it.
 func (s *Supervisor) Restart(name string) error {
 	if s.isStopping() {
 		return fmt.Errorf("supervisor: stopped")
@@ -1070,7 +1054,7 @@ func (s *Supervisor) Restart(name string) error {
 	if !ok {
 		return fmt.Errorf("supervisor: unknown service %q", name)
 	}
-	if err := s.stopOne(rt, false, s.opts.GracefulStopTimeout); err != nil {
+	if err := s.stopOne(rt, s.opts.GracefulStopTimeout); err != nil {
 		return err
 	}
 
@@ -1078,17 +1062,40 @@ func (s *Supervisor) Restart(name string) error {
 
 	// Reset state for a clean relaunch.
 	rt.stopped.Store(false)
-	_ = s.removeStoppedMarker(name)
 	rt.done = make(chan struct{})
 	s.wg.Add(1)
 	go s.runService(context.Background(), rt)
 	return nil
 }
 
-// StartStopped resumes any services that are currently stopped or exited,
-// clearing unless-stopped markers. Services that are starting, running,
-// backing off, or stopping are left alone. Used by `up` when the project is
-// already loaded in the daemon.
+// StartService starts one service that is currently stopped or exited,
+// leaving any other stopped services alone. Services that are starting,
+// running, backing off, or stopping are left as-is. Used by `start
+// <service>`: on a running project it resumes the service in place, and on a
+// lazily materialized supervisor it launches a previously skipped service.
+func (s *Supervisor) StartService(name string) error {
+	if s.isStopping() {
+		return fmt.Errorf("supervisor: stopped")
+	}
+	rt, ok := s.services[name]
+	if !ok {
+		return fmt.Errorf("supervisor: unknown service %q", name)
+	}
+	rt.mu.Lock()
+	st := rt.status
+	rt.mu.Unlock()
+	switch st {
+	case StatusStarting, StatusRunning, StatusBackoff:
+		return nil
+	case StatusStopping:
+		return fmt.Errorf("supervisor: service %q is stopping", name)
+	}
+	return s.Restart(name)
+}
+
+// StartStopped resumes any services that are currently stopped or exited.
+// Services that are starting, running, backing off, or stopping are left
+// alone. Used by `up` when the project is already loaded in the daemon.
 func (s *Supervisor) StartStopped() error {
 	if s.isStopping() {
 		return fmt.Errorf("supervisor: stopped")
@@ -1215,9 +1222,9 @@ func (s *Supervisor) isStopping() bool {
 }
 
 // shouldRetry reports whether the service is still within its restart attempt
-// budget (always/unless-stopped are unlimited; on-failure is capped).
+// budget (always is unlimited; on-failure is capped).
 func (s *Supervisor) shouldRetry(rt *serviceRuntime) bool {
-	if rt.spec.Restart == config.RestartAlways || rt.spec.Restart == config.RestartUnlessStopped {
+	if rt.spec.Restart == config.RestartAlways {
 		return true
 	}
 	return rt.restarts < s.opts.Backoff.MaxAttempts

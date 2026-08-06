@@ -23,8 +23,9 @@ const AppDir = "local-compose"
 //
 //   - Runtime dir holds transient files (cleared on reboot). Never persisted
 //     across reboots.
-//   - State dir holds per-service log files and the "stopped" marker used by
-//     unless-stopped restart policy. Persisted across reboots.
+//   - State dir holds per-service log files and the project-level ".stopped"
+//     marker used to opt a project out of daemon autostart. Persisted across
+//     reboots.
 type Locations struct {
 	Name    string
 	Runtime string

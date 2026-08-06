@@ -10,6 +10,7 @@ import {
   startProject,
   stopProject,
   restartService,
+  startService,
   stopService,
   killService,
   runAction,
@@ -235,7 +236,7 @@ function ServiceHeader() {
               as={Button}
               variant="default"
               size="sm"
-              onClick={() => restartService(project(), service())}
+              onClick={() => startService(project(), service())}
             >
               <Play />
               Start

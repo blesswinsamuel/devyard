@@ -109,8 +109,6 @@ func TestShouldRestart(t *testing.T) {
 		{config.RestartAlways, 1, true},
 		{config.RestartOnFailure, 0, false},
 		{config.RestartOnFailure, 1, true},
-		{config.RestartUnlessStopped, 0, true},
-		{config.RestartUnlessStopped, 1, true},
 	}
 	for i, c := range cases {
 		got := supervisor.ShouldRestartForTest(c.policy, c.exitCode)
@@ -555,7 +553,7 @@ func TestSupervisorStopService(t *testing.T) {
 		t.Fatalf("sleeper never reached running: %+v", s.States())
 	}
 
-	if err := s.StopService("sleeper", false); err != nil {
+	if err := s.StopService("sleeper"); err != nil {
 		t.Fatalf("StopService: %v", err)
 	}
 	st := s.States()[0]
@@ -659,71 +657,171 @@ func TestParseSignal(t *testing.T) {
 	}
 }
 
-// TestSupervisorUnlessStoppedMarker verifies an explicit stop persists a
-// marker that prevents auto-resume on the next supervisor.
-func TestSupervisorUnlessStoppedMarker(t *testing.T) {
+// TestSupervisorSelectedStart verifies a supervisor materialized with a
+// Selected subset launches only those services, leaves the rest in
+// StatusStopped without recording a failure, and that StartService resumes a
+// skipped service in place.
+func TestSupervisorSelectedStart(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix-only")
 	}
 	locs := testLocations(t)
 	file := fileWith(map[string]config.Service{
-		"long": {Command: "sleep 30", Shell: "sh", Restart: config.RestartUnlessStopped},
+		"long":  {Command: "sleep 30", Shell: "sh", Restart: config.RestartAlways},
+		"other": {Command: "sleep 30", Shell: "sh", Restart: config.RestartNo},
 	})
-	mk := func() *supervisor.Supervisor {
-		t.Helper()
-		s, err := supervisor.New(supervisor.Options{
-			Locations:           locs,
-			File:                file,
-			Order:               []string{"long"},
-			BaseDir:             t.TempDir(),
-			Foreground:          false,
-			Backoff:             testBackoff(),
-			GracefulStopTimeout: 2 * time.Second,
-		})
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-		return s
+	s, err := supervisor.New(supervisor.Options{
+		Locations:           locs,
+		File:                file,
+		Order:               []string{"long", "other"},
+		BaseDir:             t.TempDir(),
+		Foreground:          false,
+		Backoff:             testBackoff(),
+		GracefulStopTimeout: 2 * time.Second,
+		Selected:            []string{"long"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+		_ = s.Close()
+	})
 
-	s1 := mk()
-	if err := s1.Start(context.Background()); err != nil {
+	if err := s.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if !waitFor(t, 2*time.Second, func() bool {
-		return s1.States()[0].Status == supervisor.StatusRunning
+		st := s.States()
+		return len(st) == 2 && st[0].Status == supervisor.StatusRunning
 	}) {
-		t.Fatalf("never running: %+v", s1.States())
+		t.Fatalf("selected service never running: %+v", s.States())
 	}
-	if err := s1.StopService("long", true); err != nil {
-		t.Fatalf("StopService: %v", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_ = s1.Stop(ctx)
-	_ = s1.Close()
-
-	marker := filepath.Join(locs.State, "long.stopped")
-	if !fileExists(marker) {
-		t.Fatalf("marker not written at %s", marker)
-	}
-
-	// Second supervisor should skip the service because of the marker.
-	s2 := mk()
-	t.Cleanup(func() { _ = s2.Close() })
-	if err := s2.Start(context.Background()); err != nil {
-		t.Fatalf("Start s2: %v", err)
-	}
-	// The service is skipped synchronously during Start, so its state is
-	// already Stopped by the time Start returns.
-	st := s2.States()[0]
+	// Unselected service stays stopped without launching or failing.
+	st := s.States()[1]
 	if st.Status != supervisor.StatusStopped {
-		t.Errorf("status = %s, want stopped (marker should skip)", st.Status)
+		t.Errorf("other status = %s, want stopped", st.Status)
 	}
 	if st.PID != 0 {
-		t.Errorf("pid = %d, want 0 (should not be running)", st.PID)
+		t.Errorf("other pid = %d, want 0 (not running)", st.PID)
 	}
-	_ = s2.Stop(ctx)
+	if s.Failed() {
+		t.Errorf("Failed() = true, want false (unselected stops are not failures)")
+	}
+
+	// Resuming the skipped service starts it in place.
+	if err := s.StartService("other"); err != nil {
+		t.Fatalf("StartService: %v", err)
+	}
+	if !waitFor(t, 2*time.Second, func() bool {
+		return s.States()[1].Status == supervisor.StatusRunning
+	}) {
+		t.Fatalf("other never running after StartService: %+v", s.States())
+	}
+
+	// StartService on an already-running service is a no-op.
+	if err := s.StartService("long"); err != nil {
+		t.Fatalf("StartService on running service: %v", err)
+	}
+}
+
+// TestSupervisorSelectedSkipsDependents verifies that when a supervisor is
+// materialized with a Selected set, services outside the set are left stopped
+// (not reported as failures) and their logs explain the skip. Selected services
+// and their dependencies run normally.
+func TestSupervisorSelectedSkipsDependents(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	locs := testLocations(t)
+	if err := locs.MkdirAll(); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	dir := t.TempDir()
+	workerStart := filepath.Join(dir, "worker-started")
+	crasherStart := filepath.Join(dir, "crasher-started")
+	file := fileWith(map[string]config.Service{
+		"api": {
+			Command: "sleep 30", Shell: "sh", Restart: config.RestartNo,
+			WorkingDir: dir,
+		},
+		"worker": {
+			Command: "touch " + workerStart + "; sleep 30", Shell: "sh",
+			Restart: config.RestartNo, WorkingDir: dir,
+			DependsOn: config.DependsOn{
+				Entries: map[string]config.DependsOnEntry{
+					"api": {Condition: config.ConditionServiceStarted},
+				},
+				Order: []string{"api"},
+			},
+		},
+		"crasher": {
+			Command: "touch " + crasherStart + "; sleep 30", Shell: "sh",
+			Restart: config.RestartNo, WorkingDir: dir,
+			DependsOn: config.DependsOn{
+				Entries: map[string]config.DependsOnEntry{
+					"api": {Condition: config.ConditionServiceStarted},
+				},
+				Order: []string{"api"},
+			},
+		},
+	})
+	s, err := supervisor.New(supervisor.Options{
+		Locations:           locs,
+		File:                file,
+		Order:               []string{"api", "worker", "crasher"},
+		BaseDir:             dir,
+		Foreground:          false,
+		Backoff:             testBackoff(),
+		GracefulStopTimeout: 2 * time.Second,
+		Selected:            []string{"api", "worker"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+		_ = s.Close()
+	})
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// api and worker (selected) run; crasher stays stopped.
+	if !waitFor(t, 2*time.Second, func() bool {
+		st := s.States()
+		return st[0].Status == supervisor.StatusRunning && st[1].Status == supervisor.StatusRunning
+	}) {
+		t.Fatalf("selected services not running: %+v", s.States())
+	}
+	crasher := s.States()[2]
+	if crasher.Status != supervisor.StatusStopped {
+		t.Errorf("crasher status = %s, want stopped", crasher.Status)
+	}
+	if crasher.PID != 0 {
+		t.Errorf("crasher pid = %d, want 0", crasher.PID)
+	}
+
+	// An unselected service is not a failure: the supervisor must not record one.
+	if s.Failed() {
+		t.Errorf("Failed() = true, want false (skipped stops are not failures)")
+	}
+
+	// Selected services launched; unselected one must never have launched.
+	waitForFile(t, workerStart, 2*time.Second)
+	if fileExists(crasherStart) {
+		t.Errorf("crasher started marker exists; crasher launched despite being unselected")
+	}
+
+	// The skipped service's log must explain the skip.
+	crasherLog, _ := s.LogPath("crasher")
+	if data := string(mustReadFile(t, crasherLog)); !strings.Contains(data, "skipping service crasher") {
+		t.Errorf("crasher log missing skip notice: %q", data)
+	}
 }
 
 func TestSupervisorRestartAfterStopErrors(t *testing.T) {
@@ -755,117 +853,6 @@ func TestSupervisorRestartAfterStopErrors(t *testing.T) {
 	}
 	if err := s.StartStopped(); err == nil {
 		t.Fatalf("StartStopped after Stop: want error, got nil")
-	}
-}
-
-// TestSupervisorUnlessStoppedSkipsDependents verifies that when a unless-stopped
-// service is skipped at Start because of a persisted stop marker (daemon
-// autostart path), its dependents are skipped transitively (not reported as
-// failures), the supervisor does NOT record a failure, and the per-service
-// logs explain the skip. This is the UX fix for the old behavior where
-// dependents died with a misleading "dependency exited before satisfying"
-// message and startup exited non-zero.
-func TestSupervisorUnlessStoppedSkipsDependents(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unix-only")
-	}
-	locs := testLocations(t)
-	if err := locs.MkdirAll(); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	// Pre-create the stop marker so the api service is skipped at Start.
-	apiMarker := filepath.Join(locs.State, "api.stopped")
-	if err := os.WriteFile(apiMarker, []byte("stopped\n"), 0o644); err != nil {
-		t.Fatalf("write marker: %v", err)
-	}
-	dir := t.TempDir()
-	dependentStart := filepath.Join(dir, "worker-started")
-	crasherStart := filepath.Join(dir, "crasher-started")
-	file := fileWith(map[string]config.Service{
-		"api": {
-			Command: "sleep 30", Shell: "sh", Restart: config.RestartUnlessStopped,
-			WorkingDir: dir,
-		},
-		"worker": {
-			Command: "touch " + dependentStart + "; sleep 30", Shell: "sh",
-			Restart: config.RestartNo, WorkingDir: dir,
-			DependsOn: config.DependsOn{
-				Entries: map[string]config.DependsOnEntry{
-					"api": {Condition: config.ConditionServiceStarted},
-				},
-				Order: []string{"api"},
-			},
-		},
-		"crasher": {
-			Command: "touch " + crasherStart + "; sleep 30", Shell: "sh",
-			Restart: config.RestartNo, WorkingDir: dir,
-			DependsOn: config.DependsOn{
-				Entries: map[string]config.DependsOnEntry{
-					"api": {Condition: config.ConditionServiceStarted},
-				},
-				Order: []string{"api"},
-			},
-		},
-	})
-	s, err := supervisor.New(supervisor.Options{
-		Locations:           locs,
-		File:                file,
-		Order:               []string{"api", "worker", "crasher"},
-		BaseDir:             dir,
-		Foreground:          false,
-		Backoff:             testBackoff(),
-		GracefulStopTimeout: 2 * time.Second,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = s.Stop(ctx)
-		_ = s.Close()
-	})
-	if err := s.Start(context.Background()); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-
-	// All three services should be Stopped: api was skipped by the marker,
-	// worker/crasher are skipped transitively. None should be running.
-	if !waitFor(t, 2*time.Second, func() bool {
-		for _, st := range s.States() {
-			if st.Status != supervisor.StatusStopped {
-				return false
-			}
-			if st.PID != 0 {
-				return false
-			}
-		}
-		return true
-	}) {
-		t.Fatalf("services not all stopped: %+v", s.States())
-	}
-
-	// An explicit stop is not a failure: the supervisor must not record one.
-	if s.Failed() {
-		t.Errorf("Failed() = true, want false (skipped stops are not failures)")
-	}
-
-	// Dependents must never have launched.
-	if fileExists(dependentStart) {
-		t.Errorf("worker started marker exists; worker launched despite stopped api")
-	}
-	if fileExists(crasherStart) {
-		t.Errorf("crasher started marker exists; crasher launched despite stopped api")
-	}
-
-	// Logs must explain the skip rather than blaming api for "exiting".
-	apiLog, _ := s.LogPath("api")
-	if data := string(mustReadFile(t, apiLog)); !strings.Contains(data, "skipping stopped service api") {
-		t.Errorf("api log missing skip notice: %q", data)
-	}
-	workerLog, _ := s.LogPath("worker")
-	if data := string(mustReadFile(t, workerLog)); !strings.Contains(data, "skipped: dependency \"api\" is stopped") {
-		t.Errorf("worker log missing transitive-skip notice: %q", data)
 	}
 }
 

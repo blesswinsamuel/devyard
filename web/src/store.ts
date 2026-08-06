@@ -490,6 +490,11 @@ export function restartService(project: string, service: string) {
   refreshServices(project);
 }
 
+export function startService(project: string, service: string) {
+  sendWS({ type: "start_service", project, service });
+  refreshServices(project);
+}
+
 export function stopService(project: string, service: string) {
   sendWS({ type: "stop_service", project, service });
   refreshServices(project);

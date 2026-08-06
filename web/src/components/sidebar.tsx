@@ -19,6 +19,7 @@ import {
   startProjectByPath,
   stopProject,
   restartService,
+  startService,
   stopService,
   killService,
   runAction,
@@ -156,7 +157,7 @@ function ServiceRow(props: { project: string; name: string }) {
                     </>
                   }
                 >
-                  <DropdownMenuItem onSelect={() => restartService(props.project, props.name)}>
+                  <DropdownMenuItem onSelect={() => startService(props.project, props.name)}>
                     <Play />
                     Start
                     <span class="ml-auto text-xs text-muted-foreground">r</span>

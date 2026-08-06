@@ -32,8 +32,8 @@ func runDaemonChild() error {
 		return err
 	}
 
-	// Autostart projects with restart: always or restart: unless-stopped
-	// unless a project-level .stopped marker exists (explicit down/stop).
+	// Autostart all registered projects unless a project-level .stopped
+	// marker exists (explicit down/stop).
 	started, skipped, err := d.Autostart()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "local-compose: autostart: %v\n", err)

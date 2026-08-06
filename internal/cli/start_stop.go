@@ -36,8 +36,8 @@ var startCmd = &cobra.Command{
 		defer func() { _ = client.Close() }()
 
 		if service == "" {
-			// Same resume semantics as `up`: clear markers and start stopped
-			// services (or recreate the supervisor if the project is down).
+			// Same resume semantics as `up`: start stopped services (or
+			// recreate the supervisor if the project is down).
 			cfg, loadErr := loadConfig(flagConfigPath, projName)
 			if loadErr != nil {
 				return loadErr
@@ -49,15 +49,7 @@ var startCmd = &cobra.Command{
 			return nil
 		}
 
-		if err := client.Restart(projName, service); err != nil {
-			// Project may be stopped (no live supervisor); load & start it.
-			cfg, loadErr := loadConfig(flagConfigPath, projName)
-			if loadErr == nil {
-				if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, true); startErr == nil {
-					fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)
-					return nil
-				}
-			}
+		if err := client.StartService(projName, service); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)

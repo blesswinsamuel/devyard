@@ -72,7 +72,7 @@ api:
     interval: 5s
     timeout: 2s
     retries: 10
-  restart: unless-stopped           # no | on-failure | always | unless-stopped
+  restart: always                   # no | on-failure | always
   build: cargo build --bin api      # string OR object (see below)
 ```
 
@@ -143,9 +143,17 @@ The probe inherits the service's `shell`, `working_dir`, and `env`, so a
 | `no` (default) | Never restart. |
 | `on-failure` | Restart on non-zero exit, up to `Backoff.MaxAttempts` (capped). |
 | `always` | Restart forever, any exit. |
-| `unless-stopped` | Restart forever, **but** an explicit `stop`/`down` writes a "stopped" marker so the service does not auto-resume on the next **daemon autostart**. Explicit `up`/`start` (all services) clears markers and starts the service; `start <svc>` / `restart` also clear it. When a service is skipped at autostart this way, its dependents are skipped transitively (logged as `skipped: dependency "X" is stopped`) and startup exits 0 — an explicit stop is not a failure. |
 
-Note: a **project-level** `.stopped` marker (written by `down` / `stop` with no service) suppresses **daemon autostart** for the whole project, including services with `restart: always`. Explicit `up`/`start` clears it. Stopped projects remain listed in `ls` / the web UI.
+`stop <svc>` is ephemeral: an explicitly stopped service is not restarted by the
+running supervisor, but **daemon autostart** starts every registered project
+again (regardless of restart policy), so a service with `always` resumes on the
+next daemon boot unless the whole project was stopped with `down` / `stop`.
+
+Note: a **project-level** `.stopped` marker (written by `down` / `stop` with no
+service) suppresses **daemon autostart** for the whole project. Explicit
+`up`/`start`/`start <svc>` clears it. Stopped projects remain listed in `ls` /
+the web UI, and `start <svc>` lazily starts just that service (plus its
+`depends_on` chain) instead of the whole project.
 
 Backoff is exponential with jitter (`internal/supervisor` `BackoffConfig`).
 
@@ -254,7 +262,7 @@ services:
     build: cargo build --bin api
     depends_on:
       db: { condition: service_healthy }
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s

@@ -27,6 +27,7 @@ const (
 	KindLogs          RequestKind = "logs"           // stream a service's log file
 	KindStop          RequestKind = "stop"           // stop every service in a project
 	KindStopService   RequestKind = "stop_service"   // stop one service by name
+	KindStartService  RequestKind = "start_service"  // start one service by name (resumes in place or lazy-starts on a stopped project)
 	KindKillService   RequestKind = "kill_service"   // immediately signal one service (Signal; empty = SIGKILL)
 	KindRestart       RequestKind = "restart"        // restart one (Service) or all services
 	KindListProjects  RequestKind = "list_projects"  // list all known projects
@@ -46,7 +47,8 @@ const (
 //     Tail limits history to the last N lines (0 = all, subject to a byte cap).
 //   - Kind==KindRestart: Project selects the project; Service selects one service
 //     (empty means all).
-//   - Kind==KindStopService: Project + Service selects the service to stop.
+//   - Kind==KindStopService / KindStartService: Project + Service selects the
+//     service to stop or start.
 //   - Kind==KindKillService: Project + Service selects the service to kill;
 //     Signal is the signal name (empty means SIGKILL).
 //   - Kind==KindList / KindStop: Project selects the project.

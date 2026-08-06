@@ -27,9 +27,11 @@ type fakeBackend struct {
 	restarts    []string
 	stopped     bool
 	stoppedSvc  []string
+	startedSvc  []string
 	killedSvc   []string
 	killedSigs  []string
 	stopSvcErr  error
+	startSvcErr error
 	actions     []protocol.ActionInfo
 	runActionFn func(name string, args []string, out io.Writer) (int, error)
 }
@@ -72,6 +74,13 @@ func (b *fakeBackend) StopService(name string) error {
 	defer b.mu.Unlock()
 	b.stoppedSvc = append(b.stoppedSvc, name)
 	return b.stopSvcErr
+}
+
+func (b *fakeBackend) StartService(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.startedSvc = append(b.startedSvc, name)
+	return b.startSvcErr
 }
 
 func (b *fakeBackend) KillService(name, signal string) error {
@@ -318,6 +327,44 @@ func TestStopServiceRequiresName(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 	if err := c.Send(protocol.Request{Kind: protocol.KindStopService}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	if resp.Kind != protocol.KindError {
+		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
+	}
+}
+
+func TestRoundtripStartService(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.StartService("", "api"); err != nil {
+		t.Fatalf("StartService: %v", err)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.startedSvc) != 1 || b.startedSvc[0] != "api" {
+		t.Errorf("started services = %v, want [api]", b.startedSvc)
+	}
+}
+
+func TestStartServiceRequiresName(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.Send(protocol.Request{Kind: protocol.KindStartService}); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 	resp, err := c.Recv()
@@ -851,6 +898,7 @@ type fakeMultiBackend struct {
 	started      []string
 	envFiles     []string
 	stopped      []string
+	startedSvc   []string
 	daemonStopCh chan struct{}
 }
 
@@ -897,6 +945,17 @@ func (m *fakeMultiBackend) StopProject(name string) error {
 	}
 	m.stopped = append(m.stopped, name)
 	return b.Stop(context.Background())
+}
+
+func (m *fakeMultiBackend) StartService(project, service string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.projects[project]
+	if !ok {
+		return fmt.Errorf("project %q not running", project)
+	}
+	m.startedSvc = append(m.startedSvc, project+"/"+service)
+	return b.StartService(service)
 }
 
 func (m *fakeMultiBackend) RemoveProject(name string) error {

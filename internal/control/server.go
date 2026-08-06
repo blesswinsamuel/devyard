@@ -25,10 +25,11 @@ type Backend interface {
 	// Stop gracefully stops every service. Used by `down`.
 	Stop(ctx context.Context) error
 	// StopService stops a single service in place (no restart), used by
-	// `stop <service>`. markStopped semantics are owned by the implementation;
-	// the supervisor treats it as an explicit stop so unless-stopped does not
-	// auto-resume it.
+	// `stop <service>`.
 	StopService(name string) error
+	// StartService starts a single stopped service in place (no-op when it is
+	// already up), used by `start <service>`.
+	StartService(name string) error
 	// KillService sends signal to a single service's process group without a
 	// grace period. signal is a signal name (e.g. "SIGKILL", "SIGTERM"); empty
 	// means SIGKILL.
@@ -179,6 +180,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleStop(ctx, w, req)
 	case protocol.KindStopService:
 		s.handleStopService(w, req)
+	case protocol.KindStartService:
+		s.handleStartService(w, req)
 	case protocol.KindKillService:
 		s.handleKillService(w, req)
 	case protocol.KindRestart:
@@ -245,6 +248,18 @@ func (s *Server) handleStopService(w io.Writer, req protocol.Request) {
 		return
 	}
 	if err := b.StopService(req.Service); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleStartService(w io.Writer, req protocol.Request) {
+	if req.Service == "" {
+		_ = writeError(w, "start_service: service is required")
+		return
+	}
+	if err := s.backend.StartService(req.Project, req.Service); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}

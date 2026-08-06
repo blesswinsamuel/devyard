@@ -16,10 +16,9 @@ const DefaultShell = "sh"
 type RestartPolicy string
 
 const (
-	RestartNo            RestartPolicy = "no"
-	RestartOnFailure     RestartPolicy = "on-failure"
-	RestartAlways        RestartPolicy = "always"
-	RestartUnlessStopped RestartPolicy = "unless-stopped"
+	RestartNo        RestartPolicy = "no"
+	RestartOnFailure RestartPolicy = "on-failure"
+	RestartAlways    RestartPolicy = "always"
 )
 
 // DependsOnCondition is the condition for depends_on.
@@ -339,7 +338,7 @@ func defaultProjectName(configPath string) string {
 
 func validateRestartPolicy(p RestartPolicy) error {
 	switch p {
-	case RestartNo, RestartOnFailure, RestartAlways, RestartUnlessStopped:
+	case RestartNo, RestartOnFailure, RestartAlways:
 		return nil
 	default:
 		return fmt.Errorf("invalid restart policy %q", p)

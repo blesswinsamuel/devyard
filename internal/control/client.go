@@ -167,6 +167,17 @@ func (c *Client) StopService(project, service string) error {
 	return c.awaitDone()
 }
 
+// StartService sends a StartService request for one service in the given
+// project and waits for confirmation. When the project is running the service
+// is resumed in place; when the project is stopped a supervisor is lazily
+// materialized that starts just the requested service and its depends_on chain.
+func (c *Client) StartService(project, service string) error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindStartService, Project: project, Service: service}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
 // KillService sends a KillService request for one service in the given project
 // and waits for confirmation. The service is immediately signalled with the
 // given signal name (empty means SIGKILL).

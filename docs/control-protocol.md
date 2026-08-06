@@ -55,6 +55,7 @@ type Request struct {
 | `"logs"` | project name | service name | `Follow`, `Previous`, `Tail` | Stream the service's log file. `previous:true` streams the previous run's log (`<service>.prev.log`) instead of the current one; it errors with `no previous run` when none exists. `tail` limits the initial history dump to the last N lines (`0` / omitted = all, still capped at ~8 MiB of trailing content so the frame stays under `FrameMaxLen`). `follow:false` streams that history and ends with `done`; `follow:true` keeps streaming new lines until shutdown/disconnect. During follow, the stream transparently reopens the file when the supervisor rotates it (each spawn starts a fresh `<service>.log`, and size-based rotation uses the same slot), so it keeps following the live run across restarts; a `log_rotated` frame announces each new run. |
 | `"stop"` | project name | — | — | Stop every service in the project. Acks with `done` once all groups are torn down. |
 | `"stop_service"` | project name | service name | — | Stop one service in place (no restart). Acks with `done`. |
+| `"start_service"` | project name | service name | — | Start one service on a stopped project, materializing a supervisor limited to that service plus its `depends_on` chain (other services report `stopped`); clears the project's `.stopped` marker. No-op when the service is already running. Acks with `done` or `error`. |
 | `"kill_service"` | project name | service name (empty = all) | `Signal` | Signal one service (empty = all services, in start order) with the named signal; empty `Signal` means `SIGKILL`. No grace period. Acks with `done`. |
 | `"restart"` | project name | service name (empty = all) | — | Restart the named service, or all when empty. Acks with `done`. |
 | `"top"` | project name | service name (empty = all) | — | Sample the service's process group(s) twice over ~1s and return one `stats` response with per-service CPU/memory usage. |
@@ -164,6 +165,7 @@ Prefer these over hand-rolling request/response loops:
   history (`0` = all, byte-capped).
 - `client.Stop(project) error` — `stop` (stop all services in a project).
 - `client.StopService(project, name) error` — `stop_service`.
+- `client.StartService(project, name) error` — `start_service`.
 - `client.KillService(project, name, signal) error` — `kill_service` (empty
   `signal` = `SIGKILL`).
 - `client.Restart(project, service) error` — `restart` (empty service = all).

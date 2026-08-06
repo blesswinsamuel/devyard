@@ -75,6 +75,16 @@ func (m *fakeMultiBackend) StopProject(name string) error {
 	return b.Stop(context.Background())
 }
 
+func (m *fakeMultiBackend) StartService(project, service string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.projects[project]
+	if !ok {
+		return fmt.Errorf("project %q not running", project)
+	}
+	return b.StartService(service)
+}
+
 func (m *fakeMultiBackend) RemoveProject(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -110,6 +120,7 @@ type fakeBackend struct {
 	logPaths    map[string]string
 	restarts    []string
 	stopped     []string
+	started     []string
 	killed      []string
 	stoppedProj bool
 }
@@ -118,6 +129,10 @@ func (b *fakeBackend) States() []protocol.ServiceState { return b.states }
 func (b *fakeBackend) Stop(context.Context) error      { b.stoppedProj = true; return nil }
 func (b *fakeBackend) StopService(name string) error {
 	b.stopped = append(b.stopped, name)
+	return nil
+}
+func (b *fakeBackend) StartService(name string) error {
+	b.started = append(b.started, name)
 	return nil
 }
 func (b *fakeBackend) KillService(name, signal string) error {
@@ -317,6 +332,23 @@ func TestWSStopService(t *testing.T) {
 	}
 	if len(b.stopped) != 1 || b.stopped[0] != "web" {
 		t.Errorf("stopped = %v", b.stopped)
+	}
+}
+
+func TestWSStartService(t *testing.T) {
+	b := &fakeBackend{states: []protocol.ServiceState{{Name: "web", Status: "stopped"}}}
+	m := newFakeMulti()
+	m.projects["api"] = b
+	srv := newWebServer(t, m)
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]string{"type": "start_service", "project": "api", "service": "web"})
+	resp := recvWSMsg(t, c)
+	if resp["type"] != "result" || resp["ok"] != true {
+		t.Fatalf("resp = %+v, want result ok=true", resp)
+	}
+	if len(b.started) != 1 || b.started[0] != "web" {
+		t.Errorf("started = %v", b.started)
 	}
 }
 

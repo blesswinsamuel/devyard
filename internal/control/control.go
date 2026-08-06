@@ -19,6 +19,11 @@ type MultiBackend interface {
 	// the config file). removeOrphans controls whether services deleted from
 	// the config are stopped on reload.
 	StartProject(configPath string, build bool, envFile string, removeOrphans bool) error
+	// StartService starts one service of a project by name. When the project
+	// is running the service is resumed in place; when the project is stopped
+	// a supervisor is lazily materialized that starts just the requested
+	// service and its depends_on chain.
+	StartService(project, service string) error
 	// StopProject stops the named project's services.
 	StopProject(name string) error
 	// RemoveProject stops the named project's services and removes it from the daemon.
@@ -46,6 +51,13 @@ func (s SingleProjectBackend) ListProjects() []protocol.ProjectInfo {
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {
 	return fmt.Errorf("start_project not supported in single-project mode")
+}
+
+func (s SingleProjectBackend) StartService(project, service string) error {
+	if project != "" && project != s.Project {
+		return fmt.Errorf("unknown project %q", project)
+	}
+	return s.Backend.StartService(service)
 }
 
 func (s SingleProjectBackend) StopProject(name string) error {

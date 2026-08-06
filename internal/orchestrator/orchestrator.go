@@ -90,19 +90,14 @@ func (d *Daemon) StopCh() <-chan struct{} { return d.stopCh }
 // starts it, and adds it to the daemon's map. If build is true, pre-start
 // builds are run before starting services. envFile is the absolute path to an
 // env file to layer under service env (empty falls back to .env next to the
-// config file). Explicit `up`/`start` clears per-service unless-stopped markers
-// so previously stopped services are started. If the project is already
-// running, stopped services are resumed, orphan services are handled according to removeOrphans.
+// config file). If the project is already running, stopped services are
+// resumed, orphan services are handled according to removeOrphans.
 func (d *Daemon) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {
-	return d.startProject(configPath, build, envFile, true, removeOrphans)
+	return d.startProject(configPath, build, envFile, removeOrphans)
 }
 
 // startProject is the shared implementation for StartProject and Autostart.
-// When clearServiceMarkers is true (user-initiated up/start), per-service
-// unless-stopped markers are removed so Stop then Up starts everything.
-// Autostart passes false so an explicit stop continues to suppress resume
-// across daemon restarts.
-func (d *Daemon) startProject(configPath string, build bool, envFile string, clearServiceMarkers bool, removeOrphans bool) error {
+func (d *Daemon) startProject(configPath string, build bool, envFile string, removeOrphans bool) error {
 	cfg, err := loadConfig(configPath, envFile)
 	if err != nil {
 		return err
@@ -115,7 +110,7 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 		p, exists := d.projects[name]
 		if !exists {
 			d.mu.Unlock()
-			return d.createAndStartProject(cfg, configPath, build, clearServiceMarkers, nil)
+			return d.createAndStartProject(cfg, configPath, build, nil, nil)
 		}
 		switch p.Status() {
 		case "stopping":
@@ -126,9 +121,6 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 		case "running":
 			sup := p.Sup
 			d.mu.Unlock()
-			if !clearServiceMarkers {
-				return fmt.Errorf("project %q is already running", name)
-			}
 			if sup == nil {
 				return fmt.Errorf("project %q is running but has no supervisor", name)
 			}
@@ -150,15 +142,83 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 		default: // stopped
 			old := p
 			d.mu.Unlock()
-			return d.createAndStartProject(cfg, configPath, build, clearServiceMarkers, old)
+			return d.createAndStartProject(cfg, configPath, build, nil, old)
 		}
 	}
 }
 
+// StartService starts one service of a project by name. If the project's
+// supervisor is running, the service is resumed in place (no-op when it is
+// already up). If the project is stopped, a supervisor is materialized that
+// starts just the requested service and its depends_on chain; the rest stay
+// stopped. The project-level stopped marker is cleared so an explicit start
+// re-arms autostart. Project-level state does not gate an explicit service
+// start.
+func (d *Daemon) StartService(projectName, serviceName string) error {
+	for {
+		d.mu.Lock()
+		p, exists := d.projects[projectName]
+		if !exists {
+			d.mu.Unlock()
+			return fmt.Errorf("project %q is not running", projectName)
+		}
+		switch p.Status() {
+		case "stopping":
+			done := p.done
+			d.mu.Unlock()
+			<-done
+			continue
+		case "running":
+			sup := p.Sup
+			d.mu.Unlock()
+			if sup == nil {
+				return fmt.Errorf("project %q is running but has no supervisor", projectName)
+			}
+			return sup.StartService(serviceName)
+		default: // stopped
+			configPath := p.ConfigPath
+			old := p
+			d.mu.Unlock()
+			cfg, err := loadConfig(configPath, "")
+			if err != nil {
+				return err
+			}
+			if _, ok := cfg.File.Services[serviceName]; !ok {
+				return fmt.Errorf("supervisor: unknown service %q", serviceName)
+			}
+			return d.createAndStartProject(cfg, configPath, false, serviceClosure(cfg.File, serviceName), old)
+		}
+	}
+}
+
+// serviceClosure returns the set of service names that must run for name to
+// start: name itself plus every transitive depends_on dependency.
+func serviceClosure(file *config.File, name string) map[string]bool {
+	selected := map[string]bool{name: true}
+	var visit func(n string)
+	visit = func(n string) {
+		svc, ok := file.Services[n]
+		if !ok {
+			return
+		}
+		for _, dep := range svc.DependsOn.Order {
+			if selected[dep] {
+				continue
+			}
+			selected[dep] = true
+			visit(dep)
+		}
+	}
+	visit(name)
+	return selected
+}
+
 // createAndStartProject builds a new supervisor and installs it in the map.
-// old, if non-nil, is a stopped project entry whose supervisor (if any) is
-// closed before replacement. The project remains listed under the same name.
-func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, build, clearServiceMarkers bool, old *Project) error {
+// selected, when non-empty, limits the services launched at Start to that set
+// (used by lazy `start <service>`); nil means all services. old, if non-nil,
+// is a stopped project entry whose supervisor (if any) is closed before
+// replacement. The project remains listed under the same name.
+func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, build bool, selected map[string]bool, old *Project) error {
 	name := cfg.Name
 
 	if old != nil && old.Sup != nil {
@@ -180,13 +240,18 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 	// project on the next daemon start.
 	_ = removeProjectStoppedMarker(locs)
 
-	if clearServiceMarkers {
-		clearServiceStoppedMarkers(locs, cfg.File.Services)
-	}
-
 	if build {
 		if err := runBuilds(cfg); err != nil {
 			return err
+		}
+	}
+
+	selectedNames := make([]string, 0, len(selected))
+	if len(selected) > 0 {
+		for _, n := range cfg.Order {
+			if selected[n] {
+				selectedNames = append(selectedNames, n)
+			}
 		}
 	}
 
@@ -197,6 +262,7 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		BaseDir:    cfg.BaseDir,
 		Foreground: false,
 		Env:        config.BaseEnv(cfg.DotEnv),
+		Selected:   selectedNames,
 	})
 	if err != nil {
 		return fmt.Errorf("supervisor: %w", err)
@@ -227,9 +293,6 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		stopCancel()
 		_ = sup.Close()
 		cancel()
-		if !clearServiceMarkers {
-			return fmt.Errorf("project %q is already running", name)
-		}
 		return existing.Sup.StartStopped()
 	}
 	d.projects[name] = p
@@ -367,7 +430,7 @@ func (d *Daemon) RemoveProject(name string) error {
 
 // StopDaemon stops all projects and signals the daemon process to exit.
 // Projects remain in the map as stopped; no project .stopped marker is written
-// so unless-stopped autostart can resume after a daemon restart.
+// so autostart can resume them after a daemon restart.
 func (d *Daemon) StopDaemon() error {
 	d.stopOnce.Do(func() { close(d.stopCh) })
 
@@ -519,6 +582,7 @@ func (b stoppedBackend) States() []protocol.ServiceState {
 
 func (b stoppedBackend) Stop(context.Context) error    { return b.err() }
 func (b stoppedBackend) StopService(string) error      { return b.err() }
+func (b stoppedBackend) StartService(string) error     { return b.err() }
 func (b stoppedBackend) KillService(_, _ string) error { return b.err() }
 func (b stoppedBackend) Restart(string) error          { return b.err() }
 func (b stoppedBackend) Top(string) ([]protocol.ServiceStat, error) {
@@ -711,15 +775,6 @@ func removeProjectStoppedMarker(locs *project.Locations) error {
 	return err
 }
 
-// clearServiceStoppedMarkers removes per-service unless-stopped markers so an
-// explicit `up`/`start` launches services that were previously stopped.
-func clearServiceStoppedMarkers(locs *project.Locations, services map[string]config.Service) {
-	for name := range services {
-		path := filepath.Join(locs.State, name+".stopped")
-		_ = os.Remove(path)
-	}
-}
-
 // HasProjectStoppedMarker reports whether the named project has a project-level
 // ".stopped" marker in its state dir.
 func HasProjectStoppedMarker(name string) bool {
@@ -759,10 +814,10 @@ func readConfigPath(locs *project.Locations) (string, bool) {
 }
 
 // Autostart scans the state dir for known projects and starts supervisors for
-// those that have services with restart: always or restart: unless-stopped
-// (unless a project-level .stopped marker exists). It is called by the daemon
-// child on startup. Returns the number of projects started and the number
-// skipped.
+// all of them except those with a project-level .stopped marker. Skipped
+// projects are still registered in memory as stopped so list commands stay
+// complete. It is called by the daemon child on startup. Returns the number of
+// projects started and the number skipped.
 func (d *Daemon) Autostart() (started, skipped int, err error) {
 	stateBase, err := stateBaseDir()
 	if err != nil {
@@ -799,9 +854,7 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 			continue
 		}
 
-		policy := autostartPolicy(cfg.File)
-		shouldAutostart := (policy == config.RestartAlways || policy == config.RestartUnlessStopped) &&
-			!hasProjectStoppedMarker(locs)
+		shouldAutostart := !hasProjectStoppedMarker(locs)
 
 		if !shouldAutostart {
 			// Register stopped project in memory so d.projects owns all registered projects.
@@ -822,9 +875,7 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 			continue
 		}
 
-		// Do not clear per-service stopped markers: an explicit `stop` should
-		// still suppress resume across daemon restarts for unless-stopped.
-		if err := d.startProject(configPath, false, "", false, true); err != nil {
+		if err := d.startProject(configPath, false, "", true); err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: autostart: project %q: %v\n", name, err)
 			skipped++
 			continue
@@ -832,30 +883,6 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 		started++
 	}
 	return started, skipped, nil
-}
-
-// autostartPolicy returns the restart policy that determines whether a
-// project is eligible for autostart. If any service has restart: always or
-// restart: unless-stopped, the project may autostart (subject to the project
-// .stopped marker). Otherwise the project does not autostart.
-func autostartPolicy(file *config.File) config.RestartPolicy {
-	hasAlways := false
-	hasUnlessStopped := false
-	for _, svc := range file.Services {
-		switch svc.Restart {
-		case config.RestartAlways:
-			hasAlways = true
-		case config.RestartUnlessStopped:
-			hasUnlessStopped = true
-		}
-	}
-	if hasAlways {
-		return config.RestartAlways
-	}
-	if hasUnlessStopped {
-		return config.RestartUnlessStopped
-	}
-	return config.RestartNo
 }
 
 // stateBaseDir returns the XDG state base directory (without the app dir

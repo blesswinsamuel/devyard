@@ -28,7 +28,7 @@ services:
       interval: 1s
       timeout: 2s
       retries: 60
-    restart: unless-stopped
+    restart: always
 
   frontend:
     command: bun run dev
@@ -36,7 +36,7 @@ services:
     depends_on:
       web: { condition: service_healthy }
     build: bun install
-    restart: unless-stopped
+    restart: always
 
 actions:
   reload-daemon: go install ./cmd/local-compose/ && local-compose daemon reload

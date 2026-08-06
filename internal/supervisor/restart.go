@@ -3,7 +3,6 @@ package supervisor
 import (
 	"math/big"
 	"math/rand/v2"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,7 +19,7 @@ type BackoffConfig struct {
 	// Cap is the maximum delay between attempts.
 	Cap time.Duration
 	// MaxAttempts caps the number of restart attempts for on-failure
-	// services. always/unless-stopped are unlimited.
+	// services. always is unlimited.
 	MaxAttempts int
 	// Jitter is the +/- fraction of random jitter applied to each delay
 	// (0.2 = +/-20%).
@@ -64,16 +63,13 @@ func (b BackoffConfig) delay(attempt int) time.Duration {
 }
 
 // shouldRestart reports whether policy permits a restart after an exit with
-// the given code. The unless-stopped "stopped" flag is checked separately by
-// the caller.
+// the given code.
 func shouldRestart(policy config.RestartPolicy, exitCode int) bool {
 	switch policy {
 	case config.RestartAlways:
 		return true
 	case config.RestartOnFailure:
 		return exitCode != 0
-	case config.RestartUnlessStopped:
-		return true
 	default: // RestartNo
 		return false
 	}
@@ -194,26 +190,4 @@ func exitCodeFrom(err error) int {
 		}
 	}
 	return -1
-}
-
-// stoppedMarkerPath returns the path of the unless-stopped marker file.
-func (s *Supervisor) stoppedMarkerPath(name string) string {
-	return filepath.Join(s.opts.Locations.State, name+".stopped")
-}
-
-func (s *Supervisor) hasStoppedMarker(name string) bool {
-	_, err := os.Stat(s.stoppedMarkerPath(name))
-	return err == nil
-}
-
-func (s *Supervisor) writeStoppedMarker(name string) error {
-	return os.WriteFile(s.stoppedMarkerPath(name), []byte("stopped\n"), 0o644)
-}
-
-func (s *Supervisor) removeStoppedMarker(name string) error {
-	err := os.Remove(s.stoppedMarkerPath(name))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
 }

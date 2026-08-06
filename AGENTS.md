@@ -66,8 +66,8 @@ or `start-daemon`) owns a `map[string]*supervisor.Supervisor` — one supervisor
 per project. It serves one **Unix-socket control protocol** at
 `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. Every CLI command (`ps`, `logs`,
 `restart`, `down`), and the web UI are thin **Client** connections over
-that socket. The daemon autostarts projects whose services declare
-`restart: always` or `restart: unless-stopped` on startup. See
+that socket. The daemon autostarts every registered project on startup unless a
+project-level `.stopped` marker exists. See
 [docs/architecture.md](docs/architecture.md) and
 [docs/control-protocol.md](docs/control-protocol.md).
 
@@ -108,27 +108,22 @@ that socket. The daemon autostarts projects whose services declare
   `up -d` just sends `start_project` and returns.
 - **Autostart**: on daemon startup, `Autostart()` scans
   `$XDG_STATE_HOME/local-compose/*/` for `config-path` files, reads each
-  project's config, and starts projects whose services have `restart: always`
-  or `restart: unless-stopped` **unless** a project-level `.stopped` marker
-  exists (honored for both policies). Skipped projects are still registered in
-  memory as stopped so list commands stay complete. `on-failure` does not
-  trigger autostart.
-- **Project-level vs service-level stopped markers**: `StopProject` writes a
+  project's config, and starts every project **unless** a project-level
+  `.stopped` marker exists. Skipped projects are still registered in
+  memory as stopped so list commands stay complete. Restart policy does not
+  gate autostart.
+- **Project-level `.stopped` marker**: `StopProject` writes a
   project-level `$XDG_STATE_HOME/local-compose/<project>/.stopped` marker (so
   autostart won't resume the project) and keeps the project in the daemon map
-  (closed supervisor retained for `ps`). `StartProject` removes the marker.
-  This is distinct from the per-service `<svc>.stopped` markers used by the
-  supervisor's `unless-stopped` restart policy.
-- **`unless-stopped`** (service-level) persists a per-service "stopped" marker
-  in the state dir so a service doesn't auto-resume on **daemon autostart**.
-  Explicit `up`/`start` clears the marker and starts the service; `Restart`
-  also removes it. If you touch restart/stop logic, keep the marker in sync.
-  When a service is skipped at autostart because of the marker, its dependents
-  are skipped transitively (`waitForDep` returns `errDependencyStopped`) and
-  startup exits 0 — an explicit stop is not a failure, so `Failed()` stays
-  false. Only a dependency that genuinely exits or goes unhealthy sets
-  `Failed()`; a user-initiated shutdown (`errSupervisorStopping`) doesn't
-  either.
+  (closed supervisor retained for `ps`). Explicit `up`/`start`/`start <svc>`
+  removes the marker.
+- **`start <svc>` on a stopped project** lazily starts just that service plus
+  its transitive `depends_on` chain: the supervisor is materialized with a
+  `Selected` service set, and unselected services are registered as `stopped`
+  and skipped (logged `skipping service <name>`) — a skip is not a failure, so
+  `Failed()` stays false. Only a dependency that genuinely exits or goes
+  unhealthy sets `Failed()`; a user-initiated shutdown (`errSupervisorStopping`)
+  doesn't either.
 - **Health checker lifecycle**: the checker is created before
   `depends_on: service_healthy` waiters poll it, so they see `starting` instead
   of nil. Don't reorder checker creation after `waitForDeps`.

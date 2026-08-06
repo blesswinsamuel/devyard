@@ -49,9 +49,14 @@ func (b *ControlBackend) Stop(ctx context.Context) error {
 }
 
 // StopService stops a single service in place (used by `stop <service>`).
-// markStopped=true so unless-stopped does not auto-resume it.
 func (b *ControlBackend) StopService(name string) error {
-	return b.s.StopService(name, true)
+	return b.s.StopService(name)
+}
+
+// StartService starts a single stopped service in place, leaving other stopped
+// services alone (used by `start <service>` on a running project).
+func (b *ControlBackend) StartService(name string) error {
+	return b.s.StartService(name)
 }
 
 // KillService immediately sends signal to a single service's process group

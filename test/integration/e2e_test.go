@@ -254,17 +254,17 @@ name: lc-test
 services:
   alpha:
     command: sh -c 'echo alpha-start; i=0; while true; do i=$((i+1)); echo alpha-tick $i; sleep 1; done'
-    restart: unless-stopped
+    restart: always
   beta:
     command: sh -c 'echo beta-start; i=0; while true; do i=$((i+1)); echo beta-tick $i; sleep 1; done'
     depends_on: [alpha]
-    restart: unless-stopped
+    restart: always
   gamma:
     command: sh -c 'echo gamma-start; i=0; while true; do i=$((i+1)); echo gamma-tick $i; sleep 1; done'
     depends_on:
       alpha: { condition: service_started }
       beta: { condition: service_started }
-    restart: unless-stopped
+    restart: always
 `
 
 func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
@@ -642,10 +642,10 @@ name: lc-test
 services:
   alpha:
     command: sh -c 'echo alpha-start; sleep 300'
-    restart: unless-stopped
+    restart: always
   beta:
     command: sh -c 'echo beta-start; sleep 300'
-    restart: unless-stopped
+    restart: always
 `
 	e := newEnv(t, cfg)
 	_, _, code := e.run(t, context.Background(), "up", "-d")
@@ -681,18 +681,18 @@ services:
 }
 
 // TestE2E_DownThenUpAndStart verifies that explicit up/start after down clear
-// stopped markers and resume unless-stopped services (markers only suppress
-// daemon autostart).
+// the project-level stopped marker (which suppresses daemon autostart only)
+// and resume the project's services.
 func TestE2E_DownThenUpAndStart(t *testing.T) {
 	const cfg = `version: "1"
 name: lc-test
 services:
   alpha:
     command: sh -c 'echo alpha-start; sleep 300'
-    restart: unless-stopped
+    restart: always
   beta:
     command: sh -c 'echo beta-start; sleep 300'
-    restart: unless-stopped
+    restart: always
 `
 	e := newEnv(t, cfg)
 	_, _, code := e.run(t, context.Background(), "up", "-d")
@@ -997,10 +997,11 @@ services:
 	assertNoOrphans(t, betaPID)
 }
 
-func TestE2E_AutostartSkippedProjectShowsStoppedServices(t *testing.T) {
-	// Services with no restart policy: a fresh daemon's autostart skips the
-	// project on boot, but it must still be registered so `ps` lists every
-	// service as stopped instead of erroring with `project "..." is stopped`.
+// TestE2E_AutostartResumesProjectWithoutRestartPolicy verifies that a fresh
+// daemon autostarts every registered project — even one whose services have no
+// restart policy — unless a project-level .stopped marker (written by `down`)
+// suppresses it.
+func TestE2E_AutostartResumesProjectWithoutRestartPolicy(t *testing.T) {
 	cfg := `version: "1"
 name: restart-skip-test
 services:
@@ -1025,7 +1026,7 @@ services:
 
 	// Simulate a daemon restart: stop the daemon (the project stays registered
 	// in state with no .stopped marker), then boot a fresh daemon whose
-	// autostart skips the restart:no project.
+	// autostart resumes the project even with no restart policy.
 	_, _, code = e.run(t, context.Background(), "daemon", "stop")
 	if code != 0 {
 		t.Fatalf("daemon stop: exit %d", code)
@@ -1035,7 +1036,58 @@ services:
 		t.Fatalf("daemon start: exit %d", code)
 	}
 
-	// ps must succeed (exit 0) and report both services as stopped with no pids.
+	// The services must be running again after the daemon restart.
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return pidFromPS(t, psOut, "web") != 0 && pidFromPS(t, psOut, "worker") != 0
+	}, "ps shows both services running after daemon restart")
+}
+
+// TestE2E_AutostartHonorsDownMarker verifies a project explicitly stopped with
+// `down` stays stopped across a daemon restart (project .stopped marker) but is
+// still listed so `ps` reports every service as stopped and logs stay readable.
+func TestE2E_AutostartHonorsDownMarker(t *testing.T) {
+	cfg := `version: "1"
+name: down-marker-test
+services:
+  web:
+    command: "sleep 60"
+  worker:
+    command: "sleep 60"
+`
+	e := newEnv(t, cfg)
+
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return pidFromPS(t, psOut, "web") != 0 && pidFromPS(t, psOut, "worker") != 0
+	}, "ps shows web and worker running")
+
+	// `down` writes the project .stopped marker that suppresses autostart.
+	_, _, code = e.run(t, context.Background(), "down")
+	if code != 0 {
+		t.Fatalf("down: exit %d", code)
+	}
+	_, _, code = e.run(t, context.Background(), "daemon", "stop")
+	if code != 0 {
+		t.Fatalf("daemon stop: exit %d", code)
+	}
+	_, _, code = e.run(t, context.Background(), "daemon", "start")
+	if code != 0 {
+		t.Fatalf("daemon start: exit %d", code)
+	}
+
+	// The project must stay stopped after the daemon restart, but ps must
+	// succeed (exit 0) and list both services as stopped with no pids.
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, rc := e.run(t, context.Background(), "ps")
 		if rc != 0 {
@@ -1053,4 +1105,78 @@ services:
 	if code != 0 {
 		t.Fatalf("logs web after daemon restart: exit %d, err=%q", code, logsErr)
 	}
+}
+
+// TestE2E_StartServiceOnDownedProject verifies `start <service>` on a stopped
+// project lazily starts just that service (and its depends_on chain) instead
+// of the whole project, and re-arms autostart by clearing the stopped marker.
+func TestE2E_StartServiceOnDownedProject(t *testing.T) {
+	cfg := `version: "1"
+name: lazy-start-test
+services:
+  alpha:
+    command: "sleep 300"
+  beta:
+    command: "sleep 300"
+    depends_on:
+      alpha:
+        condition: service_started
+  gamma:
+    command: "sleep 300"
+`
+	e := newEnv(t, cfg)
+
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return pidFromPS(t, psOut, "alpha") != 0 &&
+			pidFromPS(t, psOut, "beta") != 0 &&
+			pidFromPS(t, psOut, "gamma") != 0
+	}, "ps shows all three services running")
+	_, _, code = e.run(t, context.Background(), "down")
+	if code != 0 {
+		t.Fatalf("down: exit %d", code)
+	}
+
+	// start beta on the stopped project: beta and its dependency alpha run,
+	// gamma stays stopped.
+	_, startErr, rc := e.run(t, context.Background(), "start", "beta")
+	if rc != 0 {
+		t.Fatalf("start beta on stopped project: exit %d, err=%q", rc, startErr)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return pidFromPS(t, psOut, "alpha") != 0 &&
+			pidFromPS(t, psOut, "beta") != 0 &&
+			pidFromPS(t, psOut, "gamma") == 0
+	}, "ps shows alpha and beta running, gamma stopped")
+
+	// The explicit start re-armed autostart: a fresh daemon resumes the whole
+	// project (no .stopped marker).
+	_, _, code = e.run(t, context.Background(), "daemon", "stop")
+	if code != 0 {
+		t.Fatalf("daemon stop: exit %d", code)
+	}
+	_, _, code = e.run(t, context.Background(), "daemon", "start")
+	if code != 0 {
+		t.Fatalf("daemon start: exit %d", code)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return pidFromPS(t, psOut, "alpha") != 0 &&
+			pidFromPS(t, psOut, "beta") != 0 &&
+			pidFromPS(t, psOut, "gamma") != 0
+	}, "ps shows all three services running after daemon restart")
 }

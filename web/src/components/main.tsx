@@ -1,5 +1,5 @@
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Play, Power, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
+import { Play, Power, RefreshCw, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
 import {
   projects,
   services,
@@ -308,18 +308,32 @@ function ProjectHeader() {
             </Tooltip>
           }
         >
-          <Tooltip>
-            <TooltipTrigger
-              as={Button}
-              variant="outline"
-              size="sm"
-              onClick={() => stopProject(project())}
-            >
-              <Power />
-              Stop project
-            </TooltipTrigger>
-            <TooltipContent>Stop project (d)</TooltipContent>
-          </Tooltip>
+          <div class="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger
+                as={Button}
+                variant="outline"
+                size="sm"
+                onClick={() => startProject(project())}
+              >
+                <RefreshCw class="size-4" />
+                Reload config
+              </TooltipTrigger>
+              <TooltipContent>Re-read local-compose.yml & prune orphans (up)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                as={Button}
+                variant="outline"
+                size="sm"
+                onClick={() => stopProject(project())}
+              >
+                <Power class="size-4" />
+                Stop project
+              </TooltipTrigger>
+              <TooltipContent>Stop project (d)</TooltipContent>
+            </Tooltip>
+          </div>
         </Show>
       </div>
     </>

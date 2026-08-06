@@ -1,5 +1,5 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
-import { ChevronRight, Boxes, MoreVertical, Play, Plus, Power, RotateCcw, Skull, Sun, Moon, X } from "lucide-solid";
+import { ChevronRight, Boxes, MoreVertical, Play, Plus, Power, RefreshCw, RotateCcw, Skull, Sun, Moon, X } from "lucide-solid";
 import {
   projects,
   services,
@@ -278,27 +278,50 @@ function ProjectItem(props: { name: string }) {
                   </Tooltip>
                 }
               >
-                <Tooltip>
-                  <TooltipTrigger
-                    as={Button}
-                    variant="ghost"
-                    size="icon-sm"
-                    class={cn(
-                      "transition-opacity",
-                      "opacity-0 pointer-events-none",
-                      "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
-                      "focus-visible:opacity-100 focus-visible:pointer-events-auto"
-                    )}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      stopProject(props.name);
-                    }}
-                  >
-                    <Power />
-                    <span class="sr-only">Stop project</span>
-                  </TooltipTrigger>
-                  <TooltipContent>Stop project (d)</TooltipContent>
-                </Tooltip>
+                <div class="flex items-center gap-0.5">
+                  <Tooltip>
+                    <TooltipTrigger
+                      as={Button}
+                      variant="ghost"
+                      size="icon-sm"
+                      class={cn(
+                        "transition-opacity",
+                        "opacity-0 pointer-events-none",
+                        "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
+                        "focus-visible:opacity-100 focus-visible:pointer-events-auto"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startProject(props.name);
+                      }}
+                    >
+                      <RefreshCw />
+                      <span class="sr-only">Reload config</span>
+                    </TooltipTrigger>
+                    <TooltipContent>Reload config & prune orphans (up)</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger
+                      as={Button}
+                      variant="ghost"
+                      size="icon-sm"
+                      class={cn(
+                        "transition-opacity",
+                        "opacity-0 pointer-events-none",
+                        "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
+                        "focus-visible:opacity-100 focus-visible:pointer-events-auto"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        stopProject(props.name);
+                      }}
+                    >
+                      <Power />
+                      <span class="sr-only">Stop project</span>
+                    </TooltipTrigger>
+                    <TooltipContent>Stop project (d)</TooltipContent>
+                  </Tooltip>
+                </div>
               </Show>
             </div>
           </div>

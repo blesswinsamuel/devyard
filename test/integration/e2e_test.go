@@ -939,3 +939,60 @@ services:
 		return code == 0 && strings.Contains(psOutsideOut, "PROJECT") && strings.Contains(psOutsideOut, "ps-all-test") && strings.Contains(psOutsideOut, "srv1")
 	}, "ps outside dir auto-fallback shows srv1 under ps-all-test")
 }
+
+func TestE2E_UpRemoveOrphans(t *testing.T) {
+	cfg1 := `
+version: "1"
+name: orphan-test
+services:
+  alpha:
+    command: "sleep 60"
+  beta:
+    command: "sleep 60"
+`
+	e := newEnv(t, cfg1)
+
+	// 1. up -d with 2 services
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+
+	var betaPID int
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		bPID := pidFromPS(t, psOut, "beta")
+		if bPID > 0 {
+			betaPID = bPID
+			return true
+		}
+		return false
+	}, "ps shows beta running")
+
+	// 2. Update config to remove beta
+	cfg2 := `
+version: "1"
+name: orphan-test
+services:
+  alpha:
+    command: "sleep 60"
+`
+	if err := os.WriteFile(e.configPath, []byte(cfg2), 0o644); err != nil {
+		t.Fatalf("write updated config: %v", err)
+	}
+
+	// 3. Run up -d again (remove-orphans is true by default)
+	_, errOut, code = e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d after removing service: exit %d, err=%q", code, errOut)
+	}
+
+	// 4. Verify beta is stopped and unregistered from ps
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, _ := e.run(t, context.Background(), "ps")
+		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") == 0
+	}, "ps shows alpha running and beta removed")
+
+	// 5. Verify beta process group is dead
+	assertNoOrphans(t, betaPID)
+}

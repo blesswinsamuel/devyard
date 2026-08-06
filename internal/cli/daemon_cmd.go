@@ -232,7 +232,7 @@ func runDaemonReload(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			defer c.Close()
-			return c.StartProject(cfgPath, false, "")
+			return c.StartProject(cfgPath, false, "", true)
 		}(); err != nil {
 			if !isAlreadyRunning(err, alreadyRunning) {
 				startErrs = append(startErrs, fmt.Errorf("start project %s: %w", cfgPath, err))

@@ -34,7 +34,7 @@ var runCmd = &cobra.Command{
 		}
 		defer func() { _ = client.Close() }()
 
-		if err := client.StartProject(cfg.ConfigPath, false, flagEnvFile); err != nil {
+		if err := client.StartProject(cfg.ConfigPath, false, flagEnvFile, true); err != nil {
 			return fmt.Errorf("start project: %w", err)
 		}
 

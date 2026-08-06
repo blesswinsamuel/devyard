@@ -16,6 +16,7 @@ import (
 
 var upDetach bool
 var upBuild bool
+var upRemoveOrphans bool = true
 
 var upCmd = &cobra.Command{
 	Use:   "up",
@@ -41,7 +42,7 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); err != nil {
+		if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, upRemoveOrphans); err != nil {
 			_ = client.Close()
 			return err
 		}
@@ -151,4 +152,5 @@ func followForeground(socket, project string, order []string) error {
 func init() {
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Run in the background (don't follow logs)")
 	upCmd.Flags().BoolVar(&upBuild, "build", false, "Build services before starting")
+	upCmd.Flags().BoolVar(&upRemoveOrphans, "remove-orphans", true, "Remove processes for services not defined in the local-compose.yml file")
 }

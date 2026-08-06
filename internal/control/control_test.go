@@ -861,7 +861,7 @@ func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
 	return out
 }
 
-func (m *fakeMultiBackend) StartProject(configPath string, build bool, envFile string) error {
+func (m *fakeMultiBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.started = append(m.started, configPath)
@@ -957,7 +957,7 @@ func TestMultiStartProject(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	if err := c.StartProject("/path/to/local-compose.yml", false, "/path/to/.env"); err != nil {
+	if err := c.StartProject("/path/to/local-compose.yml", false, "/path/to/.env", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if len(m.started) != 1 || m.started[0] != "/path/to/local-compose.yml" {

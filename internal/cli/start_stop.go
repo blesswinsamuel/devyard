@@ -42,7 +42,7 @@ var startCmd = &cobra.Command{
 			if loadErr != nil {
 				return loadErr
 			}
-			if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); err != nil {
+			if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, true); err != nil {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "local-compose: project %q started\n", projName)
@@ -53,7 +53,7 @@ var startCmd = &cobra.Command{
 			// Project may be stopped (no live supervisor); load & start it.
 			cfg, loadErr := loadConfig(flagConfigPath, projName)
 			if loadErr == nil {
-				if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile); startErr == nil {
+				if startErr := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, true); startErr == nil {
 					fmt.Fprintf(os.Stderr, "local-compose: started %q\n", service)
 					return nil
 				}

@@ -980,3 +980,36 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) bool {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+func TestReconcileOrphans(t *testing.T) {
+	t.Parallel()
+	f1 := fileWith(map[string]config.Service{
+		"alpha": {Command: "sleep 60"},
+		"beta":  {Command: "sleep 60"},
+	})
+	s := newSupervisor(t, f1, []string{"alpha", "beta"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = s.Stop(context.Background()) }()
+
+	if !waitFor(t, 2*time.Second, func() bool { return len(s.States()) == 2 }) {
+		t.Fatalf("expected 2 services running")
+	}
+
+	// Reconcile removing "beta" with removeOrphans = true
+	f2 := fileWith(map[string]config.Service{
+		"alpha": {Command: "sleep 60"},
+	})
+	if err := s.Reconcile(f2, []string{"alpha"}, true); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	states := s.States()
+	if len(states) != 1 || states[0].Name != "alpha" {
+		t.Fatalf("states after reconcile = %+v, want only alpha", states)
+	}
+}

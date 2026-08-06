@@ -61,18 +61,19 @@ const (
 //   - Kind==KindRunAction: Project + Action selects the action to run; Args contains extra CLI flags/args.
 //   - Kind==KindListActions: Project selects the project.
 type Request struct {
-	Kind       RequestKind `json:"kind"`
-	Project    string      `json:"project,omitempty"`
-	Service    string      `json:"service,omitempty"`
-	Action     string      `json:"action,omitempty"`
-	Args       []string    `json:"args,omitempty"`
-	Signal     string      `json:"signal,omitempty"`
-	Follow     bool        `json:"follow,omitempty"`
-	Previous   bool        `json:"previous,omitempty"`
-	Tail       int         `json:"tail,omitempty"` // last N lines of history; 0 = all (byte-capped)
-	ConfigPath string      `json:"config_path,omitempty"`
-	EnvFile    string      `json:"env_file,omitempty"`
-	Build      bool        `json:"build,omitempty"`
+	Kind          RequestKind `json:"kind"`
+	Project       string      `json:"project,omitempty"`
+	Service       string      `json:"service,omitempty"`
+	Action        string      `json:"action,omitempty"`
+	Args          []string    `json:"args,omitempty"`
+	Signal        string      `json:"signal,omitempty"`
+	Follow        bool        `json:"follow,omitempty"`
+	Previous      bool        `json:"previous,omitempty"`
+	Tail          int         `json:"tail,omitempty"` // last N lines of history; 0 = all (byte-capped)
+	ConfigPath    string      `json:"config_path,omitempty"`
+	EnvFile       string      `json:"env_file,omitempty"`
+	Build         bool        `json:"build,omitempty"`
+	RemoveOrphans *bool       `json:"remove_orphans,omitempty"`
 }
 
 // ResponseKind discriminates Response payloads sent from the supervisor to a

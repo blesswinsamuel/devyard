@@ -85,9 +85,9 @@ func (d *Daemon) StopCh() <-chan struct{} { return d.stopCh }
 // env file to layer under service env (empty falls back to .env next to the
 // config file). Explicit `up`/`start` clears per-service unless-stopped markers
 // so previously stopped services are started. If the project is already
-// running, stopped services are resumed and running ones are left alone.
-func (d *Daemon) StartProject(configPath string, build bool, envFile string) error {
-	return d.startProject(configPath, build, envFile, true)
+// running, stopped services are resumed, orphan services are handled according to removeOrphans.
+func (d *Daemon) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {
+	return d.startProject(configPath, build, envFile, true, removeOrphans)
 }
 
 // startProject is the shared implementation for StartProject and Autostart.
@@ -95,7 +95,7 @@ func (d *Daemon) StartProject(configPath string, build bool, envFile string) err
 // unless-stopped markers are removed so Stop then Up starts everything.
 // Autostart passes false so an explicit stop continues to suppress resume
 // across daemon restarts.
-func (d *Daemon) startProject(configPath string, build bool, envFile string, clearServiceMarkers bool) error {
+func (d *Daemon) startProject(configPath string, build bool, envFile string, clearServiceMarkers bool, removeOrphans bool) error {
 	cfg, err := loadConfig(configPath, envFile)
 	if err != nil {
 		return err
@@ -125,7 +125,9 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 			if sup == nil {
 				return fmt.Errorf("project %q is running but has no supervisor", name)
 			}
-			sup.UpdateFile(cfg.File)
+			if err := sup.Reconcile(cfg.File, cfg.Order, removeOrphans); err != nil {
+				return err
+			}
 			if build {
 				if err := runBuilds(cfg); err != nil {
 					return err
@@ -136,6 +138,7 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, cle
 			if locs, locErr := project.Resolve(name); locErr == nil {
 				_ = removeProjectStoppedMarker(locs)
 			}
+			p.TotalServices = len(cfg.File.Services)
 			return sup.StartStopped()
 		default: // stopped
 			old := p
@@ -692,7 +695,7 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 
 		// Do not clear per-service stopped markers: an explicit `stop` should
 		// still suppress resume across daemon restarts for unless-stopped.
-		if err := d.startProject(configPath, false, "", false); err != nil {
+		if err := d.startProject(configPath, false, "", false, true); err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: autostart: project %q: %v\n", name, err)
 			skipped++
 			continue

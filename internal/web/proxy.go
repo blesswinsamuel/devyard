@@ -112,7 +112,12 @@ func (s *Server) proxyStartProject(c *websocket.Conn, ctx context.Context, req *
 		s.sendError(c, ctx, "config_path is required")
 		return
 	}
-	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindStartProject, ConfigPath: req.ConfigPath, EnvFile: req.EnvFile})
+	resp, err := s.dialAndSend(protocol.Request{
+		Kind:          protocol.KindStartProject,
+		ConfigPath:    req.ConfigPath,
+		EnvFile:       req.EnvFile,
+		RemoveOrphans: req.RemoveOrphans,
+	})
 	if err != nil {
 		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
 		return

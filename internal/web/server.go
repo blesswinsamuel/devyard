@@ -123,14 +123,15 @@ func (s *Server) spaHandler() http.Handler {
 
 // wsRequest is a JSON message from the browser to the daemon.
 type wsRequest struct {
-	Type       string   `json:"type"`
-	Project    string   `json:"project,omitempty"`
-	Service    string   `json:"service,omitempty"`
-	Action     string   `json:"action,omitempty"`
-	Args       []string `json:"args,omitempty"`
-	Signal     string   `json:"signal,omitempty"`
-	ConfigPath string   `json:"config_path,omitempty"`
-	EnvFile    string   `json:"env_file,omitempty"`
+	Type          string   `json:"type"`
+	Project       string   `json:"project,omitempty"`
+	Service       string   `json:"service,omitempty"`
+	Action        string   `json:"action,omitempty"`
+	Args          []string `json:"args,omitempty"`
+	Signal        string   `json:"signal,omitempty"`
+	ConfigPath    string   `json:"config_path,omitempty"`
+	EnvFile       string   `json:"env_file,omitempty"`
+	RemoveOrphans *bool    `json:"remove_orphans,omitempty"`
 
 	// Terminal/PTY fields
 	ID   string `json:"id,omitempty"`
@@ -306,7 +307,11 @@ func (s *Server) handleStartProject(c *websocket.Conn, ctx context.Context, req 
 		s.sendError(c, ctx, "config_path is required")
 		return
 	}
-	if err := s.backend.StartProject(req.ConfigPath, false, req.EnvFile); err != nil {
+	removeOrphans := true
+	if req.RemoveOrphans != nil {
+		removeOrphans = *req.RemoveOrphans
+	}
+	if err := s.backend.StartProject(req.ConfigPath, false, req.EnvFile, removeOrphans); err != nil {
 		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
 		return
 	}

@@ -187,6 +187,18 @@ func (rt *serviceRuntime) getChecker() *health.Checker {
 	return rt.checker
 }
 
+func (rt *serviceRuntime) setSpec(s config.Service) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.spec = s
+}
+
+func (rt *serviceRuntime) getSpec() config.Service {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.spec
+}
+
 // Supervisor owns and supervises a set of services.
 type Supervisor struct {
 	opts Options
@@ -262,6 +274,91 @@ func (s *Supervisor) UpdateFile(file *config.File) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.opts.File = file
+}
+
+// Reconcile updates the supervisor's parsed config file and service set.
+// Services present in the supervisor but absent from file.Services are
+// treated as orphans: if removeOrphans is true, they are cleanly stopped
+// and unregistered from the supervisor. New services present in file.Services
+// are added to the runtime map. Specs for existing services are updated.
+func (s *Supervisor) Reconcile(file *config.File, order []string, removeOrphans bool) error {
+	s.mu.Lock()
+	s.opts.File = file
+
+	var orphans []*serviceRuntime
+	var orphanNames []string
+
+	for name, rt := range s.services {
+		if _, ok := file.Services[name]; !ok {
+			orphans = append(orphans, rt)
+			orphanNames = append(orphanNames, name)
+		}
+	}
+	s.mu.Unlock()
+
+	if len(orphans) > 0 {
+		if removeOrphans {
+			for _, rt := range orphans {
+				_ = s.stopOne(rt, false, s.opts.GracefulStopTimeout)
+				if rt.logger != nil {
+					rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped orphan service"), ui.Dim(rt.name)))
+					_ = rt.logger.close()
+				}
+				_ = s.removeStoppedMarker(rt.name)
+			}
+
+			s.mu.Lock()
+			for _, name := range orphanNames {
+				delete(s.services, name)
+			}
+			newOrderList := make([]string, 0, len(s.order)-len(orphanNames))
+			for _, name := range s.order {
+				if _, ok := file.Services[name]; ok {
+					newOrderList = append(newOrderList, name)
+				}
+			}
+			s.order = newOrderList
+			s.mu.Unlock()
+		} else {
+			if s.opts.Stdout != nil {
+				sort.Strings(orphanNames)
+				_, _ = fmt.Fprintf(s.opts.Stdout, "%s Found orphan services: %s. Use --remove-orphans to stop them.\n", ui.Dim("local-compose:"), strings.Join(orphanNames, ", "))
+			}
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, name := range order {
+		svc, ok := file.Services[name]
+		if !ok {
+			continue
+		}
+		rt, exists := s.services[name]
+		if exists {
+			rt.setSpec(svc)
+		} else {
+			doneCh := make(chan struct{})
+			close(doneCh)
+			rt = &serviceRuntime{
+				spec:   svc,
+				name:   name,
+				status: StatusStopped,
+				done:   doneCh,
+			}
+			if s.started.Load() && s.opts.Locations != nil {
+				path := filepath.Join(s.opts.Locations.LogsDir, name+".log")
+				if logger, err := newServiceLogger(path, name, s.opts.Stdout, s.opts.Foreground); err == nil {
+					rt.logger = logger
+				}
+			}
+			s.services[name] = rt
+		}
+	}
+
+	s.order = append([]string(nil), order...)
+	return nil
 }
 
 // AdoptOrStart attaches to running services described in snapshot if their
@@ -689,7 +786,7 @@ func (s *Supervisor) Failed() bool {
 // goroutines. It returns the cmd (for Wait), a WaitGroup that completes when
 // the pipe readers have drained, and any start error.
 func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, error) {
-	svc := rt.spec
+	svc := rt.getSpec()
 	shell := svc.Shell
 	if shell == "" {
 		shell = config.DefaultShell

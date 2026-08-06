@@ -59,7 +59,7 @@ type Request struct {
 | `"restart"` | project name | service name (empty = all) | — | Restart the named service, or all when empty. Acks with `done`. |
 | `"top"` | project name | service name (empty = all) | — | Sample the service's process group(s) twice over ~1s and return one `stats` response with per-service CPU/memory usage. |
 | `"list_projects"` | — | — | — | Return one `projects` response with a snapshot of all known projects. |
-| `"start_project"` | — | — | `ConfigPath`, `EnvFile`, `Build` | Load the config at `ConfigPath` (with env-file variables from `EnvFile`, or `.env` next to the config when empty) and start a supervisor for it. Acks with `done` or `error`. |
+| `"start_project"` | — | — | `ConfigPath`, `EnvFile`, `Build`, `RemoveOrphans` | Load the config at `ConfigPath` (with env-file variables from `EnvFile`, or `.env` next to the config when empty) and start a supervisor for it. `RemoveOrphans` (default `true`) controls whether services deleted from the config are stopped on reload. Acks with `done` or `error`. |
 | `"stop_project"` | project name | — | — | Stop the named project's services. Acks with `done`. |
 | `"remove_project"` | project name | — | — | Stop the named project's services, remove it from the daemon, and delete its runtime and state directories. Acks with `done`. |
 | `"stop_daemon"` | — | — | — | Stop all projects and shut down the daemon. Acks with `done`. |
@@ -170,7 +170,7 @@ Prefer these over hand-rolling request/response loops:
 - `client.Top(project, service) ([]ServiceStat, error)` — `top` (empty service
   = all); blocks ~1s while the daemon samples.
 - `client.ListProjects() ([]ProjectInfo, error)` — `list_projects`.
-- `client.StartProject(configPath, build) error` — `start_project`.
+- `client.StartProject(configPath, build, envFile, removeOrphans) error` — `start_project`.
 - `client.StopProject(project) error` — `stop_project`.
 - `client.RemoveProject(project) error` — `remove_project`.
 - `client.StopDaemon() error` — `stop_daemon`.

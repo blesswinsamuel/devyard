@@ -51,7 +51,7 @@ func TestStartAndStopProject(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -97,14 +97,14 @@ services:
     command: sleep 30
 `)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	defer func() { _ = d.StopProject("lc-test") }()
 
 	// Compose-like: up on an already-running project is a no-op when all
 	// services are running.
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject twice: %v", err)
 	}
 }
@@ -120,7 +120,7 @@ services:
     restart: unless-stopped
 `)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	backend, err := d.ProjectBackend("lc-resume")
@@ -140,7 +140,7 @@ services:
 	}
 
 	// Explicit up must clear the unless-stopped service marker and start again.
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject after stop: %v", err)
 	}
 	defer func() { _ = d.StopProject("lc-resume") }()
@@ -174,7 +174,7 @@ services:
     restart: unless-stopped
 `)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	defer func() { _ = d.StopProject("lc-partial") }()
@@ -196,7 +196,7 @@ services:
 		t.Fatalf("StopService: %v", err)
 	}
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject while running: %v", err)
 	}
 
@@ -236,7 +236,7 @@ func TestStopDaemonStopsAllProjects(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -261,7 +261,7 @@ func TestProjectStatusTransitionsToStopped(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -281,7 +281,7 @@ func TestStopProjectWritesStoppedMarker(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d.StopProject("lc-test"); err != nil {
@@ -298,7 +298,7 @@ func TestStartProjectRemovesStoppedMarker(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d.StopProject("lc-test"); err != nil {
@@ -308,7 +308,7 @@ func TestStartProjectRemovesStoppedMarker(t *testing.T) {
 		t.Fatalf("expected .stopped marker after StopProject")
 	}
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject second time: %v", err)
 	}
 	if orchestrator.HasProjectStoppedMarker("lc-test") {
@@ -330,7 +330,7 @@ services:
 	// Simulate a prior run that wrote the config-path, then daemon exit
 	// without down (no .stopped marker).
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false, ""); err != nil {
+	if err := d1.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	_ = d1.StopDaemon()
@@ -361,7 +361,7 @@ services:
 `)
 
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false, ""); err != nil {
+	if err := d1.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d1.StopProject("lc-always-stopped"); err != nil {
@@ -399,7 +399,7 @@ services:
     command: sleep 30
 `)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d.StopProject("lc-backend"); err != nil {
@@ -436,7 +436,7 @@ services:
 
 	// Simulate a prior run that stopped the project (writes .stopped marker).
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false, ""); err != nil {
+	if err := d1.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	if err := d1.StopProject("lc-unless"); err != nil {
@@ -469,7 +469,7 @@ services:
 
 	// Simulate a prior run that didn't stop (no .stopped marker).
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false, ""); err != nil {
+	if err := d1.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	// Don't call StopProject — just stop the daemon so the marker isn't written.
@@ -497,7 +497,7 @@ services:
 `)
 
 	d1 := orchestrator.New()
-	if err := d1.StartProject(configPath, false, ""); err != nil {
+	if err := d1.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	_ = d1.StopDaemon()
@@ -532,7 +532,7 @@ func TestRemoveProject(t *testing.T) {
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
 
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -559,7 +559,7 @@ services:
     command: "sleep 60"
 `
 	configPath := writeConfig(t, cfg)
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 
@@ -585,7 +585,7 @@ func TestListProjectsStaleCleanup(t *testing.T) {
 	setupEnv(t)
 	d := orchestrator.New()
 	configPath := writeConfig(t, shortSleepConfig)
-	if err := d.StartProject(configPath, false, ""); err != nil {
+	if err := d.StartProject(configPath, false, "", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
 	_ = d.StopProject("lc-test")

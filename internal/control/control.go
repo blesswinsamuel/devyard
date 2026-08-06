@@ -16,8 +16,9 @@ type MultiBackend interface {
 	// StartProject loads the config at configPath and starts a supervisor
 	// for it. If build is true, pre-start builds are run first. envFile is
 	// the absolute path to an env file (empty falls back to .env next to
-	// the config file).
-	StartProject(configPath string, build bool, envFile string) error
+	// the config file). removeOrphans controls whether services deleted from
+	// the config are stopped on reload.
+	StartProject(configPath string, build bool, envFile string, removeOrphans bool) error
 	// StopProject stops the named project's services.
 	StopProject(name string) error
 	// RemoveProject stops the named project's services and removes it from the daemon.
@@ -43,7 +44,7 @@ func (s SingleProjectBackend) ListProjects() []protocol.ProjectInfo {
 	return []protocol.ProjectInfo{{Name: s.Project, Status: "running"}}
 }
 
-func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string) error {
+func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {
 	return fmt.Errorf("start_project not supported in single-project mode")
 }
 

@@ -40,18 +40,28 @@ type Server struct {
 	listener   net.Listener
 	closed     bool
 	mu         sync.Mutex
+
+	// Connected WS clients, guarded by clientsMu.
+	clientsMu sync.Mutex
+	clients   map[*wsClient]struct{}
+}
+
+// wsClient tracks one active WebSocket connection for broadcast purposes.
+type wsClient struct {
+	conn *websocket.Conn
+	ctx  context.Context
 }
 
 // NewServer creates a web server bound to addr. The daemon's MultiBackend is
 // used for all WS dispatch (in-process, no socket dialing).
 func NewServer(addr string, backend control.MultiBackend) *Server {
-	return &Server{addr: addr, backend: backend}
+	return &Server{addr: addr, backend: backend, clients: make(map[*wsClient]struct{})}
 }
 
 // NewProxyServer creates a web server that proxies WS messages to the daemon
 // over the given Unix socket, without holding an in-process MultiBackend.
 func NewProxyServer(addr, socketPath string) *Server {
-	return &Server{addr: addr, socketPath: socketPath}
+	return &Server{addr: addr, socketPath: socketPath, clients: make(map[*wsClient]struct{})}
 }
 
 // ListenAndServe starts the HTTP server. It returns once the listener is
@@ -64,6 +74,18 @@ func (s *Server) ListenAndServe() error {
 	s.mu.Lock()
 	s.listener = ln
 	s.mu.Unlock()
+
+	if s.backend != nil {
+		s.backend.SetOnStateChange(func(project string, state protocol.ServiceState) {
+			data, _ := json.Marshal(state)
+			s.broadcast(wsResponse{
+				Type:    "state_changed",
+				Project: project,
+				Service: state.Name,
+				Data:    data,
+			})
+		})
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
@@ -169,6 +191,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = c.CloseNow() }()
 
 	ctx := r.Context()
+	s.addClient(c, ctx)
+	defer s.removeClient(c)
 
 	// Track active log subscriptions so we can cancel them on disconnect.
 	subs := newSubTracker()
@@ -496,6 +520,42 @@ func (s *Server) send(c *websocket.Conn, ctx context.Context, resp wsResponse) {
 
 func (s *Server) sendError(c *websocket.Conn, ctx context.Context, msg string) {
 	s.send(c, ctx, wsResponse{Type: "error", Error: msg})
+}
+
+func (s *Server) addClient(c *websocket.Conn, ctx context.Context) {
+	s.clientsMu.Lock()
+	s.clients[&wsClient{conn: c, ctx: ctx}] = struct{}{}
+	s.clientsMu.Unlock()
+}
+
+func (s *Server) removeClient(c *websocket.Conn) {
+	s.clientsMu.Lock()
+	for cl := range s.clients {
+		if cl.conn == c {
+			delete(s.clients, cl)
+			break
+		}
+	}
+	s.clientsMu.Unlock()
+}
+
+// broadcast sends a WS response to every connected client. Clients that fail
+// to write are silently removed.
+func (s *Server) broadcast(resp wsResponse) {
+	data, _ := json.Marshal(resp)
+	s.clientsMu.Lock()
+	var dead []*wsClient
+	for cl := range s.clients {
+		writeCtx, cancel := context.WithTimeout(cl.ctx, writeTimeout)
+		if err := cl.conn.Write(writeCtx, websocket.MessageText, data); err != nil {
+			dead = append(dead, cl)
+		}
+		cancel()
+	}
+	for _, cl := range dead {
+		delete(s.clients, cl)
+	}
+	s.clientsMu.Unlock()
 }
 
 const writeTimeout = 5 * time.Second

@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/local-compose/internal/protocol"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
 )
 
@@ -1047,5 +1049,60 @@ func TestSupervisorActionLogs(t *testing.T) {
 	prevData, err := os.ReadFile(prevPath)
 	if err != nil || !strings.Contains(string(prevData), "action_first_run") {
 		t.Fatalf("ActionPreviousLogPath content = %q, want action_first_run", string(prevData))
+	}
+}
+
+func TestOnStateChange(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "echo hello", Shell: "sh", Restart: config.RestartNo},
+	})
+
+	var mu sync.Mutex
+	var transitions []protocol.ServiceState
+	s, err := supervisor.New(supervisor.Options{
+		Locations: testLocations(t),
+		File:      file,
+		Order:     []string{"svc"},
+		BaseDir:   t.TempDir(),
+		Backoff:   testBackoff(),
+		OnStateChange: func(_ string, state protocol.ServiceState) {
+			mu.Lock()
+			transitions = append(transitions, state)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(transitions) == 0 {
+		t.Fatal("OnStateChange never called")
+	}
+	// Verify we saw at least one running and one stopped/exited transition.
+	var sawRunning, sawStopped bool
+	for _, tr := range transitions {
+		switch tr.Status {
+		case string(supervisor.StatusRunning):
+			sawRunning = true
+		case string(supervisor.StatusStopped), string(supervisor.StatusExited):
+			sawStopped = true
+		}
+	}
+	if !sawRunning {
+		t.Errorf("never saw StatusRunning in transitions: %v", transitions)
+	}
+	if !sawStopped {
+		t.Errorf("never saw StatusStopped/Exited in transitions: %v", transitions)
 	}
 }

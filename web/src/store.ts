@@ -353,6 +353,33 @@ function start() {
     const next = (resp.data ?? []) as ActionInfo[];
     setActions((m) => ({ ...m, [project]: next }));
   });
+  onWS("state_changed", (resp) => {
+    const next = resp.data as ServiceState;
+    const project = resp.project;
+    if (!project) return;
+    const updatedServices: Record<string, ServiceState[]> = {};
+    setServices((m) => {
+      const list = m[project];
+      if (!list) return m;
+      const updated = list.map((s) => (s.name === next.name ? next : s));
+      if (sameServiceList(list, updated)) return m;
+      updatedServices[project] = updated;
+      return { ...m, [project]: updated };
+    });
+    if (updatedServices[project]) {
+      const running = updatedServices[project].filter(
+        (s) => s.status === "running" || s.status === "starting" || s.status === "backoff"
+      ).length;
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.name === project
+            ? { ...p, running_services: running, total_services: updatedServices[project].length }
+            : p
+        )
+      );
+    }
+    pruneSelection();
+  });
   onWS("action_done", (resp) => {
     if (resp.ok === false || resp.error) {
       pushToast(resp.error || `Action '${resp.action}' failed`, "error");
@@ -376,10 +403,7 @@ function start() {
   refreshAll();
   const stopOpen = onWSOpen(() => refreshAll());
 
-  const poll = setInterval(refreshAll, 2000);
-
   return () => {
-    clearInterval(poll);
     stopOpen();
     stopPopState();
   };

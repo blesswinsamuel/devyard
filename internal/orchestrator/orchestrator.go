@@ -71,6 +71,8 @@ type Daemon struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 	exited   chan struct{}
+
+	onStateChange func(project string, state protocol.ServiceState)
 }
 
 // New creates a Daemon with no projects. Call StartProject to add projects.
@@ -85,6 +87,15 @@ func New() *Daemon {
 // StopCh returns a channel that is closed when StopDaemon is called. The daemon
 // process should exit when this channel closes.
 func (d *Daemon) StopCh() <-chan struct{} { return d.stopCh }
+
+// SetOnStateChange registers a callback that fires whenever any supervised
+// service changes state. The callback is invoked from the service's run-loop
+// goroutine, NOT under the daemon lock.
+func (d *Daemon) SetOnStateChange(fn func(project string, state protocol.ServiceState)) {
+	d.mu.Lock()
+	d.onStateChange = fn
+	d.mu.Unlock()
+}
 
 // StartProject loads the config at configPath, creates a Supervisor for it,
 // starts it, and adds it to the daemon's map. If build is true, pre-start
@@ -263,6 +274,14 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		Foreground: false,
 		Env:        config.BaseEnv(cfg.DotEnv),
 		Selected:   selectedNames,
+		OnStateChange: func(svc string, state protocol.ServiceState) {
+			d.mu.Lock()
+			fn := d.onStateChange
+			d.mu.Unlock()
+			if fn != nil {
+				fn(name, state)
+			}
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("supervisor: %w", err)

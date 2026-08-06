@@ -104,6 +104,11 @@ type Options struct {
 	// depends_on chain). A service selected later via StartService/Restart
 	// launches normally.
 	Selected []string
+
+	// OnStateChange, when non-nil, is called whenever a service's observable
+	// state transitions (starting → running, running → exited, etc.).
+	// The callback is invoked with the service runtime lock held.
+	OnStateChange func(service string, state protocol.ServiceState)
 }
 
 // ServiceState is a point-in-time snapshot of a service used by ps/web.
@@ -199,6 +204,48 @@ func (rt *serviceRuntime) getSpec() config.Service {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	return rt.spec
+}
+
+// notifyStateChange builds a single-service protocol snapshot and fires the
+// OnStateChange callback. Safe to call from any goroutine; the callback runs
+// WITHOUT the service runtime lock held so it can safely acquire other locks.
+func (s *Supervisor) notifyStateChange(rt *serviceRuntime) {
+	if s.opts.OnStateChange == nil {
+		return
+	}
+	rt.mu.Lock()
+	// Snapshot all mutable fields while holding the lock.
+	name := rt.name
+	status := string(rt.status)
+	pid := rt.pid
+	exitCode := rt.exitCode
+	restarts := rt.restarts
+	startedAt := rt.startedAt
+	finishedAt := rt.finishedAt
+	hasHealth := rt.spec.Healthcheck != nil
+	rt.mu.Unlock()
+
+	healthStr := "n/a"
+	if hasHealth {
+		if chk := rt.getChecker(); chk != nil {
+			healthStr = string(chk.State())
+		} else {
+			healthStr = string(health.StateStarting)
+		}
+	}
+
+	state := protocol.ServiceState{
+		Name:       name,
+		Status:     status,
+		PID:        pid,
+		ExitCode:   exitCode,
+		Restarts:   restarts,
+		StartedAt:  protocol.FormatTime(startedAt),
+		FinishedAt: protocol.FormatTime(finishedAt),
+		HasHealth:  hasHealth,
+		Health:     healthStr,
+	}
+	s.opts.OnStateChange(name, state)
 }
 
 // Supervisor owns and supervises a set of services.
@@ -419,6 +466,7 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 			rt.mu.Lock()
 			rt.status = StatusStopped
 			rt.mu.Unlock()
+			s.notifyStateChange(rt)
 			close(rt.done)
 			continue
 		}
@@ -456,6 +504,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 	rt.restarts = snap.Restarts
 	rt.mu.Unlock()
 	rt.startedOnce.Store(true)
+	s.notifyStateChange(rt)
 
 	if rt.logger != nil {
 		rt.logger.writeLine(fmt.Sprintf("local-compose: adopted existing process group (PGID %d)", snap.PGID))
@@ -488,6 +537,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 			rt.mu.Lock()
 			rt.status = StatusStopped
 			rt.mu.Unlock()
+			s.notifyStateChange(rt)
 			return
 		}
 
@@ -499,6 +549,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 			rt.finishedAt = time.Now()
 			rt.status = StatusExited
 			rt.mu.Unlock()
+			s.notifyStateChange(rt)
 
 			if s.isStopping() || rt.stopped.Load() {
 				return
@@ -586,6 +637,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			rt.mu.Lock()
 			rt.status = StatusStopped
 			rt.mu.Unlock()
+			s.notifyStateChange(rt)
 			s.failed.Store(true)
 			return
 		}
@@ -605,6 +657,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 		rt.mu.Lock()
 		rt.status = StatusStopped
 		rt.mu.Unlock()
+		s.notifyStateChange(rt)
 		// A genuine dependency failure (it exited or went unhealthy before
 		// satisfying the condition) is recorded as a failure; a
 		// user-initiated shutdown (errSupervisorStopping) is not.
@@ -619,6 +672,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			rt.mu.Lock()
 			rt.status = StatusStopped
 			rt.mu.Unlock()
+			s.notifyStateChange(rt)
 			return
 		}
 
@@ -628,6 +682,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			rt.mu.Lock()
 			rt.status = StatusBackoff
 			rt.mu.Unlock()
+			s.notifyStateChange(rt)
 			if !s.shouldRetry(rt) {
 				return
 			}
@@ -669,6 +724,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			rt.status = StatusExited
 		}
 		rt.mu.Unlock()
+		s.notifyStateChange(rt)
 
 		if stopping {
 			return
@@ -830,6 +886,7 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 	rt.startedAt = time.Now()
 	rt.mu.Unlock()
 	rt.startedOnce.Store(true)
+	s.notifyStateChange(rt)
 
 	_ = s.SaveState()
 
@@ -862,6 +919,7 @@ func (s *Supervisor) launchPTY(cmd *command, rt *serviceRuntime) (*command, *syn
 	rt.startedAt = time.Now()
 	rt.mu.Unlock()
 	rt.startedOnce.Store(true)
+	s.notifyStateChange(rt)
 
 	rt.ptyMu.Lock()
 	rt.ptyMaster = ptyMaster
@@ -899,11 +957,16 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 	for _, name := range s.order {
 		rt := s.services[name]
 		rt.mu.Lock()
+		changed := false
 		switch rt.status {
 		case StatusStarting, StatusRunning, StatusBackoff:
 			rt.status = StatusStopping
+			changed = true
 		}
 		rt.mu.Unlock()
+		if changed {
+			s.notifyStateChange(rt)
+		}
 	}
 
 	s.signalAll(syscall.SIGTERM)
@@ -980,12 +1043,17 @@ func (s *Supervisor) KillService(name, signal string) error {
 		return nil
 	}
 	rt.mu.Lock()
+	changed := false
 	switch rt.status {
 	case StatusStarting, StatusRunning, StatusBackoff:
 		rt.status = StatusStopping
+		changed = true
 	}
 	pgid := rt.pgid
 	rt.mu.Unlock()
+	if changed {
+		s.notifyStateChange(rt)
+	}
 	if pgid > 0 {
 		_ = killGroup(pgid, sig)
 	}
@@ -1013,11 +1081,16 @@ func (s *Supervisor) stopOne(rt *serviceRuntime, grace time.Duration) error {
 
 	// Mark as stopping immediately so clients see the transition.
 	rt.mu.Lock()
+	changed := false
 	switch rt.status {
 	case StatusStarting, StatusRunning, StatusBackoff:
 		rt.status = StatusStopping
+		changed = true
 	}
 	rt.mu.Unlock()
+	if changed {
+		s.notifyStateChange(rt)
+	}
 
 	rt.mu.Lock()
 	pgid := rt.pgid
@@ -1239,6 +1312,7 @@ func (s *Supervisor) sleepBackoff(ctx context.Context, rt *serviceRuntime) bool 
 	rt.status = StatusBackoff
 	delay := s.opts.Backoff.delay(rt.restarts)
 	rt.mu.Unlock()
+	s.notifyStateChange(rt)
 
 	if delay < 0 {
 		delay = 0

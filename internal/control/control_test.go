@@ -1052,6 +1052,8 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 	return b, nil
 }
 
+func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}
+
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
 	t.Helper()
 	sockDir, err := os.MkdirTemp("/tmp", "lc-ctrl")

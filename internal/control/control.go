@@ -34,6 +34,11 @@ type MultiBackend interface {
 	// error if the project is not running. An empty project name is valid
 	// for single-project servers.
 	ProjectBackend(project string) (Backend, error)
+	// SetOnStateChange registers a callback that is invoked whenever any
+	// project's service state changes. The project name and the
+	// per-service state snapshot are passed. Implementations that do not
+	// support push notifications may leave this as a no-op.
+	SetOnStateChange(fn func(project string, state protocol.ServiceState))
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
@@ -84,3 +89,5 @@ func (s SingleProjectBackend) ProjectBackend(project string) (Backend, error) {
 	}
 	return s.Backend, nil
 }
+
+func (s SingleProjectBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}

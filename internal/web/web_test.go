@@ -114,6 +114,8 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 	return b, nil
 }
 
+func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}
+
 // fakeBackend is a minimal control.Backend for WS testing.
 type fakeBackend struct {
 	states         []protocol.ServiceState

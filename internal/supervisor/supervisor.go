@@ -1333,20 +1333,22 @@ func (s *Supervisor) Close() error {
 	return firstErr
 }
 
-// ListActions returns a snapshot of defined actions for the project.
-func (s *Supervisor) ListActions() []protocol.ActionInfo {
-	if s.opts.File == nil || len(s.opts.File.Actions) == 0 {
+// ListActionsFromFile returns a snapshot of the actions defined in file,
+// sorted by name. It is shared with the orchestrator's stopped-project backend
+// so a stopped project reports the same actions a running supervisor does.
+func ListActionsFromFile(file *config.File) []protocol.ActionInfo {
+	if file == nil || len(file.Actions) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(s.opts.File.Actions))
-	for name := range s.opts.File.Actions {
+	names := make([]string, 0, len(file.Actions))
+	for name := range file.Actions {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
 	out := make([]protocol.ActionInfo, len(names))
 	for i, name := range names {
-		act := s.opts.File.Actions[name]
+		act := file.Actions[name]
 		var deps []string
 		for depName := range act.Spec.DependsOn.Entries {
 			deps = append(deps, depName)
@@ -1361,6 +1363,11 @@ func (s *Supervisor) ListActions() []protocol.ActionInfo {
 		}
 	}
 	return out
+}
+
+// ListActions returns a snapshot of defined actions for the project.
+func (s *Supervisor) ListActions() []protocol.ActionInfo {
+	return ListActionsFromFile(s.opts.File)
 }
 
 // RunAction executes a named action command in a dedicated process group,

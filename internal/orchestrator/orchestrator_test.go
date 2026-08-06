@@ -1,8 +1,10 @@
 package orchestrator_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -512,6 +514,87 @@ services:
 	}
 	if skipped != 1 {
 		t.Fatalf("skipped = %d, want 1", skipped)
+	}
+}
+
+func TestStoppedProjectBackendListsServicesAndActions(t *testing.T) {
+	setupEnv(t)
+	configPath := writeConfig(t, `version: "1"
+name: lc-stopped
+services:
+  web:
+    command: sleep 60
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+  worker:
+    command: sleep 60
+actions:
+  build:
+    command: echo build
+`)
+
+	// Register the project and let the daemon exit without down (no .stopped
+	// marker), so a fresh daemon's autostart registers it as stopped.
+	d1 := orchestrator.New()
+	if err := d1.StartProject(configPath, false, "", true); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	_ = d1.StopDaemon()
+
+	d2 := orchestrator.New()
+	started, skipped, err := d2.Autostart()
+	if err != nil {
+		t.Fatalf("Autostart: %v", err)
+	}
+	if started != 0 || skipped != 1 {
+		t.Fatalf("started=%d skipped=%d, want 0/1", started, skipped)
+	}
+
+	backend, err := d2.ProjectBackend("lc-stopped")
+	if err != nil {
+		t.Fatalf("ProjectBackend: %v", err)
+	}
+
+	// Reads report every configured service as stopped, in start order.
+	states := backend.States()
+	if len(states) != 2 {
+		t.Fatalf("States = %+v, want 2 stopped services", states)
+	}
+	for _, st := range states {
+		if st.Status != "stopped" {
+			t.Fatalf("States = %+v, want every service stopped", states)
+		}
+	}
+	if states[0].Name != "web" || states[1].Name != "worker" {
+		t.Fatalf("States order = %q,%q, want web,worker", states[0].Name, states[1].Name)
+	}
+	if !states[0].HasHealth || states[1].HasHealth {
+		t.Fatalf("HasHealth = %v/%v, want true/false", states[0].HasHealth, states[1].HasHealth)
+	}
+
+	actions := backend.ListActions()
+	if len(actions) != 1 || actions[0].Name != "build" {
+		t.Fatalf("ListActions = %+v, want [build]", actions)
+	}
+
+	// Mutations still fail with the stopped-project error.
+	if err := backend.Restart("web"); err == nil {
+		t.Fatalf("Restart on stopped project: want error, got nil")
+	}
+	if err := backend.Stop(context.Background()); err == nil {
+		t.Fatalf("Stop on stopped project: want error, got nil")
+	}
+
+	// Log paths resolve to the project's state dir so historical logs are readable.
+	path, err := backend.LogPath("web")
+	if err != nil {
+		t.Fatalf("LogPath: %v", err)
+	}
+	if !strings.HasSuffix(path, filepath.Join("lc-stopped", "logs", "web.log")) {
+		t.Fatalf("LogPath = %q, want web.log under the project logs dir", path)
+	}
+	if _, err := backend.LogPath("nope"); err == nil {
+		t.Fatalf("LogPath for unknown service: want error, got nil")
 	}
 }
 

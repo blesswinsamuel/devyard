@@ -7,6 +7,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,6 +37,12 @@ type Project struct {
 	cancel        context.CancelFunc
 	done          chan struct{}
 	stopping      bool // true while StopProject is in progress
+
+	// File and Order hold the parsed config for a registered-but-never-started
+	// project (Sup == nil, e.g. skipped by autostart). The stoppedBackend uses
+	// them to report the project's services and actions as stopped.
+	File  *config.File
+	Order []string
 }
 
 // Status returns "running", "stopping", or "stopped".
@@ -461,9 +468,11 @@ func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 }
 
 // ProjectBackend returns the control.Backend for the named project, or an
-// error if the project is not known or has no supervisor. A stopped project's
-// closed supervisor is still returned so `ps` can report service states;
-// mutating calls (Restart, etc.) fail because the supervisor is stopped.
+// error if the project is not known. A stopped project with a retained
+// supervisor is returned as-is so `ps` can report its (stopped) service states;
+// a registered-but-never-started project is served by a stoppedBackend that
+// reports every service and action as stopped. Mutating calls on either fail
+// because the project is stopped.
 func (d *Daemon) ProjectBackend(project string) (control.Backend, error) {
 	d.mu.Lock()
 	p, ok := d.projects[project]
@@ -472,10 +481,128 @@ func (d *Daemon) ProjectBackend(project string) (control.Backend, error) {
 		return nil, fmt.Errorf("project %q is not running", project)
 	}
 	if p.Sup == nil {
-		return nil, fmt.Errorf("project %q is stopped", project)
+		return stoppedBackend{project: project, file: p.File, order: p.Order}, nil
 	}
 	return supervisor.NewControlBackend(p.Sup), nil
 }
+
+// stoppedBackend adapts a registered-but-never-started project (Sup == nil) to
+// control.Backend. Its retained config lets reads report every service as
+// stopped and list the project's actions; mutations report that the project is
+// stopped. Log paths resolve to the project's state dir so historical logs from
+// a previous run stay viewable.
+type stoppedBackend struct {
+	project string
+	file    *config.File
+	order   []string
+}
+
+func (b stoppedBackend) err() error {
+	return fmt.Errorf("project %q is stopped", b.project)
+}
+
+func (b stoppedBackend) States() []protocol.ServiceState {
+	out := make([]protocol.ServiceState, 0, len(b.order))
+	for _, name := range b.order {
+		st := protocol.ServiceState{
+			Name:   name,
+			Status: string(supervisor.StatusStopped),
+			Health: "n/a",
+		}
+		if svc, ok := b.file.Services[name]; ok {
+			st.HasHealth = svc.Healthcheck != nil
+		}
+		out = append(out, st)
+	}
+	return out
+}
+
+func (b stoppedBackend) Stop(context.Context) error    { return b.err() }
+func (b stoppedBackend) StopService(string) error      { return b.err() }
+func (b stoppedBackend) KillService(_, _ string) error { return b.err() }
+func (b stoppedBackend) Restart(string) error          { return b.err() }
+func (b stoppedBackend) Top(string) ([]protocol.ServiceStat, error) {
+	return nil, b.err()
+}
+func (b stoppedBackend) ListActions() []protocol.ActionInfo {
+	return supervisor.ListActionsFromFile(b.file)
+}
+func (b stoppedBackend) RunAction(context.Context, string, []string, io.Writer) (int, error) {
+	return 1, b.err()
+}
+
+func (b stoppedBackend) knownService(name string) error {
+	if b.file != nil {
+		if _, ok := b.file.Services[name]; ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("supervisor: unknown service %q", name)
+}
+
+func (b stoppedBackend) knownAction(name string) error {
+	if b.file != nil {
+		if _, ok := b.file.Actions[name]; ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("action %q not found", name)
+}
+
+func (b stoppedBackend) logsDir() (string, error) {
+	locs, err := project.Resolve(b.project)
+	if err != nil {
+		return "", err
+	}
+	return locs.LogsDir, nil
+}
+
+func (b stoppedBackend) LogPath(name string) (string, error) {
+	if err := b.knownService(name); err != nil {
+		return "", err
+	}
+	dir, err := b.logsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name+".log"), nil
+}
+
+func (b stoppedBackend) PreviousLogPath(name string) (string, error) {
+	if err := b.knownService(name); err != nil {
+		return "", err
+	}
+	dir, err := b.logsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name+".prev.log"), nil
+}
+
+func (b stoppedBackend) ActionLogPath(name string) (string, error) {
+	if err := b.knownAction(name); err != nil {
+		return "", err
+	}
+	dir, err := b.logsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "actions", name+".log"), nil
+}
+
+func (b stoppedBackend) ActionPreviousLogPath(name string) (string, error) {
+	if err := b.knownAction(name); err != nil {
+		return "", err
+	}
+	dir, err := b.logsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "actions", name+".prev.log"), nil
+}
+
+// Compile-time assertion that stoppedBackend satisfies control.Backend.
+var _ control.Backend = (*stoppedBackend)(nil)
 
 // loadedConfig bundles everything needed to create a Supervisor.
 type loadedConfig struct {
@@ -685,6 +812,8 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 					ConfigPath:    configPath,
 					BaseDir:       cfg.BaseDir,
 					TotalServices: len(cfg.File.Services),
+					File:          cfg.File,
+					Order:         cfg.Order,
 					done:          closedChan(),
 				}
 			}

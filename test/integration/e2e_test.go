@@ -996,3 +996,61 @@ services:
 	// 5. Verify beta process group is dead
 	assertNoOrphans(t, betaPID)
 }
+
+func TestE2E_AutostartSkippedProjectShowsStoppedServices(t *testing.T) {
+	// Services with no restart policy: a fresh daemon's autostart skips the
+	// project on boot, but it must still be registered so `ps` lists every
+	// service as stopped instead of erroring with `project "..." is stopped`.
+	cfg := `version: "1"
+name: restart-skip-test
+services:
+  web:
+    command: "sleep 60"
+  worker:
+    command: "sleep 60"
+`
+	e := newEnv(t, cfg)
+
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return pidFromPS(t, psOut, "web") != 0 && pidFromPS(t, psOut, "worker") != 0
+	}, "ps shows web and worker running")
+
+	// Simulate a daemon restart: stop the daemon (the project stays registered
+	// in state with no .stopped marker), then boot a fresh daemon whose
+	// autostart skips the restart:no project.
+	_, _, code = e.run(t, context.Background(), "daemon", "stop")
+	if code != 0 {
+		t.Fatalf("daemon stop: exit %d", code)
+	}
+	_, _, code = e.run(t, context.Background(), "daemon", "start")
+	if code != 0 {
+		t.Fatalf("daemon start: exit %d", code)
+	}
+
+	// ps must succeed (exit 0) and report both services as stopped with no pids.
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return strings.Contains(psOut, "web") &&
+			strings.Contains(psOut, "worker") &&
+			strings.Contains(psOut, "stopped") &&
+			pidFromPS(t, psOut, "web") == 0 &&
+			pidFromPS(t, psOut, "worker") == 0
+	}, "ps reports both services stopped after daemon restart")
+
+	// Historical logs remain reachable on the stopped project.
+	_, logsErr, code := e.run(t, context.Background(), "logs", "web")
+	if code != 0 {
+		t.Fatalf("logs web after daemon restart: exit %d, err=%q", code, logsErr)
+	}
+}

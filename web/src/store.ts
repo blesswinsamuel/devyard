@@ -1,6 +1,7 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
 import type { ProjectInfo, ServiceState, ActionInfo, ViewMode, ShellTab, PaneNode } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
+import { parseRoute, pushRoute, replaceRoute, listenPopState } from "./router";
 
 export type Theme = "dark" | "light";
 
@@ -17,7 +18,8 @@ createRoot(() => {
 
 export type NavItem =
   | { kind: "project"; project: string }
-  | { kind: "service"; project: string; service: string };
+  | { kind: "service"; project: string; service: string }
+  | { kind: "action"; project: string; action: string };
 
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
@@ -27,6 +29,7 @@ export { actions };
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
 const [selectedService, setSelectedService] = createSignal<string | null>(null);
+const [selectedAction, setSelectedAction] = createSignal<string | null>(null);
 /** Active main view tab ("logs" | "shell" | "git" | "agents"). Defaults to "logs". */
 const [activeView, setActiveView] = createSignal<ViewMode>("logs");
 /** Keyboard focus in the sidebar (highlight); Enter commits to selection. */
@@ -42,14 +45,17 @@ export function sameNavItem(a: NavItem | null, b: NavItem | null): boolean {
   if (!a || !b) return a === b;
   if (a.kind !== b.kind || a.project !== b.project) return false;
   if (a.kind === "service" && b.kind === "service") return a.service === b.service;
+  if (a.kind === "action" && b.kind === "action") return a.action === b.action;
   return true;
 }
 
 export function navItemKey(item: NavItem): string {
-  return item.kind === "project" ? `p:${item.project}` : `s:${item.project}/${item.service}`;
+  if (item.kind === "project") return `p:${item.project}`;
+  if (item.kind === "service") return `s:${item.project}/${item.service}`;
+  return `a:${item.project}/${item.action}`;
 }
 
-/** Flat list of visible sidebar rows (projects + services of expanded projects). */
+/** Flat list of visible sidebar rows (projects + services + actions of expanded projects). */
 export function navItems(): NavItem[] {
   const items: NavItem[] = [];
   for (const p of projects()) {
@@ -57,6 +63,9 @@ export function navItems(): NavItem[] {
     if (!collapsed().has(p.name)) {
       for (const s of services()[p.name] ?? []) {
         items.push({ kind: "service", project: p.name, service: s.name });
+      }
+      for (const a of actions()[p.name] ?? []) {
+        items.push({ kind: "action", project: p.name, action: a.name });
       }
     }
   }
@@ -68,6 +77,8 @@ function selectionAsNavItem(): NavItem | null {
   if (!proj) return null;
   const svc = selectedService();
   if (svc) return { kind: "service", project: proj, service: svc };
+  const act = selectedAction();
+  if (act) return { kind: "action", project: proj, action: act };
   return { kind: "project", project: proj };
 }
 
@@ -124,7 +135,8 @@ export function commitKeyboardCursor() {
   const cur = ensureKeyboardCursor();
   if (!cur) return;
   if (cur.kind === "project") selectProject(cur.project);
-  else selectService(cur.project, cur.service);
+  else if (cur.kind === "service") selectService(cur.project, cur.service);
+  else if (cur.kind === "action") selectAction(cur.project, cur.action);
 }
 
 /** Service targeted by action keys: cursor service, else selected service. */
@@ -194,12 +206,15 @@ function sameServiceList(a: ServiceState[], b: ServiceState[]): boolean {
 }
 
 function pruneSelection() {
-  const names = new Set(untrack(projects).map((p) => p.name));
+  const projList = untrack(projects);
+  const names = new Set(projList.map((p) => p.name));
   const sel = untrack(selectedProject);
-  if (sel && !names.has(sel)) {
+  if (projList.length > 0 && sel && !names.has(sel)) {
     setSelectedProject(null);
     setSelectedService(null);
+    setSelectedAction(null);
     pruneCursor();
+    replaceRoute({ project: null, service: null, action: null });
     return;
   }
   const svc = untrack(selectedService);
@@ -207,6 +222,15 @@ function pruneSelection() {
     const list = untrack(services)[sel];
     if (list && !list.some((s) => s.name === svc)) {
       setSelectedService(null);
+      replaceRoute({ project: sel, service: null, action: null });
+    }
+  }
+  const act = untrack(selectedAction);
+  if (sel && act) {
+    const list = untrack(actions)[sel];
+    if (list && !list.some((a) => a.name === act)) {
+      setSelectedAction(null);
+      replaceRoute({ project: sel, service: null, action: null });
     }
   }
   pruneCursor();
@@ -259,6 +283,40 @@ function isStaleProjectError(message: string): boolean {
 
 function start() {
   connectWS();
+
+  // Initialize selection from initial URL path
+  const initRoute = parseRoute();
+  if (initRoute.project) {
+    setSelectedProject(initRoute.project);
+    setSelectedService(initRoute.service);
+    setSelectedAction(initRoute.action);
+    expandProject(initRoute.project);
+    if (initRoute.service) {
+      setKeyboardCursor({ kind: "service", project: initRoute.project, service: initRoute.service });
+    } else if (initRoute.action) {
+      setKeyboardCursor({ kind: "action", project: initRoute.project, action: initRoute.action });
+    } else {
+      setKeyboardCursor({ kind: "project", project: initRoute.project });
+    }
+  }
+
+  const stopPopState = listenPopState((route) => {
+    if (route.project) {
+      if (route.service) {
+        selectService(route.project, route.service, { skipPush: true });
+      } else if (route.action) {
+        selectAction(route.project, route.action, { skipPush: true });
+      } else {
+        selectProject(route.project, { skipPush: true });
+      }
+    } else {
+      setSelectedProject(null);
+      setSelectedService(null);
+      setSelectedAction(null);
+      setKeyboardCursor(null);
+    }
+  });
+
   onWS("projects", (resp) => {
     const next = resp.data as ProjectInfo[];
     const prevNames = new Set(untrack(projects).map((p) => p.name));
@@ -323,6 +381,7 @@ function start() {
   return () => {
     clearInterval(poll);
     stopOpen();
+    stopPopState();
   };
 }
 
@@ -354,26 +413,48 @@ export function setProjectExpanded(name: string, open: boolean) {
     }
     return prev;
   });
-  if (open) refreshServices(name);
+  if (open) {
+    refreshServices(name);
+    refreshActions(name);
+  }
 }
 
 export function expandProject(name: string) {
   setProjectExpanded(name, true);
 }
 
-export function selectProject(name: string) {
+export function selectProject(name: string, opts?: { skipPush?: boolean }) {
   setSelectedProject(name);
   setSelectedService(null);
+  setSelectedAction(null);
   expandProject(name);
   setKeyboardCursor({ kind: "project", project: name });
+  if (!opts?.skipPush) {
+    pushRoute({ project: name, service: null, action: null });
+  }
 }
 
-export function selectService(project: string, service: string) {
+export function selectService(project: string, service: string, opts?: { skipPush?: boolean }) {
   setSelectedProject(project);
   setSelectedService(service);
+  setSelectedAction(null);
   setActiveView("logs");
   expandProject(project);
   setKeyboardCursor({ kind: "service", project, service });
+  if (!opts?.skipPush) {
+    pushRoute({ project, service, action: null });
+  }
+}
+
+export function selectAction(project: string, actionName: string, opts?: { skipPush?: boolean }) {
+  setSelectedProject(project);
+  setSelectedService(null);
+  setSelectedAction(actionName);
+  expandProject(project);
+  setKeyboardCursor({ kind: "action", project, action: actionName });
+  if (!opts?.skipPush) {
+    pushRoute({ project, service: null, action: actionName });
+  }
 }
 
 /** ArrowRight: expand project under cursor (or step into first service). ArrowLeft: collapse, or jump to parent. */
@@ -395,7 +476,7 @@ export function navigateKeyboardHorizontal(dir: "left" | "right") {
     return;
   }
   // left
-  if (cur.kind === "service") {
+  if (cur.kind === "service" || cur.kind === "action") {
     setKeyboardCursor({ kind: "project", project: cur.project });
     return;
   }
@@ -804,6 +885,7 @@ export {
   services,
   selectedProject,
   selectedService,
+  selectedAction,
   activeView,
   setActiveView,
   panelOpen,

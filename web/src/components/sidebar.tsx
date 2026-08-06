@@ -7,12 +7,14 @@ import {
   isProjectExpanded,
   selectedProject,
   selectedService,
+  selectedAction,
   keyboardCursor,
   sameNavItem,
   navItemKey,
   setProjectExpanded,
   selectProject,
   selectService,
+  selectAction,
   startProject,
   startProjectByPath,
   stopProject,
@@ -350,19 +352,50 @@ function ProjectItem(props: { name: string }) {
                     Actions
                   </div>
                   <For each={actionList()}>
-                    {(act) => (
-                      <div class="flex items-center justify-between py-1 text-xs hover:bg-muted/40 rounded px-2">
-                        <span class="font-medium truncate" title={act.command}>{act.name}</span>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          title={`Run action ${act.name}`}
-                          onClick={() => runAction(props.name, act.name)}
+                    {(act) => {
+                      const selected = () =>
+                        selectedAction() === act.name && selectedProject() === props.name;
+                      const cursor = () =>
+                        sameNavItem(keyboardCursor(), {
+                          kind: "action",
+                          project: props.name,
+                          action: act.name,
+                        });
+
+                      return (
+                        <div
+                          class={cn(
+                            "flex items-center justify-between py-1 px-2 text-xs rounded transition-colors cursor-pointer",
+                            selected()
+                              ? "bg-muted text-foreground"
+                              : "hover:bg-muted/60 text-muted-foreground hover:text-foreground",
+                            cursor() && !selected() && "bg-muted/40 ring-1 ring-inset ring-ring/60",
+                            cursor() && selected() && "ring-1 ring-inset ring-ring"
+                          )}
+                          data-nav-key={navItemKey({
+                            kind: "action",
+                            project: props.name,
+                            action: act.name,
+                          })}
+                          data-kbd-cursor={cursor() ? "" : undefined}
+                          onClick={() => selectAction(props.name, act.name)}
                         >
-                          <Play class="size-3 text-primary" />
-                        </Button>
-                      </div>
-                    )}
+                          <span class="font-medium truncate" title={act.command}>{act.name}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            title={`Run action ${act.name}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              selectAction(props.name, act.name);
+                              runAction(props.name, act.name);
+                            }}
+                          >
+                            <Play class="size-3 text-primary" />
+                          </Button>
+                        </div>
+                      );
+                    }}
                   </For>
                 </div>
               </Show>

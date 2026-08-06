@@ -6,6 +6,7 @@ import {
   actions,
   selectedProject,
   selectedService,
+  selectedAction,
   startProject,
   stopProject,
   restartService,
@@ -340,8 +341,47 @@ function ProjectHeader() {
   );
 }
 
+function ActionHeader() {
+  const project = () => selectedProject()!;
+  const actionName = () => selectedAction()!;
+  const act = createMemo(() =>
+    (actions()[project()] ?? []).find((a) => a.name === actionName())
+  );
+
+  return (
+    <>
+      <div class="flex min-w-0 items-center gap-2">
+        <span class="truncate text-xs text-muted-foreground">{project()}</span>
+        <span class="text-muted-foreground">/</span>
+        <span class="truncate text-xs text-muted-foreground">actions</span>
+        <span class="text-muted-foreground">/</span>
+        <span class="truncate font-semibold">{actionName()}</span>
+        <Show when={act()}>
+          {(a) => (
+            <span class="hidden truncate text-xs text-muted-foreground font-mono md:inline">
+              {a().command}
+            </span>
+          )}
+        </Show>
+      </div>
+      <div class="ml-auto flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="default"
+          onClick={() => runAction(project(), actionName())}
+          class="gap-1.5"
+        >
+          <Play class="size-3.5" />
+          Run Action
+        </Button>
+      </div>
+    </>
+  );
+}
+
 function EmptyState() {
   const project = () => selectedProject();
+  const actName = () => selectedAction();
   const actionList = createMemo(() => (project() ? actions()[project()!] ?? [] : []));
 
   return (
@@ -351,39 +391,73 @@ function EmptyState() {
         when={project()}
         fallback={<p class="text-sm">Select a project from the sidebar.</p>}
       >
-        <div class="max-w-md w-full text-center">
-          <p class="text-sm leading-relaxed mb-2">
-            Select a service under <span class="font-semibold text-foreground">{project()}</span> to view its logs.
-          </p>
-          <Show when={actionList().length > 0}>
-            <div class="mt-4 border border-border rounded-lg p-4 bg-card text-card-foreground text-left shadow-sm">
-              <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Project Actions
-              </div>
-              <div class="grid gap-2">
-                <For each={actionList()}>
-                  {(act) => (
-                    <div class="flex items-center justify-between p-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
-                      <div class="min-w-0 pr-2">
-                        <div class="font-medium text-sm text-foreground truncate">{act.name}</div>
-                        <div class="text-xs text-muted-foreground font-mono mt-0.5 truncate">{act.command}</div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => runAction(project()!, act.name)}
-                        class="gap-1.5 shrink-0"
-                      >
-                        <Play class="size-3.5 text-primary" />
-                        Run
-                      </Button>
-                    </div>
-                  )}
-                </For>
-              </div>
+        <Show
+          when={actName()}
+          fallback={
+            <div class="max-w-md w-full text-center">
+              <p class="text-sm leading-relaxed mb-2">
+                Select a service under <span class="font-semibold text-foreground">{project()}</span> to view its logs.
+              </p>
+              <Show when={actionList().length > 0}>
+                <div class="mt-4 border border-border rounded-lg p-4 bg-card text-card-foreground text-left shadow-sm">
+                  <div class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                    Project Actions
+                  </div>
+                  <div class="grid gap-2">
+                    <For each={actionList()}>
+                      {(act) => (
+                        <div class="flex items-center justify-between p-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
+                          <div class="min-w-0 pr-2">
+                            <div class="font-medium text-sm text-foreground truncate">{act.name}</div>
+                            <div class="text-xs text-muted-foreground font-mono mt-0.5 truncate">{act.command}</div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => runAction(project()!, act.name)}
+                            class="gap-1.5 shrink-0"
+                          >
+                            <Play class="size-3.5 text-primary" />
+                            Run
+                          </Button>
+                        </div>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
             </div>
-          </Show>
-        </div>
+          }
+        >
+          {(aName) => {
+            const act = createMemo(() =>
+              (actions()[project()!] ?? []).find((a) => a.name === aName())
+            );
+            return (
+              <div class="max-w-md w-full text-center">
+                <div class="border border-border rounded-lg p-5 bg-card text-card-foreground shadow-sm">
+                  <div class="text-xs uppercase tracking-wider text-muted-foreground mb-1 font-medium">Project Action</div>
+                  <div class="text-lg font-semibold text-foreground mb-2">{aName()}</div>
+                  <Show when={act()}>
+                    {(a) => (
+                      <div class="text-xs font-mono text-muted-foreground bg-muted p-2 rounded mb-4 overflow-x-auto">
+                        {a().command}
+                      </div>
+                    )}
+                  </Show>
+                  <Button
+                    size="sm"
+                    onClick={() => runAction(project()!, aName())}
+                    class="gap-1.5"
+                  >
+                    <Play class="size-3.5" />
+                    Run Action
+                  </Button>
+                </div>
+              </div>
+            );
+          }}
+        </Show>
       </Show>
     </div>
   );
@@ -397,7 +471,14 @@ export function Main() {
           when={selectedProject()}
           fallback={<span class="font-semibold">Welcome</span>}
         >
-          <Show when={selectedService()} fallback={<ProjectHeader />}>
+          <Show
+            when={selectedService()}
+            fallback={
+              <Show when={selectedAction()} fallback={<ProjectHeader />}>
+                <ActionHeader />
+              </Show>
+            }
+          >
             <ServiceHeader />
           </Show>
         </Show>

@@ -468,6 +468,32 @@ func TestHTTPServesIndex(t *testing.T) {
 	}
 }
 
+func TestHTTPDeepLinkRoutesServeIndex(t *testing.T) {
+	m := newFakeMulti()
+	srv := newWebServer(t, m)
+
+	routes := []string{
+		"/projects/my-app",
+		"/projects/my-app/services/web",
+		"/projects/my-app/actions/db-migrate",
+	}
+
+	for _, route := range routes {
+		resp, err := http.Get(fmt.Sprintf("http://%s%s", srv.Addr(), route))
+		if err != nil {
+			t.Fatalf("GET %s: %v", route, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("status for %s = %d, want 200", route, resp.StatusCode)
+		}
+		ct := resp.Header.Get("Content-Type")
+		if !strings.Contains(ct, "text/html") {
+			t.Fatalf("Content-Type for %s = %q, want text/html SPA fallback", route, ct)
+		}
+	}
+}
+
 func TestHTTPServesJSAsset(t *testing.T) {
 	m := newFakeMulti()
 	srv := newWebServer(t, m)

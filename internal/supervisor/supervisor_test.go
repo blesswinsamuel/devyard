@@ -1013,3 +1013,52 @@ func TestReconcileOrphans(t *testing.T) {
 		t.Fatalf("states after reconcile = %+v, want only alpha", states)
 	}
 }
+
+func TestSupervisorActionLogs(t *testing.T) {
+	t.Parallel()
+	f := fileWith(map[string]config.Service{
+		"app": {Command: "echo app"},
+	})
+	f.Actions = map[string]config.Action{
+		"migrate": {Spec: config.ActionSpec{Command: "echo action_first_run"}},
+	}
+	s := newSupervisor(t, f, []string{"app"})
+
+	var buf bytes.Buffer
+	code, err := s.RunAction(context.Background(), "migrate", nil, &buf)
+	if err != nil || code != 0 {
+		t.Fatalf("RunAction: code=%d err=%v", code, err)
+	}
+
+	path, err := s.ActionLogPath("migrate")
+	if err != nil {
+		t.Fatalf("ActionLogPath: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(data), "action_first_run") {
+		t.Fatalf("ActionLogPath content = %q, want action_first_run", string(data))
+	}
+
+	// Run action a second time to test log rotation
+	f.Actions["migrate"] = config.Action{Spec: config.ActionSpec{Command: "echo action_second_run"}}
+	s.UpdateFile(f)
+	buf.Reset()
+	code, err = s.RunAction(context.Background(), "migrate", nil, &buf)
+	if err != nil || code != 0 {
+		t.Fatalf("RunAction 2: code=%d err=%v", code, err)
+	}
+
+	data, err = os.ReadFile(path)
+	if err != nil || !strings.Contains(string(data), "action_second_run") {
+		t.Fatalf("ActionLogPath content after rerun = %q, want action_second_run", string(data))
+	}
+
+	prevPath, err := s.ActionPreviousLogPath("migrate")
+	if err != nil {
+		t.Fatalf("ActionPreviousLogPath: %v", err)
+	}
+	prevData, err := os.ReadFile(prevPath)
+	if err != nil || !strings.Contains(string(prevData), "action_first_run") {
+		t.Fatalf("ActionPreviousLogPath content = %q, want action_first_run", string(prevData))
+	}
+}

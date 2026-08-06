@@ -113,6 +113,7 @@ type ActionInfo struct {
 	Name       string   `json:"name"`
 	Command    string   `json:"command"`
 	WorkingDir string   `json:"working_dir,omitempty"`
+	TTY        bool     `json:"tty,omitempty"`
 	DependsOn  []string `json:"depends_on,omitempty"`
 }
 

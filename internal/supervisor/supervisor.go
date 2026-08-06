@@ -1356,6 +1356,7 @@ func (s *Supervisor) ListActions() []protocol.ActionInfo {
 			Name:       name,
 			Command:    act.Spec.Command,
 			WorkingDir: act.Spec.WorkingDir,
+			TTY:        act.Spec.TTY,
 			DependsOn:  deps,
 		}
 	}
@@ -1419,7 +1420,24 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 		return 1, fmt.Errorf("action %q: start: %w", name, err)
 	}
 
+	var logFile *os.File
+	if s.opts.Locations != nil {
+		actDir := filepath.Join(s.opts.Locations.State, "actions")
+		if err := os.MkdirAll(actDir, 0o755); err == nil {
+			logPath := filepath.Join(actDir, name+".log")
+			prevPath := filepath.Join(actDir, name+".prev.log")
+			if _, statErr := os.Stat(logPath); statErr == nil {
+				_ = os.Rename(logPath, prevPath)
+			}
+			if f, openErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); openErr == nil {
+				logFile = f
+				defer func() { _ = logFile.Close() }()
+			}
+		}
+	}
+
 	var wg sync.WaitGroup
+	var logMu sync.Mutex
 	wg.Add(2)
 	readLineStream := func(r io.Reader) {
 		defer wg.Done()
@@ -1428,6 +1446,11 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 			line := scanner.Text()
 			if out != nil {
 				_, _ = fmt.Fprintln(out, line)
+			}
+			if logFile != nil {
+				logMu.Lock()
+				_, _ = fmt.Fprintln(logFile, line)
+				logMu.Unlock()
 			}
 		}
 	}
@@ -1439,4 +1462,40 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	waitErr := cmd.Wait()
 	code := exitCodeFrom(waitErr)
 	return code, nil
+}
+
+// ActionLogPath returns the absolute path of an action's log file.
+func (s *Supervisor) ActionLogPath(name string) (string, error) {
+	if s.opts.Locations == nil {
+		return "", fmt.Errorf("supervisor: no state location configured")
+	}
+	if s.opts.File == nil {
+		return "", fmt.Errorf("supervisor: no config file loaded")
+	}
+	if _, ok := s.opts.File.Actions[name]; !ok {
+		return "", fmt.Errorf("action %q not found", name)
+	}
+	path := filepath.Join(s.opts.Locations.State, "actions", name+".log")
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("action %q has no log file yet", name)
+	}
+	return path, nil
+}
+
+// ActionPreviousLogPath returns the absolute path of an action's previous run log file.
+func (s *Supervisor) ActionPreviousLogPath(name string) (string, error) {
+	if s.opts.Locations == nil {
+		return "", fmt.Errorf("supervisor: no state location configured")
+	}
+	if s.opts.File == nil {
+		return "", fmt.Errorf("supervisor: no config file loaded")
+	}
+	if _, ok := s.opts.File.Actions[name]; !ok {
+		return "", fmt.Errorf("action %q not found", name)
+	}
+	path := filepath.Join(s.opts.Locations.State, "actions", name+".prev.log")
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("action %q has no previous log file", name)
+	}
+	return path, nil
 }

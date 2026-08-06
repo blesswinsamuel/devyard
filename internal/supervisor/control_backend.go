@@ -108,5 +108,15 @@ func (b *ControlBackend) RunAction(ctx context.Context, name string, args []stri
 	return b.s.RunAction(ctx, name, args, out)
 }
 
+// ActionLogPath returns the absolute path of an action's log file.
+func (b *ControlBackend) ActionLogPath(name string) (string, error) {
+	return b.s.ActionLogPath(name)
+}
+
+// ActionPreviousLogPath returns the absolute path of an action's previous-run log file.
+func (b *ControlBackend) ActionPreviousLogPath(name string) (string, error) {
+	return b.s.ActionPreviousLogPath(name)
+}
+
 // Compile-time assertion that ControlBackend satisfies control.Backend.
 var _ control.Backend = (*ControlBackend)(nil)

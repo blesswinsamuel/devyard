@@ -252,6 +252,44 @@ func (c *Client) Logs(project, service string, follow, previous bool, tail int, 
 	}
 }
 
+// ActionLogs sends a Logs request for the given project + action and calls onLine for each log line.
+func (c *Client) ActionLogs(project, action string, follow, previous bool, tail int, onLine func(string)) error {
+	if onLine == nil {
+		onLine = func(string) {}
+	}
+	if err := c.Send(protocol.Request{
+		Kind:     protocol.KindLogs,
+		Project:  project,
+		Action:   action,
+		Follow:   follow,
+		Previous: previous,
+		Tail:     tail,
+	}); err != nil {
+		return err
+	}
+	for {
+		resp, err := c.Recv()
+		if err != nil {
+			return err
+		}
+		switch resp.Kind {
+		case protocol.KindLogLine:
+			onLine(resp.Line)
+		case protocol.KindLogContent:
+			for _, line := range strings.Split(strings.TrimRight(resp.Content, "\n"), "\n") {
+				onLine(line)
+			}
+		case protocol.KindLogRotated:
+		case protocol.KindDone:
+			return nil
+		case protocol.KindError:
+			return errors.New(resp.Error)
+		default:
+			return fmt.Errorf("control: unexpected response %q", resp.Kind)
+		}
+	}
+}
+
 // ListActions sends a ListActions request and returns the actions defined in the project.
 func (c *Client) ListActions(project string) ([]protocol.ActionInfo, error) {
 	if err := c.Send(protocol.Request{Kind: protocol.KindListActions, Project: project}); err != nil {

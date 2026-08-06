@@ -153,6 +153,20 @@ func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string,
 	return 0, nil
 }
 
+func (b *fakeBackend) ActionLogPath(name string) (string, error) {
+	if p, ok := b.logPaths[name]; ok {
+		return p, nil
+	}
+	return "", fmt.Errorf("unknown action %q", name)
+}
+
+func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
+	if p, ok := b.logPaths[name]; ok {
+		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
+	}
+	return "", fmt.Errorf("unknown action %q", name)
+}
+
 func newWebServer(t *testing.T, backend control.MultiBackend) *web.Server {
 	t.Helper()
 	srv := web.NewServer("127.0.0.1:0", backend)

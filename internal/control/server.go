@@ -49,6 +49,10 @@ type Backend interface {
 	// PreviousLogPath returns the absolute path of a service's previous-run
 	// log file (the run immediately before the current one).
 	PreviousLogPath(name string) (string, error)
+	// ActionLogPath returns the absolute path of an action's log file.
+	ActionLogPath(name string) (string, error)
+	// ActionPreviousLogPath returns the absolute path of an action's previous-run log file.
+	ActionPreviousLogPath(name string) (string, error)
 }
 
 // Server is the Unix-socket control server. It accepts connections from
@@ -315,8 +319,12 @@ func (s *Server) handleTop(w io.Writer, req protocol.Request) {
 }
 
 func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
-	if req.Service == "" {
-		_ = writeError(w, "logs: service is required")
+	target := req.Service
+	if target == "" {
+		target = req.Action
+	}
+	if target == "" {
+		_ = writeError(w, "logs: service or action is required")
 		return
 	}
 	b, err := s.backend.ProjectBackend(req.Project)
@@ -325,10 +333,18 @@ func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
 		return
 	}
 	var path string
-	if req.Previous {
-		path, err = b.PreviousLogPath(req.Service)
+	if req.Action != "" {
+		if req.Previous {
+			path, err = b.ActionPreviousLogPath(req.Action)
+		} else {
+			path, err = b.ActionLogPath(req.Action)
+		}
 	} else {
-		path, err = b.LogPath(req.Service)
+		if req.Previous {
+			path, err = b.PreviousLogPath(req.Service)
+		} else {
+			path, err = b.LogPath(req.Service)
+		}
 	}
 	if err != nil {
 		_ = writeError(w, err.Error())
@@ -336,13 +352,13 @@ func (s *Server) handleLogs(w io.Writer, req protocol.Request) {
 	}
 	if req.Previous {
 		if _, err := os.Stat(path); err != nil {
-			_ = writeError(w, fmt.Sprintf("logs: no previous run for service %q", req.Service))
+			_ = writeError(w, fmt.Sprintf("logs: no previous run for %q", target))
 			return
 		}
 	}
 	// Follow tails the live file, which rotates between spawns; the previous
 	// log is a completed run, so rotation tracking is unnecessary for it.
-	if err := streamLogs(w, path, req.Follow, !req.Previous, req.Tail, s.stopCh, req.Project, req.Service); err != nil {
+	if err := streamLogs(w, path, req.Follow, !req.Previous, req.Tail, s.stopCh, req.Project, target); err != nil {
 		_ = writeError(w, err.Error())
 	}
 }

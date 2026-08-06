@@ -107,6 +107,24 @@ func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
 	return "", errors.New("unknown service " + name)
 }
 
+func (b *fakeBackend) ActionLogPath(name string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if p, ok := b.logPaths[name]; ok {
+		return p, nil
+	}
+	return "", errors.New("unknown action " + name)
+}
+
+func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if p, ok := b.logPaths[name]; ok {
+		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
+	}
+	return "", errors.New("unknown action " + name)
+}
+
 func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

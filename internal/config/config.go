@@ -143,6 +143,7 @@ type ActionSpec struct {
 	WorkingDir string            `yaml:"working_dir,omitempty"`
 	Env        map[string]string `yaml:"env,omitempty"`
 	Shell      string            `yaml:"shell,omitempty"`
+	TTY        bool              `yaml:"tty,omitempty"`
 	DependsOn  DependsOn         `yaml:"depends_on,omitempty"`
 }
 

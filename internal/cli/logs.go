@@ -17,10 +17,11 @@ import (
 var logsFollow bool
 var logsPrevious bool
 var logsTail int
+var logsAction string
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
-	Short: "Fetch or stream service logs",
+	Short: "Fetch or stream service or action logs",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if logsFollow && logsPrevious {
@@ -32,11 +33,22 @@ var logsCmd = &cobra.Command{
 			return err
 		}
 
-		if len(args) == 1 {
-			projName, err := resolveProjectName(flagConfigPath, flagProject)
+		projName, err := resolveProjectName(flagConfigPath, flagProject)
+		if err != nil {
+			return err
+		}
+
+		if logsAction != "" {
+			client, err := control.Dial(socket)
 			if err != nil {
+				fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
 				return err
 			}
+			defer func() { _ = client.Close() }()
+			return client.ActionLogs(projName, logsAction, logsFollow, logsPrevious, logsTail, newLogPrinter(logsAction))
+		}
+
+		if len(args) == 1 {
 			service := args[0]
 			client, err := control.Dial(socket)
 			if err != nil {
@@ -153,6 +165,7 @@ func init() {
 	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "Follow log output")
 	logsCmd.Flags().BoolVar(&logsPrevious, "previous", false, "Show the previous run's logs instead of the current run's")
 	logsCmd.Flags().IntVar(&logsTail, "tail", 0, "Number of lines to show from the end of the logs (0 = all, subject to a size cap)")
+	logsCmd.Flags().StringVar(&logsAction, "action", "", "Show logs for a specific action")
 }
 
 // newLogPrinter returns a callback that prints log lines to stdout with a

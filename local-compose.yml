@@ -40,4 +40,3 @@ services:
 
 actions:
   reload-daemon: go install ./cmd/local-compose/ && local-compose daemon reload
-  test: sleep 3 && echo hello world

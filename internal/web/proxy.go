@@ -224,11 +224,12 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 		}()
 
 		if err := protocol.WriteFrame(conn, protocol.Request{
-			Kind:    protocol.KindLogs,
-			Project: req.Project,
-			Service: req.Service,
-			Follow:  true,
-			Tail:    protocol.DefaultLogTail,
+			Kind:     protocol.KindLogs,
+			Project:  req.Project,
+			Service:  req.Service,
+			Follow:   !req.Previous,
+			Previous: req.Previous,
+			Tail:     protocol.DefaultLogTail,
 		}); err != nil {
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
@@ -251,6 +252,7 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 					Type:    "log_line",
 					Project: resp.Project,
 					Service: resp.Service,
+					Prev:    req.Previous,
 					Line:    resp.Line,
 				})
 			case protocol.KindLogContent:
@@ -264,6 +266,7 @@ func (s *Server) proxySubscribeLogs(c *websocket.Conn, ctx context.Context, req 
 						Type:    "log_line",
 						Project: resp.Project,
 						Service: resp.Service,
+						Prev:    req.Previous,
 						Line:    line,
 					})
 				}
@@ -305,11 +308,12 @@ func (s *Server) proxySubscribeActionLogs(c *websocket.Conn, ctx context.Context
 		}()
 
 		if err := protocol.WriteFrame(conn, protocol.Request{
-			Kind:    protocol.KindLogs,
-			Project: req.Project,
-			Action:  req.Action,
-			Follow:  true,
-			Tail:    protocol.DefaultLogTail,
+			Kind:     protocol.KindLogs,
+			Project:  req.Project,
+			Action:   req.Action,
+			Follow:   !req.Previous,
+			Previous: req.Previous,
+			Tail:     protocol.DefaultLogTail,
 		}); err != nil {
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
@@ -332,6 +336,7 @@ func (s *Server) proxySubscribeActionLogs(c *websocket.Conn, ctx context.Context
 					Type:    "log_line",
 					Project: resp.Project,
 					Action:  resp.Service, // the daemon labels action frames with the target name
+					Prev:    req.Previous,
 					Line:    resp.Line,
 				})
 			case protocol.KindLogContent:
@@ -345,6 +350,7 @@ func (s *Server) proxySubscribeActionLogs(c *websocket.Conn, ctx context.Context
 						Type:    "log_line",
 						Project: resp.Project,
 						Action:  resp.Service,
+						Prev:    req.Previous,
 						Line:    line,
 					})
 				}

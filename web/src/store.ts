@@ -31,6 +31,11 @@ const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
 const [selectedService, setSelectedService] = createSignal<string | null>(null);
 const [selectedAction, setSelectedAction] = createSignal<string | null>(null);
+/**
+ * Targets whose log pane is showing the previous run instead of the live one,
+ * keyed by navItemKey. Non-live (previous) panes never follow or auto-reset.
+ */
+const [previousLogs, setPreviousLogs] = createSignal<Set<string>>(new Set());
 /** Active main view tab ("logs" | "shell" | "git" | "agents"). Defaults to "logs". */
 const [activeView, setActiveView] = createSignal<ViewMode>("logs");
 /** Keyboard focus in the sidebar (highlight); Enter commits to selection. */
@@ -518,6 +523,35 @@ export function selectAction(project: string, actionName: string, opts?: { skipP
   if (!opts?.skipPush) {
     pushRoute({ project, service: null, action: actionName });
   }
+}
+
+/** Whether the given service/action's log pane should show the previous run. */
+export function isPreviousLogs(item: NavItem): boolean {
+  return previousLogs().has(navItemKey(item));
+}
+
+/** Toggle between the live and previous-run log for a service or action. */
+export function togglePreviousLogs(item: NavItem) {
+  setPreviousLogs((prev) => {
+    const next = new Set(prev);
+    const key = navItemKey(item);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+}
+
+/** Target of the previous-logs toggle: cursor service/action, else selection. */
+export function previousTarget(): NavItem | null {
+  const cur = keyboardCursor();
+  if (cur?.kind === "service") return cur;
+  if (cur?.kind === "action") return cur;
+  const proj = selectedProject();
+  const svc = selectedService();
+  const act = selectedAction();
+  if (proj && svc) return { kind: "service", project: proj, service: svc };
+  if (proj && act) return { kind: "action", project: proj, action: act };
+  return null;
 }
 
 /** ArrowRight: expand project under cursor (or step into first service). ArrowLeft: collapse, or jump to parent. */

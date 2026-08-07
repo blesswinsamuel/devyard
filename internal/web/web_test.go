@@ -496,6 +496,42 @@ func TestWSLogRotationEmitsMarker(t *testing.T) {
 	}
 }
 
+func TestWSSubscribePreviousLogs(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "web.log")
+	prevPath := filepath.Join(dir, "web.prev.log")
+	if err := os.WriteFile(logPath, []byte("current\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(prevPath, []byte("previous run\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b := &fakeBackend{logPaths: map[string]string{"web": logPath}}
+	m := newFakeMulti()
+	m.projects["api"] = b
+	srv := newWebServer(t, m)
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]string{"type": "subscribe_logs", "project": "api", "service": "web", "prev": "true"})
+
+	// The previous run's stored content is streamed once and tagged prev, not
+	// the live (current) file's content.
+	resp := recvWSMsg(t, c)
+	if resp["type"] != "log_line" || resp["line"] != "previous run" {
+		t.Fatalf("first line = %+v, want log_line 'previous run'", resp)
+	}
+	if resp["prev"] != true {
+		t.Fatalf("prev = %v, want true", resp["prev"])
+	}
+
+	// Appending to the live log must NOT arrive: a previous run never follows.
+	_ = appendToLog(logPath, "new live line\n")
+	_, ok := recvWSMsgTimeout(t, c, 500*time.Millisecond)
+	if ok {
+		t.Fatalf("received a message after a previous-run subscribe")
+	}
+}
+
 func TestWSSubscribeActionLogs(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "migrate.log")

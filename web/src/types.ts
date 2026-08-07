@@ -44,6 +44,7 @@ export interface WSRequest {
   config_path?: string;
   signal?: string;
   env_file?: string;
+  prev?: boolean;
   id?: string;
   data?: string;
   cols?: number;
@@ -60,6 +61,7 @@ export interface WSResponse {
   ok?: boolean;
   error?: string;
   exit_code?: number;
+  prev?: boolean;
   id?: string;
   output?: string;
 }

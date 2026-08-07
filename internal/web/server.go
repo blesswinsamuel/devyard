@@ -164,6 +164,7 @@ type wsRequest struct {
 	ConfigPath    string   `json:"config_path,omitempty"`
 	EnvFile       string   `json:"env_file,omitempty"`
 	RemoveOrphans *bool    `json:"remove_orphans,omitempty"`
+	Previous      bool     `json:"prev,omitempty"`
 
 	// Terminal/PTY fields
 	ID   string `json:"id,omitempty"`
@@ -180,6 +181,7 @@ type wsResponse struct {
 	Action   string          `json:"action,omitempty"`
 	Data     json.RawMessage `json:"data,omitempty"`
 	Line     string          `json:"line,omitempty"`
+	Prev     bool            `json:"prev,omitempty"`
 	Ok       bool            `json:"ok"`
 	Error    string          `json:"error,omitempty"`
 	ExitCode *int            `json:"exit_code,omitempty"`
@@ -476,12 +478,19 @@ func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		path, err := b.LogPath(req.Service)
+		var path string
+		if req.Previous {
+			path, err = b.PreviousLogPath(req.Service)
+		} else {
+			path, err = b.LogPath(req.Service)
+		}
 		if err != nil {
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		streamLogFile(c, subCtx, path, req.Project, req.Service, "")
+		// A previous run is a completed run, so it is never followed and never
+		// rotates: stream its content once and stop.
+		streamLogFile(c, subCtx, path, req.Project, req.Service, "", req.Previous, false)
 	}()
 }
 
@@ -515,7 +524,14 @@ func (s *Server) handleSubscribeActionLogs(c *websocket.Conn, ctx context.Contex
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		path, err := control.WaitForActionLog(subCtx, b, req.Action)
+		var path string
+		if req.Previous {
+			// A previous run implies the action already ran, so the log exists
+			// and no waiter is needed.
+			path, err = b.ActionPreviousLogPath(req.Action)
+		} else {
+			path, err = control.WaitForActionLog(subCtx, b, req.Action)
+		}
 		if err != nil {
 			// The subscription was replaced or the connection closed; there is
 			// nothing to report.
@@ -525,7 +541,7 @@ func (s *Server) handleSubscribeActionLogs(c *websocket.Conn, ctx context.Contex
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		streamLogFile(c, subCtx, path, req.Project, "", req.Action)
+		streamLogFile(c, subCtx, path, req.Project, "", req.Action, req.Previous, false)
 	}()
 }
 
@@ -582,13 +598,16 @@ func (s *Server) broadcast(resp wsResponse) {
 
 const writeTimeout = 5 * time.Second
 
-// streamLogFile reads existing log content (last DefaultLogTail lines) and
-// tails for new lines, sending log_line WS messages for each line. It returns
-// when the context is cancelled (unsubscribe or disconnect). Exactly one of
-// service and action is non-empty: service logs are tagged with the service
-// name, action logs with the action name, so the browser can route each stream
-// to the right pane.
-func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, service, action string) {
+// streamLogFile reads existing log content (last DefaultLogTail lines) and,
+// when follow is true, tails for new lines, sending log_line WS messages for
+// each line. It returns when the context is cancelled (unsubscribe or
+// disconnect) or, when follow is false, after the file's content is fully
+// streamed. Exactly one of service and action is non-empty: service logs are
+// tagged with the service name, action logs with the action name, so the
+// browser can route each stream to the right pane. previous marks a previous
+// run's completed log (the current file's ".prev.log"); every line carries
+// that flag so the browser can render it distinctly.
+func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, service, action string, previous, follow bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		resp, _ := json.Marshal(wsResponse{
@@ -614,6 +633,7 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 			Project: project,
 			Service: service,
 			Action:  action,
+			Prev:    previous,
 			Line:    line,
 		})
 		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
@@ -664,6 +684,12 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 			sendLine(string(leftover))
 			leftover = leftover[:0]
 		}
+	}
+
+	// A previous run has already ended; stream its stored content and stop
+	// rather than following (nothing is live and the file never rotates).
+	if !follow {
+		return
 	}
 
 	select {

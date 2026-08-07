@@ -7,6 +7,7 @@ import {
   moveKeyboardCursor,
   moveKeyboardCursorToEnd,
   navigateKeyboardHorizontal,
+  previousTarget,
   projects,
   restartService,
   showHelp,
@@ -14,6 +15,7 @@ import {
   stopProject,
   stopService,
   toggleHelp,
+  togglePreviousLogs,
 } from "./store";
 
 function isXtermTextarea(el: EventTarget | null): boolean {
@@ -159,6 +161,14 @@ function handleKeyDown(e: KeyboardEvent) {
       if (!project) return;
       e.preventDefault();
       stopProject(project);
+      break;
+    }
+    case "p":
+    case "P": {
+      const target = previousTarget();
+      if (!target) return;
+      e.preventDefault();
+      togglePreviousLogs(target);
       break;
     }
     case "?":

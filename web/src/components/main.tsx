@@ -1,5 +1,5 @@
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Play, Power, RefreshCw, RotateCcw, Skull, SquareTerminal } from "lucide-solid";
+import { Play, Power, RefreshCw, RotateCcw, Skull, SquareTerminal, History } from "lucide-solid";
 import {
   projects,
   services,
@@ -18,6 +18,8 @@ import {
   theme,
   panelOpen,
   togglePanel,
+  isPreviousLogs,
+  togglePreviousLogs,
 } from "~/store";
 import { subscribeLogs, subscribeActionLogs } from "~/ws";
 import { statusLabel, statusTone, healthTone, serviceMeta } from "~/lib/status";
@@ -36,13 +38,15 @@ type LogSubscribe = (
   project: string,
   target: string,
   onLine: (line: string) => void,
-  onRotate?: () => void
+  onRotate?: () => void,
+  prev?: boolean
 ) => () => void;
 
 function LogTerminal(props: {
   project: string;
   target: string;
   active: boolean;
+  prev: boolean;
   subscribe: LogSubscribe;
 }) {
   let container!: HTMLDivElement;
@@ -81,27 +85,35 @@ function LogTerminal(props: {
       t.write("\x1b[2J\x1b[3J\x1b[H");
     };
 
-    resetView();
-
-    const unsubLogs = props.subscribe(
-      props.project,
-      props.target,
-      (line) => {
-        buffer.push("\x1b[0m" + formatLogLine(line));
-        scheduleFlush();
-      },
-      resetView
-    );
-
     createEffect(() => {
       t.options.theme = terminalTheme(theme());
+    });
+
+    // Subscribe reactively: reruns when props.prev (or the target/stream
+    // selection) changes, so toggling between live and previous-run logs tears
+    // down the old stream and swaps the pane to the new content.
+    createEffect(() => {
+      resetView();
+      const unsubLogs = props.subscribe(
+        props.project,
+        props.target,
+        (line) => {
+          buffer.push("\x1b[0m" + formatLogLine(line));
+          scheduleFlush();
+        },
+        resetView,
+        props.prev
+      );
+      onCleanup(() => {
+        unsubLogs();
+        resetView();
+      });
     });
 
     onCleanup(() => {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
-      unsubLogs();
       t.dispose();
       term = null;
     });
@@ -128,12 +140,14 @@ function ServiceTerminal(props: {
   project: string;
   service: string;
   active: boolean;
+  prev: boolean;
 }) {
   return (
     <LogTerminal
       project={props.project}
       target={props.service}
       active={props.active}
+      prev={props.prev}
       subscribe={subscribeLogs}
     />
   );
@@ -143,12 +157,14 @@ function ActionTerminal(props: {
   project: string;
   action: string;
   active: boolean;
+  prev: boolean;
 }) {
   return (
     <LogTerminal
       project={props.project}
       target={props.action}
       active={props.active}
+      prev={props.prev}
       subscribe={subscribeActionLogs}
     />
   );
@@ -187,6 +203,7 @@ function LogViewer() {
             project={item.project}
             service={item.service}
             active={activeKey() === item.key}
+            prev={isPreviousLogs({ kind: "service", project: item.project, service: item.service })}
           />
         )}
       </For>
@@ -227,6 +244,7 @@ function ActionLogViewer() {
             project={item.project}
             action={item.action}
             active={activeKey() === item.key}
+            prev={isPreviousLogs({ kind: "action", project: item.project, action: item.action })}
           />
         )}
       </For>
@@ -266,6 +284,18 @@ function ServiceHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            as={Button}
+            variant={isPreviousLogs({ kind: "service", project: project(), service: service() }) ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => togglePreviousLogs({ kind: "service", project: project(), service: service() })}
+          >
+            <History class="size-4" />
+            <span class="hidden md:inline">Previous</span>
+          </TooltipTrigger>
+          <TooltipContent>Show previous run's logs (p)</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             as={Button}
@@ -462,6 +492,18 @@ function ActionHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            as={Button}
+            variant={isPreviousLogs({ kind: "action", project: project(), action: actionName() }) ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => togglePreviousLogs({ kind: "action", project: project(), action: actionName() })}
+          >
+            <History class="size-4" />
+            <span class="hidden md:inline">Previous</span>
+          </TooltipTrigger>
+          <TooltipContent>Show previous run's logs (p)</TooltipContent>
+        </Tooltip>
         <Button
           size="sm"
           variant="default"

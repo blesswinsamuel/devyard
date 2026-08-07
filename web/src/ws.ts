@@ -15,6 +15,7 @@ const logHandlers = new Map<
   {
     project: string;
     service: string;
+    prev: boolean;
     onLine: (line: string) => void;
     onRotate?: () => void;
   }
@@ -24,6 +25,7 @@ const actionLogHandlers = new Map<
   {
     project: string;
     action: string;
+    prev: boolean;
     onLine: (line: string) => void;
     onRotate?: () => void;
   }
@@ -87,6 +89,7 @@ export function connectWS() {
           type: "subscribe_logs",
           project: entry.project,
           service: entry.service,
+          prev: entry.prev,
         })
       );
     }
@@ -97,6 +100,7 @@ export function connectWS() {
           type: "subscribe_action_logs",
           project: entry.project,
           action: entry.action,
+          prev: entry.prev,
         })
       );
     }
@@ -129,9 +133,11 @@ export function connectWS() {
     }
     if (resp.type === "log_line") {
       if (resp.action) {
-        actionLogHandlers.get(logKey(resp.project!, resp.action))?.onLine(resp.line!);
+        const h = actionLogHandlers.get(logKey(resp.project!, resp.action));
+        if (h && h.prev === !!resp.prev) h.onLine(resp.line!);
       } else {
-        logHandlers.get(logKey(resp.project!, resp.service!))?.onLine(resp.line!);
+        const h = logHandlers.get(logKey(resp.project!, resp.service!));
+        if (h && h.prev === !!resp.prev) h.onLine(resp.line!);
       }
     } else if (resp.type === "log_rotated") {
       // A new run started; the previous run's lines are over. Let the
@@ -175,11 +181,12 @@ export function subscribeLogs(
   project: string,
   service: string,
   onLine: (line: string) => void,
-  onRotate?: () => void
+  onRotate?: () => void,
+  prev = false
 ) {
   const key = logKey(project, service);
-  logHandlers.set(key, { project, service, onLine, onRotate });
-  sendWS({ type: "subscribe_logs", project, service });
+  logHandlers.set(key, { project, service, prev, onLine, onRotate });
+  sendWS({ type: "subscribe_logs", project, service, prev });
   return () => {
     const current = logHandlers.get(key);
     // Only tear down if we still own the slot (a newer subscribe may have replaced us).
@@ -194,11 +201,12 @@ export function subscribeActionLogs(
   project: string,
   action: string,
   onLine: (line: string) => void,
-  onRotate?: () => void
+  onRotate?: () => void,
+  prev = false
 ) {
   const key = logKey(project, action);
-  actionLogHandlers.set(key, { project, action, onLine, onRotate });
-  sendWS({ type: "subscribe_action_logs", project, action });
+  actionLogHandlers.set(key, { project, action, prev, onLine, onRotate });
+  sendWS({ type: "subscribe_action_logs", project, action, prev });
   return () => {
     const current = actionLogHandlers.get(key);
     // Only tear down if we still own the slot (a newer subscribe may have replaced us).

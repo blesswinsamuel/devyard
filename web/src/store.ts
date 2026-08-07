@@ -36,7 +36,7 @@ const [selectedAction, setSelectedAction] = createSignal<string | null>(null);
  * keyed by navItemKey. Non-live (previous) panes never follow or auto-reset.
  */
 const [previousLogs, setPreviousLogs] = createSignal<Set<string>>(new Set());
-/** Active main view tab ("logs" | "shell" | "git" | "agents"). Defaults to "logs". */
+/** Active main view tab ("logs" | "shell" | "git"). Defaults to "logs". */
 const [activeView, setActiveView] = createSignal<ViewMode>("logs");
 /** Keyboard focus in the sidebar (highlight); Enter commits to selection. */
 const [keyboardCursor, setKeyboardCursor] = createSignal<NavItem | null>(null);
@@ -960,7 +960,7 @@ export function movePaneToNewTab(project: string, sourcePaneId: string) {
   }));
 }
 
-export type PanelTab = "shell" | "git" | "agents";
+export type PanelTab = "shell" | "git";
 
 const [panelOpen, setPanelOpen] = createSignal(false);
 const [panelTab, setPanelTab] = createSignal<PanelTab>("shell");

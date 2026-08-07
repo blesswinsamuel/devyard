@@ -1,5 +1,5 @@
 import { Show, createSignal, onCleanup } from "solid-js";
-import { Bot, GitBranch, Maximize2, Minimize2, SquareTerminal, X } from "lucide-solid";
+import { GitBranch, Maximize2, Minimize2, SquareTerminal, X } from "lucide-solid";
 import {
   selectedProject,
   panelOpen,
@@ -85,19 +85,6 @@ export function BottomPanel() {
                 <span class="rounded bg-muted px-1 text-[10px]">Soon</span>
               </TooltipTrigger>
               <TooltipContent>Git graph, diffs & commits coming soon!</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger
-                as="button"
-                disabled
-                class="flex cursor-not-allowed items-center gap-1.5 rounded px-2.5 py-1 text-muted-foreground/50 opacity-60"
-              >
-                <Bot class="size-3.5" />
-                <span>Agents</span>
-                <span class="rounded bg-muted px-1 text-[10px]">Soon</span>
-              </TooltipTrigger>
-              <TooltipContent>AI Coding agents coming soon!</TooltipContent>
             </Tooltip>
           </div>
 

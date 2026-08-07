@@ -605,7 +605,7 @@ export function Main() {
           <LogViewer />
         </Show>
       </div>
-      {/* Bottom Panel for Shell/Git/Agents */}
+      {/* Bottom Panel for Shell/Git */}
       <BottomPanel />
     </main>
   );

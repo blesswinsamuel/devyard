@@ -66,7 +66,7 @@ export interface WSResponse {
   output?: string;
 }
 
-export type ViewMode = "logs" | "shell" | "git" | "agents";
+export type ViewMode = "logs" | "shell" | "git";
 
 export interface TerminalPaneNode {
   type: "terminal";

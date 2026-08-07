@@ -56,7 +56,7 @@ export interface WSResponse {
   project?: string;
   service?: string;
   action?: string;
-  data?: ProjectInfo[] | ServiceState[] | ActionInfo[];
+  data?: ProjectInfo[] | ServiceState[] | ActionInfo[] | ServiceState | ActionState;
   line?: string;
   ok?: boolean;
   error?: string;

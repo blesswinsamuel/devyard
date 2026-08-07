@@ -3,7 +3,9 @@ package control
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/blesswinsamuel/local-compose/internal/gitlog"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 )
 
@@ -34,6 +36,10 @@ type MultiBackend interface {
 	// error if the project is not running. An empty project name is valid
 	// for single-project servers.
 	ProjectBackend(project string) (Backend, error)
+	// GitLog returns the git commit log for the named project's working
+	// directory, newest first. It errors if the project's directory is not a
+	// git repository.
+	GitLog(project string) ([]protocol.GitCommit, error)
 	// SetOnStateChange registers a callback that is invoked whenever any
 	// project's service state changes. The project name and the
 	// per-service state snapshot are passed. Implementations that do not
@@ -51,10 +57,24 @@ type MultiBackend interface {
 type SingleProjectBackend struct {
 	Backend
 	Project string
+	// GitDir is the working directory used for GitLog. Empty runs git in the
+	// process's current working directory.
+	GitDir string
 }
 
 func (s SingleProjectBackend) ListProjects() []protocol.ProjectInfo {
 	return []protocol.ProjectInfo{{Name: s.Project, Status: "running"}}
+}
+
+func (s SingleProjectBackend) GitLog(string) ([]protocol.GitCommit, error) {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	if !gitlog.IsRepo(dir) {
+		return nil, fmt.Errorf("project %q is not a git repository", s.Project)
+	}
+	return gitlog.Log(dir)
 }
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {

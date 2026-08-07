@@ -1057,6 +1057,8 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
 func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
 
+func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, error) { return nil, nil }
+
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
 	t.Helper()
 	sockDir, err := os.MkdirTemp("/tmp", "lc-ctrl")
@@ -1170,6 +1172,28 @@ func TestMultiStopDaemon(t *testing.T) {
 	case <-m.daemonStopCh:
 	default:
 		t.Fatalf("daemon stop channel was not closed")
+	}
+}
+
+func TestMultiGitLog(t *testing.T) {
+	m := newFakeMultiBackend()
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	if err := c.Send(protocol.Request{Kind: protocol.KindGitLog, Project: "api"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		t.Fatalf("Recv: %v", err)
+	}
+	if resp.Kind != protocol.KindGitCommits {
+		t.Fatalf("response kind = %q, want %q", resp.Kind, protocol.KindGitCommits)
 	}
 }
 

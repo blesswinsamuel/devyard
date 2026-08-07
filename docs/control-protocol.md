@@ -66,6 +66,7 @@ type Request struct {
 | `"stop_daemon"` | — | — | — | Stop all projects and shut down the daemon. Acks with `done`. |
 | `"list_actions"` | project name | — | — | Return one `actions` response with a snapshot of defined actions for the project. |
 | `"run_action"` | project name | — | `Action`, `Args` | Execute the named action command with optional extra CLI args, streaming output lines (`log_line`) and ending with `done` carrying `action_exit_code`. |
+| `"git_log"` | project name | — | — | Return one `git_commits` response with the project's git commit log (newest first), run in the directory containing its config file. Errors when the project's directory is not a git repository. |
 
 ## Response (daemon -> client)
 
@@ -75,6 +76,7 @@ type Response struct {
     States   []ServiceState `json:"states,omitempty"`   // Kind == "states"
     Projects []ProjectInfo  `json:"projects,omitempty"` // Kind == "projects"
     Stats    []ServiceStat  `json:"stats,omitempty"`    // Kind == "stats"
+    GitCommits []GitCommit  `json:"git_commits,omitempty"` // Kind == "git_commits"
     Project  string         `json:"project,omitempty"`   // Kind == "log_line" (which project)
     Service  string         `json:"service,omitempty"`  // Kind == "log_line" (which service)
     Line     string         `json:"line,omitempty"`     // Kind == "log_line"
@@ -88,6 +90,7 @@ type Response struct {
 | `"states"` | A snapshot of every service in a project (one response, `States` populated). |
 | `"projects"` | A snapshot of every known project (`Projects` populated). |
 | `"stats"` | A per-service CPU/memory snapshot (`Stats` populated). Sent in response to `"top"`. |
+| `"git_commits"` | The git commit log for a project (`GitCommits` populated; `Project` identifies the project). Sent in response to `"git_log"`. Each `GitCommit` carries `hash`, `short`, `author`, `email`, `time` (RFC3339), `parents`, `subject`, and `head` (true for the current `HEAD`). |
 | `"log_content"` | Bulk: existing log history (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. May be a tailed/byte-capped window rather than the entire file. |
 | `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). Sent for each new line during follow. |
 | `"log_rotated"` | A new run started: the supervisor rotated the log (`<service>.log` → `<service>.prev.log`) and the previous run's lines are over. Carries `project` and `service` so multi-stream clients can route the reset. Frontends with a scrollback buffer (web) reset their view on receipt. |

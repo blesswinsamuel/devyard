@@ -238,11 +238,12 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleListActionStates(w, req)
 	case protocol.KindRunAction:
 		s.handleRunAction(ctx, w, req)
+	case protocol.KindGitLog:
+		s.handleGitLog(w, req)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
 	}
 }
-
 func (s *Server) handleList(w io.Writer, req protocol.Request) {
 	b, err := s.backend.ProjectBackend(req.Project)
 	if err != nil {
@@ -700,6 +701,19 @@ func (s *Server) handleListActionStates(w io.Writer, req protocol.Request) {
 	_ = protocol.WriteFrame(w, protocol.Response{
 		Kind:         protocol.KindActionStates,
 		ActionStates: states,
+	})
+}
+
+func (s *Server) handleGitLog(w io.Writer, req protocol.Request) {
+	commits, err := s.backend.GitLog(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:       protocol.KindGitCommits,
+		Project:    req.Project,
+		GitCommits: commits,
 	})
 }
 

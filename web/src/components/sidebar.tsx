@@ -1,5 +1,5 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
-import { ChevronRight, Boxes, MoreVertical, Play, Plus, Power, RefreshCw, RotateCcw, Skull, Sun, Moon, X } from "lucide-solid";
+import { ChevronRight, Boxes, MoreVertical, Play, Plus, Power, RefreshCw, RotateCcw, Skull, Sun, Moon, X, GitBranch } from "lucide-solid";
 import {
   projects,
   services,
@@ -24,6 +24,7 @@ import {
   stopService,
   killService,
   runAction,
+  openGitView,
   theme,
   setTheme,
   wsStatus,
@@ -333,6 +334,27 @@ function ProjectItem(props: { name: string }) {
               </div>
             </button>
             <div class="flex shrink-0 items-center pr-1.5">
+              <Tooltip>
+                <TooltipTrigger
+                  as={Button}
+                  variant="ghost"
+                  size="icon-sm"
+                  class={cn(
+                    "transition-opacity",
+                    "opacity-0 pointer-events-none",
+                    "group-hover/project:opacity-100 group-hover/project:pointer-events-auto",
+                    "focus-visible:opacity-100 focus-visible:pointer-events-auto"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openGitView(props.name);
+                  }}
+                >
+                  <GitBranch />
+                  <span class="sr-only">Git log</span>
+                </TooltipTrigger>
+                <TooltipContent>View git log</TooltipContent>
+              </Tooltip>
               <Show
                 when={p().status !== "stopped"}
                 fallback={

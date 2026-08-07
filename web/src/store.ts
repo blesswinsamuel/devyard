@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState, ActionInfo, ActionState, ViewMode, ShellTab, PaneNode } from "./types";
+import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, ViewMode, ShellTab, PaneNode } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 import { parseRoute, pushRoute, replaceRoute, listenPopState } from "./router";
 
@@ -25,7 +25,10 @@ const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
 const [actions, setActions] = createSignal<Record<string, ActionInfo[]>>({});
 const [actionStates, setActionStates] = createSignal<Record<string, ActionState[]>>({});
-export { actions, actionStates };
+const [gitCommits, setGitCommits] = createSignal<Record<string, GitCommit[]>>({});
+const [gitError, setGitError] = createSignal<Record<string, string>>({});
+const [gitLoading, setGitLoading] = createSignal<Record<string, boolean>>({});
+export { actions, actionStates, gitCommits, gitError, gitLoading };
 /** Projects the user has collapsed; everything else is expanded by default. */
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
@@ -369,6 +372,17 @@ function start() {
     const project = resp.project;
     const next = (resp.data ?? []) as ActionInfo[];
     setActions((m) => ({ ...m, [project]: next }));
+  });
+  onWS("git_commits", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    setGitLoading((m) => ({ ...m, [project]: false }));
+    if (resp.ok === false) {
+      setGitError((m) => ({ ...m, [project]: resp.error ?? "Failed to load git log" }));
+      return;
+    }
+    const next = (resp.data ?? []) as GitCommit[];
+    setGitCommits((m) => ({ ...m, [project]: next }));
   });
   onWS("action_states", (resp) => {
     if (!resp.project) return;
@@ -960,7 +974,7 @@ export function movePaneToNewTab(project: string, sourcePaneId: string) {
   }));
 }
 
-export type PanelTab = "shell" | "git";
+export type PanelTab = "shell";
 
 const [panelOpen, setPanelOpen] = createSignal(false);
 const [panelTab, setPanelTab] = createSignal<PanelTab>("shell");
@@ -978,6 +992,27 @@ export function openPanelTab(tab: PanelTab) {
 
 export function togglePanelMaximized() {
   setPanelMaximized((m) => !m);
+}
+
+/** Fetch the git commit log for a project, clearing any prior result/error. */
+export function loadGitLog(name: string) {
+  setGitLoading((m) => ({ ...m, [name]: true }));
+  setGitError((m) => ({ ...m, [name]: "" }));
+  sendWS({ type: "git_log", project: name });
+}
+
+/** Open the full-page git view for a project and load its commit log. */
+export function openGitView(name: string) {
+  setSelectedProject(name);
+  setSelectedService(null);
+  setSelectedAction(null);
+  setActiveView("git");
+  loadGitLog(name);
+}
+
+/** Close the git view and return to the project's default (logs) view. */
+export function closeGitView() {
+  setActiveView("logs");
 }
 
 export {

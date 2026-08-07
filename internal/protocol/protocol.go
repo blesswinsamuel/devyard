@@ -39,6 +39,7 @@ const (
 	KindRunAction        RequestKind = "run_action"         // run a one-off action
 	KindListActions      RequestKind = "list_actions"       // list defined actions for a project
 	KindListActionStates RequestKind = "list_action_states" // list action runtime states for a project
+	KindGitLog           RequestKind = "git_log"            // list the git commit log for a project
 )
 
 // Request is a client -> daemon message.
@@ -64,6 +65,7 @@ const (
 //   - Kind==KindRunAction: Project + Action selects the action to run; Args contains extra CLI flags/args.
 //   - Kind==KindListActions: Project selects the project.
 //   - Kind==KindListActionStates: Project selects the project.
+//   - Kind==KindGitLog: Project selects the project; its commit log is returned.
 type Request struct {
 	Kind          RequestKind `json:"kind"`
 	Project       string      `json:"project,omitempty"`
@@ -91,6 +93,7 @@ const (
 	KindActions      ResponseKind = "actions"       // a list of defined actions
 	KindActionStates ResponseKind = "action_states" // a snapshot of action runtime states
 	KindStats        ResponseKind = "stats"         // a per-service CPU/memory snapshot (KindTop)
+	KindGitCommits   ResponseKind = "git_commits"   // the git commit log for a project (KindGitLog)
 	KindLogLine      ResponseKind = "log_line"      // one line of a service's log or action output
 	KindLogContent   ResponseKind = "log_content"   // bulk: existing log history (possibly tailed)
 	KindLogRotated   ResponseKind = "log_rotated"   // a new run started; the previous run's lines are over
@@ -146,6 +149,19 @@ type ProjectInfo struct {
 	TotalServices   int    `json:"total_services"`
 }
 
+// GitCommit is the wire form of one commit in a project's git log. Time is
+// encoded as an RFC3339 string (see FormatTime).
+type GitCommit struct {
+	Hash    string   `json:"hash"`
+	Short   string   `json:"short"`
+	Author  string   `json:"author"`
+	Email   string   `json:"email"`
+	Time    string   `json:"time"`
+	Parents []string `json:"parents,omitempty"`
+	Subject string   `json:"subject"`
+	Head    bool     `json:"head,omitempty"` // true when this commit is the current HEAD
+}
+
 // ServiceStat is the wire form of a per-service resource snapshot returned by
 // `top`. CPU is a percentage of one core averaged over the daemon's sampling
 // interval and can exceed 100 for multi-core work; RSSBytes is the aggregate
@@ -169,6 +185,7 @@ type Response struct {
 	Actions        []ActionInfo   `json:"actions,omitempty"`          // Kind==KindActions
 	ActionStates   []ActionState  `json:"action_states,omitempty"`    // Kind==KindActionStates
 	Stats          []ServiceStat  `json:"stats,omitempty"`            // Kind==KindStats
+	GitCommits     []GitCommit    `json:"git_commits,omitempty"`      // Kind==KindGitCommits
 	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
 	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)
 	Action         string         `json:"action,omitempty"`           // Kind==KindLogLine (which action)

@@ -71,6 +71,8 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxyListActionStates(c, ctx, req)
 	case "run_action":
 		s.proxyRunAction(c, ctx, req)
+	case "git_log":
+		s.proxyGitLog(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -396,6 +398,20 @@ func (s *Server) proxyListActionStates(c *websocket.Conn, ctx context.Context, r
 	}
 	data, _ := json.Marshal(resp.ActionStates)
 	s.send(c, ctx, wsResponse{Type: "action_states", Project: req.Project, Data: data})
+}
+
+func (s *Server) proxyGitLog(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindGitLog, Project: req.Project})
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: false, Error: resp.Error})
+		return
+	}
+	data, _ := json.Marshal(resp.GitCommits)
+	s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: true, Data: data})
 }
 
 func (s *Server) proxyRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

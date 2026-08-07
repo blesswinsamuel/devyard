@@ -20,6 +20,7 @@ import {
   togglePanel,
   isPreviousLogs,
   togglePreviousLogs,
+  activeView,
 } from "~/store";
 import { subscribeLogs, subscribeActionLogs } from "~/ws";
 import { statusLabel, statusTone, healthTone, serviceMeta } from "~/lib/status";
@@ -33,6 +34,7 @@ import {
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { formatLogLine } from "~/lib/ansi";
 import { BottomPanel } from "~/components/bottom_panel";
+import { GitView } from "~/components/git_view";
 
 type LogSubscribe = (
   project: string,
@@ -595,14 +597,19 @@ export function Main() {
       {/* Main Upper Area: Logs are ALWAYS visible when a service or project is selected */}
       <div class="relative min-h-0 flex-1 overflow-hidden">
         <Show
-          when={selectedService()}
-          fallback={
-            <Show when={selectedAction()} fallback={<EmptyState />}>
-              <ActionLogViewer />
-            </Show>
-          }
+          when={activeView() !== "git"}
+          fallback={<GitView />}
         >
-          <LogViewer />
+          <Show
+            when={selectedService()}
+            fallback={
+              <Show when={selectedAction()} fallback={<EmptyState />}>
+                <ActionLogViewer />
+              </Show>
+            }
+          >
+            <LogViewer />
+          </Show>
         </Show>
       </div>
       {/* Bottom Panel for Shell/Git */}

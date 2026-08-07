@@ -17,6 +17,7 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/dag"
+	"github.com/blesswinsamuel/local-compose/internal/gitlog"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
@@ -583,6 +584,26 @@ func (d *Daemon) ProjectBackend(project string) (control.Backend, error) {
 		return stoppedBackend{project: project, file: p.File, order: p.Order}, nil
 	}
 	return supervisor.NewControlBackend(p.Sup), nil
+}
+
+// GitLog returns the git commit log for a project's working directory (the
+// directory containing its config file), newest first. It errors when the
+// project is unknown or its directory is not a git repository.
+func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, error) {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("project %q is not running", name)
+	}
+	if !gitlog.IsRepo(p.BaseDir) {
+		return nil, fmt.Errorf("project %q is not a git repository", name)
+	}
+	commits, err := gitlog.Log(p.BaseDir)
+	if err != nil {
+		return nil, err
+	}
+	return commits, nil
 }
 
 // stoppedBackend adapts a registered-but-never-started project (Sup == nil) to

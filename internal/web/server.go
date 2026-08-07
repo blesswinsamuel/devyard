@@ -270,6 +270,8 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleListActionStates(c, ctx, req)
 	case "run_action":
 		s.handleRunAction(c, ctx, req)
+	case "git_log":
+		s.handleGitLog(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -442,6 +444,16 @@ func (s *Server) handleListActionStates(c *websocket.Conn, ctx context.Context, 
 	states := b.ActionStates()
 	data, _ := json.Marshal(states)
 	s.send(c, ctx, wsResponse{Type: "action_states", Project: req.Project, Data: data})
+}
+
+func (s *Server) handleGitLog(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	commits, err := s.backend.GitLog(req.Project)
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	data, _ := json.Marshal(commits)
+	s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: true, Data: data})
 }
 
 func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

@@ -1,5 +1,5 @@
 import { Show, createSignal, onCleanup } from "solid-js";
-import { GitBranch, Maximize2, Minimize2, SquareTerminal, X } from "lucide-solid";
+import { Maximize2, Minimize2, SquareTerminal, X } from "lucide-solid";
 import {
   selectedProject,
   panelOpen,
@@ -12,7 +12,6 @@ import {
   togglePanelMaximized,
 } from "~/store";
 import { ShellWorkspace } from "~/components/shell_workspace";
-import { Tooltip, TooltipTrigger, TooltipContent } from "~/components/ui/tooltip";
 import { Button } from "~/components/ui/button";
 
 export function BottomPanel() {
@@ -73,19 +72,6 @@ export function BottomPanel() {
               <SquareTerminal class="size-3.5" />
               <span>Shell</span>
             </button>
-
-            <Tooltip>
-              <TooltipTrigger
-                as="button"
-                disabled
-                class="flex cursor-not-allowed items-center gap-1.5 rounded px-2.5 py-1 text-muted-foreground/50 opacity-60"
-              >
-                <GitBranch class="size-3.5" />
-                <span>Git</span>
-                <span class="rounded bg-muted px-1 text-[10px]">Soon</span>
-              </TooltipTrigger>
-              <TooltipContent>Git graph, diffs & commits coming soon!</TooltipContent>
-            </Tooltip>
           </div>
 
           {/* Right Action Controls */}

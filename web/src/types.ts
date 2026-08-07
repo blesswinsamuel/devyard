@@ -35,6 +35,17 @@ export interface ActionState {
   finished_at?: string;
 }
 
+export interface GitCommit {
+  hash: string;
+  short: string;
+  author: string;
+  email: string;
+  time: string;
+  parents?: string[];
+  subject: string;
+  head?: boolean;
+}
+
 export interface WSRequest {
   type: string;
   project?: string;
@@ -56,7 +67,7 @@ export interface WSResponse {
   project?: string;
   service?: string;
   action?: string;
-  data?: ProjectInfo[] | ServiceState[] | ActionInfo[] | ServiceState | ActionState;
+  data?: ProjectInfo[] | ServiceState[] | ActionInfo[] | ServiceState | ActionState | GitCommit[];
   line?: string;
   ok?: boolean;
   error?: string;

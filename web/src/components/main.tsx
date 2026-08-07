@@ -292,7 +292,9 @@ function ServiceHeader() {
             onClick={() => togglePreviousLogs({ kind: "service", project: project(), service: service() })}
           >
             <History class="size-4" />
-            <span class="hidden md:inline">Previous</span>
+            <span class="hidden md:inline">
+              {isPreviousLogs({ kind: "service", project: project(), service: service() }) ? "Live" : "Previous"}
+            </span>
           </TooltipTrigger>
           <TooltipContent>Show previous run's logs (p)</TooltipContent>
         </Tooltip>
@@ -500,7 +502,9 @@ function ActionHeader() {
             onClick={() => togglePreviousLogs({ kind: "action", project: project(), action: actionName() })}
           >
             <History class="size-4" />
-            <span class="hidden md:inline">Previous</span>
+            <span class="hidden md:inline">
+              {isPreviousLogs({ kind: "action", project: project(), action: actionName() }) ? "Live" : "Previous"}
+            </span>
           </TooltipTrigger>
           <TooltipContent>Show previous run's logs (p)</TooltipContent>
         </Tooltip>

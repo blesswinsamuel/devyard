@@ -988,7 +988,6 @@ interface ParsedDiffLine {
   text: string;
   oldLine?: number;
   newLine?: number;
-  hiddenCount?: number;
 }
 
 interface ParsedFileChunk {
@@ -1028,26 +1027,17 @@ function DiffViewer(props: {
       const parsedLines: ParsedDiffLine[] = [];
       let oldLineNum = 1;
       let newLineNum = 1;
-      let lastOldEnd = 0;
 
       for (let i = 1; i < rawLines.length; i++) {
         const line = rawLines[i];
         if (line.startsWith("@@")) {
           // Hunk header match @@ -oldStart,oldLen +newStart,newLen @@
-          const hunkMatch = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
-          let hiddenCount = 0;
+          const hunkMatch = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
           if (hunkMatch) {
-            const nextOldStart = parseInt(hunkMatch[1], 10);
-            const nextNewStart = parseInt(hunkMatch[3], 10);
-            if (lastOldEnd > 0) {
-              hiddenCount = Math.max(0, nextOldStart - lastOldEnd - 1);
-            }
-            oldLineNum = nextOldStart;
-            newLineNum = nextNewStart;
-            const oldLen = hunkMatch[2] ? parseInt(hunkMatch[2], 10) : 1;
-            lastOldEnd = nextOldStart + oldLen - 1;
+            oldLineNum = parseInt(hunkMatch[1], 10);
+            newLineNum = parseInt(hunkMatch[2], 10);
           }
-          parsedLines.push({ type: "hunk", text: line, hiddenCount });
+          parsedLines.push({ type: "hunk", text: line });
         } else if (line.startsWith("+") && !line.startsWith("+++")) {
           parsedLines.push({ type: "add", text: line, newLine: newLineNum++ });
         } else if (line.startsWith("-") && !line.startsWith("---")) {
@@ -1075,8 +1065,8 @@ function DiffViewer(props: {
     return fileChunks().filter((c) => c.filePath === filter);
   });
 
-  const handleExpandStep = (step: number) => {
-    const next = currentContext() + step;
+  const handleExpandMore = () => {
+    const next = currentContext() + 20;
     setCurrentContext(next);
     loadGitDiff(props.project, props.hash, next, true);
   };
@@ -1124,13 +1114,22 @@ function DiffViewer(props: {
               </div>
             </div>
 
-            {/* Git Metadata Sub-Header (index, mode) */}
+            {/* Git Metadata Sub-Header (index, --- a/..., +++ b/...) */}
             <Show when={chunk.metaLines.length > 0}>
               <div class="px-3 py-1.5 bg-muted/20 border-b border-border/60 text-[11px] font-mono leading-relaxed space-y-0.5 select-text">
                 <For each={chunk.metaLines}>
-                  {(meta) => (
-                    <div class="text-muted-foreground opacity-80">{meta}</div>
-                  )}
+                  {(meta) => {
+                    if (meta.startsWith("--- ")) {
+                      return <div class="text-rose-600 dark:text-rose-400 font-medium">{meta}</div>;
+                    }
+                    if (meta.startsWith("+++ ")) {
+                      return <div class="text-emerald-600 dark:text-emerald-400 font-medium">{meta}</div>;
+                    }
+                    if (meta.startsWith("index ")) {
+                      return <div class="text-muted-foreground opacity-80">{meta}</div>;
+                    }
+                    return <div class="text-muted-foreground/70">{meta}</div>;
+                  }}
                 </For>
               </div>
             </Show>
@@ -1142,42 +1141,33 @@ function DiffViewer(props: {
                   <For each={chunk.lines}>
                     {(line) => {
                       if (line.type === "hunk") {
-                        const count = line.hiddenCount && line.hiddenCount > 0 ? line.hiddenCount : null;
-
                         return (
-                          <tr class="relative select-none group">
-                            <td colSpan={3} class="p-0 relative bg-muted/10 border-y border-border/50">
-                              {/* Horizontal Divider Line */}
-                              <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-border/80 pointer-events-none" />
-
-                              <div class="relative py-2 px-4 flex items-center justify-center min-w-0">
-                                {/* Centered +N more lines Pill */}
-                                <button
-                                  type="button"
-                                  onClick={handleExpandAll}
-                                  class="px-3 py-0.5 rounded-full border border-border bg-muted/90 hover:bg-muted text-foreground text-[11px] font-mono font-medium shadow-xs transition-all cursor-pointer flex items-center gap-1 z-10"
-                                  title="Expand all hidden lines"
-                                >
-                                  <span>{count ? `+${count} more lines` : "Expand lines"}</span>
-                                </button>
-
-                                {/* Sublime Merge Style Stacked +10 Buttons on the Right */}
-                                <div class="absolute right-12 flex flex-col gap-0.5 z-10 -translate-y-1/2 top-1/2">
+                          <tr class="bg-sky-500/10 text-sky-700 dark:text-sky-300 font-medium select-none border-y border-sky-500/20">
+                            <td class="w-10 text-right pr-2 py-1 text-[10px] opacity-40 border-r border-border/40 select-none">
+                              ...
+                            </td>
+                            <td class="w-10 text-right pr-2 py-1 text-[10px] opacity-40 border-r border-border/40 select-none">
+                              ...
+                            </td>
+                            <td class="px-3 py-1 font-mono text-[11px]">
+                              <div class="flex items-center justify-between gap-3 min-w-0">
+                                <span class="truncate text-sky-800 dark:text-sky-200 font-semibold">{line.text}</span>
+                                <div class="flex items-center gap-1.5 shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() => handleExpandStep(10)}
-                                    class="px-1.5 py-0 rounded text-[9px] font-mono border border-border bg-muted/90 hover:bg-muted text-muted-foreground hover:text-foreground shadow-xs transition-colors cursor-pointer"
-                                    title="Expand 10 lines above"
+                                    onClick={handleExpandMore}
+                                    class="px-2 py-0.5 rounded text-[10px] bg-sky-500/20 hover:bg-sky-500/30 text-sky-700 dark:text-sky-200 font-semibold transition-colors flex items-center gap-1"
+                                    title="Expand 20 context lines"
                                   >
-                                    +10
+                                    +20 lines
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleExpandStep(10)}
-                                    class="px-1.5 py-0 rounded text-[9px] font-mono border border-border bg-muted/90 hover:bg-muted text-muted-foreground hover:text-foreground shadow-xs transition-colors cursor-pointer"
-                                    title="Expand 10 lines below"
+                                    onClick={handleExpandAll}
+                                    class="px-2 py-0.5 rounded text-[10px] bg-primary/20 hover:bg-primary/30 text-primary font-semibold transition-colors flex items-center gap-1"
+                                    title="Expand full context"
                                   >
-                                    +10
+                                    Expand all
                                   </button>
                                 </div>
                               </div>

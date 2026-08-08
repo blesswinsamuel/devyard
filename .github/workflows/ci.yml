@@ -26,6 +26,16 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build web SPA
+        run: |
+          cd web
+          bun install --frozen-lockfile
+          bun run build
+
       - name: go vet
         run: go vet ./...
 

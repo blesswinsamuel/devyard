@@ -30,6 +30,17 @@ go test ./test/integration/...      # the black-box e2e suite (builds the real b
 golangci-lint run                   # lint; config in .golangci-lint.yml (v2)
 ```
 
+**Web UI build (embedded SPA).** The frontend source lives in `web/` (SolidJS +
+Vite, built with `bun`). It is embedded into the Go binary via
+`//go:embed dist/*` in `internal/web/server.go`. `internal/web/dist/` is
+gitignored **and not committed** — CI builds it in the "build & test" job
+(`bun install && bun run build`, which outputs to `../internal/web/dist`)
+before `go build ./...`. For local development, `local-compose up` (see
+`local-compose.yml`) runs `bun run dev` (a Vite server on :5173 proxying to the
+Go web proxy on :9090), so you can edit `web/src/**` and see changes live with
+no rebuild. When changing web source, always verify the build still compiles:
+`cd web && bun install && bun run build`.
+
 Tests and lint must stay green. CI (`.github/workflows/ci.yml`) runs `go vet`,
 `gofmt`, `golangci-lint`, `go build`, and `go test -race` on Ubuntu and macOS.
 The integration suite builds the actual binary and drives the full CLI lifecycle

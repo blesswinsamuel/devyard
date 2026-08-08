@@ -191,6 +191,38 @@ export function GitView() {
     setCommitMessage("");
   };
 
+  // Keyboard navigation across the commit log list. ArrowUp/Down select the
+  // previous/next commit (like the up/down keys in `git log`), and keep the
+  // newly selected row in view.
+  let commitListRef: HTMLDivElement | undefined;
+  const selectCommitByIndex = (next: number) => {
+    const proj = project();
+    const list = filteredCommits();
+    if (!proj || list.length === 0) return;
+    const clamped = Math.max(0, Math.min(list.length - 1, next));
+    const hash = list[clamped]?.hash;
+    if (!hash) return;
+    selectCommit(proj, hash);
+    requestAnimationFrame(() => {
+      commitListRef
+        ?.querySelector(`[data-commit="${CSS.escape(hash)}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  };
+  const handleCommitListKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    const list = filteredCommits();
+    if (list.length === 0) return;
+    e.preventDefault();
+    const cur = currentCommitHash();
+    const idx = list.findIndex((c) => c.hash === cur);
+    if (e.key === "ArrowDown") {
+      selectCommitByIndex(idx < 0 ? 0 : idx + 1);
+    } else {
+      selectCommitByIndex(idx <= 0 ? 0 : idx - 1);
+    }
+  };
+
   return (
     <div class="flex h-full flex-col min-w-0 overflow-hidden bg-background text-foreground">
       {/* Top Bar */}
@@ -466,7 +498,13 @@ export function GitView() {
           <div class="flex h-8 shrink-0 items-center justify-between border-b border-border px-3 text-xs font-semibold text-muted-foreground bg-muted/10">
             <span>Commits ({filteredCommits().length})</span>
           </div>
-          <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-border/60">
+          <div
+            ref={commitListRef}
+            tabIndex={0}
+            data-kbd-ignore
+            class="min-h-0 flex-1 overflow-y-auto divide-y divide-border/60 outline-none focus-visible:outline-none"
+            onKeyDown={handleCommitListKeyDown}
+          >
             <Show
               when={!loading()}
               fallback={
@@ -503,6 +541,7 @@ export function GitView() {
 
                       return (
                         <div
+                          data-commit={commit.hash}
                           onClick={() => project() && selectCommit(project()!, commit.hash)}
                           class={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors text-xs select-none ${
                             isSelected()
@@ -787,7 +826,11 @@ export function GitView() {
                 </div>
 
                 {/* Diff Viewer Area */}
-                <div class="flex-1 min-h-0 overflow-y-auto p-4 font-mono text-xs leading-relaxed">
+                <div
+                  tabIndex={0}
+                  data-kbd-ignore
+                  class="flex-1 min-h-0 overflow-y-auto p-4 font-mono text-xs leading-relaxed outline-none"
+                >
                   <Show
                     when={selectedDiffResult()?.diff}
                     fallback={
@@ -835,7 +878,11 @@ export function GitView() {
             </div>
 
             {/* File Lists */}
-            <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-border/40">
+            <div
+              tabIndex={0}
+              data-kbd-ignore
+              class="min-h-0 flex-1 overflow-y-auto divide-y divide-border/40 outline-none"
+            >
               <div
                 onClick={() => project() && selectDiffFile(project()!, null)}
                 class={`flex items-center justify-between px-3 py-1.5 cursor-pointer text-xs select-none ${

@@ -165,6 +165,8 @@ type wsRequest struct {
 	EnvFile       string   `json:"env_file,omitempty"`
 	RemoveOrphans *bool    `json:"remove_orphans,omitempty"`
 	Previous      bool     `json:"prev,omitempty"`
+	Hash          string   `json:"hash,omitempty"`
+	Path          string   `json:"path,omitempty"`
 
 	// Terminal/PTY fields
 	ID   string `json:"id,omitempty"`
@@ -272,6 +274,8 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleRunAction(c, ctx, req)
 	case "git_log":
 		s.handleGitLog(c, ctx, req)
+	case "git_diff":
+		s.handleGitDiff(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -454,6 +458,16 @@ func (s *Server) handleGitLog(c *websocket.Conn, ctx context.Context, req *wsReq
 	}
 	data, _ := json.Marshal(commits)
 	s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: true, Data: data})
+}
+
+func (s *Server) handleGitDiff(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	diffRes, err := s.backend.GitDiff(req.Project, req.Hash)
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_diff", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	data, _ := json.Marshal(diffRes)
+	s.send(c, ctx, wsResponse{Type: "git_diff", Project: req.Project, Ok: true, Data: data})
 }
 
 func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

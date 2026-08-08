@@ -28,7 +28,23 @@ const [actionStates, setActionStates] = createSignal<Record<string, ActionState[
 const [gitCommits, setGitCommits] = createSignal<Record<string, GitCommit[]>>({});
 const [gitError, setGitError] = createSignal<Record<string, string>>({});
 const [gitLoading, setGitLoading] = createSignal<Record<string, boolean>>({});
-export { actions, actionStates, gitCommits, gitError, gitLoading };
+const [selectedCommitHash, setSelectedCommitHash] = createSignal<Record<string, string | null>>({});
+const [selectedFilePath, setSelectedFilePath] = createSignal<Record<string, string | null>>({});
+const [gitDiffs, setGitDiffs] = createSignal<Record<string, Record<string, GitDiffResult>>>({});
+const [gitDiffLoading, setGitDiffLoading] = createSignal<Record<string, boolean>>({});
+const [gitDiffError, setGitDiffError] = createSignal<Record<string, string>>({});
+export {
+  actions,
+  actionStates,
+  gitCommits,
+  gitError,
+  gitLoading,
+  selectedCommitHash,
+  selectedFilePath,
+  gitDiffs,
+  gitDiffLoading,
+  gitDiffError,
+};
 /** Projects the user has collapsed; everything else is expanded by default. */
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
@@ -383,6 +399,23 @@ function start() {
     }
     const next = (resp.data ?? []) as GitCommit[];
     setGitCommits((m) => ({ ...m, [project]: next }));
+  });
+  onWS("git_diff", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    setGitDiffLoading((m) => ({ ...m, [project]: false }));
+    if (resp.ok === false) {
+      setGitDiffError((m) => ({ ...m, [project]: resp.error ?? "Failed to load git diff" }));
+      return;
+    }
+    const diffResult = resp.data as GitDiffResult;
+    if (diffResult && diffResult.commit) {
+      const hash = diffResult.commit.hash;
+      setGitDiffs((m) => ({
+        ...m,
+        [project]: { ...(m[project] ?? {}), [hash]: diffResult },
+      }));
+    }
   });
   onWS("action_states", (resp) => {
     if (!resp.project) return;
@@ -999,6 +1032,29 @@ export function loadGitLog(name: string) {
   setGitLoading((m) => ({ ...m, [name]: true }));
   setGitError((m) => ({ ...m, [name]: "" }));
   sendWS({ type: "git_log", project: name });
+}
+
+/** Fetch diff for a commit in a project. */
+export function loadGitDiff(project: string, hash: string) {
+  const existing = gitDiffs()[project]?.[hash];
+  if (existing) return;
+  setGitDiffLoading((m) => ({ ...m, [project]: true }));
+  setGitDiffError((m) => ({ ...m, [project]: "" }));
+  sendWS({ type: "git_diff", project, hash });
+}
+
+/** Select a commit hash in the git view and fetch its diff. */
+export function selectCommit(project: string, hash: string | null) {
+  setSelectedCommitHash((m) => ({ ...m, [project]: hash }));
+  setSelectedFilePath((m) => ({ ...m, [project]: null }));
+  if (hash) {
+    loadGitDiff(project, hash);
+  }
+}
+
+/** Select a file path within the selected commit's diff. */
+export function selectDiffFile(project: string, path: string | null) {
+  setSelectedFilePath((m) => ({ ...m, [project]: path }));
 }
 
 /** Open the full-page git view for a project and load its commit log. */

@@ -40,6 +40,7 @@ const (
 	KindListActions      RequestKind = "list_actions"       // list defined actions for a project
 	KindListActionStates RequestKind = "list_action_states" // list action runtime states for a project
 	KindGitLog           RequestKind = "git_log"            // list the git commit log for a project
+	KindGitDiff          RequestKind = "git_diff"           // get diff and changed files for a commit
 )
 
 // Request is a client -> daemon message.
@@ -66,6 +67,7 @@ const (
 //   - Kind==KindListActions: Project selects the project.
 //   - Kind==KindListActionStates: Project selects the project.
 //   - Kind==KindGitLog: Project selects the project; its commit log is returned.
+//   - Kind==KindGitDiff: Project selects the project; Hash selects the commit hash (empty defaults to HEAD); Path optional file path filter.
 type Request struct {
 	Kind          RequestKind `json:"kind"`
 	Project       string      `json:"project,omitempty"`
@@ -80,6 +82,8 @@ type Request struct {
 	EnvFile       string      `json:"env_file,omitempty"`
 	Build         bool        `json:"build,omitempty"`
 	RemoveOrphans *bool       `json:"remove_orphans,omitempty"`
+	Hash          string      `json:"hash,omitempty"`
+	Path          string      `json:"path,omitempty"`
 }
 
 // ResponseKind discriminates Response payloads sent from the supervisor to a
@@ -94,6 +98,7 @@ const (
 	KindActionStates ResponseKind = "action_states" // a snapshot of action runtime states
 	KindStats        ResponseKind = "stats"         // a per-service CPU/memory snapshot (KindTop)
 	KindGitCommits   ResponseKind = "git_commits"   // the git commit log for a project (KindGitLog)
+	KindGitDiffData  ResponseKind = "git_diff"      // commit diff and changed files (KindGitDiff)
 	KindLogLine      ResponseKind = "log_line"      // one line of a service's log or action output
 	KindLogContent   ResponseKind = "log_content"   // bulk: existing log history (possibly tailed)
 	KindLogRotated   ResponseKind = "log_rotated"   // a new run started; the previous run's lines are over
@@ -162,6 +167,22 @@ type GitCommit struct {
 	Head    bool     `json:"head,omitempty"` // true when this commit is the current HEAD
 }
 
+// GitFileChange describes one modified/added/deleted/renamed file in a commit.
+type GitFileChange struct {
+	Path      string `json:"path"`
+	OldPath   string `json:"old_path,omitempty"`
+	Status    string `json:"status"` // "M", "A", "D", "R", etc.
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+}
+
+// GitDiffResult is the wire payload returned for a commit diff query.
+type GitDiffResult struct {
+	Commit GitCommit       `json:"commit"`
+	Files  []GitFileChange `json:"files"`
+	Diff   string          `json:"diff"`
+}
+
 // ServiceStat is the wire form of a per-service resource snapshot returned by
 // `top`. CPU is a percentage of one core averaged over the daemon's sampling
 // interval and can exceed 100 for multi-core work; RSSBytes is the aggregate
@@ -186,6 +207,7 @@ type Response struct {
 	ActionStates   []ActionState  `json:"action_states,omitempty"`    // Kind==KindActionStates
 	Stats          []ServiceStat  `json:"stats,omitempty"`            // Kind==KindStats
 	GitCommits     []GitCommit    `json:"git_commits,omitempty"`      // Kind==KindGitCommits
+	GitDiff        *GitDiffResult `json:"git_diff,omitempty"`         // Kind==KindGitDiff
 	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
 	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)
 	Action         string         `json:"action,omitempty"`           // Kind==KindLogLine (which action)

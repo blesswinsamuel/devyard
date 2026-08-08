@@ -46,6 +46,20 @@ export interface GitCommit {
   head?: boolean;
 }
 
+export interface GitFileChange {
+  path: string;
+  old_path?: string;
+  status: string; // "M", "A", "D", "R", etc.
+  additions: number;
+  deletions: number;
+}
+
+export interface GitDiffResult {
+  commit: GitCommit;
+  files: GitFileChange[];
+  diff: string;
+}
+
 export interface WSRequest {
   type: string;
   project?: string;
@@ -60,6 +74,8 @@ export interface WSRequest {
   data?: string;
   cols?: number;
   rows?: number;
+  hash?: string;
+  path?: string;
 }
 
 export interface WSResponse {
@@ -67,7 +83,14 @@ export interface WSResponse {
   project?: string;
   service?: string;
   action?: string;
-  data?: ProjectInfo[] | ServiceState[] | ActionInfo[] | ServiceState | ActionState | GitCommit[];
+  data?:
+    | ProjectInfo[]
+    | ServiceState[]
+    | ActionInfo[]
+    | ServiceState
+    | ActionState
+    | GitCommit[]
+    | GitDiffResult;
   line?: string;
   ok?: boolean;
   error?: string;

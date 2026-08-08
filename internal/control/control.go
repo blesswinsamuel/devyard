@@ -40,6 +40,9 @@ type MultiBackend interface {
 	// directory, newest first. It errors if the project's directory is not a
 	// git repository.
 	GitLog(project string) ([]protocol.GitCommit, error)
+	// GitDiff returns the commit metadata, changed files list, and diff for hash
+	// in the named project's working directory.
+	GitDiff(project string, hash string) (*protocol.GitDiffResult, error)
 	// SetOnStateChange registers a callback that is invoked whenever any
 	// project's service state changes. The project name and the
 	// per-service state snapshot are passed. Implementations that do not
@@ -75,6 +78,17 @@ func (s SingleProjectBackend) GitLog(string) ([]protocol.GitCommit, error) {
 		return nil, fmt.Errorf("project %q is not a git repository", s.Project)
 	}
 	return gitlog.Log(dir)
+}
+
+func (s SingleProjectBackend) GitDiff(_ string, hash string) (*protocol.GitDiffResult, error) {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	if !gitlog.IsRepo(dir) {
+		return nil, fmt.Errorf("project %q is not a git repository", s.Project)
+	}
+	return gitlog.Diff(dir, hash)
 }
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {

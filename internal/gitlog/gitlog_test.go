@@ -32,10 +32,14 @@ func initRepo(t *testing.T) string {
 	run("git", "init", "-q", "-b", "main")
 	run("git", "config", "user.email", "test@example.com")
 	run("git", "config", "user.name", "Test Author")
-	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	run("git", "add", "a.txt")
 	run("git", "commit", "-q", "-m", "first commit")
-	os.WriteFile(filepath.Join(dir, "b.txt"), []byte("two\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("two\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	run("git", "add", "b.txt")
 	run("git", "commit", "-q", "-m", "second commit")
 	return dir
@@ -101,5 +105,31 @@ func TestLogEmptyRepo(t *testing.T) {
 	}
 	if len(commits) != 0 {
 		t.Fatalf("expected 0 commits, got %d", len(commits))
+	}
+}
+
+func TestDiff(t *testing.T) {
+	dir := initRepo(t)
+	commits, err := Log(dir)
+	if err != nil || len(commits) == 0 {
+		t.Fatalf("Log failed: %v", err)
+	}
+	headHash := commits[0].Hash
+
+	res, err := Diff(dir, headHash)
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if res.Commit.Hash != headHash {
+		t.Fatalf("expected commit hash %s, got %s", headHash, res.Commit.Hash)
+	}
+	if len(res.Files) != 1 {
+		t.Fatalf("expected 1 file change, got %d", len(res.Files))
+	}
+	if res.Files[0].Path != "b.txt" || res.Files[0].Status != "A" {
+		t.Fatalf("unexpected file change: %+v", res.Files[0])
+	}
+	if !strings.Contains(res.Diff, "b.txt") || !strings.Contains(res.Diff, "+two") {
+		t.Fatalf("unexpected diff content: %s", res.Diff)
 	}
 }

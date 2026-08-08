@@ -606,6 +606,20 @@ func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, error) {
 	return commits, nil
 }
 
+// GitDiff returns the metadata, changed file list, and patch diff for a commit in a project's working directory.
+func (d *Daemon) GitDiff(name string, hash string) (*protocol.GitDiffResult, error) {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("project %q is not running", name)
+	}
+	if !gitlog.IsRepo(p.BaseDir) {
+		return nil, fmt.Errorf("project %q is not a git repository", name)
+	}
+	return gitlog.Diff(p.BaseDir, hash)
+}
+
 // stoppedBackend adapts a registered-but-never-started project (Sup == nil) to
 // control.Backend. Its retained config lets reads report every service as
 // stopped and list the project's actions; mutations report that the project is

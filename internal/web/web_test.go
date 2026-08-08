@@ -117,7 +117,8 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
 func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
 
-func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, error) { return nil, nil }
+func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, error)             { return nil, nil }
+func (m *fakeMultiBackend) GitDiff(string, string) (*protocol.GitDiffResult, error) { return nil, nil }
 
 // fakeBackend is a minimal control.Backend for WS testing.
 type fakeBackend struct {

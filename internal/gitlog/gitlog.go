@@ -105,3 +105,120 @@ func RepoRoot(dir string) string {
 	}
 	return strings.TrimSpace(out.String())
 }
+
+// Diff returns the commit metadata, list of changed files, and unified patch diff for hash (or HEAD if hash is empty).
+func Diff(dir string, hash string) (*protocol.GitDiffResult, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return nil, fmt.Errorf("git: %s is not a git repository", dir)
+	}
+
+	if hash == "" {
+		hash = resolveHead(dir)
+	}
+	if hash == "" {
+		return nil, fmt.Errorf("git: repository has no HEAD commit")
+	}
+
+	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s"
+	cmdMeta := exec.Command("git", "-C", dir, "show", "-s", fmt.Sprintf("--pretty=format:%s", format), hash)
+	var outMeta, errMeta bytes.Buffer
+	cmdMeta.Stdout = &outMeta
+	cmdMeta.Stderr = &errMeta
+	if err := cmdMeta.Run(); err != nil {
+		msg := strings.TrimSpace(errMeta.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("git: %s: %w", msg, err)
+	}
+
+	fields := strings.Split(strings.TrimSpace(outMeta.String()), "\x1f")
+	if len(fields) < 7 {
+		return nil, fmt.Errorf("git: invalid commit metadata output")
+	}
+
+	head := resolveHead(dir)
+	commit := protocol.GitCommit{
+		Hash:    fields[0],
+		Short:   fields[1],
+		Author:  fields[2],
+		Email:   fields[3],
+		Time:    fields[4],
+		Subject: fields[6],
+		Head:    fields[0] == head,
+	}
+	if parents := fields[5]; parents != "" {
+		commit.Parents = strings.Fields(parents)
+	}
+
+	cmdStatus := exec.Command("git", "-C", dir, "show", "--name-status", "--format=", hash)
+	var outStatus bytes.Buffer
+	cmdStatus.Stdout = &outStatus
+	_ = cmdStatus.Run()
+
+	cmdNumstat := exec.Command("git", "-C", dir, "show", "--numstat", "--format=", hash)
+	var outNumstat bytes.Buffer
+	cmdNumstat.Stdout = &outNumstat
+	_ = cmdNumstat.Run()
+
+	type stats struct{ add, del int }
+	numstatMap := make(map[string]stats)
+	for _, line := range strings.Split(outNumstat.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) >= 3 {
+			var add, del int
+			_, _ = fmt.Sscanf(parts[0], "%d", &add)
+			_, _ = fmt.Sscanf(parts[1], "%d", &del)
+			path := parts[len(parts)-1]
+			numstatMap[path] = stats{add: add, del: del}
+		}
+	}
+
+	var files []protocol.GitFileChange
+	for _, line := range strings.Split(outStatus.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) >= 2 {
+			st := parts[0]
+			path := parts[1]
+			oldPath := ""
+			if len(parts) >= 3 {
+				oldPath = parts[1]
+				path = parts[2]
+			}
+			s := numstatMap[path]
+			statusLetter := st
+			if len(st) > 0 {
+				statusLetter = string(st[0])
+			}
+			files = append(files, protocol.GitFileChange{
+				Path:      path,
+				OldPath:   oldPath,
+				Status:    statusLetter,
+				Additions: s.add,
+				Deletions: s.del,
+			})
+		}
+	}
+
+	cmdDiff := exec.Command("git", "-C", dir, "show", "--patch", "--format=", hash)
+	var outDiff bytes.Buffer
+	cmdDiff.Stdout = &outDiff
+	_ = cmdDiff.Run()
+
+	return &protocol.GitDiffResult{
+		Commit: commit,
+		Files:  files,
+		Diff:   outDiff.String(),
+	}, nil
+}

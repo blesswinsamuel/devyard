@@ -498,6 +498,29 @@ function start() {
     });
     loadGitDiff(project, "WORKDIR", undefined, true);
   });
+  onWS("git_remote_result", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    if (resp.ok === false || resp.error) {
+      pushToast(resp.error || "Git operation failed", "error");
+      return;
+    }
+    // A remote operation can move HEAD/the workdir and refs; clear stale
+    // caches and reload both the log and the working-directory diff.
+    setGitDiffs((m) => {
+      const copy = { ...(m[project] ?? {}) };
+      delete copy["WORKDIR"];
+      return { ...m, [project]: copy };
+    });
+    loadGitLog(project);
+    const selCommit = selectedCommitHash()[project];
+    if (selCommit) {
+      loadGitDiff(project, selCommit, undefined, true);
+    }
+    if (resp.line) {
+      pushToast(resp.line, "info");
+    }
+  });
   onWS("git_changed", (resp) => {
     if (!resp.project) return;
     const project = resp.project;
@@ -1168,6 +1191,21 @@ export function commitGitChanges(project: string, message: string) {
   setGitCommitLoading((m) => ({ ...m, [project]: true }));
   setGitCommitError((m) => ({ ...m, [project]: "" }));
   sendWS({ type: "git_commit", project, message: message.trim() });
+}
+
+/** Push the current branch to its upstream remote in a project. */
+export function pushGit(project: string) {
+  sendWS({ type: "git_push", project });
+}
+
+/** Pull changes from the current branch's upstream remote in a project. */
+export function pullGit(project: string) {
+  sendWS({ type: "git_pull", project });
+}
+
+/** Fetch refs from the remote in a project without merging. */
+export function fetchGit(project: string) {
+  sendWS({ type: "git_fetch", project });
 }
 
 /** Open the full-page git view for a project and load its commit log. */

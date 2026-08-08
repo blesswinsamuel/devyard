@@ -5,7 +5,9 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  CloudDownload,
   Copy,
+  Download,
   FileCode,
   FileDiff,
   GitBranch,
@@ -18,6 +20,7 @@ import {
   Search,
   Send,
   Tag,
+  Upload,
 } from "lucide-solid";
 import {
   selectedProject,
@@ -41,6 +44,9 @@ import {
   commitGitChanges,
   stageGitFile,
   loadGitDiff,
+  pushGit,
+  pullGit,
+  fetchGit,
 } from "~/store";
 import type { GitCommit, GitFileChange, GitBranch as GitBranchType, GitTag as GitTagType, GitStash as GitStashType, GitRef } from "~/types";
 import { computeGitGraph, GRAPH_COLORS } from "~/lib/git_graph";
@@ -275,6 +281,36 @@ export function GitView() {
               class="h-7 w-full rounded-md border border-input bg-background pl-8 pr-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => project() && fetchGit(project()!)}
+            title="Fetch from remote"
+          >
+            <CloudDownload class="size-3.5" />
+            <span class="hidden lg:inline">Fetch</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => project() && pullGit(project()!)}
+            title="Pull from upstream"
+          >
+            <Download class="size-3.5" />
+            <span class="hidden lg:inline">Pull</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+            onClick={() => project() && pushGit(project()!)}
+            title="Push to upstream"
+          >
+            <Upload class="size-3.5" />
+            <span class="hidden lg:inline">Push</span>
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -717,7 +753,7 @@ export function GitView() {
             }
           >
             <Show
-              when={!diffLoading()}
+              when={!diffLoading() || !!selectedDiffResult()}
               fallback={
                 <div class="flex h-full items-center justify-center gap-2 text-muted-foreground">
                   <Loader2 class="size-4 animate-spin" />
@@ -844,6 +880,7 @@ export function GitView() {
                       hash={currentCommitHash()!}
                       diff={selectedDiffResult()!.diff}
                       selectedFile={currentFilePath()}
+                      loading={diffLoading()}
                     />
                   </Show>
                 </div>
@@ -1189,8 +1226,15 @@ function DiffViewer(props: {
   hash: string;
   diff: string;
   selectedFile: string | null;
+  loading?: boolean;
 }) {
   const [currentContext, setCurrentContext] = createSignal(3);
+
+  createEffect(() => {
+    // Reset context to default 3 lines whenever commit hash changes
+    props.hash;
+    setCurrentContext(3);
+  });
 
   const fileChunks = createMemo(() => {
     const raw = props.diff;
@@ -1287,6 +1331,7 @@ function DiffViewer(props: {
                     size="sm"
                     class="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
                     onClick={handleCollapse}
+                    disabled={props.loading}
                   >
                     Collapse
                   </Button>
@@ -1296,8 +1341,12 @@ function DiffViewer(props: {
                   size="sm"
                   class="h-6 px-2 text-[10px] gap-1 text-primary hover:bg-primary/10"
                   onClick={handleExpandAll}
+                  disabled={props.loading}
                 >
-                  <Maximize2 class="size-3" /> Expand all
+                  <Show when={props.loading} fallback={<Maximize2 class="size-3" />}>
+                    <Loader2 class="size-3 animate-spin" />
+                  </Show>
+                  <span>Expand all</span>
                 </Button>
               </div>
             </div>
@@ -1358,17 +1407,25 @@ function DiffViewer(props: {
                                   <button
                                     type="button"
                                     onClick={handleExpandMore}
-                                    class="px-2 py-0.5 rounded text-[10px] bg-sky-500/20 hover:bg-sky-500/30 text-sky-700 dark:text-sky-200 font-semibold transition-colors flex items-center gap-1"
+                                    disabled={props.loading}
+                                    class="px-2 py-0.5 rounded text-[10px] bg-sky-500/20 hover:bg-sky-500/30 text-sky-700 dark:text-sky-200 font-semibold transition-colors flex items-center gap-1 disabled:opacity-50"
                                     title="Expand 20 context lines"
                                   >
+                                    <Show when={props.loading}>
+                                      <Loader2 class="size-3 animate-spin" />
+                                    </Show>
                                     +20 lines
                                   </button>
                                   <button
                                     type="button"
                                     onClick={handleExpandAll}
-                                    class="px-2 py-0.5 rounded text-[10px] bg-primary/20 hover:bg-primary/30 text-primary font-semibold transition-colors flex items-center gap-1"
+                                    disabled={props.loading}
+                                    class="px-2 py-0.5 rounded text-[10px] bg-primary/20 hover:bg-primary/30 text-primary font-semibold transition-colors flex items-center gap-1 disabled:opacity-50"
                                     title="Expand full context"
                                   >
+                                    <Show when={props.loading}>
+                                      <Loader2 class="size-3 animate-spin" />
+                                    </Show>
                                     Expand all
                                   </button>
                                 </div>

@@ -290,6 +290,12 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleGitCommit(c, ctx, req)
 	case "git_stage":
 		s.handleGitStage(c, ctx, req)
+	case "git_push":
+		s.handleGitPush(c, ctx, req)
+	case "git_pull":
+		s.handleGitPull(c, ctx, req)
+	case "git_fetch":
+		s.handleGitFetch(c, ctx, req)
 	case "daemon_status":
 		s.handleDaemonStatus(c, ctx)
 	case "restart_daemon":

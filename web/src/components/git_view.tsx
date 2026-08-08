@@ -993,6 +993,7 @@ interface ParsedDiffLine {
 interface ParsedFileChunk {
   header: string;
   filePath: string;
+  metaLines: string[];
   lines: ParsedDiffLine[];
 }
 
@@ -1002,6 +1003,8 @@ function DiffViewer(props: {
   diff: string;
   selectedFile: string | null;
 }) {
+  const [currentContext, setCurrentContext] = createSignal(3);
+
   const fileChunks = createMemo(() => {
     const raw = props.diff;
     if (!raw) return [];
@@ -1020,6 +1023,7 @@ function DiffViewer(props: {
         filePath = headerLine;
       }
 
+      const metaLines: string[] = [];
       const parsedLines: ParsedDiffLine[] = [];
       let oldLineNum = 1;
       let newLineNum = 1;
@@ -1041,13 +1045,14 @@ function DiffViewer(props: {
         } else if (line.startsWith(" ") || line === "") {
           parsedLines.push({ type: "context", text: line, oldLine: oldLineNum++, newLine: newLineNum++ });
         } else {
-          parsedLines.push({ type: "header", text: line });
+          metaLines.push(line);
         }
       }
 
       chunks.push({
         header: `diff --git ${headerLine}`,
         filePath,
+        metaLines,
         lines: parsedLines,
       });
     }
@@ -1060,20 +1065,76 @@ function DiffViewer(props: {
     return fileChunks().filter((c) => c.filePath === filter);
   });
 
+  const handleExpandMore = () => {
+    const next = currentContext() + 20;
+    setCurrentContext(next);
+    loadGitDiff(props.project, props.hash, next, true);
+  };
+
+  const handleExpandAll = () => {
+    setCurrentContext(10000);
+    loadGitDiff(props.project, props.hash, 10000, true);
+  };
+
+  const handleCollapse = () => {
+    setCurrentContext(3);
+    loadGitDiff(props.project, props.hash, 3, true);
+  };
+
   return (
     <div class="flex flex-col gap-6">
       <For each={visibleChunks()}>
         {(chunk) => (
-          <div class="border border-border rounded-md overflow-hidden bg-card">
+          <div class="border border-border rounded-md overflow-hidden bg-card shadow-sm">
             {/* File Header Bar */}
-            <div class="flex items-center justify-between px-3 py-1.5 bg-muted/40 border-b border-border text-xs font-semibold">
-              <div class="flex items-center gap-2">
-                <FileCode class="size-3.5 text-muted-foreground" />
-                <span class="truncate">{chunk.filePath}</span>
+            <div class="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border text-xs font-semibold">
+              <div class="flex items-center gap-2 min-w-0">
+                <FileCode class="size-4 text-primary shrink-0" />
+                <span class="truncate font-mono">{chunk.filePath}</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <Show when={currentContext() > 3}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+                    onClick={handleCollapse}
+                  >
+                    Collapse
+                  </Button>
+                </Show>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-6 px-2 text-[10px] gap-1 text-primary hover:bg-primary/10"
+                  onClick={handleExpandAll}
+                >
+                  <Maximize2 class="size-3" /> Expand all
+                </Button>
               </div>
             </div>
 
-            {/* Code Lines Table with Line Numbers Gutter */}
+            {/* Git Metadata Sub-Header (index, --- a/..., +++ b/...) */}
+            <Show when={chunk.metaLines.length > 0}>
+              <div class="px-3 py-1.5 bg-muted/20 border-b border-border/60 text-[11px] font-mono leading-relaxed space-y-0.5 select-text">
+                <For each={chunk.metaLines}>
+                  {(meta) => {
+                    if (meta.startsWith("--- ")) {
+                      return <div class="text-rose-600 dark:text-rose-400 font-medium">{meta}</div>;
+                    }
+                    if (meta.startsWith("+++ ")) {
+                      return <div class="text-emerald-600 dark:text-emerald-400 font-medium">{meta}</div>;
+                    }
+                    if (meta.startsWith("index ")) {
+                      return <div class="text-muted-foreground opacity-80">{meta}</div>;
+                    }
+                    return <div class="text-muted-foreground/70">{meta}</div>;
+                  }}
+                </For>
+              </div>
+            </Show>
+
+            {/* Code Lines Table with Dual Line Numbers Gutter */}
             <div class="overflow-x-auto">
               <table class="w-full border-collapse font-mono text-[11px] leading-relaxed">
                 <tbody>
@@ -1081,34 +1142,36 @@ function DiffViewer(props: {
                     {(line) => {
                       if (line.type === "hunk") {
                         return (
-                          <tr class="bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold select-none border-y border-sky-500/20">
+                          <tr class="bg-sky-500/10 text-sky-700 dark:text-sky-300 font-medium select-none border-y border-sky-500/20">
                             <td class="w-10 text-right pr-2 py-1 text-[10px] opacity-40 border-r border-border/40 select-none">
                               ...
                             </td>
                             <td class="w-10 text-right pr-2 py-1 text-[10px] opacity-40 border-r border-border/40 select-none">
                               ...
                             </td>
-                            <td class="px-3 py-1 font-mono text-[11px] flex items-center justify-between gap-2">
-                              <span>{line.text}</span>
-                              <button
-                                type="button"
-                                onClick={() => loadGitDiff(props.project, props.hash, 10000, true)}
-                                class="flex items-center gap-1 text-[10px] hover:underline text-primary opacity-90 hover:opacity-100"
-                                title="Expand full file context lines"
-                              >
-                                <Maximize2 class="size-3" /> Expand context
-                              </button>
+                            <td class="px-3 py-1 font-mono text-[11px]">
+                              <div class="flex items-center justify-between gap-3 min-w-0">
+                                <span class="truncate text-sky-800 dark:text-sky-200 font-semibold">{line.text}</span>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={handleExpandMore}
+                                    class="px-2 py-0.5 rounded text-[10px] bg-sky-500/20 hover:bg-sky-500/30 text-sky-700 dark:text-sky-200 font-semibold transition-colors flex items-center gap-1"
+                                    title="Expand 20 context lines"
+                                  >
+                                    +20 lines
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleExpandAll}
+                                    class="px-2 py-0.5 rounded text-[10px] bg-primary/20 hover:bg-primary/30 text-primary font-semibold transition-colors flex items-center gap-1"
+                                    title="Expand full context"
+                                  >
+                                    Expand all
+                                  </button>
+                                </div>
+                              </div>
                             </td>
-                          </tr>
-                        );
-                      }
-
-                      if (line.type === "header") {
-                        return (
-                          <tr class="text-muted-foreground bg-muted/20">
-                            <td class="w-10 border-r border-border/40"></td>
-                            <td class="w-10 border-r border-border/40"></td>
-                            <td class="px-3 py-0.5 whitespace-pre">{line.text}</td>
                           </tr>
                         );
                       }

@@ -39,4 +39,4 @@ services:
     restart: always
 
 actions:
-  reload-daemon: go install ./cmd/local-compose/ && local-compose daemon reload
+  install-daemon: go install ./cmd/local-compose

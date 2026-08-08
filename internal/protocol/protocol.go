@@ -42,6 +42,7 @@ const (
 	KindGitLog           RequestKind = "git_log"            // list the git commit log for a project
 	KindGitDiff          RequestKind = "git_diff"           // get diff and changed files for a commit
 	KindGitCommit        RequestKind = "git_commit"         // create a new git commit for uncommitted changes
+	KindGitStage         RequestKind = "git_stage"          // stage or unstage files
 )
 
 // Request is a client -> daemon message.
@@ -70,6 +71,7 @@ const (
 //   - Kind==KindGitLog: Project selects the project; its commit log is returned.
 //   - Kind==KindGitDiff: Project selects the project; Hash selects the commit hash (empty defaults to HEAD); Path optional file path filter.
 //   - Kind==KindGitCommit: Project selects the project; Message is the commit message.
+//   - Kind==KindGitStage: Project selects the project; Path selects file; Unstage selects unstage action; StageAll targets all files.
 type Request struct {
 	Kind          RequestKind `json:"kind"`
 	Project       string      `json:"project,omitempty"`
@@ -87,6 +89,9 @@ type Request struct {
 	Hash          string      `json:"hash,omitempty"`
 	Path          string      `json:"path,omitempty"`
 	Message       string      `json:"message,omitempty"`
+	Unstage       bool        `json:"unstage,omitempty"`
+	StageAll      bool        `json:"stage_all,omitempty"`
+	ContextLines  int         `json:"context_lines,omitempty"`
 }
 
 // ResponseKind discriminates Response payloads sent from the supervisor to a
@@ -177,6 +182,9 @@ type GitFileChange struct {
 	Status    string `json:"status"` // "M", "A", "D", "R", etc.
 	Additions int    `json:"additions"`
 	Deletions int    `json:"deletions"`
+	Staged    bool   `json:"staged,omitempty"`
+	Unstaged  bool   `json:"unstaged,omitempty"`
+	Untracked bool   `json:"untracked,omitempty"`
 }
 
 // GitDiffResult is the wire payload returned for a commit diff query.

@@ -168,6 +168,9 @@ type wsRequest struct {
 	Hash          string   `json:"hash,omitempty"`
 	Path          string   `json:"path,omitempty"`
 	Message       string   `json:"message,omitempty"`
+	Unstage       bool     `json:"unstage,omitempty"`
+	StageAll      bool     `json:"stage_all,omitempty"`
+	ContextLines  int      `json:"context_lines,omitempty"`
 
 	// Terminal/PTY fields
 	ID   string `json:"id,omitempty"`
@@ -279,6 +282,8 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleGitDiff(c, ctx, req)
 	case "git_commit":
 		s.handleGitCommit(c, ctx, req)
+	case "git_stage":
+		s.handleGitStage(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -464,7 +469,7 @@ func (s *Server) handleGitLog(c *websocket.Conn, ctx context.Context, req *wsReq
 }
 
 func (s *Server) handleGitDiff(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	diffRes, err := s.backend.GitDiff(req.Project, req.Hash)
+	diffRes, err := s.backend.GitDiff(req.Project, req.Hash, req.ContextLines)
 	if err != nil {
 		s.send(c, ctx, wsResponse{Type: "git_diff", Project: req.Project, Ok: false, Error: err.Error()})
 		return
@@ -479,6 +484,14 @@ func (s *Server) handleGitCommit(c *websocket.Conn, ctx context.Context, req *ws
 		return
 	}
 	s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: true})
+}
+
+func (s *Server) handleGitStage(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	if err := s.backend.GitStage(req.Project, req.Path, req.StageAll, req.Unstage); err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_stage_result", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "git_stage_result", Project: req.Project, Ok: true})
 }
 
 func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

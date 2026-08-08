@@ -52,6 +52,9 @@ export interface GitFileChange {
   status: string; // "M", "A", "D", "R", etc.
   additions: number;
   deletions: number;
+  staged?: boolean;
+  unstaged?: boolean;
+  untracked?: boolean;
 }
 
 export interface GitDiffResult {
@@ -77,6 +80,9 @@ export interface WSRequest {
   hash?: string;
   path?: string;
   message?: string;
+  unstage?: boolean;
+  stage_all?: boolean;
+  context_lines?: number;
 }
 
 export interface WSResponse {

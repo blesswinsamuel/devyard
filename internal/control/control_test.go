@@ -1057,9 +1057,12 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
 func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
 
-func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, error)             { return nil, nil }
-func (m *fakeMultiBackend) GitDiff(string, string) (*protocol.GitDiffResult, error) { return nil, nil }
-func (m *fakeMultiBackend) GitCommit(string, string) error                          { return nil }
+func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, error) { return nil, nil }
+func (m *fakeMultiBackend) GitDiff(string, string, ...int) (*protocol.GitDiffResult, error) {
+	return nil, nil
+}
+func (m *fakeMultiBackend) GitCommit(string, string) error            { return nil }
+func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return nil }
 
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
 	t.Helper()

@@ -607,7 +607,7 @@ func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, error) {
 }
 
 // GitDiff returns the metadata, changed file list, and patch diff for a commit in a project's working directory.
-func (d *Daemon) GitDiff(name string, hash string) (*protocol.GitDiffResult, error) {
+func (d *Daemon) GitDiff(name string, hash string, contextLines ...int) (*protocol.GitDiffResult, error) {
 	d.mu.Lock()
 	p, ok := d.projects[name]
 	d.mu.Unlock()
@@ -617,7 +617,7 @@ func (d *Daemon) GitDiff(name string, hash string) (*protocol.GitDiffResult, err
 	if !gitlog.IsRepo(p.BaseDir) {
 		return nil, fmt.Errorf("project %q is not a git repository", name)
 	}
-	return gitlog.Diff(p.BaseDir, hash)
+	return gitlog.Diff(p.BaseDir, hash, contextLines...)
 }
 
 // GitCommit stages all changes and creates a new commit in a project's working directory.
@@ -632,6 +632,20 @@ func (d *Daemon) GitCommit(name string, message string) error {
 		return fmt.Errorf("project %q is not a git repository", name)
 	}
 	return gitlog.Commit(p.BaseDir, message)
+}
+
+// GitStage stages or unstages files in a project's working directory.
+func (d *Daemon) GitStage(name string, path string, stageAll bool, unstage bool) error {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("project %q is not running", name)
+	}
+	if !gitlog.IsRepo(p.BaseDir) {
+		return fmt.Errorf("project %q is not a git repository", name)
+	}
+	return gitlog.Stage(p.BaseDir, path, stageAll, unstage)
 }
 
 // stoppedBackend adapts a registered-but-never-started project (Sup == nil) to

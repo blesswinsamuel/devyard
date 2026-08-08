@@ -179,3 +179,45 @@ func TestUncommittedAndCommit(t *testing.T) {
 		t.Fatalf("unexpected commits after commit: %+v", commitsAfter[0])
 	}
 }
+
+func TestStageAndUnstage(t *testing.T) {
+	dir := initRepo(t)
+	// Add an untracked file and modify an existing file
+	if err := os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("new file\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	diffRes, err := Diff(dir, "WORKDIR")
+	if err != nil {
+		t.Fatalf("Diff WORKDIR: %v", err)
+	}
+	if len(diffRes.Files) != 1 || !diffRes.Files[0].Untracked {
+		t.Fatalf("expected untracked file, got %+v", diffRes.Files)
+	}
+
+	// Stage the untracked file
+	if err := Stage(dir, "untracked.txt", false, false); err != nil {
+		t.Fatalf("Stage untracked: %v", err)
+	}
+
+	diffStaged, err := Diff(dir, "WORKDIR")
+	if err != nil {
+		t.Fatalf("Diff WORKDIR after stage: %v", err)
+	}
+	if len(diffStaged.Files) != 1 || !diffStaged.Files[0].Staged {
+		t.Fatalf("expected staged file, got %+v", diffStaged.Files)
+	}
+
+	// Unstage the file
+	if err := Stage(dir, "untracked.txt", false, true); err != nil {
+		t.Fatalf("Unstage file: %v", err)
+	}
+
+	diffUnstaged, err := Diff(dir, "WORKDIR")
+	if err != nil {
+		t.Fatalf("Diff WORKDIR after unstage: %v", err)
+	}
+	if len(diffUnstaged.Files) != 1 || !diffUnstaged.Files[0].Untracked {
+		t.Fatalf("expected untracked file after unstage, got %+v", diffUnstaged.Files)
+	}
+}

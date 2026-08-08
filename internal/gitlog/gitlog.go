@@ -143,7 +143,7 @@ func RepoRoot(dir string) string {
 }
 
 // Diff returns the commit metadata, list of changed files, and unified patch diff for hash (or HEAD if hash is empty).
-func Diff(dir string, hash string) (*protocol.GitDiffResult, error) {
+func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("git: no working directory")
 	}
@@ -151,8 +151,13 @@ func Diff(dir string, hash string) (*protocol.GitDiffResult, error) {
 		return nil, fmt.Errorf("git: %s is not a git repository", dir)
 	}
 
+	ctxLines := 3
+	if len(contextLines) > 0 && contextLines[0] > 0 {
+		ctxLines = contextLines[0]
+	}
+
 	if hash == "WORKDIR" {
-		return diffWorkdir(dir)
+		return diffWorkdir(dir, ctxLines)
 	}
 
 	if hash == "" {
@@ -251,7 +256,7 @@ func Diff(dir string, hash string) (*protocol.GitDiffResult, error) {
 		}
 	}
 
-	cmdDiff := exec.Command("git", "-C", dir, "show", "--patch", "--format=", hash)
+	cmdDiff := exec.Command("git", "-C", dir, "show", fmt.Sprintf("-U%d", ctxLines), "--patch", "--format=", hash)
 	var outDiff bytes.Buffer
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
@@ -263,7 +268,7 @@ func Diff(dir string, hash string) (*protocol.GitDiffResult, error) {
 	}, nil
 }
 
-func diffWorkdir(dir string) (*protocol.GitDiffResult, error) {
+func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 	head := resolveHead(dir)
 	commit := protocol.GitCommit{
 		Hash:    "WORKDIR",
@@ -304,12 +309,14 @@ func diffWorkdir(dir string) (*protocol.GitDiffResult, error) {
 	}
 
 	var files []protocol.GitFileChange
-	for _, line := range strings.Split(outStatus.String(), "\n") {
-		if len(line) < 3 {
+	statusLines := strings.Split(outStatus.String(), "\n")
+	for _, rawLine := range statusLines {
+		if len(rawLine) < 3 {
 			continue
 		}
-		st := strings.TrimSpace(line[0:2])
-		rest := strings.TrimSpace(line[3:])
+		stX := rawLine[0]
+		stY := rawLine[1]
+		rest := strings.TrimSpace(rawLine[3:])
 		path := rest
 		oldPath := ""
 		if strings.Contains(rest, " -> ") {
@@ -318,26 +325,46 @@ func diffWorkdir(dir string) (*protocol.GitDiffResult, error) {
 			path = parts[1]
 		}
 
-		statusLetter := "M"
-		if strings.Contains(st, "A") || st == "??" {
-			statusLetter = "A"
-		} else if strings.Contains(st, "D") {
-			statusLetter = "D"
-		} else if strings.Contains(st, "R") {
-			statusLetter = "R"
+		s := numstatMap[path]
+
+		// Check for untracked file
+		if stX == '?' && stY == '?' {
+			files = append(files, protocol.GitFileChange{
+				Path:      path,
+				Status:    "A",
+				Additions: s.add,
+				Deletions: s.del,
+				Untracked: true,
+			})
+			continue
 		}
 
-		s := numstatMap[path]
-		files = append(files, protocol.GitFileChange{
-			Path:      path,
-			OldPath:   oldPath,
-			Status:    statusLetter,
-			Additions: s.add,
-			Deletions: s.del,
-		})
+		// Check for staged changes (stX != ' ')
+		if stX != ' ' {
+			files = append(files, protocol.GitFileChange{
+				Path:      path,
+				OldPath:   oldPath,
+				Status:    string(stX),
+				Additions: s.add,
+				Deletions: s.del,
+				Staged:    true,
+			})
+		}
+
+		// Check for unstaged changes (stY != ' ')
+		if stY != ' ' {
+			files = append(files, protocol.GitFileChange{
+				Path:      path,
+				OldPath:   oldPath,
+				Status:    string(stY),
+				Additions: s.add,
+				Deletions: s.del,
+				Unstaged:  true,
+			})
+		}
 	}
 
-	cmdDiff := exec.Command("git", "-C", dir, "diff", "HEAD")
+	cmdDiff := exec.Command("git", "-C", dir, "diff", "HEAD", fmt.Sprintf("-U%d", ctxLines))
 	var outDiff bytes.Buffer
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
@@ -345,7 +372,7 @@ func diffWorkdir(dir string) (*protocol.GitDiffResult, error) {
 	diffText := outDiff.String()
 
 	for _, f := range files {
-		if f.Status == "A" && !strings.Contains(diffText, f.Path) {
+		if (f.Untracked || f.Status == "A") && !strings.Contains(diffText, f.Path) {
 			cmdUntracked := exec.Command("git", "-C", dir, "diff", "--no-index", "/dev/null", f.Path)
 			var outUntracked bytes.Buffer
 			cmdUntracked.Stdout = &outUntracked
@@ -366,7 +393,50 @@ func diffWorkdir(dir string) (*protocol.GitDiffResult, error) {
 	}, nil
 }
 
-// Commit stages all working tree changes (`git add -A`) and creates a new git commit with message.
+// Stage stages or unstages files in the working directory.
+func Stage(dir string, path string, stageAll bool, unstage bool) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+
+	var args []string
+	if unstage {
+		args = []string{"restore", "--staged"}
+		if stageAll {
+			args = append(args, ".")
+		} else if path != "" {
+			args = append(args, "--", path)
+		} else {
+			return fmt.Errorf("git: no path specified for unstage")
+		}
+	} else {
+		args = []string{"add"}
+		if stageAll {
+			args = append(args, "-A", ".")
+		} else if path != "" {
+			args = append(args, "--", path)
+		} else {
+			return fmt.Errorf("git: no path specified for stage")
+		}
+	}
+
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git %s: %s: %w", args[0], msg, err)
+	}
+	return nil
+}
+
+// Commit creates a new git commit with message. If staged changes exist, commits staged files; otherwise stages all.
 func Commit(dir string, message string) error {
 	if dir == "" {
 		return fmt.Errorf("git: no working directory")
@@ -379,11 +449,16 @@ func Commit(dir string, message string) error {
 		return fmt.Errorf("git: commit message cannot be empty")
 	}
 
-	cmdAdd := exec.Command("git", "-C", dir, "add", "-A")
-	var errAdd bytes.Buffer
-	cmdAdd.Stderr = &errAdd
-	if err := cmdAdd.Run(); err != nil {
-		return fmt.Errorf("git add: %s: %w", strings.TrimSpace(errAdd.String()), err)
+	cmdCheckStaged := exec.Command("git", "-C", dir, "diff", "--cached", "--quiet")
+	hasStaged := cmdCheckStaged.Run() != nil
+
+	if !hasStaged {
+		cmdAdd := exec.Command("git", "-C", dir, "add", "-A")
+		var errAdd bytes.Buffer
+		cmdAdd.Stderr = &errAdd
+		if err := cmdAdd.Run(); err != nil {
+			return fmt.Errorf("git add: %s: %w", strings.TrimSpace(errAdd.String()), err)
+		}
 	}
 
 	cmdCommit := exec.Command("git", "-C", dir, "commit", "-m", message)

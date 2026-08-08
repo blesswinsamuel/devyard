@@ -2,12 +2,17 @@ import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
+  ChevronRight,
   Copy,
   FileCode,
   FileDiff,
   GitBranch,
   GitCommitIcon,
   Loader2,
+  Maximize2,
+  Minus,
+  Plus,
   RefreshCw,
   Search,
   Send,
@@ -29,6 +34,8 @@ import {
   selectCommit,
   selectDiffFile,
   commitGitChanges,
+  stageGitFile,
+  loadGitDiff,
 } from "~/store";
 import type { GitCommit, GitFileChange } from "~/types";
 import { computeGitGraph, GRAPH_COLORS } from "~/lib/git_graph";
@@ -131,6 +138,22 @@ export function GitView() {
     return gitDiffError()[proj] ?? "";
   });
 
+  const isWorkdir = createMemo(() => currentCommitHash() === "WORKDIR");
+
+  // File groupings for WORKDIR (Sublime Merge style)
+  const allFiles = createMemo(() => selectedDiffResult()?.files ?? []);
+  const fileFilter = createMemo(() => fileSearchQuery().toLowerCase().trim());
+
+  const stagedFiles = createMemo(() =>
+    allFiles().filter((f) => f.staged && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
+  );
+  const unstagedFiles = createMemo(() =>
+    allFiles().filter((f) => f.unstaged && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
+  );
+  const untrackedFiles = createMemo(() =>
+    allFiles().filter((f) => f.untracked && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
+  );
+
   const handleCommitSubmit = (e: Event) => {
     e.preventDefault();
     const proj = project();
@@ -225,7 +248,7 @@ export function GitView() {
                     {(commit) => {
                       const isSelected = () => currentCommitHash() === commit.hash;
                       const graphInfo = () => graphMap().get(commit.hash);
-                      const isWorkdir = commit.hash === "WORKDIR";
+                      const isItemWorkdir = commit.hash === "WORKDIR";
                       const colWidth = 14;
                       const rowHeight = 44;
 
@@ -235,7 +258,7 @@ export function GitView() {
                           class={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors text-xs select-none ${
                             isSelected()
                               ? "bg-primary/10 border-l-2 border-primary"
-                              : isWorkdir
+                              : isItemWorkdir
                               ? "bg-amber-500/5 hover:bg-amber-500/10"
                               : "hover:bg-muted/40"
                           }`}
@@ -251,7 +274,7 @@ export function GitView() {
                                 const y1 = rowHeight / 2;
                                 const x2 = conn.toColumn * colWidth + colWidth / 2;
                                 const y2 = rowHeight;
-                                const strokeColor = isWorkdir
+                                const strokeColor = isItemWorkdir
                                   ? "#f59e0b"
                                   : GRAPH_COLORS[conn.colorIndex % GRAPH_COLORS.length];
 
@@ -264,7 +287,7 @@ export function GitView() {
                                       y2={rowHeight}
                                       stroke={strokeColor}
                                       stroke-width="2"
-                                      stroke-dasharray={isWorkdir ? "3 3" : undefined}
+                                      stroke-dasharray={isItemWorkdir ? "3 3" : undefined}
                                     />
                                   );
                                 }
@@ -274,7 +297,7 @@ export function GitView() {
                                     fill="none"
                                     stroke={strokeColor}
                                     stroke-width="2"
-                                    stroke-dasharray={isWorkdir ? "3 3" : undefined}
+                                    stroke-dasharray={isItemWorkdir ? "3 3" : undefined}
                                   />
                                 );
                               })}
@@ -283,7 +306,7 @@ export function GitView() {
                                 if (!info) return null;
                                 const cx = info.column * colWidth + colWidth / 2;
                                 const cy = rowHeight / 2;
-                                const color = isWorkdir
+                                const color = isItemWorkdir
                                   ? "#f59e0b"
                                   : GRAPH_COLORS[info.colorIndex % GRAPH_COLORS.length];
                                 return (
@@ -303,17 +326,17 @@ export function GitView() {
                           {/* Commit Details */}
                           <div class="flex-1 min-w-0 flex flex-col gap-0.5">
                             <div class="flex items-center gap-1.5 min-w-0">
-                              <Show when={isWorkdir}>
+                              <Show when={isItemWorkdir}>
                                 <Badge class="h-4 px-1 text-[10px] font-sans shrink-0 bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30">
                                   Uncommitted
                                 </Badge>
                               </Show>
-                              <Show when={commit.head && !isWorkdir}>
+                              <Show when={commit.head && !isItemWorkdir}>
                                 <Badge variant="secondary" class="h-4 px-1 text-[10px] font-sans shrink-0">
                                   HEAD
                                 </Badge>
                               </Show>
-                              <span class={`font-medium truncate leading-tight ${isWorkdir ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-foreground"}`}>
+                              <span class={`font-medium truncate leading-tight ${isItemWorkdir ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-foreground"}`}>
                                 {commit.subject}
                               </span>
                             </div>
@@ -321,7 +344,7 @@ export function GitView() {
                               <span class="truncate">{commit.author}</span>
                               <span>·</span>
                               <span class="shrink-0">{formatRelativeTime(commit.time)}</span>
-                              <Show when={!isWorkdir}>
+                              <Show when={!isItemWorkdir}>
                                 <span class="ml-auto font-mono text-[10px] shrink-0 opacity-70">
                                   {commit.short}
                                 </span>
@@ -338,7 +361,7 @@ export function GitView() {
           </div>
         </div>
 
-        {/* Center Pane: Commit Info Header / Commit Form & Diff Viewer */}
+        {/* Center Pane: Commit Header / Form & Diff Viewer */}
         <div class="flex-1 flex flex-col min-w-0 bg-background overflow-hidden">
           <Show
             when={currentCommitHash()}
@@ -369,7 +392,7 @@ export function GitView() {
                 {/* Commit Metadata / Commit Input Bar */}
                 <div class="flex flex-col gap-2 p-4 border-b border-border bg-muted/5 shrink-0">
                   <Show
-                    when={currentCommitHash() === "WORKDIR"}
+                    when={isWorkdir()}
                     fallback={
                       <>
                         <div class="flex items-start justify-between gap-4">
@@ -416,13 +439,13 @@ export function GitView() {
                             Uncommitted Changes
                           </Badge>
                           <span class="text-xs text-muted-foreground">
-                            {selectedDiffResult()?.files.length ?? 0} changed files
+                            {stagedFiles().length} staged, {unstagedFiles().length + untrackedFiles().length} unstaged
                           </span>
                         </div>
                       </div>
                       <div class="flex gap-2">
                         <textarea
-                          placeholder="Enter commit message (e.g. feat: update component layout)..."
+                          placeholder="Enter commit message..."
                           value={commitMessage()}
                           onInput={(e) => setCommitMessage(e.currentTarget.value)}
                           onKeyDown={(e) => {
@@ -442,7 +465,13 @@ export function GitView() {
                           <Show when={isCommitting()} fallback={<Send class="size-3.5" />}>
                             <Loader2 class="size-3.5 animate-spin" />
                           </Show>
-                          <span>{isCommitting() ? "Committing..." : "Commit"}</span>
+                          <span>
+                            {isCommitting()
+                              ? "Committing..."
+                              : stagedFiles().length > 0
+                              ? "Commit Staged Changes"
+                              : "Commit All Changes"}
+                          </span>
                         </Button>
                       </div>
                       <Show when={commitErr()}>
@@ -463,6 +492,8 @@ export function GitView() {
                     }
                   >
                     <DiffViewer
+                      project={project()!}
+                      hash={currentCommitHash()!}
                       diff={selectedDiffResult()!.diff}
                       selectedFile={currentFilePath()}
                     />
@@ -473,13 +504,14 @@ export function GitView() {
           </Show>
         </div>
 
-        {/* Right Pane: Changed Files Sidebar */}
+        {/* Right Pane: Changed Files Sidebar (Sublime Merge Style) */}
         <Show when={currentCommitHash() && selectedDiffResult()}>
           <div class="w-64 min-w-[220px] max-w-[320px] shrink-0 flex flex-col bg-background border-l border-border">
+            {/* Header */}
             <div class="flex h-8 shrink-0 items-center justify-between border-b border-border px-3 text-xs font-semibold text-muted-foreground bg-muted/10">
               <div class="flex items-center gap-1.5">
                 <FileDiff class="size-3.5" />
-                <span>Changed Files ({selectedDiffResult()?.files.length ?? 0})</span>
+                <span>Changed Files ({allFiles().length})</span>
               </div>
             </div>
 
@@ -497,7 +529,7 @@ export function GitView() {
               </div>
             </div>
 
-            {/* File List */}
+            {/* File Lists */}
             <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-border/40">
               <div
                 onClick={() => project() && selectDiffFile(project()!, null)}
@@ -509,53 +541,198 @@ export function GitView() {
               >
                 <div class="flex items-center gap-1.5">
                   <FileCode class="size-3.5" />
-                  <span>All files ({selectedDiffResult()?.files.length ?? 0})</span>
+                  <span>All files ({allFiles().length})</span>
                 </div>
               </div>
 
-              <For
-                each={(selectedDiffResult()?.files ?? []).filter((f) =>
-                  f.path.toLowerCase().includes(fileSearchQuery().toLowerCase().trim())
-                )}
-              >
-                {(file: GitFileChange) => {
-                  const badge = getStatusBadge(file.status);
-                  const isSelectedFile = () => currentFilePath() === file.path;
+              <Show
+                when={isWorkdir()}
+                fallback={
+                  /* Regular Commit File List */
+                  <For
+                    each={allFiles().filter((f) =>
+                      f.path.toLowerCase().includes(fileSearchQuery().toLowerCase().trim())
+                    )}
+                  >
+                    {(file: GitFileChange) => {
+                      const badge = getStatusBadge(file.status);
+                      const isSelectedFile = () => currentFilePath() === file.path;
 
-                  return (
-                    <div
-                      onClick={() => project() && selectDiffFile(project()!, file.path)}
-                      class={`flex items-center justify-between gap-2 px-3 py-2 cursor-pointer transition-colors text-xs select-none ${
-                        isSelectedFile()
-                          ? "bg-primary/15 font-medium text-foreground border-l-2 border-primary"
-                          : "hover:bg-muted/40"
-                      }`}
-                    >
-                      <div class="flex items-center gap-2 min-w-0">
-                        <span
-                          class={`px-1 py-0.5 rounded text-[10px] font-mono border font-semibold shrink-0 ${badge.class}`}
+                      return (
+                        <div
+                          onClick={() => project() && selectDiffFile(project()!, file.path)}
+                          class={`flex items-center justify-between gap-2 px-3 py-2 cursor-pointer transition-colors text-xs select-none ${
+                            isSelectedFile()
+                              ? "bg-primary/15 font-medium text-foreground border-l-2 border-primary"
+                              : "hover:bg-muted/40"
+                          }`}
                         >
-                          {badge.label}
-                        </span>
-                        <span class="truncate font-mono text-[11px]" title={file.path}>
-                          {file.path}
-                        </span>
-                      </div>
-                      <div class="flex items-center gap-1 font-mono text-[10px] shrink-0">
-                        <Show when={file.additions > 0}>
-                          <span class="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
-                        </Show>
-                        <Show when={file.deletions > 0}>
-                          <span class="text-rose-600 dark:text-rose-400">-{file.deletions}</span>
-                        </Show>
-                      </div>
+                          <div class="flex items-center gap-2 min-w-0">
+                            <span
+                              class={`px-1 py-0.5 rounded text-[10px] font-mono border font-semibold shrink-0 ${badge.class}`}
+                            >
+                              {badge.label}
+                            </span>
+                            <span class="truncate font-mono text-[11px]" title={file.path}>
+                              {file.path}
+                            </span>
+                          </div>
+                          <div class="flex items-center gap-1 font-mono text-[10px] shrink-0">
+                            <Show when={file.additions > 0}>
+                              <span class="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
+                            </Show>
+                            <Show when={file.deletions > 0}>
+                              <span class="text-rose-600 dark:text-rose-400">-{file.deletions}</span>
+                            </Show>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  </For>
+                }
+              >
+                {/* WORKDIR Categorized Staging Sections */}
+                <div class="flex flex-col">
+                  {/* Staged Changes Section */}
+                  <Show when={stagedFiles().length > 0}>
+                    <div class="flex items-center justify-between px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold text-[11px] border-b border-border/40">
+                      <span>Staged Changes ({stagedFiles().length})</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (project()) stageGitFile(project()!, "", true, true);
+                        }}
+                        class="hover:underline text-[10px] font-mono flex items-center gap-0.5"
+                        title="Unstage all staged files"
+                      >
+                        <Minus class="size-3" /> Unstage All
+                      </button>
                     </div>
-                  );
-                }}
-              </For>
+                    <For each={stagedFiles()}>
+                      {(file: GitFileChange) => (
+                        <FileRow
+                          file={file}
+                          selected={currentFilePath() === file.path}
+                          onSelect={() => project() && selectDiffFile(project()!, file.path)}
+                          onAction={() => project() && stageGitFile(project()!, file.path, true)}
+                          actionLabel="Unstage"
+                          actionIcon={<Minus class="size-3" />}
+                        />
+                      )}
+                    </For>
+                  </Show>
+
+                  {/* Unstaged Changes Section */}
+                  <Show when={unstagedFiles().length > 0}>
+                    <div class="flex items-center justify-between px-3 py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-[11px] border-b border-border/40">
+                      <span>Unstaged Changes ({unstagedFiles().length})</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (project()) stageGitFile(project()!, "", false, true);
+                        }}
+                        class="hover:underline text-[10px] font-mono flex items-center gap-0.5"
+                        title="Stage all modified files"
+                      >
+                        <Plus class="size-3" /> Stage All
+                      </button>
+                    </div>
+                    <For each={unstagedFiles()}>
+                      {(file: GitFileChange) => (
+                        <FileRow
+                          file={file}
+                          selected={currentFilePath() === file.path}
+                          onSelect={() => project() && selectDiffFile(project()!, file.path)}
+                          onAction={() => project() && stageGitFile(project()!, file.path, false)}
+                          actionLabel="Stage"
+                          actionIcon={<Plus class="size-3" />}
+                        />
+                      )}
+                    </For>
+                  </Show>
+
+                  {/* Untracked Files Section */}
+                  <Show when={untrackedFiles().length > 0}>
+                    <div class="flex items-center justify-between px-3 py-1.5 bg-muted/40 text-muted-foreground font-semibold text-[11px] border-b border-border/40">
+                      <span>Untracked Files ({untrackedFiles().length})</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (project()) stageGitFile(project()!, "", false, true);
+                        }}
+                        class="hover:underline text-[10px] font-mono flex items-center gap-0.5"
+                        title="Stage all untracked files"
+                      >
+                        <Plus class="size-3" /> Stage All
+                      </button>
+                    </div>
+                    <For each={untrackedFiles()}>
+                      {(file: GitFileChange) => (
+                        <FileRow
+                          file={file}
+                          selected={currentFilePath() === file.path}
+                          onSelect={() => project() && selectDiffFile(project()!, file.path)}
+                          onAction={() => project() && stageGitFile(project()!, file.path, false)}
+                          actionLabel="Stage"
+                          actionIcon={<Plus class="size-3" />}
+                        />
+                      )}
+                    </For>
+                  </Show>
+                </div>
+              </Show>
             </div>
           </div>
         </Show>
+      </div>
+    </div>
+  );
+}
+
+function FileRow(props: {
+  file: GitFileChange;
+  selected: boolean;
+  onSelect: () => void;
+  onAction: () => void;
+  actionLabel: string;
+  actionIcon: any;
+}) {
+  const badge = getStatusBadge(props.file.status);
+
+  return (
+    <div
+      onClick={props.onSelect}
+      class={`group flex items-center justify-between gap-2 px-3 py-2 cursor-pointer transition-colors text-xs select-none ${
+        props.selected
+          ? "bg-primary/15 font-medium text-foreground border-l-2 border-primary"
+          : "hover:bg-muted/40"
+      }`}
+    >
+      <div class="flex items-center gap-2 min-w-0 flex-1">
+        <span class={`px-1 py-0.5 rounded text-[10px] font-mono border font-semibold shrink-0 ${badge.class}`}>
+          {badge.label}
+        </span>
+        <span class="truncate font-mono text-[11px]" title={props.file.path}>
+          {props.file.path}
+        </span>
+      </div>
+
+      <div class="flex items-center gap-1 shrink-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          class="size-5 opacity-80 group-hover:opacity-100 hover:bg-primary/20 text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onAction();
+          }}
+          title={`${props.actionLabel} ${props.file.path}`}
+        >
+          {props.actionIcon}
+        </Button>
       </div>
     </div>
   );
@@ -586,17 +763,35 @@ function CommitHashCopy(props: { hash: string }) {
   );
 }
 
-function DiffViewer(props: { diff: string; selectedFile: string | null }) {
+interface ParsedDiffLine {
+  type: "header" | "add" | "delete" | "context" | "hunk";
+  text: string;
+  oldLine?: number;
+  newLine?: number;
+}
+
+interface ParsedFileChunk {
+  header: string;
+  filePath: string;
+  lines: ParsedDiffLine[];
+}
+
+function DiffViewer(props: {
+  project: string;
+  hash: string;
+  diff: string;
+  selectedFile: string | null;
+}) {
   const fileChunks = createMemo(() => {
     const raw = props.diff;
     if (!raw) return [];
     const parts = raw.split(/^diff --git /m);
-    const chunks: { header: string; filePath: string; lines: string[] }[] = [];
+    const chunks: ParsedFileChunk[] = [];
 
     for (const part of parts) {
       if (!part.trim()) continue;
-      const lines = part.split("\n");
-      const headerLine = lines[0];
+      const rawLines = part.split("\n");
+      const headerLine = rawLines[0];
       let filePath = "";
       const match = headerLine.match(/b\/(.+)$/);
       if (match) {
@@ -605,10 +800,35 @@ function DiffViewer(props: { diff: string; selectedFile: string | null }) {
         filePath = headerLine;
       }
 
+      const parsedLines: ParsedDiffLine[] = [];
+      let oldLineNum = 1;
+      let newLineNum = 1;
+
+      for (let i = 1; i < rawLines.length; i++) {
+        const line = rawLines[i];
+        if (line.startsWith("@@")) {
+          // Hunk header match @@ -oldStart,oldLen +newStart,newLen @@
+          const hunkMatch = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+          if (hunkMatch) {
+            oldLineNum = parseInt(hunkMatch[1], 10);
+            newLineNum = parseInt(hunkMatch[2], 10);
+          }
+          parsedLines.push({ type: "hunk", text: line });
+        } else if (line.startsWith("+") && !line.startsWith("+++")) {
+          parsedLines.push({ type: "add", text: line, newLine: newLineNum++ });
+        } else if (line.startsWith("-") && !line.startsWith("---")) {
+          parsedLines.push({ type: "delete", text: line, oldLine: oldLineNum++ });
+        } else if (line.startsWith(" ") || line === "") {
+          parsedLines.push({ type: "context", text: line, oldLine: oldLineNum++, newLine: newLineNum++ });
+        } else {
+          parsedLines.push({ type: "header", text: line });
+        }
+      }
+
       chunks.push({
         header: `diff --git ${headerLine}`,
         filePath,
-        lines: lines.slice(1),
+        lines: parsedLines,
       });
     }
     return chunks;
@@ -625,35 +845,85 @@ function DiffViewer(props: { diff: string; selectedFile: string | null }) {
       <For each={visibleChunks()}>
         {(chunk) => (
           <div class="border border-border rounded-md overflow-hidden bg-card">
-            <div class="flex items-center gap-2 px-3 py-1.5 bg-muted/40 border-b border-border text-xs font-semibold">
-              <FileCode class="size-3.5 text-muted-foreground" />
-              <span class="truncate">{chunk.filePath}</span>
+            {/* File Header Bar */}
+            <div class="flex items-center justify-between px-3 py-1.5 bg-muted/40 border-b border-border text-xs font-semibold">
+              <div class="flex items-center gap-2">
+                <FileCode class="size-3.5 text-muted-foreground" />
+                <span class="truncate">{chunk.filePath}</span>
+              </div>
             </div>
 
-            <div class="overflow-x-auto divide-y divide-border/20">
-              <For each={chunk.lines}>
-                {(line) => {
-                  let lineStyle = "text-foreground";
-                  let bgStyle = "";
+            {/* Code Lines Table with Line Numbers Gutter */}
+            <div class="overflow-x-auto">
+              <table class="w-full border-collapse font-mono text-[11px] leading-relaxed">
+                <tbody>
+                  <For each={chunk.lines}>
+                    {(line) => {
+                      if (line.type === "hunk") {
+                        return (
+                          <tr class="bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold select-none border-y border-sky-500/20">
+                            <td class="w-10 text-right pr-2 py-1 text-[10px] opacity-40 border-r border-border/40 select-none">
+                              ...
+                            </td>
+                            <td class="w-10 text-right pr-2 py-1 text-[10px] opacity-40 border-r border-border/40 select-none">
+                              ...
+                            </td>
+                            <td class="px-3 py-1 font-mono text-[11px] flex items-center justify-between gap-2">
+                              <span>{line.text}</span>
+                              <button
+                                type="button"
+                                onClick={() => loadGitDiff(props.project, props.hash, 10000, true)}
+                                class="flex items-center gap-1 text-[10px] hover:underline text-primary opacity-90 hover:opacity-100"
+                                title="Expand full file context lines"
+                              >
+                                <Maximize2 class="size-3" /> Expand context
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      }
 
-                  if (line.startsWith("+") && !line.startsWith("+++")) {
-                    lineStyle = "text-emerald-600 dark:text-emerald-400";
-                    bgStyle = "bg-emerald-500/10";
-                  } else if (line.startsWith("-") && !line.startsWith("---")) {
-                    lineStyle = "text-rose-600 dark:text-rose-400";
-                    bgStyle = "bg-rose-500/10";
-                  } else if (line.startsWith("@@")) {
-                    lineStyle = "text-sky-600 dark:text-sky-400 font-semibold";
-                    bgStyle = "bg-sky-500/10 py-1";
-                  }
+                      if (line.type === "header") {
+                        return (
+                          <tr class="text-muted-foreground bg-muted/20">
+                            <td class="w-10 border-r border-border/40"></td>
+                            <td class="w-10 border-r border-border/40"></td>
+                            <td class="px-3 py-0.5 whitespace-pre">{line.text}</td>
+                          </tr>
+                        );
+                      }
 
-                  return (
-                    <div class={`px-3 py-0.5 whitespace-pre font-mono text-[11px] ${lineStyle} ${bgStyle}`}>
-                      {line || " "}
-                    </div>
-                  );
-                }}
-              </For>
+                      let lineStyle = "text-foreground";
+                      let bgStyle = "";
+
+                      if (line.type === "add") {
+                        lineStyle = "text-emerald-600 dark:text-emerald-400 font-medium";
+                        bgStyle = "bg-emerald-500/10";
+                      } else if (line.type === "delete") {
+                        lineStyle = "text-rose-600 dark:text-rose-400 font-medium";
+                        bgStyle = "bg-rose-500/10";
+                      }
+
+                      return (
+                        <tr class={`hover:bg-muted/30 ${bgStyle}`}>
+                          {/* Old Line Number */}
+                          <td class="w-10 text-right pr-2 py-0.5 text-[10px] text-muted-foreground/60 select-none border-r border-border/40">
+                            {line.oldLine ?? ""}
+                          </td>
+                          {/* New Line Number */}
+                          <td class="w-10 text-right pr-2 py-0.5 text-[10px] text-muted-foreground/60 select-none border-r border-border/40">
+                            {line.newLine ?? ""}
+                          </td>
+                          {/* Content */}
+                          <td class={`px-3 py-0.5 whitespace-pre ${lineStyle}`}>
+                            {line.text || " "}
+                          </td>
+                        </tr>
+                      );
+                    }}
+                  </For>
+                </tbody>
+              </table>
             </div>
           </div>
         )}

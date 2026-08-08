@@ -244,6 +244,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleGitDiff(w, req)
 	case protocol.KindGitCommit:
 		s.handleGitCommit(w, req)
+	case protocol.KindGitStage:
+		s.handleGitStage(w, req)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
 	}
@@ -722,7 +724,7 @@ func (s *Server) handleGitLog(w io.Writer, req protocol.Request) {
 }
 
 func (s *Server) handleGitDiff(w io.Writer, req protocol.Request) {
-	diffRes, err := s.backend.GitDiff(req.Project, req.Hash)
+	diffRes, err := s.backend.GitDiff(req.Project, req.Hash, req.ContextLines)
 	if err != nil {
 		_ = writeError(w, err.Error())
 		return
@@ -736,6 +738,17 @@ func (s *Server) handleGitDiff(w io.Writer, req protocol.Request) {
 
 func (s *Server) handleGitCommit(w io.Writer, req protocol.Request) {
 	if err := s.backend.GitCommit(req.Project, req.Message); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:    protocol.KindDone,
+		Project: req.Project,
+	})
+}
+
+func (s *Server) handleGitStage(w io.Writer, req protocol.Request) {
+	if err := s.backend.GitStage(req.Project, req.Path, req.StageAll, req.Unstage); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}

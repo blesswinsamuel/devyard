@@ -463,6 +463,17 @@ function start() {
     setSelectedCommitHash((m) => ({ ...m, [project]: null }));
     loadGitLog(project);
   });
+  onWS("git_stage_result", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    // Clear diff cache for WORKDIR and reload WORKDIR diff
+    setGitDiffs((m) => {
+      const copy = { ...(m[project] ?? {}) };
+      delete copy["WORKDIR"];
+      return { ...m, [project]: copy };
+    });
+    loadGitDiff(project, "WORKDIR", undefined, true);
+  });
   onWS("action_states", (resp) => {
     if (!resp.project) return;
     const project = resp.project;
@@ -1081,12 +1092,17 @@ export function loadGitLog(name: string) {
 }
 
 /** Fetch diff for a commit in a project. */
-export function loadGitDiff(project: string, hash: string) {
+export function loadGitDiff(project: string, hash: string, contextLines?: number, forceRefresh?: boolean) {
   const existing = gitDiffs()[project]?.[hash];
-  if (existing) return;
+  if (existing && !forceRefresh && !contextLines) return;
   setGitDiffLoading((m) => ({ ...m, [project]: true }));
   setGitDiffError((m) => ({ ...m, [project]: "" }));
-  sendWS({ type: "git_diff", project, hash });
+  sendWS({ type: "git_diff", project, hash, context_lines: contextLines });
+}
+
+/** Stage or unstage a file or all files in the working directory. */
+export function stageGitFile(project: string, path: string, unstage?: boolean, stageAll?: boolean) {
+  sendWS({ type: "git_stage", project, path, unstage, stage_all: stageAll });
 }
 
 /** Select a commit hash in the git view and fetch its diff. */

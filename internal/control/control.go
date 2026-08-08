@@ -42,9 +42,11 @@ type MultiBackend interface {
 	GitLog(project string) ([]protocol.GitCommit, error)
 	// GitDiff returns the commit metadata, changed files list, and diff for hash
 	// in the named project's working directory.
-	GitDiff(project string, hash string) (*protocol.GitDiffResult, error)
+	GitDiff(project string, hash string, contextLines ...int) (*protocol.GitDiffResult, error)
 	// GitCommit stages changes and creates a commit with message in the project's repository.
 	GitCommit(project string, message string) error
+	// GitStage stages or unstages files in the project's repository.
+	GitStage(project string, path string, stageAll bool, unstage bool) error
 	// SetOnStateChange registers a callback that is invoked whenever any
 	// project's service state changes. The project name and the
 	// per-service state snapshot are passed. Implementations that do not
@@ -82,7 +84,7 @@ func (s SingleProjectBackend) GitLog(string) ([]protocol.GitCommit, error) {
 	return gitlog.Log(dir)
 }
 
-func (s SingleProjectBackend) GitDiff(_ string, hash string) (*protocol.GitDiffResult, error) {
+func (s SingleProjectBackend) GitDiff(_ string, hash string, contextLines ...int) (*protocol.GitDiffResult, error) {
 	dir := s.GitDir
 	if dir == "" {
 		dir, _ = os.Getwd()
@@ -90,7 +92,7 @@ func (s SingleProjectBackend) GitDiff(_ string, hash string) (*protocol.GitDiffR
 	if !gitlog.IsRepo(dir) {
 		return nil, fmt.Errorf("project %q is not a git repository", s.Project)
 	}
-	return gitlog.Diff(dir, hash)
+	return gitlog.Diff(dir, hash, contextLines...)
 }
 
 func (s SingleProjectBackend) GitCommit(_ string, message string) error {
@@ -102,6 +104,17 @@ func (s SingleProjectBackend) GitCommit(_ string, message string) error {
 		return fmt.Errorf("project %q is not a git repository", s.Project)
 	}
 	return gitlog.Commit(dir, message)
+}
+
+func (s SingleProjectBackend) GitStage(_ string, path string, stageAll bool, unstage bool) error {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	if !gitlog.IsRepo(dir) {
+		return fmt.Errorf("project %q is not a git repository", s.Project)
+	}
+	return gitlog.Stage(dir, path, stageAll, unstage)
 }
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {

@@ -1044,7 +1044,7 @@ function DiffViewer(props: {
           parsedLines.push({ type: "delete", text: line, oldLine: oldLineNum++ });
         } else if (line.startsWith(" ") || line === "") {
           parsedLines.push({ type: "context", text: line, oldLine: oldLineNum++, newLine: newLineNum++ });
-        } else {
+        } else if (!line.startsWith("--- ") && !line.startsWith("+++ ")) {
           metaLines.push(line);
         }
       }

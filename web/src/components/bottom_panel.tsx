@@ -11,7 +11,7 @@ import {
   panelMaximized,
   togglePanelMaximized,
 } from "~/store";
-import { ShellWorkspace } from "~/components/shell_workspace";
+import { ShellWorkspace, ShellTabBar } from "~/components/shell_workspace";
 import { Button } from "~/components/ui/button";
 
 export function BottomPanel() {
@@ -58,24 +58,17 @@ export function BottomPanel() {
         </Show>
 
         {/* Panel Header */}
-        <div class="flex h-9 shrink-0 items-center justify-between border-b border-border/60 bg-muted/30 px-3 text-xs">
-          {/* Left Tabs */}
-          <div class="flex items-center gap-1">
-            <button
-              class="flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors cursor-pointer"
-              classList={{
-                "bg-background text-foreground shadow-sm": panelTab() === "shell",
-                "text-muted-foreground hover:text-foreground": panelTab() !== "shell",
-              }}
-              onClick={() => openPanelTab("shell")}
-            >
-              <SquareTerminal class="size-3.5" />
-              <span>Shell</span>
-            </button>
+        <div class="flex h-9 shrink-0 items-center justify-between border-b border-border/60 bg-muted/30 px-2 text-xs">
+          {/* Left Tabs / Shell Tabs */}
+          <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto">
+            <SquareTerminal class="size-4 shrink-0 text-muted-foreground ml-1 mr-0.5" />
+            <Show when={panelTab() === "shell"}>
+              <ShellTabBar />
+            </Show>
           </div>
 
           {/* Right Action Controls */}
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 shrink-0 ml-2">
             <Button
               variant="ghost"
               size="icon"
@@ -109,3 +102,4 @@ export function BottomPanel() {
     </Show>
   );
 }
+

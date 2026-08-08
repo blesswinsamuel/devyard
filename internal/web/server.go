@@ -502,7 +502,7 @@ func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req
 		}
 		// A previous run is a completed run, so it is never followed and never
 		// rotates: stream its content once and stop.
-		streamLogFile(c, subCtx, path, req.Project, req.Service, "", req.Previous, false)
+		streamLogFile(c, subCtx, path, req.Project, req.Service, "", req.Previous, !req.Previous)
 	}()
 }
 
@@ -553,7 +553,7 @@ func (s *Server) handleSubscribeActionLogs(c *websocket.Conn, ctx context.Contex
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		streamLogFile(c, subCtx, path, req.Project, "", req.Action, req.Previous, false)
+		streamLogFile(c, subCtx, path, req.Project, "", req.Action, req.Previous, !req.Previous)
 	}()
 }
 
@@ -672,16 +672,15 @@ func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, servic
 	}
 
 	flush := func(chunk []byte) {
-		data := append(leftover, chunk...)
-		leftover = leftover[:0]
+		leftover = append(leftover, chunk...)
 		for {
-			i := indexByte(data, '\n')
+			i := indexByte(leftover, '\n')
 			if i < 0 {
-				leftover = append(leftover, data...)
 				return
 			}
-			sendLine(string(data[:i]))
-			data = data[i+1:]
+			line := string(leftover[:i])
+			leftover = append([]byte(nil), leftover[i+1:]...)
+			sendLine(line)
 		}
 	}
 

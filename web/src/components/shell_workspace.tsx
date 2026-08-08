@@ -166,7 +166,7 @@ function PaneTree(props: { node: PaneNode; project: string; active: boolean }) {
   );
 }
 
-export function ShellWorkspace() {
+export function ShellTabBar() {
   const project = () => selectedProject();
   const shellState = createMemo(() => {
     const p = project();
@@ -217,70 +217,81 @@ export function ShellWorkspace() {
 
   return (
     <Show when={project() && shellState()}>
-      <div class="flex h-full w-full flex-col bg-background">
-        {/* Tab Bar */}
-        <div
-          class="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-muted/20 px-2 overflow-x-auto transition-colors"
-          classList={{
-            "bg-primary/10 border-primary/40": isTabBarDropTarget(),
-          }}
-          onDragOver={handleTabBarDragOver}
-          onDragLeave={() => setIsTabBarDropTarget(false)}
-          onDrop={handleTabBarDrop}
-        >
-          <For each={shellState()!.tabs}>
-            {(tab, idx) => {
-              const isActive = () => tab.id === shellState()!.activeTabId;
-              const isOver = () => dragOverTabIndex() === idx();
-              return (
-                <div
-                  class="group flex h-7 items-center gap-1.5 rounded-t border px-2.5 text-xs transition-all cursor-pointer select-none"
-                  classList={{
-                    "border-border bg-background font-medium text-foreground": isActive(),
-                    "border-transparent bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground": !isActive(),
-                    "border-primary text-primary": isOver(),
+      <div
+        class="flex items-center gap-1 overflow-x-auto transition-colors"
+        classList={{
+          "bg-primary/10 rounded px-1": isTabBarDropTarget(),
+        }}
+        onDragOver={handleTabBarDragOver}
+        onDragLeave={() => setIsTabBarDropTarget(false)}
+        onDrop={handleTabBarDrop}
+      >
+        <For each={shellState()!.tabs}>
+          {(tab, idx) => {
+            const isActive = () => tab.id === shellState()!.activeTabId;
+            const isOver = () => dragOverTabIndex() === idx();
+            return (
+              <div
+                class="group flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs transition-all cursor-pointer select-none shrink-0"
+                classList={{
+                  "border-border bg-background font-medium text-foreground shadow-sm": isActive(),
+                  "border-transparent bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground": !isActive(),
+                  "border-primary text-primary": isOver(),
+                }}
+                draggable="true"
+                onDragStart={(e) => handleTabDragStart(idx(), e)}
+                onDragOver={(e) => handleTabDragOver(idx(), e)}
+                onDragLeave={() => setDragOverTabIndex(null)}
+                onDrop={(e) => handleTabDrop(idx(), e)}
+                onClick={() => selectShellTab(project()!, tab.id)}
+              >
+                <span>{tab.title}</span>
+                <button
+                  type="button"
+                  class="flex size-4 items-center justify-center rounded-full p-0 text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground hover:opacity-100 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeShellTab(project()!, tab.id);
                   }}
-                  draggable="true"
-                  onDragStart={(e) => handleTabDragStart(idx(), e)}
-                  onDragOver={(e) => handleTabDragOver(idx(), e)}
-                  onDragLeave={() => setDragOverTabIndex(null)}
-                  onDrop={(e) => handleTabDrop(idx(), e)}
-                  onClick={() => selectShellTab(project()!, tab.id)}
+                  title="Close Tab"
                 >
-                  <span>{tab.title}</span>
-                  <button
-                    type="button"
-                    class="flex size-4 items-center justify-center rounded-full p-0 text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeShellTab(project()!, tab.id);
-                    }}
-                    title="Close Tab"
-                  >
-                    <X class="size-3" />
-                  </button>
-                </div>
-              );
-            }}
-          </For>
+                  <X class="size-3" />
+                </button>
+              </div>
+            );
+          }}
+        </For>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            class="size-7 rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-            onClick={() => addShellTab(project()!)}
-            title={isTabBarDropTarget() ? "Drop pane here to create tab" : "New Terminal Tab"}
-          >
-            <Plus class="size-4" />
-          </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          class="size-7 rounded text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
+          onClick={() => addShellTab(project()!)}
+          title={isTabBarDropTarget() ? "Drop pane here to create tab" : "New Terminal Tab"}
+        >
+          <Plus class="size-4" />
+        </Button>
 
-          <Show when={isTabBarDropTarget()}>
-            <span class="text-xs text-primary font-medium animate-pulse ml-2">
-              Drop pane here to move to new tab
-            </span>
-          </Show>
-        </div>
+        <Show when={isTabBarDropTarget()}>
+          <span class="text-xs text-primary font-medium animate-pulse ml-2 whitespace-nowrap">
+            Drop pane here to move to new tab
+          </span>
+        </Show>
+      </div>
+    </Show>
+  );
+}
 
+export function ShellWorkspace() {
+  const project = () => selectedProject();
+  const shellState = createMemo(() => {
+    const p = project();
+    return p ? getProjectShellState(p) : null;
+  });
+
+  return (
+    <Show when={project() && shellState()}>
+      <div class="flex h-full w-full flex-col bg-background">
         {/* Workspace Content: Render all tabs, toggle hidden for inactive ones */}
         <div class="relative min-h-0 flex-1 p-1">
           <For each={shellState()!.tabs}>
@@ -301,3 +312,4 @@ export function ShellWorkspace() {
     </Show>
   );
 }
+

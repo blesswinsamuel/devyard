@@ -514,7 +514,7 @@ func TestWSSubscribePreviousLogs(t *testing.T) {
 	srv := newWebServer(t, m)
 
 	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "subscribe_logs", "project": "api", "service": "web", "prev": "true"})
+	sendWSMsg(t, c, map[string]any{"type": "subscribe_logs", "project": "api", "service": "web", "prev": true})
 
 	// The previous run's stored content is streamed once and tagged prev, not
 	// the live (current) file's content.

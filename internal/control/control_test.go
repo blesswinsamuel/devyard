@@ -1044,6 +1044,22 @@ func (m *fakeMultiBackend) StopDaemon() error {
 	return nil
 }
 
+func (m *fakeMultiBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
+	return &protocol.DaemonInfo{
+		PID:         1234,
+		StartTime:   time.Now(),
+		Goroutines:  10,
+		MemoryAlloc: 1024,
+		MemorySys:   2048,
+		MemoryRss:   4096,
+		GoVersion:   "go1.26.0",
+	}, nil
+}
+
+func (m *fakeMultiBackend) RestartDaemon() error {
+	return m.StopDaemon()
+}
+
 func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1262,7 +1278,41 @@ func TestStopDaemonRequiresNoFields(t *testing.T) {
 		t.Fatalf("Recv: %v", err)
 	}
 	if resp.Kind != protocol.KindDone {
-		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindDone)
+		t.Fatalf("resp.Kind = %q, want %q", resp.Kind, protocol.KindDone)
+	}
+}
+
+func TestDaemonStatusAndRestart(t *testing.T) {
+	m := newFakeMultiBackend()
+	srv := newMultiServer(t, m)
+
+	c1, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c1.Close() }()
+
+	info, err := c1.DaemonStatus()
+	if err != nil {
+		t.Fatalf("DaemonStatus: %v", err)
+	}
+	if info.PID != 1234 || info.GoVersion == "" {
+		t.Errorf("DaemonStatus = %+v, want PID=1234 and non-empty GoVersion", info)
+	}
+
+	c2, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c2.Close() }()
+
+	if err := c2.RestartDaemon(); err != nil {
+		t.Fatalf("RestartDaemon: %v", err)
+	}
+	select {
+	case <-m.daemonStopCh:
+	case <-time.After(time.Second):
+		t.Fatal("RestartDaemon did not trigger daemonStopCh")
 	}
 }
 

@@ -104,6 +104,22 @@ func (m *fakeMultiBackend) StopDaemon() error {
 	return nil
 }
 
+func (m *fakeMultiBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
+	return &protocol.DaemonInfo{
+		PID:         1234,
+		StartTime:   time.Now(),
+		Goroutines:  10,
+		MemoryAlloc: 1024,
+		MemorySys:   2048,
+		MemoryRss:   4096,
+		GoVersion:   "go1.26.0",
+	}, nil
+}
+
+func (m *fakeMultiBackend) RestartDaemon() error {
+	return m.StopDaemon()
+}
+
 func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

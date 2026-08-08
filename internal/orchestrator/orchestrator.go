@@ -10,15 +10,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/control"
+	"github.com/blesswinsamuel/local-compose/internal/daemon"
 	"github.com/blesswinsamuel/local-compose/internal/dag"
 	"github.com/blesswinsamuel/local-compose/internal/gitlog"
 	"github.com/blesswinsamuel/local-compose/internal/gitwatcher"
+	"github.com/blesswinsamuel/local-compose/internal/procstat"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
@@ -67,8 +71,10 @@ func (p *Project) Status() string {
 // Daemon owns multiple project supervisors and implements control.MultiBackend.
 // It is the core of the global daemon process.
 type Daemon struct {
-	mu       sync.Mutex
-	projects map[string]*Project
+	mu        sync.Mutex
+	projects  map[string]*Project
+	startTime time.Time
+	pid       int
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -84,9 +90,11 @@ type Daemon struct {
 // New creates a Daemon with no projects. Call StartProject to add projects.
 func New() *Daemon {
 	d := &Daemon{
-		projects: make(map[string]*Project),
-		stopCh:   make(chan struct{}),
-		exited:   make(chan struct{}),
+		projects:  make(map[string]*Project),
+		stopCh:    make(chan struct{}),
+		exited:    make(chan struct{}),
+		startTime: time.Now(),
+		pid:       os.Getpid(),
 	}
 	w, err := gitwatcher.New(func(project string) {
 		d.mu.Lock()
@@ -543,6 +551,48 @@ func (d *Daemon) StopDaemon() error {
 		_ = d.watcher.Close()
 	}
 
+	return nil
+}
+
+// DaemonStatus returns metrics and status information about the global daemon process.
+func (d *Daemon) DaemonStatus() (*protocol.DaemonInfo, error) {
+	d.mu.Lock()
+	pid := d.pid
+	startTime := d.startTime
+	d.mu.Unlock()
+
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	var rss uint64
+	if s, ok := procstat.SampleGroup(pid); ok {
+		rss = s.RSS
+	}
+
+	return &protocol.DaemonInfo{
+		PID:         pid,
+		StartTime:   startTime,
+		Goroutines:  runtime.NumGoroutine(),
+		MemoryAlloc: mem.Alloc,
+		MemorySys:   mem.Sys,
+		MemoryRss:   rss,
+		GoVersion:   runtime.Version(),
+	}, nil
+}
+
+// RestartDaemon spawns a replacement daemon process and shuts down the running daemon.
+func (d *Daemon) RestartDaemon() error {
+	locs, err := project.ResolveDaemon()
+	if err != nil {
+		return fmt.Errorf("resolve daemon locations: %w", err)
+	}
+	if _, err := daemon.SpawnDaemon(locs); err != nil {
+		return fmt.Errorf("spawn replacement daemon: %w", err)
+	}
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = d.StopDaemon()
+	}()
 	return nil
 }
 

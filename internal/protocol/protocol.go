@@ -43,6 +43,8 @@ const (
 	KindGitDiff          RequestKind = "git_diff"           // get diff and changed files for a commit
 	KindGitCommit        RequestKind = "git_commit"         // create a new git commit for uncommitted changes
 	KindGitStage         RequestKind = "git_stage"          // stage or unstage files
+	KindDaemonStatus     RequestKind = "daemon_status"      // get global daemon status and runtime stats
+	KindRestartDaemon    RequestKind = "restart_daemon"     // restart the global daemon process
 )
 
 // Request is a client -> daemon message.
@@ -110,9 +112,21 @@ const (
 	KindLogLine      ResponseKind = "log_line"      // one line of a service's log or action output
 	KindLogContent   ResponseKind = "log_content"   // bulk: existing log history (possibly tailed)
 	KindLogRotated   ResponseKind = "log_rotated"   // a new run started; the previous run's lines are over
+	KindDaemonInfo   ResponseKind = "daemon_status" // global daemon status and runtime metrics
 	KindDone         ResponseKind = "done"          // request complete, no more frames
 	KindError        ResponseKind = "error"         // an error occurred (Error has text)
 )
+
+// DaemonInfo is the wire form of global daemon status and runtime metrics.
+type DaemonInfo struct {
+	PID         int       `json:"pid"`
+	StartTime   time.Time `json:"start_time"`
+	Goroutines  int       `json:"goroutines"`
+	MemoryAlloc uint64    `json:"memory_alloc"`
+	MemorySys   uint64    `json:"memory_sys"`
+	MemoryRss   uint64    `json:"memory_rss"`
+	GoVersion   string    `json:"go_version"`
+}
 
 // ServiceState is the wire form of a service snapshot. Time fields are encoded
 // as RFC3339Nano strings (empty when zero) so the struct is self-contained
@@ -255,6 +269,7 @@ type Response struct {
 	GitTags        []GitTag       `json:"git_tags,omitempty"`         // Kind==KindGitCommits
 	GitStashes     []GitStash     `json:"git_stashes,omitempty"`      // Kind==KindGitCommits
 	GitDiff        *GitDiffResult `json:"git_diff,omitempty"`         // Kind==KindGitDiff
+	DaemonInfo     *DaemonInfo    `json:"daemon_info,omitempty"`      // Kind==KindDaemonStatus
 	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
 	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)
 	Action         string         `json:"action,omitempty"`           // Kind==KindLogLine (which action)

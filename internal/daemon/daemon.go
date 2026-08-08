@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/project"
 )
@@ -50,15 +51,23 @@ func LockDaemon(locs *project.DaemonLocations) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("daemon: open lock file: %w", err)
 	}
-	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-	if err != nil {
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return f, nil
+		}
+		if (errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)) && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
 		_ = f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
 			return nil, errors.New("another daemon process is already running")
 		}
 		return nil, fmt.Errorf("daemon: flock lock file: %w", err)
 	}
-	return f, nil
 }
 
 // ReadPidfile reads and parses the pidfile at path. It returns the pid and an

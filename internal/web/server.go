@@ -290,6 +290,10 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleGitCommit(c, ctx, req)
 	case "git_stage":
 		s.handleGitStage(c, ctx, req)
+	case "daemon_status":
+		s.handleDaemonStatus(c, ctx)
+	case "restart_daemon":
+		s.handleRestartDaemon(c, ctx)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -345,6 +349,24 @@ func (s *Server) handleListProjects(c *websocket.Conn, ctx context.Context) {
 	projects := s.backend.ListProjects()
 	data, _ := json.Marshal(projects)
 	s.send(c, ctx, wsResponse{Type: "projects", Data: data})
+}
+
+func (s *Server) handleDaemonStatus(c *websocket.Conn, ctx context.Context) {
+	info, err := s.backend.DaemonStatus()
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	data, _ := json.Marshal(info)
+	s.send(c, ctx, wsResponse{Type: "daemon_status", Data: data})
+}
+
+func (s *Server) handleRestartDaemon(c *websocket.Conn, ctx context.Context) {
+	if err := s.backend.RestartDaemon(); err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "done", Ok: true})
 }
 
 func (s *Server) handleListServices(c *websocket.Conn, ctx context.Context, req *wsRequest) {

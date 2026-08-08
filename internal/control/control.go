@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
+	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/gitlog"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
@@ -32,6 +34,10 @@ type MultiBackend interface {
 	RemoveProject(name string) error
 	// StopDaemon stops all projects and signals the daemon to exit.
 	StopDaemon() error
+	// DaemonStatus returns current daemon status and runtime metrics.
+	DaemonStatus() (*protocol.DaemonInfo, error)
+	// RestartDaemon restarts the daemon process.
+	RestartDaemon() error
 	// ProjectBackend returns the Backend for the named project, or an
 	// error if the project is not running. An empty project name is valid
 	// for single-project servers.
@@ -146,6 +152,23 @@ func (s SingleProjectBackend) RemoveProject(name string) error {
 }
 
 func (s SingleProjectBackend) StopDaemon() error {
+	return s.Stop(context.Background())
+}
+
+func (s SingleProjectBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	return &protocol.DaemonInfo{
+		PID:         os.Getpid(),
+		StartTime:   time.Now(),
+		Goroutines:  runtime.NumGoroutine(),
+		MemoryAlloc: mem.Alloc,
+		MemorySys:   mem.Sys,
+		GoVersion:   runtime.Version(),
+	}, nil
+}
+
+func (s SingleProjectBackend) RestartDaemon() error {
 	return s.Stop(context.Background())
 }
 

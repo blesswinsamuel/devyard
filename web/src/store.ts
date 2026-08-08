@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, GitBranch, GitTag, GitStash, GitLogPayload, ViewMode, ShellTab, PaneNode } from "./types";
+import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, GitBranch, GitTag, GitStash, GitLogPayload, ViewMode, ShellTab, PaneNode, DaemonInfo } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 import { parseRoute, pushRoute, replaceRoute, listenPopState } from "./router";
 
@@ -38,7 +38,9 @@ const [gitDiffLoading, setGitDiffLoading] = createSignal<Record<string, boolean>
 const [gitDiffError, setGitDiffError] = createSignal<Record<string, string>>({});
 const [gitCommitLoading, setGitCommitLoading] = createSignal<Record<string, boolean>>({});
 const [gitCommitError, setGitCommitError] = createSignal<Record<string, string>>({});
+const [daemonInfo, setDaemonInfo] = createSignal<DaemonInfo | null>(null);
 export {
+  daemonInfo,
   actions,
   actionStates,
   gitCommits,
@@ -319,6 +321,7 @@ function refreshServicesForVisible() {
 
 function refreshAll() {
   sendWS({ type: "list_projects" });
+  sendWS({ type: "daemon_status" });
   refreshServicesForVisible();
 }
 
@@ -383,6 +386,12 @@ function start() {
       setSelectedAction(null);
       setActiveView("logs");
       setKeyboardCursor(null);
+    }
+  });
+
+  onWS("daemon_status", (resp) => {
+    if (resp.data) {
+      setDaemonInfo(resp.data as DaemonInfo);
     }
   });
 
@@ -1184,6 +1193,16 @@ export function closeGitView() {
   } else {
     pushRoute({ project: null, service: null, action: null });
   }
+}
+
+/** Request an explicit daemon status refresh. */
+export function fetchDaemonStatus() {
+  sendWS({ type: "daemon_status" });
+}
+
+/** Request daemon restart over WebSocket. */
+export function restartDaemon() {
+  sendWS({ type: "restart_daemon" });
 }
 
 export {

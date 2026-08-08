@@ -121,6 +121,16 @@ export interface WSRequest {
   context_lines?: number;
 }
 
+export interface DaemonInfo {
+  pid: number;
+  start_time: string;
+  goroutines: number;
+  memory_alloc: number;
+  memory_sys: number;
+  memory_rss: number;
+  go_version: string;
+}
+
 export interface WSResponse {
   type: string;
   project?: string;
@@ -134,7 +144,8 @@ export interface WSResponse {
     | ActionState
     | GitCommit[]
     | GitLogPayload
-    | GitDiffResult;
+    | GitDiffResult
+    | DaemonInfo;
   line?: string;
   ok?: boolean;
   error?: string;

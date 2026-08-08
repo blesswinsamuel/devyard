@@ -29,6 +29,9 @@ import {
   setTheme,
   wsStatus,
   toggleHelp,
+  daemonInfo,
+  fetchDaemonStatus,
+  restartDaemon,
 } from "~/store";
 import { statusDot, statusTone, healthDot, serviceMeta } from "~/lib/status";
 import { cn } from "~/lib/utils";
@@ -552,19 +555,162 @@ function AddProjectModal(props: { open: boolean; onClose: () => void }) {
   );
 }
 
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatUptime(startTimeStr?: string): string {
+  if (!startTimeStr) return "N/A";
+  const start = new Date(startTimeStr).getTime();
+  if (isNaN(start)) return "N/A";
+  const diffSec = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  if (diffSec < 60) return `${diffSec}s`;
+  const mins = Math.floor(diffSec / 60);
+  if (mins < 60) return `${mins}m ${diffSec % 60}s`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ${mins % 60}m`;
+}
+
+function DaemonStatusModal(props: { open: boolean; onClose: () => void }) {
+  const [restarting, setRestarting] = createSignal(false);
+
+  const handleRestart = () => {
+    setRestarting(true);
+    restartDaemon();
+    setTimeout(() => {
+      setRestarting(false);
+      props.onClose();
+    }, 2000);
+  };
+
+  return (
+    <Show when={props.open}>
+      <div
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) props.onClose();
+        }}
+      >
+        <div class="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-lg">
+          <div class="flex items-center justify-between pb-3 border-b border-border mb-4">
+            <div class="flex items-center gap-2">
+              <Boxes class="size-5 text-primary" />
+              <h3 class="font-semibold text-base">Daemon Status</h3>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => props.onClose()}
+            >
+              <X class="size-4" />
+            </Button>
+          </div>
+
+          <div class="space-y-3 text-sm">
+            <div class="flex justify-between items-center py-1 border-b border-border/40">
+              <span class="text-muted-foreground">Status</span>
+              <span class="flex items-center gap-1.5 font-medium">
+                <WsDot />
+                <span class="capitalize">{wsStatus()}</span>
+              </span>
+            </div>
+
+            <Show when={daemonInfo()}>
+              {(info) => (
+                <>
+                  <div class="flex justify-between items-center py-1 border-b border-border/40">
+                    <span class="text-muted-foreground">Process ID (PID)</span>
+                    <span class="font-mono">{info().pid}</span>
+                  </div>
+                  <div class="flex justify-between items-center py-1 border-b border-border/40">
+                    <span class="text-muted-foreground">Uptime</span>
+                    <span class="font-mono">{formatUptime(info().start_time)}</span>
+                  </div>
+                  <div class="flex justify-between items-center py-1 border-b border-border/40">
+                    <span class="text-muted-foreground">Goroutines</span>
+                    <span class="font-mono">{info().goroutines}</span>
+                  </div>
+                  <div class="flex justify-between items-center py-1 border-b border-border/40">
+                    <span class="text-muted-foreground">Memory (Alloc / RSS)</span>
+                    <span class="font-mono">
+                      {formatBytes(info().memory_alloc)} / {formatBytes(info().memory_rss)}
+                    </span>
+                  </div>
+                  <div class="flex justify-between items-center py-1 border-b border-border/40">
+                    <span class="text-muted-foreground">Go Version</span>
+                    <span class="font-mono text-xs">{info().go_version}</span>
+                  </div>
+                </>
+              )}
+            </Show>
+          </div>
+
+          <div class="flex justify-between items-center pt-5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchDaemonStatus()}
+              title="Refresh daemon status"
+            >
+              <RefreshCw class="size-3.5 mr-1" />
+              Refresh Stats
+            </Button>
+
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={restarting()}
+              onClick={handleRestart}
+            >
+              <RotateCcw class="size-3.5 mr-1" />
+              {restarting() ? "Restarting..." : "Restart Daemon"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Show>
+  );
+}
+
 export function Sidebar() {
   const projectNames = createMemo(() => projects().map((p) => p.name));
   const [showAddModal, setShowAddModal] = createSignal(false);
+  const [showDaemonModal, setShowDaemonModal] = createSignal(false);
 
   return (
     <aside class="flex h-full w-72 shrink-0 flex-col border-r border-border bg-card">
-      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-        <Boxes class="size-5 text-primary" />
-        <span class="font-semibold tracking-wide">local-compose</span>
-        <span class="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+      <header class="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
+        <button
+          type="button"
+          onClick={() => {
+            fetchDaemonStatus();
+            setShowDaemonModal(true);
+          }}
+          class="flex items-center gap-2 text-left hover:opacity-80 focus-visible:outline-none"
+          title="View Daemon Status"
+        >
+          <Boxes class="size-5 text-primary" />
+          <span class="font-semibold tracking-wide">local-compose</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            fetchDaemonStatus();
+            setShowDaemonModal(true);
+          }}
+          class="flex items-center gap-1.5 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none"
+          title="Daemon Status & Settings"
+        >
           <WsDot />
-          {wsStatus()}
-        </span>
+          <span class="capitalize">{wsStatus()}</span>
+          <Show when={daemonInfo()?.pid}>
+            <span class="font-mono text-[10px] text-muted-foreground/70">pid:{daemonInfo()?.pid}</span>
+          </Show>
+        </button>
       </header>
 
       <nav
@@ -610,6 +756,7 @@ export function Sidebar() {
       </footer>
 
       <AddProjectModal open={showAddModal()} onClose={() => setShowAddModal(false)} />
+      <DaemonStatusModal open={showDaemonModal()} onClose={() => setShowDaemonModal(false)} />
     </aside>
   );
 }

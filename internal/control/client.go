@@ -149,6 +149,32 @@ func (c *Client) StopDaemon() error {
 	return c.awaitDone()
 }
 
+// DaemonStatus requests the global daemon's status and runtime metrics.
+func (c *Client) DaemonStatus() (*protocol.DaemonInfo, error) {
+	if err := c.Send(protocol.Request{Kind: protocol.KindDaemonStatus}); err != nil {
+		return nil, err
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.Kind == protocol.KindError {
+		return nil, errors.New(resp.Error)
+	}
+	if resp.Kind != protocol.KindDaemonInfo || resp.DaemonInfo == nil {
+		return nil, fmt.Errorf("unexpected response kind %q", resp.Kind)
+	}
+	return resp.DaemonInfo, nil
+}
+
+// RestartDaemon sends a RestartDaemon request, causing the daemon to spawn a replacement daemon and exit.
+func (c *Client) RestartDaemon() error {
+	if err := c.Send(protocol.Request{Kind: protocol.KindRestartDaemon}); err != nil {
+		return err
+	}
+	return c.awaitDone()
+}
+
 // Stop sends a Stop request for the given project (stops all services in that
 // project) and waits for confirmation.
 func (c *Client) Stop(project string) error {

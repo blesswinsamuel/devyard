@@ -232,6 +232,10 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleRemoveProject(w, req)
 	case protocol.KindStopDaemon:
 		s.handleStopDaemon(w)
+	case protocol.KindDaemonStatus:
+		s.handleDaemonStatus(w)
+	case protocol.KindRestartDaemon:
+		s.handleRestartDaemon(w)
 	case protocol.KindListActions:
 		s.handleListActions(w, req)
 	case protocol.KindListActionStates:
@@ -493,6 +497,26 @@ func (s *Server) handleRemoveProject(w io.Writer, req protocol.Request) {
 
 func (s *Server) handleStopDaemon(w io.Writer) {
 	if err := s.backend.StopDaemon(); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+}
+
+func (s *Server) handleDaemonStatus(w io.Writer) {
+	info, err := s.backend.DaemonStatus()
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:       protocol.KindDaemonInfo,
+		DaemonInfo: info,
+	})
+}
+
+func (s *Server) handleRestartDaemon(w io.Writer) {
+	if err := s.backend.RestartDaemon(); err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}

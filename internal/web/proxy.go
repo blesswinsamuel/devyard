@@ -79,6 +79,10 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxyGitCommit(c, ctx, req)
 	case "git_stage":
 		s.proxyGitStage(c, ctx, req)
+	case "daemon_status":
+		s.proxyDaemonStatus(c, ctx)
+	case "restart_daemon":
+		s.proxyRestartDaemon(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -96,6 +100,33 @@ func (s *Server) proxyListProjects(c *websocket.Conn, ctx context.Context) {
 	}
 	data, _ := json.Marshal(resp.Projects)
 	s.send(c, ctx, wsResponse{Type: "projects", Data: data})
+}
+
+func (s *Server) proxyDaemonStatus(c *websocket.Conn, ctx context.Context) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindDaemonStatus})
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.sendError(c, ctx, resp.Error)
+		return
+	}
+	data, _ := json.Marshal(resp.DaemonInfo)
+	s.send(c, ctx, wsResponse{Type: "daemon_status", Data: data})
+}
+
+func (s *Server) proxyRestartDaemon(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindRestartDaemon})
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.sendError(c, ctx, resp.Error)
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "done", Ok: true})
 }
 
 func (s *Server) proxyListServices(c *websocket.Conn, ctx context.Context, req *wsRequest) {

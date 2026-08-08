@@ -997,6 +997,61 @@ interface ParsedFileChunk {
   lines: ParsedDiffLine[];
 }
 
+interface ParsedGitMeta {
+  blobs?: { oldHash: string; newHash: string };
+  fileMode?: string;
+  isExecutable?: boolean;
+  isNew?: boolean;
+  isDeleted?: boolean;
+  modeChange?: { oldMode: string; newMode: string };
+  raw: string[];
+}
+
+function parseGitMeta(metaLines: string[]): ParsedGitMeta {
+  const meta: ParsedGitMeta = { raw: metaLines };
+  let oldMode = "";
+  let newMode = "";
+
+  for (const line of metaLines) {
+    const indexMatch = line.match(/^index ([0-9a-fA-F]+)\.\.([0-9a-fA-F]+)(?: (\d+))?/);
+    if (indexMatch) {
+      meta.blobs = { oldHash: indexMatch[1], newHash: indexMatch[2] };
+      if (indexMatch[3]) {
+        const modeCode = indexMatch[3];
+        meta.fileMode = modeCode === "100755" ? "755 (Executable)" : "644";
+        meta.isExecutable = modeCode === "100755";
+      }
+    }
+
+    if (line.startsWith("new file mode ")) {
+      meta.isNew = true;
+      const m = line.replace("new file mode ", "").trim();
+      meta.fileMode = m === "100755" ? "755 (Executable)" : "644";
+      if (m === "100755") meta.isExecutable = true;
+    }
+
+    if (line.startsWith("deleted file mode ")) {
+      meta.isDeleted = true;
+    }
+
+    if (line.startsWith("old mode ")) {
+      oldMode = line.replace("old mode ", "").trim();
+    }
+    if (line.startsWith("new mode ")) {
+      newMode = line.replace("new mode ", "").trim();
+    }
+  }
+
+  if (oldMode && newMode) {
+    meta.modeChange = {
+      oldMode: oldMode === "100755" ? "755 (Executable)" : "644",
+      newMode: newMode === "100755" ? "755 (Executable)" : "644",
+    };
+  }
+
+  return meta;
+}
+
 function DiffViewer(props: {
   project: string;
   hash: string;
@@ -1114,24 +1169,38 @@ function DiffViewer(props: {
               </div>
             </div>
 
-            {/* Git Metadata Sub-Header (index, --- a/..., +++ b/...) */}
+            {/* Git Metadata Badges Sub-Header */}
             <Show when={chunk.metaLines.length > 0}>
-              <div class="px-3 py-1.5 bg-muted/20 border-b border-border/60 text-[11px] font-mono leading-relaxed space-y-0.5 select-text">
-                <For each={chunk.metaLines}>
-                  {(meta) => {
-                    if (meta.startsWith("--- ")) {
-                      return <div class="text-rose-600 dark:text-rose-400 font-medium">{meta}</div>;
-                    }
-                    if (meta.startsWith("+++ ")) {
-                      return <div class="text-emerald-600 dark:text-emerald-400 font-medium">{meta}</div>;
-                    }
-                    if (meta.startsWith("index ")) {
-                      return <div class="text-muted-foreground opacity-80">{meta}</div>;
-                    }
-                    return <div class="text-muted-foreground/70">{meta}</div>;
-                  }}
-                </For>
-              </div>
+              {(() => {
+                const meta = parseGitMeta(chunk.metaLines);
+                return (
+                  <div class="px-3 py-1.5 bg-muted/20 border-b border-border/60 text-[11px] flex flex-wrap items-center gap-2 select-text">
+                    <Show when={meta.blobs}>
+                      <span class="font-mono text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/60">
+                        Object: {meta.blobs!.oldHash.substring(0, 7)} → {meta.blobs!.newHash.substring(0, 7)}
+                      </span>
+                    </Show>
+
+                    <Show when={meta.isExecutable}>
+                      <Badge class="h-4 px-1.5 text-[10px] font-sans bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30">
+                        Executable (755)
+                      </Badge>
+                    </Show>
+
+                    <Show when={meta.modeChange}>
+                      <Badge class="h-4 px-1.5 text-[10px] font-sans bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                        Mode Changed: {meta.modeChange!.oldMode} → {meta.modeChange!.newMode}
+                      </Badge>
+                    </Show>
+
+                    <Show when={meta.fileMode && !meta.isExecutable && !meta.modeChange}>
+                      <span class="font-mono text-[10px] text-muted-foreground/70">
+                        Mode {meta.fileMode}
+                      </span>
+                    </Show>
+                  </div>
+                );
+              })()}
             </Show>
 
             {/* Code Lines Table with Dual Line Numbers Gutter */}

@@ -1095,11 +1095,12 @@ function DiffViewer(props: {
       const rawLines = part.split("\n");
       const headerLine = rawLines[0];
       let filePath = "";
-      const match = headerLine.match(/b\/(.+)$/);
+      const match = headerLine.match(/^a\/(.+?)\s+b\/(.+)$/);
       if (match) {
-        filePath = match[1];
+        filePath = match[2];
       } else {
-        filePath = headerLine;
+        const fallbackMatch = headerLine.match(/b\/(.+)$/);
+        filePath = fallbackMatch ? fallbackMatch[1] : headerLine;
       }
 
       const metaLines: string[] = [];

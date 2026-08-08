@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Send,
 } from "lucide-solid";
 import {
   selectedProject,
@@ -21,10 +22,13 @@ import {
   gitDiffs,
   gitDiffLoading,
   gitDiffError,
+  gitCommitLoading,
+  gitCommitError,
   closeGitView,
   loadGitLog,
   selectCommit,
   selectDiffFile,
+  commitGitChanges,
 } from "~/store";
 import type { GitCommit, GitFileChange } from "~/types";
 import { computeGitGraph, GRAPH_COLORS } from "~/lib/git_graph";
@@ -49,7 +53,6 @@ function formatRelativeTime(iso: string): string {
   return d.toLocaleDateString();
 }
 
-/** Status badge color mapping */
 function getStatusBadge(status: string) {
   const st = (status || "M").toUpperCase()[0];
   switch (st) {
@@ -75,8 +78,11 @@ export function GitView() {
 
   const [searchQuery, setSearchQuery] = createSignal("");
   const [fileSearchQuery, setFileSearchQuery] = createSignal("");
+  const [commitMessage, setCommitMessage] = createSignal("");
 
-  // DAG Graph layout map
+  const isCommitting = createMemo(() => (project() ? !!gitCommitLoading()[project()!] : false));
+  const commitErr = createMemo(() => (project() ? gitCommitError()[project()!] ?? "" : ""));
+
   const graphMap = createMemo(() => computeGitGraph(commits()));
   const maxColumns = createMemo(() => {
     let max = 1;
@@ -86,7 +92,6 @@ export function GitView() {
     return Math.min(max, 10);
   });
 
-  // Filtered commits based on search query
   const filteredCommits = createMemo(() => {
     const q = searchQuery().toLowerCase().trim();
     if (!q) return commits();
@@ -99,7 +104,6 @@ export function GitView() {
     );
   });
 
-  // Automatically select the first commit when log finishes loading if none selected
   createEffect(() => {
     const list = commits();
     const proj = project();
@@ -126,6 +130,15 @@ export function GitView() {
     if (!proj) return "";
     return gitDiffError()[proj] ?? "";
   });
+
+  const handleCommitSubmit = (e: Event) => {
+    e.preventDefault();
+    const proj = project();
+    const msg = commitMessage().trim();
+    if (!proj || !msg || isCommitting()) return;
+    commitGitChanges(proj, msg);
+    setCommitMessage("");
+  };
 
   return (
     <div class="flex h-full flex-col min-w-0 overflow-hidden bg-background text-foreground">
@@ -212,6 +225,7 @@ export function GitView() {
                     {(commit) => {
                       const isSelected = () => currentCommitHash() === commit.hash;
                       const graphInfo = () => graphMap().get(commit.hash);
+                      const isWorkdir = commit.hash === "WORKDIR";
                       const colWidth = 14;
                       const rowHeight = 44;
 
@@ -221,6 +235,8 @@ export function GitView() {
                           class={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors text-xs select-none ${
                             isSelected()
                               ? "bg-primary/10 border-l-2 border-primary"
+                              : isWorkdir
+                              ? "bg-amber-500/5 hover:bg-amber-500/10"
                               : "hover:bg-muted/40"
                           }`}
                         >
@@ -230,13 +246,14 @@ export function GitView() {
                             style={{ width: `${maxColumns() * colWidth}px` }}
                           >
                             <svg class="absolute inset-0 w-full h-full pointer-events-none">
-                              {/* Draw parent connection lines */}
                               {graphInfo()?.connections.map((conn) => {
                                 const x1 = conn.fromColumn * colWidth + colWidth / 2;
                                 const y1 = rowHeight / 2;
                                 const x2 = conn.toColumn * colWidth + colWidth / 2;
                                 const y2 = rowHeight;
-                                const strokeColor = GRAPH_COLORS[conn.colorIndex % GRAPH_COLORS.length];
+                                const strokeColor = isWorkdir
+                                  ? "#f59e0b"
+                                  : GRAPH_COLORS[conn.colorIndex % GRAPH_COLORS.length];
 
                                 if (conn.fromColumn === conn.toColumn) {
                                   return (
@@ -247,6 +264,7 @@ export function GitView() {
                                       y2={rowHeight}
                                       stroke={strokeColor}
                                       stroke-width="2"
+                                      stroke-dasharray={isWorkdir ? "3 3" : undefined}
                                     />
                                   );
                                 }
@@ -256,16 +274,18 @@ export function GitView() {
                                     fill="none"
                                     stroke={strokeColor}
                                     stroke-width="2"
+                                    stroke-dasharray={isWorkdir ? "3 3" : undefined}
                                   />
                                 );
                               })}
-                              {/* Commit Circle Node */}
                               {(() => {
                                 const info = graphInfo();
                                 if (!info) return null;
                                 const cx = info.column * colWidth + colWidth / 2;
                                 const cy = rowHeight / 2;
-                                const color = GRAPH_COLORS[info.colorIndex % GRAPH_COLORS.length];
+                                const color = isWorkdir
+                                  ? "#f59e0b"
+                                  : GRAPH_COLORS[info.colorIndex % GRAPH_COLORS.length];
                                 return (
                                   <circle
                                     cx={cx}
@@ -283,12 +303,17 @@ export function GitView() {
                           {/* Commit Details */}
                           <div class="flex-1 min-w-0 flex flex-col gap-0.5">
                             <div class="flex items-center gap-1.5 min-w-0">
-                              <Show when={commit.head}>
+                              <Show when={isWorkdir}>
+                                <Badge class="h-4 px-1 text-[10px] font-sans shrink-0 bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                                  Uncommitted
+                                </Badge>
+                              </Show>
+                              <Show when={commit.head && !isWorkdir}>
                                 <Badge variant="secondary" class="h-4 px-1 text-[10px] font-sans shrink-0">
                                   HEAD
                                 </Badge>
                               </Show>
-                              <span class="font-medium truncate text-foreground leading-tight">
+                              <span class={`font-medium truncate leading-tight ${isWorkdir ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-foreground"}`}>
                                 {commit.subject}
                               </span>
                             </div>
@@ -296,9 +321,11 @@ export function GitView() {
                               <span class="truncate">{commit.author}</span>
                               <span>·</span>
                               <span class="shrink-0">{formatRelativeTime(commit.time)}</span>
-                              <span class="ml-auto font-mono text-[10px] shrink-0 opacity-70">
-                                {commit.short}
-                              </span>
+                              <Show when={!isWorkdir}>
+                                <span class="ml-auto font-mono text-[10px] shrink-0 opacity-70">
+                                  {commit.short}
+                                </span>
+                              </Show>
                             </div>
                           </div>
                         </div>
@@ -311,7 +338,7 @@ export function GitView() {
           </div>
         </div>
 
-        {/* Center Pane: Commit Info Header & Diff Viewer */}
+        {/* Center Pane: Commit Info Header / Commit Form & Diff Viewer */}
         <div class="flex-1 flex flex-col min-w-0 bg-background overflow-hidden">
           <Show
             when={currentCommitHash()}
@@ -322,7 +349,6 @@ export function GitView() {
               </div>
             }
           >
-            {/* Selected Commit Detail */}
             <Show
               when={!diffLoading()}
               fallback={
@@ -340,41 +366,90 @@ export function GitView() {
                   </div>
                 }
               >
-                {/* Commit Metadata Bar */}
+                {/* Commit Metadata / Commit Input Bar */}
                 <div class="flex flex-col gap-2 p-4 border-b border-border bg-muted/5 shrink-0">
-                  <div class="flex items-start justify-between gap-4">
-                    <h2 class="text-base font-semibold text-foreground leading-snug">
-                      {selectedDiffResult()?.commit.subject}
-                    </h2>
-                    <CommitHashCopy hash={selectedDiffResult()?.commit.hash ?? ""} />
-                  </div>
-                  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <div class="flex items-center gap-1">
-                      <span class="font-medium text-foreground">
-                        {selectedDiffResult()?.commit.author}
-                      </span>
-                      <span class="opacity-70">&lt;{selectedDiffResult()?.commit.email}&gt;</span>
-                    </div>
-                    <span>·</span>
-                    <span>{selectedDiffResult()?.commit.time ? formatAuthorTime(selectedDiffResult()!.commit.time) : ""}</span>
-                    <Show when={selectedDiffResult()?.commit.parents && selectedDiffResult()!.commit.parents!.length > 0}>
-                      <span>·</span>
-                      <div class="flex items-center gap-1 font-mono text-[11px]">
-                        <span>Parents:</span>
-                        <For each={selectedDiffResult()!.commit.parents}>
-                          {(pHash) => (
-                            <button
-                              type="button"
-                              onClick={() => project() && selectCommit(project()!, pHash)}
-                              class="text-primary hover:underline"
-                            >
-                              {pHash.substring(0, 7)}
-                            </button>
-                          )}
-                        </For>
+                  <Show
+                    when={currentCommitHash() === "WORKDIR"}
+                    fallback={
+                      <>
+                        <div class="flex items-start justify-between gap-4">
+                          <h2 class="text-base font-semibold text-foreground leading-snug">
+                            {selectedDiffResult()?.commit.subject}
+                          </h2>
+                          <CommitHashCopy hash={selectedDiffResult()?.commit.hash ?? ""} />
+                        </div>
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <div class="flex items-center gap-1">
+                            <span class="font-medium text-foreground">
+                              {selectedDiffResult()?.commit.author}
+                            </span>
+                            <span class="opacity-70">&lt;{selectedDiffResult()?.commit.email}&gt;</span>
+                          </div>
+                          <span>·</span>
+                          <span>{selectedDiffResult()?.commit.time ? formatAuthorTime(selectedDiffResult()!.commit.time) : ""}</span>
+                          <Show when={selectedDiffResult()?.commit.parents && selectedDiffResult()!.commit.parents!.length > 0}>
+                            <span>·</span>
+                            <div class="flex items-center gap-1 font-mono text-[11px]">
+                              <span>Parents:</span>
+                              <For each={selectedDiffResult()!.commit.parents}>
+                                {(pHash) => (
+                                  <button
+                                    type="button"
+                                    onClick={() => project() && selectCommit(project()!, pHash)}
+                                    class="text-primary hover:underline"
+                                  >
+                                    {pHash.substring(0, 7)}
+                                  </button>
+                                )}
+                              </For>
+                            </div>
+                          </Show>
+                        </div>
+                      </>
+                    }
+                  >
+                    {/* Commit Input Form for WORKDIR */}
+                    <form onSubmit={handleCommitSubmit} class="flex flex-col gap-2.5">
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                          <Badge class="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                            Uncommitted Changes
+                          </Badge>
+                          <span class="text-xs text-muted-foreground">
+                            {selectedDiffResult()?.files.length ?? 0} changed files
+                          </span>
+                        </div>
                       </div>
-                    </Show>
-                  </div>
+                      <div class="flex gap-2">
+                        <textarea
+                          placeholder="Enter commit message (e.g. feat: update component layout)..."
+                          value={commitMessage()}
+                          onInput={(e) => setCommitMessage(e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              handleCommitSubmit(e);
+                            }
+                          }}
+                          rows={2}
+                          class="flex-1 min-w-0 rounded-md border border-input bg-background p-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={!commitMessage().trim() || isCommitting()}
+                          class="gap-1.5 h-auto px-4 self-end"
+                        >
+                          <Show when={isCommitting()} fallback={<Send class="size-3.5" />}>
+                            <Loader2 class="size-3.5 animate-spin" />
+                          </Show>
+                          <span>{isCommitting() ? "Committing..." : "Commit"}</span>
+                        </Button>
+                      </div>
+                      <Show when={commitErr()}>
+                        <p class="text-xs text-destructive font-medium">{commitErr()}</p>
+                      </Show>
+                    </form>
+                  </Show>
                 </div>
 
                 {/* Diff Viewer Area */}
@@ -383,7 +458,7 @@ export function GitView() {
                     when={selectedDiffResult()?.diff}
                     fallback={
                       <div class="text-muted-foreground text-center py-8">
-                        No text diff changes in this commit.
+                        No changes detected in working directory.
                       </div>
                     }
                   >
@@ -424,7 +499,6 @@ export function GitView() {
 
             {/* File List */}
             <div class="min-h-0 flex-1 overflow-y-auto divide-y divide-border/40">
-              {/* Reset filter option */}
               <div
                 onClick={() => project() && selectDiffFile(project()!, null)}
                 class={`flex items-center justify-between px-3 py-1.5 cursor-pointer text-xs select-none ${
@@ -512,19 +586,17 @@ function CommitHashCopy(props: { hash: string }) {
   );
 }
 
-/** Component to render unified diff text */
 function DiffViewer(props: { diff: string; selectedFile: string | null }) {
   const fileChunks = createMemo(() => {
     const raw = props.diff;
     if (!raw) return [];
-    // Split by `diff --git `
     const parts = raw.split(/^diff --git /m);
     const chunks: { header: string; filePath: string; lines: string[] }[] = [];
 
     for (const part of parts) {
       if (!part.trim()) continue;
       const lines = part.split("\n");
-      const headerLine = lines[0]; // e.g. "a/src/foo.ts b/src/foo.ts"
+      const headerLine = lines[0];
       let filePath = "";
       const match = headerLine.match(/b\/(.+)$/);
       if (match) {
@@ -553,13 +625,11 @@ function DiffViewer(props: { diff: string; selectedFile: string | null }) {
       <For each={visibleChunks()}>
         {(chunk) => (
           <div class="border border-border rounded-md overflow-hidden bg-card">
-            {/* File Header */}
             <div class="flex items-center gap-2 px-3 py-1.5 bg-muted/40 border-b border-border text-xs font-semibold">
               <FileCode class="size-3.5 text-muted-foreground" />
               <span class="truncate">{chunk.filePath}</span>
             </div>
 
-            {/* Lines */}
             <div class="overflow-x-auto divide-y divide-border/20">
               <For each={chunk.lines}>
                 {(line) => {

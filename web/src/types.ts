@@ -76,6 +76,7 @@ export interface WSRequest {
   rows?: number;
   hash?: string;
   path?: string;
+  message?: string;
 }
 
 export interface WSResponse {

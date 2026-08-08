@@ -33,6 +33,8 @@ const [selectedFilePath, setSelectedFilePath] = createSignal<Record<string, stri
 const [gitDiffs, setGitDiffs] = createSignal<Record<string, Record<string, GitDiffResult>>>({});
 const [gitDiffLoading, setGitDiffLoading] = createSignal<Record<string, boolean>>({});
 const [gitDiffError, setGitDiffError] = createSignal<Record<string, string>>({});
+const [gitCommitLoading, setGitCommitLoading] = createSignal<Record<string, boolean>>({});
+const [gitCommitError, setGitCommitError] = createSignal<Record<string, string>>({});
 export {
   actions,
   actionStates,
@@ -44,6 +46,8 @@ export {
   gitDiffs,
   gitDiffLoading,
   gitDiffError,
+  gitCommitLoading,
+  gitCommitError,
 };
 /** Projects the user has collapsed; everything else is expanded by default. */
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
@@ -440,6 +444,24 @@ function start() {
         [project]: { ...(m[project] ?? {}), [hash]: diffResult },
       }));
     }
+  });
+  onWS("git_commit_result", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    setGitCommitLoading((m) => ({ ...m, [project]: false }));
+    if (resp.ok === false) {
+      setGitCommitError((m) => ({ ...m, [project]: resp.error ?? "Failed to commit changes" }));
+      return;
+    }
+    setGitCommitError((m) => ({ ...m, [project]: "" }));
+    // Clear diff cache for WORKDIR and reload git log
+    setGitDiffs((m) => {
+      const copy = { ...(m[project] ?? {}) };
+      delete copy["WORKDIR"];
+      return { ...m, [project]: copy };
+    });
+    setSelectedCommitHash((m) => ({ ...m, [project]: null }));
+    loadGitLog(project);
   });
   onWS("action_states", (resp) => {
     if (!resp.project) return;
@@ -1082,6 +1104,14 @@ export function selectCommit(project: string, hash: string | null, opts?: { skip
 /** Select a file path within the selected commit's diff. */
 export function selectDiffFile(project: string, path: string | null) {
   setSelectedFilePath((m) => ({ ...m, [project]: path }));
+}
+
+/** Stage uncommitted changes and create a new commit. */
+export function commitGitChanges(project: string, message: string) {
+  if (!message.trim()) return;
+  setGitCommitLoading((m) => ({ ...m, [project]: true }));
+  setGitCommitError((m) => ({ ...m, [project]: "" }));
+  sendWS({ type: "git_commit", project, message: message.trim() });
 }
 
 /** Open the full-page git view for a project and load its commit log. */

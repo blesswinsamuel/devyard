@@ -620,6 +620,20 @@ func (d *Daemon) GitDiff(name string, hash string) (*protocol.GitDiffResult, err
 	return gitlog.Diff(p.BaseDir, hash)
 }
 
+// GitCommit stages all changes and creates a new commit in a project's working directory.
+func (d *Daemon) GitCommit(name string, message string) error {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("project %q is not running", name)
+	}
+	if !gitlog.IsRepo(p.BaseDir) {
+		return fmt.Errorf("project %q is not a git repository", name)
+	}
+	return gitlog.Commit(p.BaseDir, message)
+}
+
 // stoppedBackend adapts a registered-but-never-started project (Sup == nil) to
 // control.Backend. Its retained config lets reads report every service as
 // stopped and list the project's actions; mutations report that the project is

@@ -242,6 +242,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleGitLog(w, req)
 	case protocol.KindGitDiff:
 		s.handleGitDiff(w, req)
+	case protocol.KindGitCommit:
+		s.handleGitCommit(w, req)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
 	}
@@ -729,6 +731,17 @@ func (s *Server) handleGitDiff(w io.Writer, req protocol.Request) {
 		Kind:    protocol.KindGitDiffData,
 		Project: req.Project,
 		GitDiff: diffRes,
+	})
+}
+
+func (s *Server) handleGitCommit(w io.Writer, req protocol.Request) {
+	if err := s.backend.GitCommit(req.Project, req.Message); err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:    protocol.KindDone,
+		Project: req.Project,
 	})
 }
 

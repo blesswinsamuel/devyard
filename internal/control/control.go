@@ -43,6 +43,8 @@ type MultiBackend interface {
 	// GitDiff returns the commit metadata, changed files list, and diff for hash
 	// in the named project's working directory.
 	GitDiff(project string, hash string) (*protocol.GitDiffResult, error)
+	// GitCommit stages changes and creates a commit with message in the project's repository.
+	GitCommit(project string, message string) error
 	// SetOnStateChange registers a callback that is invoked whenever any
 	// project's service state changes. The project name and the
 	// per-service state snapshot are passed. Implementations that do not
@@ -89,6 +91,17 @@ func (s SingleProjectBackend) GitDiff(_ string, hash string) (*protocol.GitDiffR
 		return nil, fmt.Errorf("project %q is not a git repository", s.Project)
 	}
 	return gitlog.Diff(dir, hash)
+}
+
+func (s SingleProjectBackend) GitCommit(_ string, message string) error {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	if !gitlog.IsRepo(dir) {
+		return fmt.Errorf("project %q is not a git repository", s.Project)
+	}
+	return gitlog.Commit(dir, message)
 }
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {

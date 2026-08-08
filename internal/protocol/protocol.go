@@ -41,6 +41,7 @@ const (
 	KindListActionStates RequestKind = "list_action_states" // list action runtime states for a project
 	KindGitLog           RequestKind = "git_log"            // list the git commit log for a project
 	KindGitDiff          RequestKind = "git_diff"           // get diff and changed files for a commit
+	KindGitCommit        RequestKind = "git_commit"         // create a new git commit for uncommitted changes
 )
 
 // Request is a client -> daemon message.
@@ -68,6 +69,7 @@ const (
 //   - Kind==KindListActionStates: Project selects the project.
 //   - Kind==KindGitLog: Project selects the project; its commit log is returned.
 //   - Kind==KindGitDiff: Project selects the project; Hash selects the commit hash (empty defaults to HEAD); Path optional file path filter.
+//   - Kind==KindGitCommit: Project selects the project; Message is the commit message.
 type Request struct {
 	Kind          RequestKind `json:"kind"`
 	Project       string      `json:"project,omitempty"`
@@ -84,6 +86,7 @@ type Request struct {
 	RemoveOrphans *bool       `json:"remove_orphans,omitempty"`
 	Hash          string      `json:"hash,omitempty"`
 	Path          string      `json:"path,omitempty"`
+	Message       string      `json:"message,omitempty"`
 }
 
 // ResponseKind discriminates Response payloads sent from the supervisor to a

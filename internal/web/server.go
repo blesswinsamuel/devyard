@@ -167,6 +167,7 @@ type wsRequest struct {
 	Previous      bool     `json:"prev,omitempty"`
 	Hash          string   `json:"hash,omitempty"`
 	Path          string   `json:"path,omitempty"`
+	Message       string   `json:"message,omitempty"`
 
 	// Terminal/PTY fields
 	ID   string `json:"id,omitempty"`
@@ -276,6 +277,8 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleGitLog(c, ctx, req)
 	case "git_diff":
 		s.handleGitDiff(c, ctx, req)
+	case "git_commit":
+		s.handleGitCommit(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -468,6 +471,14 @@ func (s *Server) handleGitDiff(c *websocket.Conn, ctx context.Context, req *wsRe
 	}
 	data, _ := json.Marshal(diffRes)
 	s.send(c, ctx, wsResponse{Type: "git_diff", Project: req.Project, Ok: true, Data: data})
+}
+
+func (s *Server) handleGitCommit(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	if err := s.backend.GitCommit(req.Project, req.Message); err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: true})
 }
 
 func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

@@ -75,6 +75,8 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxyGitLog(c, ctx, req)
 	case "git_diff":
 		s.proxyGitDiff(c, ctx, req)
+	case "git_commit":
+		s.proxyGitCommit(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -428,6 +430,19 @@ func (s *Server) proxyGitDiff(c *websocket.Conn, ctx context.Context, req *wsReq
 	}
 	data, _ := json.Marshal(resp.GitDiff)
 	s.send(c, ctx, wsResponse{Type: "git_diff", Project: req.Project, Ok: true, Data: data})
+}
+
+func (s *Server) proxyGitCommit(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindGitCommit, Project: req.Project, Message: req.Message})
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: false, Error: resp.Error})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: true})
 }
 
 func (s *Server) proxyRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

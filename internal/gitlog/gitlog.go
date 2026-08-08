@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 )
@@ -17,6 +18,7 @@ import (
 const CommitLimit = 100
 
 // Log runs `git log` in dir and returns up to CommitLimit commits, newest
+// first. Field separators are ASCII unit (0x1f); each commit is one line.
 // first. Field separators are ASCII unit (0x1f); each commit is one line.
 // Git's raw author date (%aI) is RFC3339, matching protocol.FormatTime.
 func Log(dir string) ([]protocol.GitCommit, error) {
@@ -28,10 +30,20 @@ func Log(dir string) ([]protocol.GitCommit, error) {
 	}
 
 	head := resolveHead(dir)
+	hasUncommitted := checkUncommitted(dir)
 
 	// An empty repository (unborn branch) has no commits, so `git log` would
-	// fail with exit 128. Surface that as an empty log rather than an error.
+	// fail with exit 128. Surface that as an empty log (or uncommitted changes) rather than an error.
 	if head == "" {
+		if hasUncommitted {
+			return []protocol.GitCommit{{
+				Hash:    "WORKDIR",
+				Short:   "WORKDIR",
+				Subject: "Uncommitted Changes",
+				Author:  "Working Directory",
+				Time:    protocol.FormatTime(time.Now()),
+			}}, nil
+		}
 		return nil, nil
 	}
 
@@ -49,31 +61,55 @@ func Log(dir string) ([]protocol.GitCommit, error) {
 	}
 
 	raw := out.String()
-	if raw == "" {
-		return nil, nil
+	commits := make([]protocol.GitCommit, 0)
+	if raw != "" {
+		lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
+		for _, line := range lines {
+			fields := strings.Split(line, "\x1f")
+			if len(fields) < 7 {
+				continue
+			}
+			c := protocol.GitCommit{
+				Hash:    fields[0],
+				Short:   fields[1],
+				Author:  fields[2],
+				Email:   fields[3],
+				Time:    fields[4],
+				Subject: fields[6],
+			}
+			if parents := fields[5]; parents != "" {
+				c.Parents = strings.Fields(parents)
+			}
+			c.Head = c.Hash == head
+			commits = append(commits, c)
+		}
 	}
-	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
-	commits := make([]protocol.GitCommit, 0, len(lines))
-	for _, line := range lines {
-		fields := strings.Split(line, "\x1f")
-		if len(fields) < 7 {
-			continue
+
+	if hasUncommitted {
+		workdirCommit := protocol.GitCommit{
+			Hash:    "WORKDIR",
+			Short:   "WORKDIR",
+			Subject: "Uncommitted Changes",
+			Author:  "Working Directory",
+			Time:    protocol.FormatTime(time.Now()),
 		}
-		c := protocol.GitCommit{
-			Hash:    fields[0],
-			Short:   fields[1],
-			Author:  fields[2],
-			Email:   fields[3],
-			Time:    fields[4],
-			Subject: fields[6],
+		if head != "" {
+			workdirCommit.Parents = []string{head}
 		}
-		if parents := fields[5]; parents != "" {
-			c.Parents = strings.Fields(parents)
-		}
-		c.Head = c.Hash == head
-		commits = append(commits, c)
+		commits = append([]protocol.GitCommit{workdirCommit}, commits...)
 	}
+
 	return commits, nil
+}
+
+func checkUncommitted(dir string) bool {
+	cmd := exec.Command("git", "-C", dir, "status", "--porcelain")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return len(bytes.TrimSpace(out.Bytes())) > 0
 }
 
 // resolveHead returns the full hash of HEAD ("" if it cannot be determined,
@@ -113,6 +149,10 @@ func Diff(dir string, hash string) (*protocol.GitDiffResult, error) {
 	}
 	if !IsRepo(dir) {
 		return nil, fmt.Errorf("git: %s is not a git repository", dir)
+	}
+
+	if hash == "WORKDIR" {
+		return diffWorkdir(dir)
 	}
 
 	if hash == "" {
@@ -221,4 +261,141 @@ func Diff(dir string, hash string) (*protocol.GitDiffResult, error) {
 		Files:  files,
 		Diff:   outDiff.String(),
 	}, nil
+}
+
+func diffWorkdir(dir string) (*protocol.GitDiffResult, error) {
+	head := resolveHead(dir)
+	commit := protocol.GitCommit{
+		Hash:    "WORKDIR",
+		Short:   "WORKDIR",
+		Author:  "Working Directory",
+		Subject: "Uncommitted Changes",
+		Time:    protocol.FormatTime(time.Now()),
+	}
+	if head != "" {
+		commit.Parents = []string{head}
+	}
+
+	cmdStatus := exec.Command("git", "-C", dir, "status", "--porcelain")
+	var outStatus bytes.Buffer
+	cmdStatus.Stdout = &outStatus
+	_ = cmdStatus.Run()
+
+	cmdNumstat := exec.Command("git", "-C", dir, "diff", "HEAD", "--numstat")
+	var outNumstat bytes.Buffer
+	cmdNumstat.Stdout = &outNumstat
+	_ = cmdNumstat.Run()
+
+	type stats struct{ add, del int }
+	numstatMap := make(map[string]stats)
+	for _, line := range strings.Split(outNumstat.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) >= 3 {
+			var add, del int
+			_, _ = fmt.Sscanf(parts[0], "%d", &add)
+			_, _ = fmt.Sscanf(parts[1], "%d", &del)
+			path := parts[len(parts)-1]
+			numstatMap[path] = stats{add: add, del: del}
+		}
+	}
+
+	var files []protocol.GitFileChange
+	for _, line := range strings.Split(outStatus.String(), "\n") {
+		if len(line) < 3 {
+			continue
+		}
+		st := strings.TrimSpace(line[0:2])
+		rest := strings.TrimSpace(line[3:])
+		path := rest
+		oldPath := ""
+		if strings.Contains(rest, " -> ") {
+			parts := strings.Split(rest, " -> ")
+			oldPath = parts[0]
+			path = parts[1]
+		}
+
+		statusLetter := "M"
+		if strings.Contains(st, "A") || st == "??" {
+			statusLetter = "A"
+		} else if strings.Contains(st, "D") {
+			statusLetter = "D"
+		} else if strings.Contains(st, "R") {
+			statusLetter = "R"
+		}
+
+		s := numstatMap[path]
+		files = append(files, protocol.GitFileChange{
+			Path:      path,
+			OldPath:   oldPath,
+			Status:    statusLetter,
+			Additions: s.add,
+			Deletions: s.del,
+		})
+	}
+
+	cmdDiff := exec.Command("git", "-C", dir, "diff", "HEAD")
+	var outDiff bytes.Buffer
+	cmdDiff.Stdout = &outDiff
+	_ = cmdDiff.Run()
+
+	diffText := outDiff.String()
+
+	for _, f := range files {
+		if f.Status == "A" && !strings.Contains(diffText, f.Path) {
+			cmdUntracked := exec.Command("git", "-C", dir, "diff", "--no-index", "/dev/null", f.Path)
+			var outUntracked bytes.Buffer
+			cmdUntracked.Stdout = &outUntracked
+			_ = cmdUntracked.Run()
+			if outUntracked.Len() > 0 {
+				if diffText != "" && !strings.HasSuffix(diffText, "\n") {
+					diffText += "\n"
+				}
+				diffText += outUntracked.String()
+			}
+		}
+	}
+
+	return &protocol.GitDiffResult{
+		Commit: commit,
+		Files:  files,
+		Diff:   diffText,
+	}, nil
+}
+
+// Commit stages all working tree changes (`git add -A`) and creates a new git commit with message.
+func Commit(dir string, message string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return fmt.Errorf("git: commit message cannot be empty")
+	}
+
+	cmdAdd := exec.Command("git", "-C", dir, "add", "-A")
+	var errAdd bytes.Buffer
+	cmdAdd.Stderr = &errAdd
+	if err := cmdAdd.Run(); err != nil {
+		return fmt.Errorf("git add: %s: %w", strings.TrimSpace(errAdd.String()), err)
+	}
+
+	cmdCommit := exec.Command("git", "-C", dir, "commit", "-m", message)
+	var errCommit bytes.Buffer
+	cmdCommit.Stderr = &errCommit
+	if err := cmdCommit.Run(); err != nil {
+		msg := strings.TrimSpace(errCommit.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git commit: %s: %w", msg, err)
+	}
+
+	return nil
 }

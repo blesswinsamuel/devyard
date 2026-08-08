@@ -133,3 +133,49 @@ func TestDiff(t *testing.T) {
 		t.Fatalf("unexpected diff content: %s", res.Diff)
 	}
 }
+
+func TestUncommittedAndCommit(t *testing.T) {
+	dir := initRepo(t)
+	// Add an uncommitted file
+	if err := os.WriteFile(filepath.Join(dir, "c.txt"), []byte("three\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	commits, err := Log(dir)
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if len(commits) != 3 {
+		t.Fatalf("expected 3 commits (including WORKDIR), got %d", len(commits))
+	}
+	if commits[0].Hash != "WORKDIR" {
+		t.Fatalf("expected first commit to be WORKDIR, got %+v", commits[0])
+	}
+
+	diffRes, err := Diff(dir, "WORKDIR")
+	if err != nil {
+		t.Fatalf("Diff WORKDIR: %v", err)
+	}
+	if diffRes.Commit.Hash != "WORKDIR" {
+		t.Fatalf("expected WORKDIR hash, got %s", diffRes.Commit.Hash)
+	}
+	if len(diffRes.Files) != 1 || diffRes.Files[0].Path != "c.txt" {
+		t.Fatalf("unexpected WORKDIR files: %+v", diffRes.Files)
+	}
+
+	// Commit the changes
+	if err := Commit(dir, "third commit"); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	commitsAfter, err := Log(dir)
+	if err != nil {
+		t.Fatalf("Log after commit: %v", err)
+	}
+	if len(commitsAfter) != 3 {
+		t.Fatalf("expected 3 commits after commit, got %d", len(commitsAfter))
+	}
+	if commitsAfter[0].Hash == "WORKDIR" || commitsAfter[0].Subject != "third commit" {
+		t.Fatalf("unexpected commits after commit: %+v", commitsAfter[0])
+	}
+}

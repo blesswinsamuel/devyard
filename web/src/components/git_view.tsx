@@ -89,10 +89,21 @@ export function GitView() {
   const activeBranch = createMemo(() => branches().find((b) => b.is_active));
   const localBranches = createMemo(() => branches().filter((b) => !b.is_remote));
   const remoteBranches = createMemo(() => branches().filter((b) => b.is_remote));
+  const remoteNames = createMemo(() => {
+    const names = new Set<string>();
+    for (const b of remoteBranches()) {
+      const idx = b.name.indexOf("/");
+      if (idx > 0) names.add(b.name.slice(0, idx));
+    }
+    return [...names].sort();
+  });
 
   const [branchesOpen, setBranchesOpen] = createSignal(true);
+  const [remotesOpen, setRemotesOpen] = createSignal(true);
   const [tagsOpen, setTagsOpen] = createSignal(true);
   const [stashesOpen, setStashesOpen] = createSignal(true);
+
+  const [openRemotes, setOpenRemotes] = createSignal<Record<string, boolean>>({});
 
   const error = createMemo(() => (project() ? gitError()[project()!] ?? "" : ""));
   const loading = createMemo(() => (project() ? !!gitLoading()[project()!] : false));
@@ -301,24 +312,74 @@ export function GitView() {
                     </div>
                   )}
                 </For>
-                {/* Remote Branches */}
-                <Show when={remoteBranches().length > 0}>
-                  <div class="px-3 pt-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Remotes
-                  </div>
-                  <For each={remoteBranches()}>
-                    {(b) => (
-                      <div
-                        onClick={() => project() && selectCommit(project()!, b.hash)}
-                        class="flex items-center justify-between gap-2 px-3 py-1 text-xs cursor-pointer hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
-                        title={`${b.name} (${b.hash.substring(0, 7)})`}
-                      >
-                        <div class="flex items-center gap-1.5 min-w-0">
-                          <GitBranch class="size-3 text-purple-500 shrink-0" />
-                          <span class="truncate font-mono text-[11px]">{b.name}</span>
-                        </div>
-                      </div>
-                    )}
+              </div>
+            </Show>
+          </div>
+
+          {/* Remotes Section */}
+          <div class="flex flex-col">
+            <div
+              onClick={() => setRemotesOpen(!remotesOpen())}
+              class="flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer bg-muted/20"
+            >
+              <div class="flex items-center gap-1.5 min-w-0">
+                <GitBranch class="size-3.5 text-purple-500 shrink-0" />
+                <span class="truncate">Remotes ({remoteBranches().length})</span>
+              </div>
+              <Show when={remotesOpen()} fallback={<ChevronRight class="size-3.5 shrink-0" />}>
+                <ChevronDown class="size-3.5 shrink-0" />
+              </Show>
+            </div>
+            <Show when={remotesOpen()}>
+              <div class="flex flex-col py-1">
+                <Show
+                  when={remoteNames().length > 0}
+                  fallback={<div class="px-3 py-1 text-[11px] text-muted-foreground italic">No remotes</div>}
+                >
+                  <For each={remoteNames()}>
+                    {(remoteName) => {
+                      const remoteExpanded = () => !!openRemotes()[remoteName];
+                      const remoteBranchList = () =>
+                        remoteBranches()
+                          .filter((b) => b.name.startsWith(remoteName + "/"))
+                          .map((b) => ({ ...b, shortName: b.name.slice(remoteName.length + 1) }));
+                      return (
+                        <>
+                          <div
+                            onClick={() =>
+                              setOpenRemotes((prev) => ({ ...prev, [remoteName]: !prev[remoteName] }))
+                            }
+                            class="flex items-center justify-between gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors select-none"
+                          >
+                            <div class="flex items-center gap-1.5 min-w-0">
+                              <GitBranch class="size-3 text-purple-500 shrink-0" />
+                              <span class="truncate font-mono text-[11px] font-medium">{remoteName}</span>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                              <span class="text-[9px] text-muted-foreground/70 font-mono">{remoteBranchList().length}</span>
+                              <Show when={remoteExpanded()} fallback={<ChevronRight class="size-3 shrink-0" />}>
+                                <ChevronDown class="size-3 shrink-0" />
+                              </Show>
+                            </div>
+                          </div>
+                          <Show when={remoteExpanded()}>
+                            <For each={remoteBranchList()}>
+                              {(b) => (
+                                <div
+                                  onClick={() => project() && selectCommit(project()!, b.hash)}
+                                  class="flex items-center justify-between gap-2 pl-7 pr-3 py-1 text-xs cursor-pointer hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
+                                  title={`${b.name} (${b.hash.substring(0, 7)})`}
+                                >
+                                  <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="truncate font-mono text-[11px]">{b.shortName}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </Show>
+                        </>
+                      );
+                    }}
                   </For>
                 </Show>
               </div>

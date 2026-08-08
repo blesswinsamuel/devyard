@@ -47,6 +47,8 @@ export interface GitBranch {
   is_active?: boolean;
   is_remote?: boolean;
   upstream?: string;
+  ahead?: number;
+  behind?: number;
 }
 
 export interface GitTag {

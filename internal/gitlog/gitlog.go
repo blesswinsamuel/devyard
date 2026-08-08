@@ -191,7 +191,7 @@ func resolveActiveBranch(dir string) string {
 
 // GetBranches returns all local and remote branches in dir.
 func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
-	cmd := exec.Command("git", "-C", dir, "branch", "-a", "--format=%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)")
+	cmd := exec.Command("git", "-C", dir, "branch", "-a", "--format=%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -216,6 +216,10 @@ func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
 		if len(parts) >= 4 {
 			upstream = strings.TrimSpace(parts[3])
 		}
+		trackStr := ""
+		if len(parts) >= 5 {
+			trackStr = strings.TrimSpace(parts[4])
+		}
 
 		if name == "HEAD" || strings.HasSuffix(name, "/HEAD") || seen[name] {
 			continue
@@ -225,15 +229,34 @@ func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
 		isActive := headMarker == "*" || (activeBranch != "" && name == activeBranch)
 		isRemote := strings.HasPrefix(name, "origin/") || (strings.Contains(name, "/") && !strings.HasPrefix(name, "heads/"))
 
+		ahead, behind := parseAheadBehind(trackStr)
+
 		branches = append(branches, protocol.GitBranch{
 			Name:     name,
 			Hash:     hash,
 			IsActive: isActive,
 			IsRemote: isRemote,
 			Upstream: upstream,
+			Ahead:    ahead,
+			Behind:   behind,
 		})
 	}
 	return branches
+}
+
+func parseAheadBehind(trackStr string) (ahead int, behind int) {
+	if trackStr == "" || trackStr == "gone" {
+		return 0, 0
+	}
+	for _, part := range strings.Split(trackStr, ",") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "ahead ") {
+			_, _ = fmt.Sscanf(strings.TrimPrefix(part, "ahead "), "%d", &ahead)
+		} else if strings.HasPrefix(part, "behind ") {
+			_, _ = fmt.Sscanf(strings.TrimPrefix(part, "behind "), "%d", &behind)
+		}
+	}
+	return ahead, behind
 }
 
 // GetTags returns all tags in dir.

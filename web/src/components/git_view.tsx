@@ -199,10 +199,22 @@ export function GitView() {
             <GitBranch class="size-4 shrink-0 text-primary" />
             <span class="truncate font-semibold text-sm">{project()}</span>
             <Show when={activeBranch()}>
-              <Badge class="h-4.5 px-1.5 gap-1 text-[10px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border-emerald-500/40 font-mono font-medium shrink-0">
-                <GitBranch class="size-3 text-emerald-500" />
-                <span>{activeBranch()?.name}</span>
-              </Badge>
+              <div class="flex items-center gap-1 shrink-0">
+                <Badge class="h-4.5 px-1.5 gap-1 text-[10px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border-emerald-500/40 font-mono font-medium shrink-0">
+                  <GitBranch class="size-3 text-emerald-500" />
+                  <span>{activeBranch()?.name}</span>
+                </Badge>
+                <Show when={activeBranch()?.ahead && (activeBranch()?.ahead ?? 0) > 0}>
+                  <Badge class="h-4.5 px-1.5 text-[10px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 font-mono font-semibold shrink-0" title={`${activeBranch()?.ahead} commits ahead of ${activeBranch()?.upstream}`}>
+                    ↑{activeBranch()?.ahead} ahead
+                  </Badge>
+                </Show>
+                <Show when={activeBranch()?.behind && (activeBranch()?.behind ?? 0) > 0}>
+                  <Badge class="h-4.5 px-1.5 text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/40 font-mono font-semibold shrink-0" title={`${activeBranch()?.behind} commits behind ${activeBranch()?.upstream}`}>
+                    ↓{activeBranch()?.behind} behind
+                  </Badge>
+                </Show>
+              </div>
             </Show>
             <span class="truncate text-xs text-muted-foreground">/ git history</span>
           </div>
@@ -263,17 +275,29 @@ export function GitView() {
                           ? "bg-emerald-500/15 font-semibold text-emerald-600 dark:text-emerald-400"
                           : "hover:bg-muted/40 text-foreground"
                       }`}
-                      title={`${b.name} (${b.hash.substring(0, 7)})`}
+                      title={`${b.name} (${b.hash.substring(0, 7)})${b.upstream ? ` -> ${b.upstream}` : ''}`}
                     >
                       <div class="flex items-center gap-1.5 min-w-0">
                         <GitBranch class={`size-3 shrink-0 ${b.is_active ? "text-emerald-500" : "text-sky-500"}`} />
                         <span class="truncate font-mono text-[11px]">{b.name}</span>
                       </div>
-                      <Show when={b.is_active}>
-                        <Badge class="h-3.5 px-1 text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 shrink-0 font-sans">
-                          HEAD
-                        </Badge>
-                      </Show>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <Show when={b.ahead && b.ahead > 0}>
+                          <span class="px-1 py-0.2 rounded text-[9px] font-mono font-semibold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" title={`${b.ahead} commits ahead of ${b.upstream}`}>
+                            ↑{b.ahead}
+                          </span>
+                        </Show>
+                        <Show when={b.behind && b.behind > 0}>
+                          <span class="px-1 py-0.2 rounded text-[9px] font-mono font-semibold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30" title={`${b.behind} commits behind ${b.upstream}`}>
+                            ↓{b.behind}
+                          </span>
+                        </Show>
+                        <Show when={b.is_active}>
+                          <Badge class="h-3.5 px-1 text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 shrink-0 font-sans">
+                            HEAD
+                          </Badge>
+                        </Show>
+                      </div>
                     </div>
                   )}
                 </For>

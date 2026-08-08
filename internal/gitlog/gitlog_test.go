@@ -229,3 +229,24 @@ func TestStageAndUnstage(t *testing.T) {
 		t.Fatalf("expected untracked file after unstage, got %+v", diffUnstaged.Files)
 	}
 }
+
+func TestParseAheadBehind(t *testing.T) {
+	tests := []struct {
+		input  string
+		ahead  int
+		behind int
+	}{
+		{"ahead 15", 15, 0},
+		{"behind 2", 0, 2},
+		{"ahead 3, behind 4", 3, 4},
+		{"behind 10, ahead 1", 1, 10},
+		{"gone", 0, 0},
+		{"", 0, 0},
+	}
+	for _, tc := range tests {
+		a, b := parseAheadBehind(tc.input)
+		if a != tc.ahead || b != tc.behind {
+			t.Errorf("parseAheadBehind(%q) = (%d, %d), want (%d, %d)", tc.input, a, b, tc.ahead, tc.behind)
+		}
+	}
+}

@@ -176,6 +176,8 @@ type GitBranch struct {
 	IsActive bool   `json:"is_active,omitempty"`
 	IsRemote bool   `json:"is_remote,omitempty"`
 	Upstream string `json:"upstream,omitempty"`
+	Ahead    int    `json:"ahead,omitempty"`
+	Behind   int    `json:"behind,omitempty"`
 }
 
 // GitTag describes a git tag.

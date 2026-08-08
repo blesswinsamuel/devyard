@@ -172,46 +172,56 @@ function ActionTerminal(props: {
   );
 }
 
-function LogViewer() {
-  const [activeServices, setActiveServices] = createSignal<
-    { project: string; service: string; key: string }[]
-  >([]);
+function useActiveLogTabs(
+  getSelectedTarget: () => string | null,
+  getAvailableItems: (project: string) => { name: string }[] | undefined
+) {
+  const [tabs, setTabs] = createSignal<{ project: string; name: string; key: string }[]>([]);
 
   const activeKey = () => {
     const p = selectedProject();
-    const s = selectedService();
-    return p && s ? `${p}/${s}` : null;
+    const t = getSelectedTarget();
+    return p && t ? `${p}/${t}` : null;
   };
 
   createEffect(() => {
     const p = selectedProject();
-    const s = selectedService();
-    const currentServices = p ? services()[p] : undefined;
-    setActiveServices((prev) => {
+    const target = getSelectedTarget();
+    const available = p ? getAvailableItems(p) : undefined;
+    setTabs((prev) => {
       let filtered = p ? prev.filter((item) => item.project === p) : [];
-      if (currentServices) {
-        const validSet = new Set(currentServices.map((svc) => svc.name));
-        filtered = filtered.filter((item) => validSet.has(item.service));
+      if (available) {
+        const validSet = new Set(available.map((item) => item.name));
+        filtered = filtered.filter((item) => validSet.has(item.name));
       }
-      if (p && s && currentServices && currentServices.some((svc) => svc.name === s)) {
-        const key = `${p}/${s}`;
+      if (p && target && available && available.some((item) => item.name === target)) {
+        const key = `${p}/${target}`;
         if (!filtered.some((item) => item.key === key)) {
-          return [...filtered, { project: p, service: s, key }];
+          return [...filtered, { project: p, name: target, key }];
         }
       }
       return filtered;
     });
   });
 
+  return { tabs, activeKey };
+}
+
+function LogViewer() {
+  const { tabs, activeKey } = useActiveLogTabs(
+    selectedService,
+    (p) => services()[p]
+  );
+
   return (
     <div class="relative h-full w-full">
-      <For each={activeServices()}>
+      <For each={tabs()}>
         {(item) => (
           <ServiceTerminal
             project={item.project}
-            service={item.service}
+            service={item.name}
             active={activeKey() === item.key}
-            prev={isPreviousLogs({ kind: "service", project: item.project, service: item.service })}
+            prev={isPreviousLogs({ kind: "service", project: item.project, service: item.name })}
           />
         )}
       </For>
@@ -220,45 +230,20 @@ function LogViewer() {
 }
 
 function ActionLogViewer() {
-  const [activeActions, setActiveActions] = createSignal<
-    { project: string; action: string; key: string }[]
-  >([]);
-
-  const activeKey = () => {
-    const p = selectedProject();
-    const a = selectedAction();
-    return p && a ? `${p}/${a}` : null;
-  };
-
-  createEffect(() => {
-    const p = selectedProject();
-    const a = selectedAction();
-    const currentActions = p ? actions()[p] : undefined;
-    setActiveActions((prev) => {
-      let filtered = p ? prev.filter((item) => item.project === p) : [];
-      if (currentActions) {
-        const validSet = new Set(currentActions.map((act) => act.name));
-        filtered = filtered.filter((item) => validSet.has(item.action));
-      }
-      if (p && a && currentActions && currentActions.some((act) => act.name === a)) {
-        const key = `${p}/${a}`;
-        if (!filtered.some((item) => item.key === key)) {
-          return [...filtered, { project: p, action: a, key }];
-        }
-      }
-      return filtered;
-    });
-  });
+  const { tabs, activeKey } = useActiveLogTabs(
+    selectedAction,
+    (p) => actions()[p]
+  );
 
   return (
     <div class="relative h-full w-full">
-      <For each={activeActions()}>
+      <For each={tabs()}>
         {(item) => (
           <ActionTerminal
             project={item.project}
-            action={item.action}
+            action={item.name}
             active={activeKey() === item.key}
-            prev={isPreviousLogs({ kind: "action", project: item.project, action: item.action })}
+            prev={isPreviousLogs({ kind: "action", project: item.project, action: item.name })}
           />
         )}
       </For>

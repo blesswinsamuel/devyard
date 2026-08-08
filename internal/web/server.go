@@ -547,35 +547,52 @@ func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *ws
 	}()
 }
 
-func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
-	key := req.Project + "/" + req.Service
-
-	// Cancel any existing subscription for this key.
+func (s *Server) startLogSubscription(
+	c *websocket.Conn,
+	ctx context.Context,
+	subs *subTracker,
+	key string,
+	project string,
+	getPath func(b control.Backend, subCtx context.Context) (string, error),
+	onStream func(path string, subCtx context.Context),
+) {
 	subs.cancel(key)
 
 	subCtx, cancel := context.WithCancel(ctx)
 	subs.add(key, cancel)
 
 	go func() {
-		b, err := s.backend.ProjectBackend(req.Project)
+		b, err := s.backend.ProjectBackend(project)
 		if err != nil {
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		var path string
-		if req.Previous {
-			path, err = b.PreviousLogPath(req.Service)
-		} else {
-			path, err = b.LogPath(req.Service)
-		}
+		path, err := getPath(b, subCtx)
 		if err != nil {
+			if subCtx.Err() != nil {
+				return
+			}
 			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
 			return
 		}
-		// A previous run is a completed run, so it is never followed and never
-		// rotates: stream its content once and stop.
-		streamLogFile(c, subCtx, path, req.Project, req.Service, "", req.Previous, !req.Previous)
+		onStream(path, subCtx)
 	}()
+}
+
+func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
+	key := req.Project + "/" + req.Service
+	s.startLogSubscription(
+		c, ctx, subs, key, req.Project,
+		func(b control.Backend, _ context.Context) (string, error) {
+			if req.Previous {
+				return b.PreviousLogPath(req.Service)
+			}
+			return b.LogPath(req.Service)
+		},
+		func(path string, subCtx context.Context) {
+			streamLogFile(c, subCtx, path, req.Project, req.Service, "", req.Previous, !req.Previous)
+		},
+	)
 }
 
 func (s *Server) handleUnsubscribeLogs(req *wsRequest, subs *subTracker) {
@@ -596,37 +613,18 @@ func actionSubKey(project, action string) string {
 // routes it to the action pane rather than a service pane.
 func (s *Server) handleSubscribeActionLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
 	key := actionSubKey(req.Project, req.Action)
-
-	subs.cancel(key)
-
-	subCtx, cancel := context.WithCancel(ctx)
-	subs.add(key, cancel)
-
-	go func() {
-		b, err := s.backend.ProjectBackend(req.Project)
-		if err != nil {
-			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
-			return
-		}
-		var path string
-		if req.Previous {
-			// A previous run implies the action already ran, so the log exists
-			// and no waiter is needed.
-			path, err = b.ActionPreviousLogPath(req.Action)
-		} else {
-			path, err = control.WaitForActionLog(subCtx, b, req.Action)
-		}
-		if err != nil {
-			// The subscription was replaced or the connection closed; there is
-			// nothing to report.
-			if subCtx.Err() != nil {
-				return
+	s.startLogSubscription(
+		c, ctx, subs, key, req.Project,
+		func(b control.Backend, subCtx context.Context) (string, error) {
+			if req.Previous {
+				return b.ActionPreviousLogPath(req.Action)
 			}
-			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
-			return
-		}
-		streamLogFile(c, subCtx, path, req.Project, "", req.Action, req.Previous, !req.Previous)
-	}()
+			return control.WaitForActionLog(subCtx, b, req.Action)
+		},
+		func(path string, subCtx context.Context) {
+			streamLogFile(c, subCtx, path, req.Project, "", req.Action, req.Previous, !req.Previous)
+		},
+	)
 }
 
 func (s *Server) handleUnsubscribeActionLogs(req *wsRequest, subs *subTracker) {

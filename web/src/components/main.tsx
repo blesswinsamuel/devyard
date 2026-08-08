@@ -186,12 +186,18 @@ function LogViewer() {
   createEffect(() => {
     const p = selectedProject();
     const s = selectedService();
-    if (!p || !s) return;
-    const key = `${p}/${s}`;
+    const currentServices = p ? services()[p] : undefined;
     setActiveServices((prev) => {
-      const filtered = prev.filter((item) => item.project === p);
-      if (!filtered.some((item) => item.key === key)) {
-        return [...filtered, { project: p, service: s, key }];
+      let filtered = p ? prev.filter((item) => item.project === p) : [];
+      if (currentServices) {
+        const validSet = new Set(currentServices.map((svc) => svc.name));
+        filtered = filtered.filter((item) => validSet.has(item.service));
+      }
+      if (p && s && currentServices && currentServices.some((svc) => svc.name === s)) {
+        const key = `${p}/${s}`;
+        if (!filtered.some((item) => item.key === key)) {
+          return [...filtered, { project: p, service: s, key }];
+        }
       }
       return filtered;
     });
@@ -227,12 +233,18 @@ function ActionLogViewer() {
   createEffect(() => {
     const p = selectedProject();
     const a = selectedAction();
-    if (!p || !a) return;
-    const key = `${p}/${a}`;
+    const currentActions = p ? actions()[p] : undefined;
     setActiveActions((prev) => {
-      const filtered = prev.filter((item) => item.project === p);
-      if (!filtered.some((item) => item.key === key)) {
-        return [...filtered, { project: p, action: a, key }];
+      let filtered = p ? prev.filter((item) => item.project === p) : [];
+      if (currentActions) {
+        const validSet = new Set(currentActions.map((act) => act.name));
+        filtered = filtered.filter((item) => validSet.has(item.action));
+      }
+      if (p && a && currentActions && currentActions.some((act) => act.name === a)) {
+        const key = `${p}/${a}`;
+        if (!filtered.some((item) => item.key === key)) {
+          return [...filtered, { project: p, action: a, key }];
+        }
       }
       return filtered;
     });

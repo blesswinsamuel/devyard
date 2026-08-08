@@ -250,6 +250,12 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleGitCommit(w, req)
 	case protocol.KindGitStage:
 		s.handleGitStage(w, req)
+	case protocol.KindGitPush:
+		s.handleGitPush(w, req)
+	case protocol.KindGitPull:
+		s.handleGitPull(w, req)
+	case protocol.KindGitFetch:
+		s.handleGitFetch(w, req)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
 	}
@@ -782,6 +788,45 @@ func (s *Server) handleGitStage(w io.Writer, req protocol.Request) {
 	_ = protocol.WriteFrame(w, protocol.Response{
 		Kind:    protocol.KindDone,
 		Project: req.Project,
+	})
+}
+
+func (s *Server) handleGitPush(w io.Writer, req protocol.Request) {
+	output, err := s.backend.GitPush(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:      protocol.KindDone,
+		Project:   req.Project,
+		GitOutput: output,
+	})
+}
+
+func (s *Server) handleGitPull(w io.Writer, req protocol.Request) {
+	output, err := s.backend.GitPull(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:      protocol.KindDone,
+		Project:   req.Project,
+		GitOutput: output,
+	})
+}
+
+func (s *Server) handleGitFetch(w io.Writer, req protocol.Request) {
+	output, err := s.backend.GitFetch(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	_ = protocol.WriteFrame(w, protocol.Response{
+		Kind:      protocol.KindDone,
+		Project:   req.Project,
+		GitOutput: output,
 	})
 }
 

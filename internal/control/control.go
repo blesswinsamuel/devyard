@@ -53,6 +53,15 @@ type MultiBackend interface {
 	GitCommit(project string, message string) error
 	// GitStage stages or unstages files in the project's repository.
 	GitStage(project string, path string, stageAll bool, unstage bool) error
+	// GitPush pushes the current branch to its upstream remote in the
+	// project's repository, returning the command output.
+	GitPush(project string) (string, error)
+	// GitPull pulls changes from the current branch's upstream remote in the
+	// project's repository, returning the command output.
+	GitPull(project string) (string, error)
+	// GitFetch downloads refs from the remote in the project's repository
+	// without touching the working tree, returning the command output.
+	GitFetch(project string) (string, error)
 	// SetOnStateChange registers a callback that is invoked whenever any
 	// project's service state changes. The project name and the
 	// per-service state snapshot are passed. Implementations that do not
@@ -124,6 +133,39 @@ func (s SingleProjectBackend) GitStage(_ string, path string, stageAll bool, uns
 		return fmt.Errorf("project %q is not a git repository", s.Project)
 	}
 	return gitlog.Stage(dir, path, stageAll, unstage)
+}
+
+func (s SingleProjectBackend) GitPush(_ string) (string, error) {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	if !gitlog.IsRepo(dir) {
+		return "", fmt.Errorf("project %q is not a git repository", s.Project)
+	}
+	return gitlog.Push(dir, "")
+}
+
+func (s SingleProjectBackend) GitPull(_ string) (string, error) {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	if !gitlog.IsRepo(dir) {
+		return "", fmt.Errorf("project %q is not a git repository", s.Project)
+	}
+	return gitlog.Pull(dir, "")
+}
+
+func (s SingleProjectBackend) GitFetch(_ string) (string, error) {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	if !gitlog.IsRepo(dir) {
+		return "", fmt.Errorf("project %q is not a git repository", s.Project)
+	}
+	return gitlog.Fetch(dir, "")
 }
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {

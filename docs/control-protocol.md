@@ -67,6 +67,9 @@ type Request struct {
 | `"list_actions"` | project name | — | — | Return one `actions` response with a snapshot of defined actions for the project. |
 | `"run_action"` | project name | — | `Action`, `Args` | Execute the named action command with optional extra CLI args, streaming output lines (`log_line`) and ending with `done` carrying `action_exit_code`. |
 | `"git_log"` | project name | — | — | Return one `git_commits` response with the project's git commit log (newest first), run in the directory containing its config file. Errors when the project's directory is not a git repository. |
+| `"git_push"` | project name | — | — | Push the current branch to its upstream remote in the project's working directory. Acks with `done` (carrying `git_output`) or `error`. |
+| `"git_pull"` | project name | — | — | Pull changes from the current branch's upstream remote in the project's working directory. Acks with `done` (carrying `git_output`) or `error`. |
+| `"git_fetch"` | project name | — | — | Download refs from the remote in the project's working directory without touching the working tree. Acks with `done` (carrying `git_output`) or `error`. |
 
 ## Response (daemon -> client)
 
@@ -77,6 +80,8 @@ type Response struct {
     Projects []ProjectInfo  `json:"projects,omitempty"` // Kind == "projects"
     Stats    []ServiceStat  `json:"stats,omitempty"`    // Kind == "stats"
     GitCommits []GitCommit  `json:"git_commits,omitempty"` // Kind == "git_commits"
+    GitDiff    *GitDiffResult `json:"git_diff,omitempty"` // Kind == "git_diff"
+    GitOutput  string       `json:"git_output,omitempty"`  // Kind == "done" for "git_push"/"git_pull"/"git_fetch"
     Project  string         `json:"project,omitempty"`   // Kind == "log_line" (which project)
     Service  string         `json:"service,omitempty"`  // Kind == "log_line" (which service)
     Line     string         `json:"line,omitempty"`     // Kind == "log_line"
@@ -94,7 +99,7 @@ type Response struct {
 | `"log_content"` | Bulk: existing log history (`Content` populated; `Project`/`Service` identify the source). Sent once before streaming starts. May be a tailed/byte-capped window rather than the entire file. |
 | `"log_line"` | One line of a service's log (`Line` populated; `Project`/`Service` identify the source). Sent for each new line during follow. |
 | `"log_rotated"` | A new run started: the supervisor rotated the log (`<service>.log` → `<service>.prev.log`) and the previous run's lines are over. Carries `project` and `service` so multi-stream clients can route the reset. Frontends with a scrollback buffer (web) reset their view on receipt. |
-| `"done"` | Request complete; no more frames will follow on this connection. |
+| `"done"` | Request complete; no more frames will follow on this connection. For `"git_push"`/`"git_pull"`/`"git_fetch"`, `git_output` carries the git command's stdout/stderr for display. |
 | `"error"` | An error occurred (`Error` has the message). The connection is now done. |
 
 A single request may produce many responses. A `Logs{follow:true}` stream starts

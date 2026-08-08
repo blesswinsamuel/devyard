@@ -734,6 +734,51 @@ func (d *Daemon) GitStage(name string, path string, stageAll bool, unstage bool)
 	return gitlog.Stage(p.BaseDir, path, stageAll, unstage)
 }
 
+// GitPush pushes the current branch to its upstream remote in a project's
+// working directory.
+func (d *Daemon) GitPush(name string) (string, error) {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("project %q is not running", name)
+	}
+	if !gitlog.IsRepo(p.BaseDir) {
+		return "", fmt.Errorf("project %q is not a git repository", name)
+	}
+	return gitlog.Push(p.BaseDir, "")
+}
+
+// GitPull pulls changes from the current branch's upstream remote in a
+// project's working directory.
+func (d *Daemon) GitPull(name string) (string, error) {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("project %q is not running", name)
+	}
+	if !gitlog.IsRepo(p.BaseDir) {
+		return "", fmt.Errorf("project %q is not a git repository", name)
+	}
+	return gitlog.Pull(p.BaseDir, "")
+}
+
+// GitFetch downloads refs from the remote in a project's working directory
+// without touching the working tree.
+func (d *Daemon) GitFetch(name string) (string, error) {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("project %q is not running", name)
+	}
+	if !gitlog.IsRepo(p.BaseDir) {
+		return "", fmt.Errorf("project %q is not a git repository", name)
+	}
+	return gitlog.Fetch(p.BaseDir, "")
+}
+
 // stoppedBackend adapts a registered-but-never-started project (Sup == nil) to
 // control.Backend. Its retained config lets reads report every service as
 // stopped and list the project's actions; mutations report that the project is

@@ -43,6 +43,9 @@ const (
 	KindGitDiff          RequestKind = "git_diff"           // get diff and changed files for a commit
 	KindGitCommit        RequestKind = "git_commit"         // create a new git commit for uncommitted changes
 	KindGitStage         RequestKind = "git_stage"          // stage or unstage files
+	KindGitPush          RequestKind = "git_push"           // push the current branch to its upstream remote
+	KindGitPull          RequestKind = "git_pull"           // pull changes from the current branch's upstream remote
+	KindGitFetch         RequestKind = "git_fetch"          // fetch refs from the remote without merging
 	KindDaemonStatus     RequestKind = "daemon_status"      // get global daemon status and runtime stats
 	KindRestartDaemon    RequestKind = "restart_daemon"     // restart the global daemon process
 )
@@ -269,6 +272,7 @@ type Response struct {
 	GitTags        []GitTag       `json:"git_tags,omitempty"`         // Kind==KindGitCommits
 	GitStashes     []GitStash     `json:"git_stashes,omitempty"`      // Kind==KindGitCommits
 	GitDiff        *GitDiffResult `json:"git_diff,omitempty"`         // Kind==KindGitDiff
+	GitOutput      string         `json:"git_output,omitempty"`       // Kind==KindDone for KindGitPush/Pull/Fetch (command output)
 	DaemonInfo     *DaemonInfo    `json:"daemon_info,omitempty"`      // Kind==KindDaemonStatus
 	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
 	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)

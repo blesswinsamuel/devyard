@@ -690,3 +690,77 @@ func Commit(dir string, message string) error {
 
 	return nil
 }
+
+// runRemote runs a git remote command (push/pull/fetch) in dir with args,
+// capturing combined output. It returns the combined output on both success
+// and failure so callers can surface real git messages (auth prompts, rejected
+// pushes, merge conflicts) rather than a bare error string.
+func runRemote(dir, name string, args ...string) (string, error) {
+	fullArgs := append([]string{"-C", dir, name}, args...)
+	cmd := exec.Command("git", fullArgs...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(out.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return msg, fmt.Errorf("git %s: %s: %w", name, msg, err)
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+// Push pushes the current branch to its upstream remote. Without an upstream
+// set, git errors with guidance; remote + args allow an explicit target (remote
+// is inserted after the verb, before any refspec args). It returns the command
+// output so the UI can show progress/errors.
+func Push(dir, remote string, args ...string) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return "", fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	full := []string{}
+	if remote != "" {
+		full = append(full, remote)
+	}
+	full = append(full, args...)
+	return runRemote(dir, "push", full...)
+}
+
+// Pull pulls changes from the current branch's upstream remote. remote + args
+// allow an explicit target (remote is inserted after the verb). Returns the
+// command output.
+func Pull(dir, remote string, args ...string) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return "", fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	full := []string{}
+	if remote != "" {
+		full = append(full, remote)
+	}
+	full = append(full, args...)
+	return runRemote(dir, "pull", full...)
+}
+
+// Fetch downloads objects and refs from the default remote (or remote when
+// given) without touching the working tree. Returns the command output.
+func Fetch(dir, remote string, args ...string) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return "", fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	full := []string{}
+	if remote != "" {
+		full = append(full, remote)
+	}
+	full = append(full, args...)
+	return runRemote(dir, "fetch", full...)
+}

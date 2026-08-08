@@ -142,6 +142,9 @@ func (m *fakeMultiBackend) GitDiff(string, string, ...int) (*protocol.GitDiffRes
 }
 func (m *fakeMultiBackend) GitCommit(string, string) error            { return nil }
 func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return nil }
+func (m *fakeMultiBackend) GitPush(string) (string, error)            { return "", nil }
+func (m *fakeMultiBackend) GitPull(string) (string, error)            { return "", nil }
+func (m *fakeMultiBackend) GitFetch(string) (string, error)           { return "", nil }
 
 // fakeBackend is a minimal control.Backend for WS testing.
 type fakeBackend struct {

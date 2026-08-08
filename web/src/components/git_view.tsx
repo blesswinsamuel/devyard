@@ -104,7 +104,7 @@ export function GitView() {
     const list = commits();
     const proj = project();
     if (proj && list.length > 0 && !selectedCommitHash()[proj]) {
-      selectCommit(proj, list[0].hash);
+      selectCommit(proj, list[0].hash, { skipPush: true });
     }
   });
 

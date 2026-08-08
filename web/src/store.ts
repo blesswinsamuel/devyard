@@ -326,6 +326,15 @@ function start() {
     setSelectedService(initRoute.service);
     setSelectedAction(initRoute.action);
     expandProject(initRoute.project);
+    if (initRoute.view === "git") {
+      setActiveView("git");
+      loadGitLog(initRoute.project);
+      if (initRoute.commit) {
+        selectCommit(initRoute.project, initRoute.commit, { skipPush: true });
+      }
+    } else {
+      setActiveView("logs");
+    }
     if (initRoute.service) {
       setKeyboardCursor({ kind: "service", project: initRoute.project, service: initRoute.service });
     } else if (initRoute.action) {
@@ -337,17 +346,32 @@ function start() {
 
   const stopPopState = listenPopState((route) => {
     if (route.project) {
-      if (route.service) {
+      if (route.view === "git") {
+        setSelectedProject(route.project);
+        setSelectedService(null);
+        setSelectedAction(null);
+        setActiveView("git");
+        loadGitLog(route.project);
+        if (route.commit) {
+          selectCommit(route.project, route.commit, { skipPush: true });
+        } else {
+          setSelectedCommitHash((m) => ({ ...m, [route.project!]: null }));
+        }
+      } else if (route.service) {
+        setActiveView("logs");
         selectService(route.project, route.service, { skipPush: true });
       } else if (route.action) {
+        setActiveView("logs");
         selectAction(route.project, route.action, { skipPush: true });
       } else {
+        setActiveView("logs");
         selectProject(route.project, { skipPush: true });
       }
     } else {
       setSelectedProject(null);
       setSelectedService(null);
       setSelectedAction(null);
+      setActiveView("logs");
       setKeyboardCursor(null);
     }
   });
@@ -1044,11 +1068,14 @@ export function loadGitDiff(project: string, hash: string) {
 }
 
 /** Select a commit hash in the git view and fetch its diff. */
-export function selectCommit(project: string, hash: string | null) {
+export function selectCommit(project: string, hash: string | null, opts?: { skipPush?: boolean }) {
   setSelectedCommitHash((m) => ({ ...m, [project]: hash }));
   setSelectedFilePath((m) => ({ ...m, [project]: null }));
   if (hash) {
     loadGitDiff(project, hash);
+  }
+  if (!opts?.skipPush && activeView() === "git") {
+    pushRoute({ project, service: null, action: null, view: "git", commit: hash });
   }
 }
 
@@ -1058,17 +1085,28 @@ export function selectDiffFile(project: string, path: string | null) {
 }
 
 /** Open the full-page git view for a project and load its commit log. */
-export function openGitView(name: string) {
+export function openGitView(name: string, commitHash?: string) {
   setSelectedProject(name);
   setSelectedService(null);
   setSelectedAction(null);
   setActiveView("git");
   loadGitLog(name);
+  if (commitHash) {
+    selectCommit(name, commitHash, { skipPush: true });
+  }
+  const commit = commitHash ?? selectedCommitHash()[name] ?? null;
+  pushRoute({ project: name, service: null, action: null, view: "git", commit });
 }
 
 /** Close the git view and return to the project's default (logs) view. */
 export function closeGitView() {
   setActiveView("logs");
+  const p = selectedProject();
+  if (p) {
+    pushRoute({ project: p, service: selectedService(), action: selectedAction(), view: "logs" });
+  } else {
+    pushRoute({ project: null, service: null, action: null });
+  }
 }
 
 export {

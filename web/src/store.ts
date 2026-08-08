@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, ViewMode, ShellTab, PaneNode } from "./types";
+import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, GitBranch, GitTag, GitStash, GitLogPayload, ViewMode, ShellTab, PaneNode } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 import { parseRoute, pushRoute, replaceRoute, listenPopState } from "./router";
 
@@ -26,6 +26,9 @@ const [services, setServices] = createSignal<Record<string, ServiceState[]>>({})
 const [actions, setActions] = createSignal<Record<string, ActionInfo[]>>({});
 const [actionStates, setActionStates] = createSignal<Record<string, ActionState[]>>({});
 const [gitCommits, setGitCommits] = createSignal<Record<string, GitCommit[]>>({});
+const [gitBranches, setGitBranches] = createSignal<Record<string, GitBranch[]>>({});
+const [gitTags, setGitTags] = createSignal<Record<string, GitTag[]>>({});
+const [gitStashes, setGitStashes] = createSignal<Record<string, GitStash[]>>({});
 const [gitError, setGitError] = createSignal<Record<string, string>>({});
 const [gitLoading, setGitLoading] = createSignal<Record<string, boolean>>({});
 const [selectedCommitHash, setSelectedCommitHash] = createSignal<Record<string, string | null>>({});
@@ -39,6 +42,9 @@ export {
   actions,
   actionStates,
   gitCommits,
+  gitBranches,
+  gitTags,
+  gitStashes,
   gitError,
   gitLoading,
   selectedCommitHash,
@@ -425,8 +431,17 @@ function start() {
       setGitError((m) => ({ ...m, [project]: resp.error ?? "Failed to load git log" }));
       return;
     }
-    const next = (resp.data ?? []) as GitCommit[];
-    setGitCommits((m) => ({ ...m, [project]: next }));
+    if (resp.data) {
+      if (Array.isArray(resp.data)) {
+        setGitCommits((m) => ({ ...m, [project]: resp.data as GitCommit[] }));
+      } else {
+        const payload = resp.data as GitLogPayload;
+        setGitCommits((m) => ({ ...m, [project]: payload.commits ?? [] }));
+        setGitBranches((m) => ({ ...m, [project]: payload.branches ?? [] }));
+        setGitTags((m) => ({ ...m, [project]: payload.tags ?? [] }));
+        setGitStashes((m) => ({ ...m, [project]: payload.stashes ?? [] }));
+      }
+    }
   });
   onWS("git_diff", (resp) => {
     if (!resp.project) return;

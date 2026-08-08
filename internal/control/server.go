@@ -711,15 +711,18 @@ func (s *Server) handleListActionStates(w io.Writer, req protocol.Request) {
 }
 
 func (s *Server) handleGitLog(w io.Writer, req protocol.Request) {
-	commits, err := s.backend.GitLog(req.Project)
+	commits, branches, tags, stashes, err := s.backend.GitLog(req.Project)
 	if err != nil {
 		_ = writeError(w, err.Error())
 		return
 	}
 	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:       protocol.KindGitCommits,
-		Project:    req.Project,
-		GitCommits: commits,
+		Kind:        protocol.KindGitCommits,
+		Project:     req.Project,
+		GitCommits:  commits,
+		GitBranches: branches,
+		GitTags:     tags,
+		GitStashes:  stashes,
 	})
 }
 

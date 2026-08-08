@@ -35,6 +35,32 @@ export interface ActionState {
   finished_at?: string;
 }
 
+export interface GitRef {
+  name: string;
+  type: "head" | "branch" | "remote" | "tag" | "stash";
+  is_active?: boolean;
+}
+
+export interface GitBranch {
+  name: string;
+  hash: string;
+  is_active?: boolean;
+  is_remote?: boolean;
+  upstream?: string;
+}
+
+export interface GitTag {
+  name: string;
+  hash: string;
+}
+
+export interface GitStash {
+  index: string;
+  name: string;
+  hash: string;
+  time?: string;
+}
+
 export interface GitCommit {
   hash: string;
   short: string;
@@ -44,6 +70,14 @@ export interface GitCommit {
   parents?: string[];
   subject: string;
   head?: boolean;
+  refs?: GitRef[];
+}
+
+export interface GitLogPayload {
+  commits: GitCommit[];
+  branches: GitBranch[];
+  tags: GitTag[];
+  stashes: GitStash[];
 }
 
 export interface GitFileChange {
@@ -97,6 +131,7 @@ export interface WSResponse {
     | ServiceState
     | ActionState
     | GitCommit[]
+    | GitLogPayload
     | GitDiffResult;
   line?: string;
   ok?: boolean;

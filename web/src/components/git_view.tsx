@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import {
+  Archive,
   ArrowLeft,
   Check,
   ChevronDown,
@@ -16,10 +17,14 @@ import {
   RefreshCw,
   Search,
   Send,
+  Tag,
 } from "lucide-solid";
 import {
   selectedProject,
   gitCommits,
+  gitBranches,
+  gitTags,
+  gitStashes,
   gitError,
   gitLoading,
   selectedCommitHash,
@@ -37,7 +42,7 @@ import {
   stageGitFile,
   loadGitDiff,
 } from "~/store";
-import type { GitCommit, GitFileChange } from "~/types";
+import type { GitCommit, GitFileChange, GitBranch as GitBranchType, GitTag as GitTagType, GitStash as GitStashType, GitRef } from "~/types";
 import { computeGitGraph, GRAPH_COLORS } from "~/lib/git_graph";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -77,6 +82,18 @@ function getStatusBadge(status: string) {
 export function GitView() {
   const project = () => selectedProject();
   const commits = createMemo(() => (project() ? gitCommits()[project()!] ?? [] : []));
+  const branches = createMemo(() => (project() ? gitBranches()[project()!] ?? [] : []));
+  const tags = createMemo(() => (project() ? gitTags()[project()!] ?? [] : []));
+  const stashes = createMemo(() => (project() ? gitStashes()[project()!] ?? [] : []));
+
+  const activeBranch = createMemo(() => branches().find((b) => b.is_active));
+  const localBranches = createMemo(() => branches().filter((b) => !b.is_remote));
+  const remoteBranches = createMemo(() => branches().filter((b) => b.is_remote));
+
+  const [branchesOpen, setBranchesOpen] = createSignal(true);
+  const [tagsOpen, setTagsOpen] = createSignal(true);
+  const [stashesOpen, setStashesOpen] = createSignal(true);
+
   const error = createMemo(() => (project() ? gitError()[project()!] ?? "" : ""));
   const loading = createMemo(() => (project() ? !!gitLoading()[project()!] : false));
 
@@ -181,6 +198,12 @@ export function GitView() {
           <div class="flex min-w-0 items-center gap-2">
             <GitBranch class="size-4 shrink-0 text-primary" />
             <span class="truncate font-semibold text-sm">{project()}</span>
+            <Show when={activeBranch()}>
+              <Badge class="h-4.5 px-1.5 gap-1 text-[10px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border-emerald-500/40 font-mono font-medium shrink-0">
+                <GitBranch class="size-3 text-emerald-500" />
+                <span>{activeBranch()?.name}</span>
+              </Badge>
+            </Show>
             <span class="truncate text-xs text-muted-foreground">/ git history</span>
           </div>
         </div>
@@ -210,10 +233,151 @@ export function GitView() {
         </div>
       </div>
 
-      {/* Main 3-Pane Body */}
+      {/* Main Multi-Pane Body */}
       <div class="min-h-0 flex-1 flex divide-x divide-border">
-        {/* Left Pane: Commit Log List with DAG Graph */}
-        <div class="flex flex-col w-1/3 min-w-[300px] max-w-[500px] shrink-0 bg-background">
+        {/* Pane 0: Git Navigation Sidebar (Branches, Tags, Stashes) */}
+        <div class="flex flex-col w-52 shrink-0 bg-muted/10 divide-y divide-border/60 overflow-y-auto select-none">
+          {/* Branches Section */}
+          <div class="flex flex-col">
+            <div
+              onClick={() => setBranchesOpen(!branchesOpen())}
+              class="flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer bg-muted/20"
+            >
+              <div class="flex items-center gap-1.5 min-w-0">
+                <GitBranch class="size-3.5 text-primary shrink-0" />
+                <span class="truncate">Branches ({branches().length})</span>
+              </div>
+              <Show when={branchesOpen()} fallback={<ChevronRight class="size-3.5 shrink-0" />}>
+                <ChevronDown class="size-3.5 shrink-0" />
+              </Show>
+            </div>
+            <Show when={branchesOpen()}>
+              <div class="flex flex-col py-1">
+                {/* Local Branches */}
+                <For each={localBranches()}>
+                  {(b) => (
+                    <div
+                      onClick={() => project() && selectCommit(project()!, b.hash)}
+                      class={`flex items-center justify-between gap-2 px-3 py-1.5 text-xs cursor-pointer transition-colors ${
+                        b.is_active
+                          ? "bg-emerald-500/15 font-semibold text-emerald-600 dark:text-emerald-400"
+                          : "hover:bg-muted/40 text-foreground"
+                      }`}
+                      title={`${b.name} (${b.hash.substring(0, 7)})`}
+                    >
+                      <div class="flex items-center gap-1.5 min-w-0">
+                        <GitBranch class={`size-3 shrink-0 ${b.is_active ? "text-emerald-500" : "text-sky-500"}`} />
+                        <span class="truncate font-mono text-[11px]">{b.name}</span>
+                      </div>
+                      <Show when={b.is_active}>
+                        <Badge class="h-3.5 px-1 text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 shrink-0 font-sans">
+                          HEAD
+                        </Badge>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+                {/* Remote Branches */}
+                <Show when={remoteBranches().length > 0}>
+                  <div class="px-3 pt-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Remotes
+                  </div>
+                  <For each={remoteBranches()}>
+                    {(b) => (
+                      <div
+                        onClick={() => project() && selectCommit(project()!, b.hash)}
+                        class="flex items-center justify-between gap-2 px-3 py-1 text-xs cursor-pointer hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
+                        title={`${b.name} (${b.hash.substring(0, 7)})`}
+                      >
+                        <div class="flex items-center gap-1.5 min-w-0">
+                          <GitBranch class="size-3 text-purple-500 shrink-0" />
+                          <span class="truncate font-mono text-[11px]">{b.name}</span>
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </Show>
+          </div>
+
+          {/* Tags Section */}
+          <div class="flex flex-col">
+            <div
+              onClick={() => setTagsOpen(!tagsOpen())}
+              class="flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer bg-muted/20"
+            >
+              <div class="flex items-center gap-1.5 min-w-0">
+                <Tag class="size-3.5 text-amber-500 shrink-0" />
+                <span class="truncate">Tags ({tags().length})</span>
+              </div>
+              <Show when={tagsOpen()} fallback={<ChevronRight class="size-3.5 shrink-0" />}>
+                <ChevronDown class="size-3.5 shrink-0" />
+              </Show>
+            </div>
+            <Show when={tagsOpen()}>
+              <div class="flex flex-col py-1">
+                <Show when={tags().length > 0} fallback={<div class="px-3 py-1 text-[11px] text-muted-foreground italic">No tags</div>}>
+                  <For each={tags()}>
+                    {(t) => (
+                      <div
+                        onClick={() => project() && selectCommit(project()!, t.hash)}
+                        class="flex items-center justify-between gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-muted/40 text-foreground transition-colors"
+                        title={`${t.name} (${t.hash.substring(0, 7)})`}
+                      >
+                        <div class="flex items-center gap-1.5 min-w-0">
+                          <Tag class="size-3 text-amber-500 shrink-0" />
+                          <span class="truncate font-mono text-[11px] font-medium">{t.name}</span>
+                        </div>
+                        <span class="font-mono text-[10px] text-muted-foreground opacity-60 shrink-0">{t.hash.substring(0, 7)}</span>
+                      </div>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </Show>
+          </div>
+
+          {/* Stashes Section */}
+          <div class="flex flex-col">
+            <div
+              onClick={() => setStashesOpen(!stashesOpen())}
+              class="flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer bg-muted/20"
+            >
+              <div class="flex items-center gap-1.5 min-w-0">
+                <Archive class="size-3.5 text-slate-400 shrink-0" />
+                <span class="truncate">Stashes ({stashes().length})</span>
+              </div>
+              <Show when={stashesOpen()} fallback={<ChevronRight class="size-3.5 shrink-0" />}>
+                <ChevronDown class="size-3.5 shrink-0" />
+              </Show>
+            </div>
+            <Show when={stashesOpen()}>
+              <div class="flex flex-col py-1">
+                <Show when={stashes().length > 0} fallback={<div class="px-3 py-1 text-[11px] text-muted-foreground italic">No stashes</div>}>
+                  <For each={stashes()}>
+                    {(s) => (
+                      <div
+                        onClick={() => project() && selectCommit(project()!, s.hash)}
+                        class="flex flex-col gap-0.5 px-3 py-1.5 text-xs cursor-pointer hover:bg-muted/40 text-foreground transition-colors min-w-0"
+                        title={`${s.index}: ${s.name}`}
+                      >
+                        <div class="flex items-center gap-1.5 min-w-0">
+                          <Archive class="size-3 text-slate-400 shrink-0" />
+                          <span class="truncate font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">{s.index}</span>
+                        </div>
+                        <span class="truncate text-[10px] text-muted-foreground pl-4 leading-tight">{s.name}</span>
+                      </div>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </Show>
+          </div>
+        </div>
+
+        {/* Pane 1: Commit Log List with DAG Graph */}
+        <div class="flex flex-col w-1/3 min-w-[320px] max-w-[500px] shrink-0 bg-background">
           <div class="flex h-8 shrink-0 items-center justify-between border-b border-border px-3 text-xs font-semibold text-muted-foreground bg-muted/10">
             <span>Commits ({filteredCommits().length})</span>
           </div>
@@ -250,7 +414,7 @@ export function GitView() {
                       const graphInfo = () => graphMap().get(commit.hash);
                       const isItemWorkdir = commit.hash === "WORKDIR";
                       const colWidth = 14;
-                      const rowHeight = 44;
+                      const rowHeight = 48;
 
                       return (
                         <div
@@ -324,14 +488,70 @@ export function GitView() {
                           </div>
 
                           {/* Commit Details */}
-                          <div class="flex-1 min-w-0 flex flex-col gap-0.5">
-                            <div class="flex items-center gap-1.5 min-w-0">
+                          <div class="flex-1 min-w-0 flex flex-col gap-1">
+                            <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
                               <Show when={isItemWorkdir}>
                                 <Badge class="h-4 px-1 text-[10px] font-sans shrink-0 bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30">
                                   Uncommitted
                                 </Badge>
                               </Show>
-                              <Show when={commit.head && !isItemWorkdir}>
+                              {/* Sublime Text Style Ref Badges */}
+                              <Show when={commit.refs && commit.refs.length > 0}>
+                                <For each={commit.refs}>
+                                  {(ref) => {
+                                    if (ref.type === "branch" && ref.is_active) {
+                                      return (
+                                        <Badge class="h-4 px-1.5 gap-1 text-[10px] font-sans font-semibold shrink-0 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40">
+                                          <GitBranch class="size-3 text-emerald-500" />
+                                          <span>{ref.name}</span>
+                                          <Check class="size-2.5 stroke-[3]" />
+                                        </Badge>
+                                      );
+                                    }
+                                    if (ref.type === "branch") {
+                                      return (
+                                        <Badge class="h-4 px-1.5 gap-1 text-[10px] font-sans shrink-0 bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30">
+                                          <GitBranch class="size-3 text-sky-500" />
+                                          <span>{ref.name}</span>
+                                        </Badge>
+                                      );
+                                    }
+                                    if (ref.type === "remote") {
+                                      return (
+                                        <Badge class="h-4 px-1.5 gap-1 text-[10px] font-sans shrink-0 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30">
+                                          <GitBranch class="size-3 text-purple-500" />
+                                          <span>{ref.name}</span>
+                                        </Badge>
+                                      );
+                                    }
+                                    if (ref.type === "tag") {
+                                      return (
+                                        <Badge class="h-4 px-1.5 gap-1 text-[10px] font-sans shrink-0 bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 font-medium">
+                                          <Tag class="size-3 text-amber-500" />
+                                          <span>{ref.name}</span>
+                                        </Badge>
+                                      );
+                                    }
+                                    if (ref.type === "stash") {
+                                      return (
+                                        <Badge class="h-4 px-1.5 gap-1 text-[10px] font-sans shrink-0 bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30">
+                                          <Archive class="size-3 text-slate-400" />
+                                          <span>{ref.name}</span>
+                                        </Badge>
+                                      );
+                                    }
+                                    if (ref.type === "head" && (!commit.refs || !commit.refs.some((r) => r.type === "branch" && r.is_active))) {
+                                      return (
+                                        <Badge variant="secondary" class="h-4 px-1 text-[10px] font-sans shrink-0 font-mono">
+                                          HEAD
+                                        </Badge>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                </For>
+                              </Show>
+                              <Show when={commit.head && !isItemWorkdir && (!commit.refs || commit.refs.length === 0)}>
                                 <Badge variant="secondary" class="h-4 px-1 text-[10px] font-sans shrink-0">
                                   HEAD
                                 </Badge>

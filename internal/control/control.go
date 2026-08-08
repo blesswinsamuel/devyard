@@ -37,9 +37,9 @@ type MultiBackend interface {
 	// for single-project servers.
 	ProjectBackend(project string) (Backend, error)
 	// GitLog returns the git commit log for the named project's working
-	// directory, newest first. It errors if the project's directory is not a
+	// directory, newest first, along with branches, tags, and stashes. It errors if the project's directory is not a
 	// git repository.
-	GitLog(project string) ([]protocol.GitCommit, error)
+	GitLog(project string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error)
 	// GitDiff returns the commit metadata, changed files list, and diff for hash
 	// in the named project's working directory.
 	GitDiff(project string, hash string, contextLines ...int) (*protocol.GitDiffResult, error)
@@ -73,13 +73,13 @@ func (s SingleProjectBackend) ListProjects() []protocol.ProjectInfo {
 	return []protocol.ProjectInfo{{Name: s.Project, Status: "running"}}
 }
 
-func (s SingleProjectBackend) GitLog(string) ([]protocol.GitCommit, error) {
+func (s SingleProjectBackend) GitLog(string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
 	dir := s.GitDir
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
 	if !gitlog.IsRepo(dir) {
-		return nil, fmt.Errorf("project %q is not a git repository", s.Project)
+		return nil, nil, nil, nil, fmt.Errorf("project %q is not a git repository", s.Project)
 	}
 	return gitlog.Log(dir)
 }

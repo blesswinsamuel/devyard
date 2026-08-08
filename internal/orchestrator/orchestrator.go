@@ -589,21 +589,21 @@ func (d *Daemon) ProjectBackend(project string) (control.Backend, error) {
 // GitLog returns the git commit log for a project's working directory (the
 // directory containing its config file), newest first. It errors when the
 // project is unknown or its directory is not a git repository.
-func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, error) {
+func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
 	d.mu.Lock()
 	p, ok := d.projects[name]
 	d.mu.Unlock()
 	if !ok {
-		return nil, fmt.Errorf("project %q is not running", name)
+		return nil, nil, nil, nil, fmt.Errorf("project %q is not running", name)
 	}
 	if !gitlog.IsRepo(p.BaseDir) {
-		return nil, fmt.Errorf("project %q is not a git repository", name)
+		return nil, nil, nil, nil, fmt.Errorf("project %q is not a git repository", name)
 	}
-	commits, err := gitlog.Log(p.BaseDir)
+	commits, branches, tags, stashes, err := gitlog.Log(p.BaseDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, nil, err
 	}
-	return commits, nil
+	return commits, branches, tags, stashes, nil
 }
 
 // GitDiff returns the metadata, changed file list, and patch diff for a commit in a project's working directory.

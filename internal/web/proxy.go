@@ -416,7 +416,13 @@ func (s *Server) proxyGitLog(c *websocket.Conn, ctx context.Context, req *wsRequ
 		s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: false, Error: resp.Error})
 		return
 	}
-	data, _ := json.Marshal(resp.GitCommits)
+	payload := map[string]any{
+		"commits":  resp.GitCommits,
+		"branches": resp.GitBranches,
+		"tags":     resp.GitTags,
+		"stashes":  resp.GitStashes,
+	}
+	data, _ := json.Marshal(payload)
 	s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: true, Data: data})
 }
 

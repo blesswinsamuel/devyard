@@ -18,19 +18,22 @@ import (
 const CommitLimit = 100
 
 // Log runs `git log` in dir and returns up to CommitLimit commits, newest
-// first. Field separators are ASCII unit (0x1f); each commit is one line.
-// first. Field separators are ASCII unit (0x1f); each commit is one line.
-// Git's raw author date (%aI) is RFC3339, matching protocol.FormatTime.
-func Log(dir string) ([]protocol.GitCommit, error) {
+// first, along with branches, tags, and stashes.
+func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
 	if dir == "" {
-		return nil, fmt.Errorf("git: no working directory")
+		return nil, nil, nil, nil, fmt.Errorf("git: no working directory")
 	}
 	if !IsRepo(dir) {
-		return nil, fmt.Errorf("git: %s is not a git repository", dir)
+		return nil, nil, nil, nil, fmt.Errorf("git: %s is not a git repository", dir)
 	}
 
 	head := resolveHead(dir)
+	activeBranch := resolveActiveBranch(dir)
 	hasUncommitted := checkUncommitted(dir)
+
+	branches := GetBranches(dir, activeBranch)
+	tags := GetTags(dir)
+	stashes := GetStashes(dir)
 
 	// An empty repository (unborn branch) has no commits, so `git log` would
 	// fail with exit 128. Surface that as an empty log (or uncommitted changes) rather than an error.
@@ -42,13 +45,13 @@ func Log(dir string) ([]protocol.GitCommit, error) {
 				Subject: "Uncommitted Changes",
 				Author:  "Working Directory",
 				Time:    protocol.FormatTime(time.Now()),
-			}}, nil
+			}}, branches, tags, stashes, nil
 		}
-		return nil, nil
+		return nil, branches, tags, stashes, nil
 	}
 
-	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s"
-	cmd := exec.Command("git", "-C", dir, "log", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
+	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%D"
+	cmd := exec.Command("git", "-C", dir, "log", "--all", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -57,7 +60,7 @@ func Log(dir string) ([]protocol.GitCommit, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf("git: %s: %w", msg, err)
+		return nil, nil, nil, nil, fmt.Errorf("git: %s: %w", msg, err)
 	}
 
 	raw := out.String()
@@ -81,6 +84,80 @@ func Log(dir string) ([]protocol.GitCommit, error) {
 				c.Parents = strings.Fields(parents)
 			}
 			c.Head = c.Hash == head
+
+			if len(fields) >= 8 && fields[7] != "" {
+				var refs []protocol.GitRef
+				seenRefs := make(map[string]bool)
+
+				for _, rawRef := range strings.Split(fields[7], ",") {
+					ref := strings.TrimSpace(rawRef)
+					if ref == "" {
+						continue
+					}
+					if strings.HasPrefix(ref, "HEAD -> ") {
+						bName := strings.TrimPrefix(ref, "HEAD -> ")
+						if !seenRefs[bName] {
+							seenRefs[bName] = true
+							refs = append(refs, protocol.GitRef{
+								Name:     bName,
+								Type:     "branch",
+								IsActive: true,
+							})
+						}
+						if !seenRefs["HEAD"] {
+							seenRefs["HEAD"] = true
+							refs = append(refs, protocol.GitRef{
+								Name:     "HEAD",
+								Type:     "head",
+								IsActive: true,
+							})
+						}
+					} else if ref == "HEAD" {
+						if !seenRefs["HEAD"] {
+							seenRefs["HEAD"] = true
+							refs = append(refs, protocol.GitRef{
+								Name:     "HEAD",
+								Type:     "head",
+								IsActive: true,
+							})
+						}
+					} else if strings.HasPrefix(ref, "tag: ") {
+						tName := strings.TrimPrefix(ref, "tag: ")
+						if !seenRefs[tName] {
+							seenRefs[tName] = true
+							refs = append(refs, protocol.GitRef{
+								Name: tName,
+								Type: "tag",
+							})
+						}
+					} else if ref == "stash" || strings.HasPrefix(ref, "refs/stash") {
+						if !seenRefs[ref] {
+							seenRefs[ref] = true
+							refs = append(refs, protocol.GitRef{
+								Name: ref,
+								Type: "stash",
+							})
+						}
+					} else {
+						if !seenRefs[ref] {
+							seenRefs[ref] = true
+							isRemote := strings.Contains(ref, "/") && !strings.HasPrefix(ref, "heads/")
+							refType := "branch"
+							if isRemote {
+								refType = "remote"
+							}
+							isActive := activeBranch != "" && ref == activeBranch
+							refs = append(refs, protocol.GitRef{
+								Name:     ref,
+								Type:     refType,
+								IsActive: isActive,
+							})
+						}
+					}
+				}
+				c.Refs = refs
+			}
+
 			commits = append(commits, c)
 		}
 	}
@@ -99,7 +176,123 @@ func Log(dir string) ([]protocol.GitCommit, error) {
 		commits = append([]protocol.GitCommit{workdirCommit}, commits...)
 	}
 
-	return commits, nil
+	return commits, branches, tags, stashes, nil
+}
+
+func resolveActiveBranch(dir string) string {
+	cmd := exec.Command("git", "-C", dir, "symbolic-ref", "--short", "-q", "HEAD")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.String())
+}
+
+// GetBranches returns all local and remote branches in dir.
+func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
+	cmd := exec.Command("git", "-C", dir, "branch", "-a", "--format=%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	var branches []protocol.GitBranch
+	seen := make(map[string]bool)
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\x1f")
+		if len(parts) < 3 {
+			continue
+		}
+		headMarker := strings.TrimSpace(parts[0])
+		name := strings.TrimSpace(parts[1])
+		hash := strings.TrimSpace(parts[2])
+		upstream := ""
+		if len(parts) >= 4 {
+			upstream = strings.TrimSpace(parts[3])
+		}
+
+		if name == "HEAD" || strings.HasSuffix(name, "/HEAD") || seen[name] {
+			continue
+		}
+		seen[name] = true
+
+		isActive := headMarker == "*" || (activeBranch != "" && name == activeBranch)
+		isRemote := strings.HasPrefix(name, "origin/") || (strings.Contains(name, "/") && !strings.HasPrefix(name, "heads/"))
+
+		branches = append(branches, protocol.GitBranch{
+			Name:     name,
+			Hash:     hash,
+			IsActive: isActive,
+			IsRemote: isRemote,
+			Upstream: upstream,
+		})
+	}
+	return branches
+}
+
+// GetTags returns all tags in dir.
+func GetTags(dir string) []protocol.GitTag {
+	cmd := exec.Command("git", "-C", dir, "tag", "-l", "--format=%(refname:short)\x1f%(objectname)")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	var tags []protocol.GitTag
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\x1f")
+		if len(parts) < 2 {
+			continue
+		}
+		tags = append(tags, protocol.GitTag{
+			Name: strings.TrimSpace(parts[0]),
+			Hash: strings.TrimSpace(parts[1]),
+		})
+	}
+	return tags
+}
+
+// GetStashes returns all stashes in dir.
+func GetStashes(dir string) []protocol.GitStash {
+	cmd := exec.Command("git", "-C", dir, "stash", "list", "--format=%gd\x1f%gs\x1f%H\x1f%aI")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	var stashes []protocol.GitStash
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\x1f")
+		if len(parts) < 3 {
+			continue
+		}
+		st := protocol.GitStash{
+			Index: strings.TrimSpace(parts[0]),
+			Name:  strings.TrimSpace(parts[1]),
+			Hash:  strings.TrimSpace(parts[2]),
+		}
+		if len(parts) >= 4 {
+			st.Time = strings.TrimSpace(parts[3])
+		}
+		stashes = append(stashes, st)
+	}
+	return stashes
 }
 
 func checkUncommitted(dir string) bool {

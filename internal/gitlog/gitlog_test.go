@@ -50,13 +50,21 @@ func TestLog(t *testing.T) {
 	if !IsRepo(dir) {
 		t.Fatalf("IsRepo(%s) = false, want true", dir)
 	}
-	commits, err := Log(dir)
+	commits, branches, tags, stashes, err := Log(dir)
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
 	if len(commits) != 2 {
 		t.Fatalf("Log returned %d commits, want 2", len(commits))
 	}
+	if len(branches) < 1 {
+		t.Fatalf("expected at least 1 branch (main), got %d", len(branches))
+	}
+	if !branches[0].IsActive || branches[0].Name != "main" {
+		t.Fatalf("expected active branch main, got %+v", branches[0])
+	}
+	_ = tags
+	_ = stashes
 	// Newest first.
 	if commits[0].Subject != "second commit" || commits[1].Subject != "first commit" {
 		t.Fatalf("unexpected order: %+v", commits)
@@ -87,7 +95,7 @@ func TestLogNotARepo(t *testing.T) {
 	if IsRepo(dir) {
 		t.Fatalf("IsRepo(%s) = true for non-repo", dir)
 	}
-	if _, err := Log(dir); err == nil {
+	if _, _, _, _, err := Log(dir); err == nil {
 		t.Fatalf("Log on non-repo dir: expected error, got nil")
 	}
 }
@@ -99,7 +107,7 @@ func TestLogEmptyRepo(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("git init: %v", err)
 	}
-	commits, err := Log(dir)
+	commits, _, _, _, err := Log(dir)
 	if err != nil {
 		t.Fatalf("Log on empty repo: %v", err)
 	}
@@ -110,7 +118,7 @@ func TestLogEmptyRepo(t *testing.T) {
 
 func TestDiff(t *testing.T) {
 	dir := initRepo(t)
-	commits, err := Log(dir)
+	commits, _, _, _, err := Log(dir)
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log failed: %v", err)
 	}
@@ -141,7 +149,7 @@ func TestUncommittedAndCommit(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	commits, err := Log(dir)
+	commits, _, _, _, err := Log(dir)
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -168,7 +176,7 @@ func TestUncommittedAndCommit(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	commitsAfter, err := Log(dir)
+	commitsAfter, _, _, _, err := Log(dir)
 	if err != nil {
 		t.Fatalf("Log after commit: %v", err)
 	}

@@ -162,6 +162,36 @@ type ProjectInfo struct {
 	TotalServices   int    `json:"total_services"`
 }
 
+// GitRef describes a reference (branch, tag, stash) attached to a commit.
+type GitRef struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"` // "head", "branch", "remote", "tag", "stash"
+	IsActive bool   `json:"is_active,omitempty"`
+}
+
+// GitBranch describes a local or remote git branch.
+type GitBranch struct {
+	Name     string `json:"name"`
+	Hash     string `json:"hash"`
+	IsActive bool   `json:"is_active,omitempty"`
+	IsRemote bool   `json:"is_remote,omitempty"`
+	Upstream string `json:"upstream,omitempty"`
+}
+
+// GitTag describes a git tag.
+type GitTag struct {
+	Name string `json:"name"`
+	Hash string `json:"hash"`
+}
+
+// GitStash describes a git stash entry.
+type GitStash struct {
+	Index string `json:"index"` // e.g. "stash@{0}"
+	Name  string `json:"name"`  // e.g. "WIP on master..."
+	Hash  string `json:"hash"`
+	Time  string `json:"time,omitempty"`
+}
+
 // GitCommit is the wire form of one commit in a project's git log. Time is
 // encoded as an RFC3339 string (see FormatTime).
 type GitCommit struct {
@@ -173,6 +203,7 @@ type GitCommit struct {
 	Parents []string `json:"parents,omitempty"`
 	Subject string   `json:"subject"`
 	Head    bool     `json:"head,omitempty"` // true when this commit is the current HEAD
+	Refs    []GitRef `json:"refs,omitempty"` // branch names, tags, stashes pointing to this commit
 }
 
 // GitFileChange describes one modified/added/deleted/renamed file in a commit.
@@ -218,6 +249,9 @@ type Response struct {
 	ActionStates   []ActionState  `json:"action_states,omitempty"`    // Kind==KindActionStates
 	Stats          []ServiceStat  `json:"stats,omitempty"`            // Kind==KindStats
 	GitCommits     []GitCommit    `json:"git_commits,omitempty"`      // Kind==KindGitCommits
+	GitBranches    []GitBranch    `json:"git_branches,omitempty"`     // Kind==KindGitCommits
+	GitTags        []GitTag       `json:"git_tags,omitempty"`         // Kind==KindGitCommits
+	GitStashes     []GitStash     `json:"git_stashes,omitempty"`      // Kind==KindGitCommits
 	GitDiff        *GitDiffResult `json:"git_diff,omitempty"`         // Kind==KindGitDiff
 	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
 	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)

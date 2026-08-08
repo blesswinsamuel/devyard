@@ -459,12 +459,18 @@ func (s *Server) handleListActionStates(c *websocket.Conn, ctx context.Context, 
 }
 
 func (s *Server) handleGitLog(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	commits, err := s.backend.GitLog(req.Project)
+	commits, branches, tags, stashes, err := s.backend.GitLog(req.Project)
 	if err != nil {
 		s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: false, Error: err.Error()})
 		return
 	}
-	data, _ := json.Marshal(commits)
+	payload := map[string]any{
+		"commits":  commits,
+		"branches": branches,
+		"tags":     tags,
+		"stashes":  stashes,
+	}
+	data, _ := json.Marshal(payload)
 	s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: true, Data: data})
 }
 

@@ -55,6 +55,9 @@ type MultiBackend interface {
 	// SetOnActionStateChange registers a callback that is invoked whenever any
 	// project's action runtime state changes.
 	SetOnActionStateChange(fn func(project string, state protocol.ActionState))
+	// SetOnGitChange registers a callback that is invoked whenever any
+	// project's repository files change.
+	SetOnGitChange(fn func(project string))
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
@@ -156,3 +159,5 @@ func (s SingleProjectBackend) ProjectBackend(project string) (Backend, error) {
 func (s SingleProjectBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}
 
 func (s SingleProjectBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
+
+func (s SingleProjectBackend) SetOnGitChange(func(string)) {}

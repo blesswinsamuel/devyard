@@ -18,6 +18,7 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/dag"
 	"github.com/blesswinsamuel/local-compose/internal/gitlog"
+	"github.com/blesswinsamuel/local-compose/internal/gitwatcher"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
@@ -75,15 +76,30 @@ type Daemon struct {
 
 	onStateChange       func(project string, state protocol.ServiceState)
 	onActionStateChange func(project string, state protocol.ActionState)
+	onGitChange         func(project string)
+
+	watcher *gitwatcher.RepoWatcher
 }
 
 // New creates a Daemon with no projects. Call StartProject to add projects.
 func New() *Daemon {
-	return &Daemon{
+	d := &Daemon{
 		projects: make(map[string]*Project),
 		stopCh:   make(chan struct{}),
 		exited:   make(chan struct{}),
 	}
+	w, err := gitwatcher.New(func(project string) {
+		d.mu.Lock()
+		fn := d.onGitChange
+		d.mu.Unlock()
+		if fn != nil {
+			fn(project)
+		}
+	})
+	if err == nil {
+		d.watcher = w
+	}
+	return d
 }
 
 // StopCh returns a channel that is closed when StopDaemon is called. The daemon
@@ -104,6 +120,13 @@ func (d *Daemon) SetOnStateChange(fn func(project string, state protocol.Service
 func (d *Daemon) SetOnActionStateChange(fn func(project string, state protocol.ActionState)) {
 	d.mu.Lock()
 	d.onActionStateChange = fn
+	d.mu.Unlock()
+}
+
+// SetOnGitChange registers a callback that fires whenever repository files change.
+func (d *Daemon) SetOnGitChange(fn func(project string)) {
+	d.mu.Lock()
+	d.onGitChange = fn
 	d.mu.Unlock()
 }
 
@@ -333,6 +356,9 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		return existing.Sup.StartStopped()
 	}
 	d.projects[name] = p
+	if d.watcher != nil && p.BaseDir != "" {
+		_ = d.watcher.AddProject(name, p.BaseDir)
+	}
 	d.mu.Unlock()
 
 	// Write config path for autostart discovery.
@@ -450,6 +476,9 @@ func (d *Daemon) RemoveProject(name string) error {
 
 		d.mu.Lock()
 		delete(d.projects, name)
+		if d.watcher != nil {
+			d.watcher.RemoveProject(name)
+		}
 		d.mu.Unlock()
 	}
 
@@ -508,6 +537,10 @@ func (d *Daemon) StopDaemon() error {
 		d.mu.Lock()
 		p.stopping = false
 		d.mu.Unlock()
+	}
+
+	if d.watcher != nil {
+		_ = d.watcher.Close()
 	}
 
 	return nil
@@ -598,6 +631,9 @@ func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, []protocol.GitBranch
 	}
 	if !gitlog.IsRepo(p.BaseDir) {
 		return nil, nil, nil, nil, fmt.Errorf("project %q is not a git repository", name)
+	}
+	if d.watcher != nil && p.BaseDir != "" {
+		_ = d.watcher.AddProject(name, p.BaseDir)
 	}
 	commits, branches, tags, stashes, err := gitlog.Log(p.BaseDir)
 	if err != nil {

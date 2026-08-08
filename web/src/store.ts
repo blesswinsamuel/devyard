@@ -489,6 +489,22 @@ function start() {
     });
     loadGitDiff(project, "WORKDIR", undefined, true);
   });
+  onWS("git_changed", (resp) => {
+    if (!resp.project) return;
+    const project = resp.project;
+    setGitDiffs((m) => {
+      const copy = { ...(m[project] ?? {}) };
+      delete copy["WORKDIR"];
+      return { ...m, [project]: copy };
+    });
+    if (activeView() === "git" || selectedProject() === project) {
+      loadGitLog(project);
+      const selCommit = selectedCommitHash()[project];
+      if (selCommit) {
+        loadGitDiff(project, selCommit, undefined, true);
+      }
+    }
+  });
   onWS("action_states", (resp) => {
     if (!resp.project) return;
     const project = resp.project;

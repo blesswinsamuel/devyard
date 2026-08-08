@@ -94,6 +94,12 @@ func (s *Server) ListenAndServe() error {
 				Data:    data,
 			})
 		})
+		s.backend.SetOnGitChange(func(project string) {
+			s.broadcast(wsResponse{
+				Type:    "git_changed",
+				Project: project,
+			})
+		})
 	}
 
 	mux := http.NewServeMux()

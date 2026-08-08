@@ -1056,6 +1056,7 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 
 func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
 func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
+func (m *fakeMultiBackend) SetOnGitChange(func(string))                               {}
 
 func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
 	return nil, nil, nil, nil, nil

@@ -90,6 +90,8 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxyDaemonStatus(c, ctx)
 	case "restart_daemon":
 		s.proxyRestartDaemon(c, ctx, req)
+	case "list_ports":
+		s.proxyListPorts(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -107,6 +109,20 @@ func (s *Server) proxyListProjects(c *websocket.Conn, ctx context.Context) {
 	}
 	data, _ := json.Marshal(resp.Projects)
 	s.send(c, ctx, wsResponse{Type: "projects", Data: data})
+}
+
+func (s *Server) proxyListPorts(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindListPorts, Project: req.Project})
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.sendError(c, ctx, resp.Error)
+		return
+	}
+	data, _ := json.Marshal(resp.Ports)
+	s.send(c, ctx, wsResponse{Type: "ports", Project: req.Project, Data: data})
 }
 
 func (s *Server) proxyDaemonStatus(c *websocket.Conn, ctx context.Context) {

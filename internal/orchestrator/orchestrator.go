@@ -833,6 +833,9 @@ func (b stoppedBackend) Restart(string) error          { return b.err() }
 func (b stoppedBackend) Top(string) ([]protocol.ServiceStat, error) {
 	return nil, b.err()
 }
+func (b stoppedBackend) Ports() ([]protocol.PortBinding, error) {
+	return nil, nil
+}
 func (b stoppedBackend) ListActions() []protocol.ActionInfo {
 	return supervisor.ListActionsFromFile(b.file)
 }
@@ -1147,4 +1150,35 @@ func closedChan() chan struct{} {
 	ch := make(chan struct{})
 	close(ch)
 	return ch
+}
+
+// Ports returns open listening sockets for a project (or all projects when project is empty).
+func (d *Daemon) Ports(project string) ([]protocol.PortBinding, error) {
+	if project != "" {
+		b, err := d.ProjectBackend(project)
+		if err != nil {
+			return nil, err
+		}
+		return b.Ports()
+	}
+
+	d.mu.Lock()
+	projects := make([]string, 0, len(d.projects))
+	for name := range d.projects {
+		projects = append(projects, name)
+	}
+	d.mu.Unlock()
+
+	var all []protocol.PortBinding
+	for _, name := range projects {
+		b, err := d.ProjectBackend(name)
+		if err != nil {
+			continue
+		}
+		p, err := b.Ports()
+		if err == nil {
+			all = append(all, p...)
+		}
+	}
+	return all, nil
 }

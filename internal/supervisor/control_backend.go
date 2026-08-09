@@ -98,6 +98,11 @@ func (b *ControlBackend) Top(name string) ([]protocol.ServiceStat, error) {
 	return out, nil
 }
 
+// Ports returns a list of open listening sockets for all running services in the project.
+func (b *ControlBackend) Ports() ([]protocol.PortBinding, error) {
+	return b.s.Ports()
+}
+
 // LogPath returns the absolute path of a service's log file.
 func (b *ControlBackend) LogPath(name string) (string, error) {
 	return b.s.LogPath(name)

@@ -25,6 +25,9 @@ import {
   killService,
   runAction,
   openGitView,
+  ports,
+  fetchPorts,
+  setShowPortsModal,
   theme,
   setTheme,
   wsStatus,
@@ -119,6 +122,21 @@ function ServiceRow(props: { project: string; name: string }) {
                   </TooltipTrigger>
                   <TooltipContent>health: {s().health}</TooltipContent>
                 </Tooltip>
+              </Show>
+              <Show when={(ports()[props.project] ?? []).find((p) => p.service === props.name)}>
+                {(p) => (
+                  <span
+                    class="font-mono text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetchPorts(props.project);
+                      setShowPortsModal(true);
+                    }}
+                    title={`Port ${p().port} (${p().ip}) - Click to view ports`}
+                  >
+                    :{p().port}
+                  </span>
+                )}
               </Show>
               <Show when={s().pid > 0}>
                 <span class="font-mono text-[11px] opacity-80">{s().pid}</span>

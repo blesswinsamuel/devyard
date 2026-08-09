@@ -302,6 +302,8 @@ func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsReque
 		s.handleDaemonStatus(c, ctx)
 	case "restart_daemon":
 		s.handleRestartDaemon(c, ctx)
+	case "list_ports":
+		s.handleListPorts(c, ctx, req)
 	default:
 		s.sendError(c, ctx, "unknown message type: "+req.Type)
 	}
@@ -386,6 +388,16 @@ func (s *Server) handleListServices(c *websocket.Conn, ctx context.Context, req 
 	states := b.States()
 	data, _ := json.Marshal(states)
 	s.send(c, ctx, wsResponse{Type: "services", Project: req.Project, Data: data})
+}
+
+func (s *Server) handleListPorts(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	ports, err := s.backend.Ports(req.Project)
+	if err != nil {
+		s.sendError(c, ctx, err.Error())
+		return
+	}
+	data, _ := json.Marshal(ports)
+	s.send(c, ctx, wsResponse{Type: "ports", Project: req.Project, Data: data})
 }
 
 func (s *Server) handleStartProject(c *websocket.Conn, ctx context.Context, req *wsRequest) {

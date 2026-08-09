@@ -73,6 +73,8 @@ type MultiBackend interface {
 	// SetOnGitChange registers a callback that is invoked whenever any
 	// project's repository files change.
 	SetOnGitChange(fn func(project string))
+	// Ports returns a list of open listening sockets for a project (or all projects when project is empty).
+	Ports(project string) ([]protocol.PortBinding, error)
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
@@ -226,3 +228,10 @@ func (s SingleProjectBackend) SetOnStateChange(func(string, protocol.ServiceStat
 func (s SingleProjectBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
 
 func (s SingleProjectBackend) SetOnGitChange(func(string)) {}
+
+func (s SingleProjectBackend) Ports(project string) ([]protocol.PortBinding, error) {
+	if project != "" && project != s.Project {
+		return nil, fmt.Errorf("unknown project %q", project)
+	}
+	return s.Backend.Ports()
+}

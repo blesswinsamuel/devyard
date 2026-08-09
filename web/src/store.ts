@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, GitBranch, GitTag, GitStash, GitLogPayload, GitDiffResult, ViewMode, ShellTab, PaneNode, DaemonInfo } from "./types";
+import type { ProjectInfo, ServiceState, ActionInfo, ActionState, PortBinding, GitCommit, GitBranch, GitTag, GitStash, GitLogPayload, GitDiffResult, ViewMode, ShellTab, PaneNode, DaemonInfo } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 import { parseRoute, pushRoute, replaceRoute, listenPopState } from "./router";
 
@@ -39,7 +39,12 @@ const [gitDiffError, setGitDiffError] = createSignal<Record<string, string>>({})
 const [gitCommitLoading, setGitCommitLoading] = createSignal<Record<string, boolean>>({});
 const [gitCommitError, setGitCommitError] = createSignal<Record<string, string>>({});
 const [daemonInfo, setDaemonInfo] = createSignal<DaemonInfo | null>(null);
+const [ports, setPorts] = createSignal<Record<string, PortBinding[]>>({});
+const [showPortsModal, setShowPortsModal] = createSignal(false);
 export {
+  ports,
+  showPortsModal,
+  setShowPortsModal,
   daemonInfo,
   actions,
   actionStates,
@@ -323,6 +328,7 @@ function refreshServicesForVisible() {
 function refreshAll() {
   sendWS({ type: "list_projects" });
   sendWS({ type: "daemon_status" });
+  sendWS({ type: "list_ports" });
   refreshServicesForVisible();
 }
 
@@ -432,6 +438,11 @@ function start() {
     const project = resp.project;
     const next = (resp.data ?? []) as ActionInfo[];
     setActions((m) => ({ ...m, [project]: next }));
+  });
+  onWS("ports", (resp) => {
+    const list = (resp.data ?? []) as PortBinding[];
+    const project = resp.project ?? "";
+    setPorts((m) => ({ ...m, [project]: list }));
   });
   onWS("git_commits", (resp) => {
     if (!resp.project) return;
@@ -780,6 +791,10 @@ export function stopProject(project: string) {
   sendWS({ type: "stop_project", project });
   sendWS({ type: "list_projects" });
   refreshServices(project);
+}
+
+export function fetchPorts(project?: string) {
+  sendWS({ type: "list_ports", project });
 }
 
 export function startProject(project: string, configPath?: string) {

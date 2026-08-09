@@ -18,6 +18,15 @@ export interface ServiceState {
   health: string;
 }
 
+export interface PortBinding {
+  project: string;
+  service: string;
+  pid: number;
+  ip: string;
+  port: number;
+  protocol: string;
+}
+
 export interface ActionInfo {
   name: string;
   command: string;
@@ -142,6 +151,7 @@ export interface WSResponse {
     | ActionInfo[]
     | ServiceState
     | ActionState
+    | PortBinding[]
     | GitCommit[]
     | GitLogPayload
     | GitDiffResult

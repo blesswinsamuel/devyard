@@ -1,10 +1,13 @@
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Play, Power, RefreshCw, RotateCcw, Skull, SquareTerminal, History } from "lucide-solid";
+import { Globe, Play, Power, RefreshCw, RotateCcw, Skull, SquareTerminal, History } from "lucide-solid";
 import {
   projects,
   services,
   actions,
   actionStates,
+  ports,
+  setShowPortsModal,
+  fetchPorts,
   selectedProject,
   selectedService,
   selectedAction,
@@ -35,6 +38,7 @@ import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { formatLogLine } from "~/lib/ansi";
 import { BottomPanel } from "~/components/bottom_panel";
 import { GitView } from "~/components/git_view";
+import { PortsModal } from "~/components/ports_modal";
 
 type LogSubscribe = (
   project: string,
@@ -288,6 +292,26 @@ function ServiceHeader() {
         <Tooltip>
           <TooltipTrigger
             as={Button}
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              fetchPorts(project());
+              setShowPortsModal(true);
+            }}
+          >
+            <Globe class="size-4 text-muted-foreground" />
+            <span class="hidden md:inline">Ports</span>
+            <Show when={(ports()[project()] || []).length > 0}>
+              <span class="ml-0.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-mono font-medium text-primary">
+                {(ports()[project()] || []).length}
+              </span>
+            </Show>
+          </TooltipTrigger>
+          <TooltipContent>View Open Ports</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            as={Button}
             variant={isPreviousLogs({ kind: "service", project: project(), service: service() }) ? "secondary" : "outline"}
             size="sm"
             onClick={() => togglePreviousLogs({ kind: "service", project: project(), service: service() })}
@@ -392,6 +416,26 @@ function ProjectHeader() {
         </Show>
       </div>
       <div class="ml-auto flex items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger
+            as={Button}
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              fetchPorts(project());
+              setShowPortsModal(true);
+            }}
+          >
+            <Globe class="size-4 text-muted-foreground" />
+            <span class="hidden md:inline">Ports</span>
+            <Show when={(ports()[project()] || []).length > 0}>
+              <span class="ml-0.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] font-mono font-medium text-primary">
+                {(ports()[project()] || []).length}
+              </span>
+            </Show>
+          </TooltipTrigger>
+          <TooltipContent>View Open Ports</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             as={Button}
@@ -613,6 +657,8 @@ export function Main() {
       </div>
       {/* Bottom Panel for Shell/Git */}
       <BottomPanel />
+      {/* Open Ports Dialog */}
+      <PortsModal />
     </main>
   );
 }

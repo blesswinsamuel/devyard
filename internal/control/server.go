@@ -56,6 +56,8 @@ type Backend interface {
 	ActionLogPath(name string) (string, error)
 	// ActionPreviousLogPath returns the absolute path of an action's previous-run log file.
 	ActionPreviousLogPath(name string) (string, error)
+	// Ports returns a list of open listening sockets for services in the project.
+	Ports() ([]protocol.PortBinding, error)
 }
 
 // Server is the Unix-socket control server. It accepts connections from
@@ -296,6 +298,8 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleGitFetch(w, req)
 	case protocol.KindSubscribeEvents:
 		s.handleSubscribeEvents(ctx, w)
+	case protocol.KindListPorts:
+		s.handlePorts(w, req)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
 	}
@@ -448,6 +452,20 @@ func (s *Server) handleTop(w io.Writer, req protocol.Request) {
 	if err := protocol.WriteFrame(w, protocol.Response{
 		Kind:  protocol.KindStats,
 		Stats: stats,
+	}); err != nil {
+		_ = err
+	}
+}
+
+func (s *Server) handlePorts(w io.Writer, req protocol.Request) {
+	ports, err := s.backend.Ports(req.Project)
+	if err != nil {
+		_ = writeError(w, err.Error())
+		return
+	}
+	if err := protocol.WriteFrame(w, protocol.Response{
+		Kind:  protocol.KindPorts,
+		Ports: ports,
 	}); err != nil {
 		_ = err
 	}

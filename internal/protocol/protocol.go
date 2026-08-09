@@ -49,6 +49,7 @@ const (
 	KindDaemonStatus     RequestKind = "daemon_status"      // get global daemon status and runtime stats
 	KindRestartDaemon    RequestKind = "restart_daemon"     // restart the global daemon process
 	KindSubscribeEvents  RequestKind = "subscribe_events"   // stream real-time state and git event changes
+	KindListPorts        RequestKind = "list_ports"         // list open ports for a project or all projects
 )
 
 // Request is a client -> daemon message.
@@ -120,6 +121,7 @@ const (
 	KindEventStateChanged       ResponseKind = "event_state_changed"        // service state changed event
 	KindEventActionStateChanged ResponseKind = "event_action_state_changed" // action state changed event
 	KindEventGitChanged         ResponseKind = "event_git_changed"          // git repository changed event
+	KindPorts                   ResponseKind = "ports"                      // a snapshot of open ports (KindListPorts)
 	KindDone                    ResponseKind = "done"                       // request complete, no more frames
 	KindError                   ResponseKind = "error"                      // an error occurred (Error has text)
 )
@@ -263,6 +265,16 @@ type ServiceStat struct {
 	RSSBytes uint64  `json:"rss_bytes"`
 }
 
+// PortBinding is the wire form of an open listening socket.
+type PortBinding struct {
+	Project  string `json:"project"`
+	Service  string `json:"service"`
+	PID      int    `json:"pid"`
+	IP       string `json:"ip"`       // e.g. "127.0.0.1", "0.0.0.0", "::1"
+	Port     int    `json:"port"`     // e.g. 3000
+	Protocol string `json:"protocol"` // "tcp" or "udp"
+}
+
 // Response is a daemon -> client message.
 type Response struct {
 	Kind              ResponseKind   `json:"kind"`
@@ -271,6 +283,7 @@ type Response struct {
 	Actions           []ActionInfo   `json:"actions,omitempty"`             // Kind==KindActions
 	ActionStates      []ActionState  `json:"action_states,omitempty"`       // Kind==KindActionStates
 	Stats             []ServiceStat  `json:"stats,omitempty"`               // Kind==KindStats
+	Ports             []PortBinding  `json:"ports,omitempty"`               // Kind==KindPorts
 	GitCommits        []GitCommit    `json:"git_commits,omitempty"`         // Kind==KindGitCommits
 	GitBranches       []GitBranch    `json:"git_branches,omitempty"`        // Kind==KindGitCommits
 	GitTags           []GitTag       `json:"git_tags,omitempty"`            // Kind==KindGitCommits

@@ -243,6 +243,25 @@ func (c *Client) Top(project, service string) ([]protocol.ServiceStat, error) {
 	return resp.Stats, nil
 }
 
+// ListPorts sends a ListPorts request for the given project (or all projects when empty)
+// and returns the open port bindings.
+func (c *Client) ListPorts(project string) ([]protocol.PortBinding, error) {
+	if err := c.Send(protocol.Request{Kind: protocol.KindListPorts, Project: project}); err != nil {
+		return nil, err
+	}
+	resp, err := c.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if resp.Kind == protocol.KindError {
+		return nil, errors.New(resp.Error)
+	}
+	if resp.Kind != protocol.KindPorts {
+		return nil, fmt.Errorf("control: unexpected response %q, want %q", resp.Kind, protocol.KindPorts)
+	}
+	return resp.Ports, nil
+}
+
 // Logs sends a Logs request for the given project + service and calls onLine
 // for each log line received. If previous is true, the immediately preceding
 // run's log is streamed instead of the current one. If follow is true, it

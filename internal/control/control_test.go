@@ -157,6 +157,14 @@ func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
 	return out, nil
 }
 
+func (b *fakeBackend) Ports() ([]protocol.PortBinding, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return []protocol.PortBinding{
+		{Project: "proj", Service: "web", PID: 100, IP: "127.0.0.1", Port: 3000, Protocol: "tcp"},
+	}, nil
+}
+
 func (b *fakeBackend) restartsFor(name string) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -491,6 +499,31 @@ func TestRoundtripTop(t *testing.T) {
 	}
 	if got[1].Name != "web" || got[1].Procs != 1 {
 		t.Errorf("web stat: %+v", got[1])
+	}
+}
+
+func TestRoundtripListPorts(t *testing.T) {
+	b := &fakeBackend{
+		states: []protocol.ServiceState{
+			{Name: "web", Status: "running", PID: 100},
+		},
+	}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	got, err := c.ListPorts("")
+	if err != nil {
+		t.Fatalf("ListPorts: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d ports, want 1: %+v", len(got), got)
+	}
+	if got[0].Service != "web" || got[0].Port != 3000 || got[0].IP != "127.0.0.1" {
+		t.Errorf("port binding: %+v", got[0])
 	}
 }
 
@@ -1080,11 +1113,12 @@ func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, []protocol.GitB
 func (m *fakeMultiBackend) GitDiff(string, string, ...int) (*protocol.GitDiffResult, error) {
 	return nil, nil
 }
-func (m *fakeMultiBackend) GitCommit(string, string) error            { return nil }
-func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return nil }
-func (m *fakeMultiBackend) GitPush(string) (string, error)            { return "pushed", nil }
-func (m *fakeMultiBackend) GitPull(string) (string, error)            { return "pulled", nil }
-func (m *fakeMultiBackend) GitFetch(string) (string, error)           { return "fetched", nil }
+func (m *fakeMultiBackend) GitCommit(string, string) error               { return nil }
+func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error    { return nil }
+func (m *fakeMultiBackend) GitPush(string) (string, error)               { return "pushed", nil }
+func (m *fakeMultiBackend) GitPull(string) (string, error)               { return "pulled", nil }
+func (m *fakeMultiBackend) GitFetch(string) (string, error)              { return "fetched", nil }
+func (m *fakeMultiBackend) Ports(string) ([]protocol.PortBinding, error) { return nil, nil }
 
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
 	t.Helper()

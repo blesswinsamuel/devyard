@@ -140,11 +140,12 @@ func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, []protocol.GitB
 func (m *fakeMultiBackend) GitDiff(string, string, ...int) (*protocol.GitDiffResult, error) {
 	return nil, nil
 }
-func (m *fakeMultiBackend) GitCommit(string, string) error            { return nil }
-func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return nil }
-func (m *fakeMultiBackend) GitPush(string) (string, error)            { return "", nil }
-func (m *fakeMultiBackend) GitPull(string) (string, error)            { return "", nil }
-func (m *fakeMultiBackend) GitFetch(string) (string, error)           { return "", nil }
+func (m *fakeMultiBackend) GitCommit(string, string) error               { return nil }
+func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error    { return nil }
+func (m *fakeMultiBackend) GitPush(string) (string, error)               { return "", nil }
+func (m *fakeMultiBackend) GitPull(string) (string, error)               { return "", nil }
+func (m *fakeMultiBackend) GitFetch(string) (string, error)              { return "", nil }
+func (m *fakeMultiBackend) Ports(string) ([]protocol.PortBinding, error) { return nil, nil }
 
 // fakeBackend is a minimal control.Backend for WS testing.
 type fakeBackend struct {
@@ -179,6 +180,9 @@ func (b *fakeBackend) Restart(name string) error {
 	return nil
 }
 func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
+	return nil, nil
+}
+func (b *fakeBackend) Ports() ([]protocol.PortBinding, error) {
 	return nil, nil
 }
 func (b *fakeBackend) LogPath(name string) (string, error) {

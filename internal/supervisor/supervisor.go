@@ -27,6 +27,7 @@ import (
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/health"
+	"github.com/blesswinsamuel/local-compose/internal/ports"
 	"github.com/blesswinsamuel/local-compose/internal/procstat"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
@@ -1349,6 +1350,56 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 		}
 	}
 	return targets, nil
+}
+
+// Ports returns a list of open listening sockets for all running services in the project.
+func (s *Supervisor) Ports() ([]protocol.PortBinding, error) {
+	s.mu.Lock()
+	pgidToSvc := make(map[int]string)
+	var pgids []int
+	for _, name := range s.order {
+		rt, ok := s.services[name]
+		if !ok {
+			continue
+		}
+		rt.mu.Lock()
+		pgid := rt.pgid
+		status := rt.status
+		rt.mu.Unlock()
+		if (status == StatusRunning || status == StatusStarting) && pgid > 0 {
+			pgidToSvc[pgid] = name
+			pgids = append(pgids, pgid)
+		}
+	}
+	s.mu.Unlock()
+
+	if len(pgids) == 0 {
+		return nil, nil
+	}
+
+	bindings, err := ports.InspectPGIDs(pgids)
+	if err != nil {
+		return nil, err
+	}
+
+	projName := ""
+	if s.opts.File != nil {
+		projName = s.opts.File.Name
+	}
+
+	var results []protocol.PortBinding
+	for _, b := range bindings {
+		svcName := pgidToSvc[b.PGID]
+		results = append(results, protocol.PortBinding{
+			Project:  projName,
+			Service:  svcName,
+			PID:      b.PID,
+			IP:       b.IP,
+			Port:     b.Port,
+			Protocol: b.Protocol,
+		})
+	}
+	return results, nil
 }
 
 // isStopping reports whether a global Stop has been initiated.

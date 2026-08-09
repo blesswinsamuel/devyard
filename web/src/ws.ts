@@ -104,6 +104,19 @@ export function connectWS() {
         })
       );
     }
+    for (const [id, entry] of terminalHandlers.entries()) {
+      if (entry.project && entry.cols && entry.rows) {
+        socket.send(
+          JSON.stringify({
+            type: "spawn_terminal",
+            id,
+            project: entry.project,
+            cols: entry.cols,
+            rows: entry.rows,
+          })
+        );
+      }
+    }
     // Reconnect only — first open is covered by the caller's initial fetch
     // (already flushed from `pending` above).
     if (hasOpened) {
@@ -219,7 +232,13 @@ export function subscribeActionLogs(
 
 const terminalHandlers = new Map<
   string,
-  { onOutput: (output: string) => void; onExit: () => void }
+  {
+    project?: string;
+    cols?: number;
+    rows?: number;
+    onOutput: (output: string) => void;
+    onExit: () => void;
+  }
 >();
 
 export function subscribeTerminal(
@@ -227,7 +246,8 @@ export function subscribeTerminal(
   onOutput: (output: string) => void,
   onExit: () => void
 ) {
-  terminalHandlers.set(id, { onOutput, onExit });
+  const existing = terminalHandlers.get(id);
+  terminalHandlers.set(id, { ...existing, onOutput, onExit });
   return () => {
     terminalHandlers.delete(id);
   };
@@ -239,6 +259,12 @@ export function spawnTerminal(
   cols: number,
   rows: number
 ) {
+  const existing = terminalHandlers.get(id);
+  if (existing) {
+    existing.project = project;
+    existing.cols = cols;
+    existing.rows = rows;
+  }
   sendWS({ type: "spawn_terminal", id, project, cols, rows });
 }
 
@@ -247,10 +273,16 @@ export function sendTerminalInput(id: string, data: string) {
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number) {
+  const existing = terminalHandlers.get(id);
+  if (existing) {
+    existing.cols = cols;
+    existing.rows = rows;
+  }
   sendWS({ type: "terminal_resize", id, cols, rows });
 }
 
 export function closeTerminal(id: string) {
+  terminalHandlers.delete(id);
   sendWS({ type: "close_terminal", id });
 }
 

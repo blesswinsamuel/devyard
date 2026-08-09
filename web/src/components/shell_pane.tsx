@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
-import { Columns2, GripVertical, Rows2, X } from "lucide-solid";
+import { Columns2, GripVertical, RotateCcw, Rows2, X } from "lucide-solid";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { theme, moveShellPane } from "~/store";
 import {
@@ -23,6 +23,15 @@ export function ShellPane(props: {
   let term: AppTerminal | null = null;
   const [exited, setExited] = createSignal(false);
   const [dropZone, setDropZone] = createSignal<"left" | "right" | "top" | "bottom" | "swap" | null>(null);
+
+  const handleRestart = () => {
+    if (!term) return;
+    setExited(false);
+    term.clear();
+    term.write("\x1b[2J\x1b[3J\x1b[H");
+    spawnTerminal(props.id, props.project, term.cols, term.rows);
+    term.focus();
+  };
 
   onMount(() => {
     const t = createTerminal(container);
@@ -157,6 +166,18 @@ export function ShellPane(props: {
           <span class="truncate font-mono text-[11px]">
             {props.id} {exited() ? "(exited)" : ""}
           </span>
+          <Show when={exited()}>
+            <Button
+              variant="outline"
+              size="icon"
+              class="h-5 px-1 text-[11px] gap-1 hover:bg-muted"
+              onClick={handleRestart}
+              title="Restart Shell Process"
+            >
+              <RotateCcw class="size-3" />
+              <span>Restart</span>
+            </Button>
+          </Show>
         </div>
 
         <div class="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">

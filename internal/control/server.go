@@ -67,9 +67,10 @@ type Server struct {
 	socket  string
 	backend MultiBackend
 
-	mu     sync.Mutex
-	ln     net.Listener
-	closed bool
+	mu          sync.Mutex
+	ln          net.Listener
+	closed      bool
+	subscribers map[chan protocol.Response]struct{}
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -80,10 +81,47 @@ type Server struct {
 // ListenAndServe is called. The socket's parent directory must already exist
 // (call project.Locations.MkdirAll first).
 func NewServer(socket string, backend MultiBackend) *Server {
-	return &Server{
-		socket:  socket,
-		backend: backend,
-		stopCh:  make(chan struct{}),
+	srv := &Server{
+		socket:      socket,
+		backend:     backend,
+		subscribers: make(map[chan protocol.Response]struct{}),
+		stopCh:      make(chan struct{}),
+	}
+	if backend != nil {
+		backend.SetOnStateChange(func(project string, state protocol.ServiceState) {
+			srv.broadcastEvent(protocol.Response{
+				Kind:        protocol.KindEventStateChanged,
+				Project:     project,
+				Service:     state.Name,
+				SingleState: &state,
+			})
+		})
+		backend.SetOnActionStateChange(func(project string, state protocol.ActionState) {
+			srv.broadcastEvent(protocol.Response{
+				Kind:              protocol.KindEventActionStateChanged,
+				Project:           project,
+				Action:            state.Name,
+				SingleActionState: &state,
+			})
+		})
+		backend.SetOnGitChange(func(project string) {
+			srv.broadcastEvent(protocol.Response{
+				Kind:    protocol.KindEventGitChanged,
+				Project: project,
+			})
+		})
+	}
+	return srv
+}
+
+func (s *Server) broadcastEvent(resp protocol.Response) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for ch := range s.subscribers {
+		select {
+		case ch <- resp:
+		default:
+		}
 	}
 }
 
@@ -256,8 +294,39 @@ func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request
 		s.handleGitPull(w, req)
 	case protocol.KindGitFetch:
 		s.handleGitFetch(w, req)
+	case protocol.KindSubscribeEvents:
+		s.handleSubscribeEvents(ctx, w)
 	default:
 		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
+	}
+}
+
+func (s *Server) handleSubscribeEvents(ctx context.Context, w io.Writer) {
+	ch := make(chan protocol.Response, 64)
+	s.mu.Lock()
+	s.subscribers[ch] = struct{}{}
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.subscribers, ch)
+		s.mu.Unlock()
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.stopCh:
+			return
+		case resp, ok := <-ch:
+			if !ok {
+				return
+			}
+			if err := protocol.WriteFrame(w, resp); err != nil {
+				return
+			}
+		}
 	}
 }
 func (s *Server) handleList(w io.Writer, req protocol.Request) {

@@ -48,6 +48,7 @@ const (
 	KindGitFetch         RequestKind = "git_fetch"          // fetch refs from the remote without merging
 	KindDaemonStatus     RequestKind = "daemon_status"      // get global daemon status and runtime stats
 	KindRestartDaemon    RequestKind = "restart_daemon"     // restart the global daemon process
+	KindSubscribeEvents  RequestKind = "subscribe_events"   // stream real-time state and git event changes
 )
 
 // Request is a client -> daemon message.
@@ -105,19 +106,22 @@ type Request struct {
 type ResponseKind string
 
 const (
-	KindStates       ResponseKind = "states"        // a snapshot of every service
-	KindProjects     ResponseKind = "projects"      // a snapshot of every known project
-	KindActions      ResponseKind = "actions"       // a list of defined actions
-	KindActionStates ResponseKind = "action_states" // a snapshot of action runtime states
-	KindStats        ResponseKind = "stats"         // a per-service CPU/memory snapshot (KindTop)
-	KindGitCommits   ResponseKind = "git_commits"   // the git commit log for a project (KindGitLog)
-	KindGitDiffData  ResponseKind = "git_diff"      // commit diff and changed files (KindGitDiff)
-	KindLogLine      ResponseKind = "log_line"      // one line of a service's log or action output
-	KindLogContent   ResponseKind = "log_content"   // bulk: existing log history (possibly tailed)
-	KindLogRotated   ResponseKind = "log_rotated"   // a new run started; the previous run's lines are over
-	KindDaemonInfo   ResponseKind = "daemon_status" // global daemon status and runtime metrics
-	KindDone         ResponseKind = "done"          // request complete, no more frames
-	KindError        ResponseKind = "error"         // an error occurred (Error has text)
+	KindStates                  ResponseKind = "states"                     // a snapshot of every service
+	KindProjects                ResponseKind = "projects"                   // a snapshot of every known project
+	KindActions                 ResponseKind = "actions"                    // a list of defined actions
+	KindActionStates            ResponseKind = "action_states"              // a snapshot of action runtime states
+	KindStats                   ResponseKind = "stats"                      // a per-service CPU/memory snapshot (KindTop)
+	KindGitCommits              ResponseKind = "git_commits"                // the git commit log for a project (KindGitLog)
+	KindGitDiffData             ResponseKind = "git_diff"                   // commit diff and changed files (KindGitDiff)
+	KindLogLine                 ResponseKind = "log_line"                   // one line of a service's log or action output
+	KindLogContent              ResponseKind = "log_content"                // bulk: existing log history (possibly tailed)
+	KindLogRotated              ResponseKind = "log_rotated"                // a new run started; the previous run's lines are over
+	KindDaemonInfo              ResponseKind = "daemon_status"              // global daemon status and runtime metrics
+	KindEventStateChanged       ResponseKind = "event_state_changed"        // service state changed event
+	KindEventActionStateChanged ResponseKind = "event_action_state_changed" // action state changed event
+	KindEventGitChanged         ResponseKind = "event_git_changed"          // git repository changed event
+	KindDone                    ResponseKind = "done"                       // request complete, no more frames
+	KindError                   ResponseKind = "error"                      // an error occurred (Error has text)
 )
 
 // DaemonInfo is the wire form of global daemon status and runtime metrics.
@@ -261,26 +265,28 @@ type ServiceStat struct {
 
 // Response is a daemon -> client message.
 type Response struct {
-	Kind           ResponseKind   `json:"kind"`
-	States         []ServiceState `json:"states,omitempty"`           // Kind==KindStates
-	Projects       []ProjectInfo  `json:"projects,omitempty"`         // Kind==KindProjects
-	Actions        []ActionInfo   `json:"actions,omitempty"`          // Kind==KindActions
-	ActionStates   []ActionState  `json:"action_states,omitempty"`    // Kind==KindActionStates
-	Stats          []ServiceStat  `json:"stats,omitempty"`            // Kind==KindStats
-	GitCommits     []GitCommit    `json:"git_commits,omitempty"`      // Kind==KindGitCommits
-	GitBranches    []GitBranch    `json:"git_branches,omitempty"`     // Kind==KindGitCommits
-	GitTags        []GitTag       `json:"git_tags,omitempty"`         // Kind==KindGitCommits
-	GitStashes     []GitStash     `json:"git_stashes,omitempty"`      // Kind==KindGitCommits
-	GitDiff        *GitDiffResult `json:"git_diff,omitempty"`         // Kind==KindGitDiff
-	GitOutput      string         `json:"git_output,omitempty"`       // Kind==KindDone for KindGitPush/Pull/Fetch (command output)
-	DaemonInfo     *DaemonInfo    `json:"daemon_info,omitempty"`      // Kind==KindDaemonStatus
-	Project        string         `json:"project,omitempty"`          // Kind==KindLogLine (which project)
-	Service        string         `json:"service,omitempty"`          // Kind==KindLogLine (which service)
-	Action         string         `json:"action,omitempty"`           // Kind==KindLogLine (which action)
-	Line           string         `json:"line,omitempty"`             // Kind==KindLogLine
-	Content        string         `json:"content,omitempty"`          // Kind==KindLogContent (bulk file text)
-	ActionExitCode *int           `json:"action_exit_code,omitempty"` // Kind==KindDone for KindRunAction
-	Error          string         `json:"error,omitempty"`            // Kind==KindError
+	Kind              ResponseKind   `json:"kind"`
+	States            []ServiceState `json:"states,omitempty"`              // Kind==KindStates
+	Projects          []ProjectInfo  `json:"projects,omitempty"`            // Kind==KindProjects
+	Actions           []ActionInfo   `json:"actions,omitempty"`             // Kind==KindActions
+	ActionStates      []ActionState  `json:"action_states,omitempty"`       // Kind==KindActionStates
+	Stats             []ServiceStat  `json:"stats,omitempty"`               // Kind==KindStats
+	GitCommits        []GitCommit    `json:"git_commits,omitempty"`         // Kind==KindGitCommits
+	GitBranches       []GitBranch    `json:"git_branches,omitempty"`        // Kind==KindGitCommits
+	GitTags           []GitTag       `json:"git_tags,omitempty"`            // Kind==KindGitCommits
+	GitStashes        []GitStash     `json:"git_stashes,omitempty"`         // Kind==KindGitCommits
+	GitDiff           *GitDiffResult `json:"git_diff,omitempty"`            // Kind==KindGitDiff
+	GitOutput         string         `json:"git_output,omitempty"`          // Kind==KindDone for KindGitPush/Pull/Fetch (command output)
+	DaemonInfo        *DaemonInfo    `json:"daemon_info,omitempty"`         // Kind==KindDaemonStatus
+	Project           string         `json:"project,omitempty"`             // Kind==KindLogLine (which project)
+	Service           string         `json:"service,omitempty"`             // Kind==KindLogLine (which service)
+	Action            string         `json:"action,omitempty"`              // Kind==KindLogLine (which action)
+	Line              string         `json:"line,omitempty"`                // Kind==KindLogLine
+	Content           string         `json:"content,omitempty"`             // Kind==KindLogContent (bulk file text)
+	ActionExitCode    *int           `json:"action_exit_code,omitempty"`    // Kind==KindDone for KindRunAction
+	SingleState       *ServiceState  `json:"single_state,omitempty"`        // Kind==KindEventStateChanged
+	SingleActionState *ActionState   `json:"single_action_state,omitempty"` // Kind==KindEventActionStateChanged
+	Error             string         `json:"error,omitempty"`               // Kind==KindError
 }
 
 // WriteFrame writes v as a length-prefixed JSON frame: a 4-byte big-endian

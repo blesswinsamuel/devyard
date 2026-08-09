@@ -100,6 +100,8 @@ func (s *Server) ListenAndServe() error {
 				Project: project,
 			})
 		})
+	} else if s.socketPath != "" {
+		go s.startProxyEventSubscription()
 	}
 
 	mux := http.NewServeMux()

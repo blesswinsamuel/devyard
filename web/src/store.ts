@@ -315,6 +315,7 @@ function refreshServicesForVisible() {
   if (sel) needed.add(sel);
   for (const p of needed) {
     sendWS({ type: "list_services", project: p });
+    sendWS({ type: "list_actions", project: p });
     sendWS({ type: "list_action_states", project: p });
   }
 }
@@ -573,7 +574,7 @@ function start() {
     });
     if (updatedServices[project]) {
       const running = updatedServices[project].filter(
-        (s) => s.status === "running" || s.status === "starting" || s.status === "backoff"
+        (s) => s.status === "running" || s.status === "starting" || s.status === "stopping" || s.status === "backoff"
       ).length;
       setProjects((prev) =>
         prev.map((p) =>
@@ -627,6 +628,12 @@ export function refreshActionStates(project: string) {
 }
 
 export function runAction(project: string, actionName: string, args?: string[]) {
+  const currentState = actionStates()[project]?.find((a) => a.name === actionName);
+  if (currentState?.status === "running" || currentState?.status === "starting") {
+    pushToast(`Action '${actionName}' is already running`, "info");
+    selectAction(project, actionName, { skipPush: true });
+    return;
+  }
   selectAction(project, actionName, { skipPush: true });
   sendWS({ type: "run_action", project, action: actionName, args });
   pushToast(`Started action '${actionName}'`, "info");

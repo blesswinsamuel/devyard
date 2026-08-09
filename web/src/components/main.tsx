@@ -96,6 +96,7 @@ function LogTerminal(props: {
     // selection) changes, so toggling between live and previous-run logs tears
     // down the old stream and swaps the pane to the new content.
     createEffect(() => {
+      if (!props.active) return;
       resetView();
       const unsubLogs = props.subscribe(
         props.project,
@@ -352,7 +353,7 @@ function ServiceHeader() {
               <Play />
               Start
             </TooltipTrigger>
-            <TooltipContent>Start service (r)</TooltipContent>
+            <TooltipContent>Start service</TooltipContent>
           </Tooltip>
         </Show>
         <Tooltip>

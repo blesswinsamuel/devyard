@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { Plus, X } from "lucide-solid";
 import type { PaneNode, SplitPaneNode, TerminalPaneNode } from "~/types";
 import {
@@ -297,13 +297,19 @@ export function ShellWorkspace() {
           <For each={shellState()!.tabs}>
             {(tab) => {
               const isActive = () => tab.id === shellState()!.activeTabId;
+              const [visited, setVisited] = createSignal(isActive());
+              createEffect(() => {
+                if (isActive()) setVisited(true);
+              });
               return (
-                <div
-                  class="h-full w-full"
-                  classList={{ hidden: !isActive() }}
-                >
-                  <PaneTree node={tab.rootPane} project={project()!} active={isActive()} />
-                </div>
+                <Show when={visited()}>
+                  <div
+                    class="h-full w-full"
+                    classList={{ hidden: !isActive() }}
+                  >
+                    <PaneTree node={tab.rootPane} project={project()!} active={isActive()} />
+                  </div>
+                </Show>
               );
             }}
           </For>

@@ -564,7 +564,9 @@ export function GitView() {
                 <Show
                   when={filteredCommits().length > 0}
                   fallback={
-                    <div class="p-6 text-center text-xs text-muted-foreground">No matching commits found.</div>
+                    <div class="p-6 text-center text-xs text-muted-foreground">
+                      {commits().length === 0 ? "No commits in repository." : "No matching commits found for search."}
+                    </div>
                   }
                 >
                   <For each={filteredCommits()}>

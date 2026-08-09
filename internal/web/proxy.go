@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -582,4 +583,59 @@ func (s *Server) proxyRunAction(c *websocket.Conn, ctx context.Context, req *wsR
 			}
 		}
 	}()
+}
+
+// startProxyEventSubscription dials the daemon socket, issues KindSubscribeEvents,
+// and streams real-time state and git event broadcasts to all connected WS clients.
+func (s *Server) startProxyEventSubscription() {
+	for {
+		if s.closed {
+			return
+		}
+		conn, err := net.Dial("unix", s.socketPath)
+		if err != nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		if err := protocol.WriteFrame(conn, protocol.Request{Kind: protocol.KindSubscribeEvents}); err != nil {
+			_ = conn.Close()
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		for {
+			var resp protocol.Response
+			if err := protocol.ReadFrame(conn, &resp); err != nil {
+				_ = conn.Close()
+				break
+			}
+			switch resp.Kind {
+			case protocol.KindEventStateChanged:
+				if resp.SingleState != nil {
+					data, _ := json.Marshal(resp.SingleState)
+					s.broadcast(wsResponse{
+						Type:    "state_changed",
+						Project: resp.Project,
+						Service: resp.Service,
+						Data:    data,
+					})
+				}
+			case protocol.KindEventActionStateChanged:
+				if resp.SingleActionState != nil {
+					data, _ := json.Marshal(resp.SingleActionState)
+					s.broadcast(wsResponse{
+						Type:    "action_state_changed",
+						Project: resp.Project,
+						Action:  resp.Action,
+						Data:    data,
+					})
+				}
+			case protocol.KindEventGitChanged:
+				s.broadcast(wsResponse{
+					Type:    "git_changed",
+					Project: resp.Project,
+				})
+			}
+		}
+	}
 }

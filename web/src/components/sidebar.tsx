@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { ChevronRight, Boxes, MoreVertical, Play, Plus, Power, RefreshCw, RotateCcw, Skull, Sun, Moon, X, GitBranch } from "lucide-solid";
 import {
   projects,
@@ -165,7 +165,6 @@ function ServiceRow(props: { project: string; name: string }) {
                   <DropdownMenuItem onSelect={() => startService(props.project, props.name)}>
                     <Play />
                     Start
-                    <span class="ml-auto text-xs text-muted-foreground">r</span>
                   </DropdownMenuItem>
                 </Show>
                 <DropdownMenuItem
@@ -585,6 +584,14 @@ function DaemonStatusModal(props: { open: boolean; onClose: () => void }) {
       props.onClose();
     }, 2000);
   };
+
+  createEffect(() => {
+    if (props.open) {
+      fetchDaemonStatus();
+      const timer = setInterval(fetchDaemonStatus, 2000);
+      onCleanup(() => clearInterval(timer));
+    }
+  });
 
   return (
     <Show when={props.open}>

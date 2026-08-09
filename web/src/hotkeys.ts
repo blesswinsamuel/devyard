@@ -32,7 +32,7 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 function isMenuTarget(el: EventTarget | null): boolean {
   if (!(el instanceof Element)) return false;
-  return Boolean(el.closest('[role="menu"], [role="listbox"], [data-kbd-ignore]'));
+  return Boolean(el.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-kbd-ignore]'));
 }
 
 function blurXtermAndFocusSidebar() {

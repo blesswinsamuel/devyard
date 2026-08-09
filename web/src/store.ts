@@ -1,5 +1,5 @@
 import { createEffect, createRoot, createSignal, untrack } from "solid-js";
-import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, GitBranch, GitTag, GitStash, GitLogPayload, ViewMode, ShellTab, PaneNode, DaemonInfo } from "./types";
+import type { ProjectInfo, ServiceState, ActionInfo, ActionState, GitCommit, GitBranch, GitTag, GitStash, GitLogPayload, GitDiffResult, ViewMode, ShellTab, PaneNode, DaemonInfo } from "./types";
 import { sendWS, onWS, onWSOpen, wsStatus, connectWS, closeTerminal } from "./ws";
 import { parseRoute, pushRoute, replaceRoute, listenPopState } from "./router";
 

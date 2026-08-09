@@ -35,8 +35,8 @@ let pending: WSRequest[] = [];
 /** True after the first successful open; used to distinguish reconnects. */
 let hasOpened = false;
 
-function logKey(project: string, service: string) {
-  return `${project}\0${service}`;
+function logKey(project: string, serviceOrAction: string, prev = false) {
+  return `${project}\0${serviceOrAction}\0${prev}`;
 }
 
 function enqueuePending(req: WSRequest) {
@@ -133,19 +133,19 @@ export function connectWS() {
     }
     if (resp.type === "log_line") {
       if (resp.action) {
-        const h = actionLogHandlers.get(logKey(resp.project!, resp.action));
-        if (h && h.prev === !!resp.prev) h.onLine(resp.line!);
+        const h = actionLogHandlers.get(logKey(resp.project!, resp.action, !!resp.prev));
+        if (h) h.onLine(resp.line!);
       } else {
-        const h = logHandlers.get(logKey(resp.project!, resp.service!));
-        if (h && h.prev === !!resp.prev) h.onLine(resp.line!);
+        const h = logHandlers.get(logKey(resp.project!, resp.service!, !!resp.prev));
+        if (h) h.onLine(resp.line!);
       }
     } else if (resp.type === "log_rotated") {
       // A new run started; the previous run's lines are over. Let the
       // subscriber reset its view so only the fresh run is shown.
       if (resp.action) {
-        actionLogHandlers.get(logKey(resp.project!, resp.action))?.onRotate?.();
+        actionLogHandlers.get(logKey(resp.project!, resp.action, !!resp.prev))?.onRotate?.();
       } else {
-        logHandlers.get(logKey(resp.project!, resp.service!))?.onRotate?.();
+        logHandlers.get(logKey(resp.project!, resp.service!, !!resp.prev))?.onRotate?.();
       }
     } else if (resp.type === "terminal_output") {
       terminalHandlers.get(resp.id!)?.onOutput(resp.output!);
@@ -184,7 +184,7 @@ export function subscribeLogs(
   onRotate?: () => void,
   prev = false
 ) {
-  const key = logKey(project, service);
+  const key = logKey(project, service, prev);
   logHandlers.set(key, { project, service, prev, onLine, onRotate });
   sendWS({ type: "subscribe_logs", project, service, prev });
   return () => {
@@ -192,7 +192,7 @@ export function subscribeLogs(
     // Only tear down if we still own the slot (a newer subscribe may have replaced us).
     if (current?.onLine === onLine) {
       logHandlers.delete(key);
-      sendWS({ type: "unsubscribe_logs", project, service });
+      sendWS({ type: "unsubscribe_logs", project, service, prev });
     }
   };
 }
@@ -204,7 +204,7 @@ export function subscribeActionLogs(
   onRotate?: () => void,
   prev = false
 ) {
-  const key = logKey(project, action);
+  const key = logKey(project, action, prev);
   actionLogHandlers.set(key, { project, action, prev, onLine, onRotate });
   sendWS({ type: "subscribe_action_logs", project, action, prev });
   return () => {
@@ -212,7 +212,7 @@ export function subscribeActionLogs(
     // Only tear down if we still own the slot (a newer subscribe may have replaced us).
     if (current?.onLine === onLine) {
       actionLogHandlers.delete(key);
-      sendWS({ type: "unsubscribe_action_logs", project, action });
+      sendWS({ type: "unsubscribe_action_logs", project, action, prev });
     }
   };
 }

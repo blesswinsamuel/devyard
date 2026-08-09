@@ -179,13 +179,13 @@ export function GitView() {
   const fileFilter = createMemo(() => fileSearchQuery().toLowerCase().trim());
 
   const stagedFiles = createMemo(() =>
-    allFiles().filter((f) => f.staged && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
+    allFiles().filter((f: GitFileChange) => f.staged && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
   );
   const unstagedFiles = createMemo(() =>
-    allFiles().filter((f) => f.unstaged && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
+    allFiles().filter((f: GitFileChange) => f.unstaged && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
   );
   const untrackedFiles = createMemo(() =>
-    allFiles().filter((f) => f.untracked && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
+    allFiles().filter((f: GitFileChange) => f.untracked && (!fileFilter() || f.path.toLowerCase().includes(fileFilter())))
   );
 
   const handleCommitSubmit = (e: Event) => {
@@ -939,7 +939,7 @@ export function GitView() {
                 fallback={
                   /* Regular Commit File List */
                   <For
-                    each={allFiles().filter((f) =>
+                    each={allFiles().filter((f: GitFileChange) =>
                       f.path.toLowerCase().includes(fileSearchQuery().toLowerCase().trim())
                     )}
                   >

@@ -68,7 +68,7 @@ export function ShellPane(props: {
 
     // Auto-fit on window resize or layout changes
     const ro = new ResizeObserver(() => {
-      if (props.active && term) {
+      if (term) {
         requestAnimationFrame(() => {
           term?.fit();
         });

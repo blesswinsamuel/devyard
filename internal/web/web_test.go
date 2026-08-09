@@ -420,6 +420,31 @@ func TestWSUnknownType(t *testing.T) {
 	}
 }
 
+func TestWSGitRemote(t *testing.T) {
+	for _, tt := range []struct {
+		typeName string
+	}{
+		{"git_push"},
+		{"git_pull"},
+		{"git_fetch"},
+	} {
+		t.Run(tt.typeName, func(t *testing.T) {
+			m := newFakeMulti()
+			srv := newWebServer(t, m)
+
+			c := dialWS(t, srv.Addr())
+			sendWSMsg(t, c, map[string]string{"type": tt.typeName, "project": "api"})
+			resp := recvWSMsg(t, c)
+			if resp["type"] != "git_remote_result" {
+				t.Fatalf("type = %v, want git_remote_result", resp["type"])
+			}
+			if ok, _ := resp["ok"].(bool); !ok {
+				t.Fatalf("ok = %v, want true (dispatch should not hit 'unknown message type')", resp["ok"])
+			}
+		})
+	}
+}
+
 func TestWSListServicesUnknownProject(t *testing.T) {
 	m := newFakeMulti()
 	srv := newWebServer(t, m)

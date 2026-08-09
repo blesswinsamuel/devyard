@@ -79,6 +79,12 @@ func (s *Server) proxyDispatch(c *websocket.Conn, ctx context.Context, req *wsRe
 		s.proxyGitCommit(c, ctx, req)
 	case "git_stage":
 		s.proxyGitStage(c, ctx, req)
+	case "git_push":
+		s.proxyGitPush(c, ctx, req)
+	case "git_pull":
+		s.proxyGitPull(c, ctx, req)
+	case "git_fetch":
+		s.proxyGitFetch(c, ctx, req)
 	case "daemon_status":
 		s.proxyDaemonStatus(c, ctx)
 	case "restart_daemon":
@@ -495,6 +501,33 @@ func (s *Server) proxyGitStage(c *websocket.Conn, ctx context.Context, req *wsRe
 		return
 	}
 	s.send(c, ctx, wsResponse{Type: "git_stage_result", Project: req.Project, Ok: true})
+}
+
+func (s *Server) proxyGitPush(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	s.proxyGitRemote(c, ctx, req, protocol.KindGitPush, "git_remote_result")
+}
+
+func (s *Server) proxyGitPull(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	s.proxyGitRemote(c, ctx, req, protocol.KindGitPull, "git_remote_result")
+}
+
+func (s *Server) proxyGitFetch(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	s.proxyGitRemote(c, ctx, req, protocol.KindGitFetch, "git_remote_result")
+}
+
+// proxyGitRemote sends a git remote command (push/pull/fetch) to the daemon
+// and forwards its output/ack to the browser.
+func (s *Server) proxyGitRemote(c *websocket.Conn, ctx context.Context, req *wsRequest, kind protocol.RequestKind, respType string) {
+	resp, err := s.dialAndSend(protocol.Request{Kind: kind, Project: req.Project})
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: respType, Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	if resp.Kind == protocol.KindError {
+		s.send(c, ctx, wsResponse{Type: respType, Project: req.Project, Ok: false, Error: resp.Error})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: respType, Project: req.Project, Ok: true, Line: resp.GitOutput})
 }
 
 func (s *Server) proxyRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {

@@ -534,6 +534,33 @@ func (s *Server) handleGitStage(c *websocket.Conn, ctx context.Context, req *wsR
 	s.send(c, ctx, wsResponse{Type: "git_stage_result", Project: req.Project, Ok: true})
 }
 
+func (s *Server) handleGitPush(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	output, err := s.backend.GitPush(req.Project)
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: true, Line: output})
+}
+
+func (s *Server) handleGitPull(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	output, err := s.backend.GitPull(req.Project)
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: true, Line: output})
+}
+
+func (s *Server) handleGitFetch(c *websocket.Conn, ctx context.Context, req *wsRequest) {
+	output, err := s.backend.GitFetch(req.Project)
+	if err != nil {
+		s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: false, Error: err.Error()})
+		return
+	}
+	s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: true, Line: output})
+}
+
 func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {
 	go func() {
 		b, err := s.backend.ProjectBackend(req.Project)

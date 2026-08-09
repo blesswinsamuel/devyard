@@ -46,8 +46,8 @@ export function cleanLogLine(s: string): string {
       i += next !== undefined ? 2 : 1;
       continue;
     }
-    // Printable (including space); drop C0 controls like CR/BS/TAB
-    if (c >= 0x20) {
+    // Printable (including space); drop C0 controls like CR/BS except TAB (0x09)
+    if (c >= 0x20 || c === 0x09) {
       out += s[i]!;
     }
     i++;
@@ -55,7 +55,7 @@ export function cleanLogLine(s: string): string {
   return out;
 }
 
-const ISO_TIMESTAMP_REGEX = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)\s+(.*)$/;
+const ISO_TIMESTAMP_REGEX = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?) (.*)$/;
 
 /**
  * Parses an ISO 8601/RFC3339 timestamp from the beginning of a raw log line,

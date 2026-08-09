@@ -176,8 +176,8 @@ func CleanLogLine(s string) string {
 		if newState == ansi.NormalState && len(seq) > 0 {
 			if seq[0] == '\x1b' && ansi.HasCsiPrefix(seq) && ansi.Cmd(p.Command()).Final() == 'm' {
 				buf.WriteString(seq) // preserve SGR (color) sequences
-			} else if newState == ansi.NormalState && len(seq) == 1 && seq[0] >= ' ' {
-				buf.WriteString(seq) // preserve printable characters
+			} else if newState == ansi.NormalState && len(seq) == 1 && (seq[0] >= ' ' || seq[0] == '\t') {
+				buf.WriteString(seq) // preserve printable characters and tabs
 			}
 		}
 		s = s[n:]

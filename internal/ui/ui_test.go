@@ -69,9 +69,14 @@ func TestCleanLogLine(t *testing.T) {
 			want: "visible",
 		},
 		{
-			name: "tab stripped as control char",
+			name: "tab preserved",
 			in:   "col1\tcol2",
-			want: "col1col2",
+			want: "col1\tcol2",
+		},
+		{
+			name: "leading spaces preserved for ascii art",
+			in:   "   /\\_/\\ ",
+			want: "   /\\_/\\ ",
 		},
 		{
 			name: "backspace stripped",

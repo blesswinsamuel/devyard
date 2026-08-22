@@ -200,22 +200,47 @@ supervisor transitively:
 // MultiBackend is the daemon-level interface (manages multiple projects).
 type MultiBackend interface {
     ListProjects() []protocol.ProjectInfo
-    StartProject(configPath string, build bool) error
+    StartProject(configPath string, build bool, envFile string, removeOrphans bool) error
+    StartService(project, service string) error
     StopProject(name string) error
+    RemoveProject(name string) error
     StopDaemon() error
+    DaemonStatus() (*protocol.DaemonInfo, error)
+    RestartDaemon() error
     ProjectBackend(project string) (Backend, error)
+
+    GitLog(project string) ([]GitCommit, []GitBranch, []GitTag, []GitStash, error)
+    GitDiff(project, hash string, contextLines ...int) (*GitDiffResult, error)
+    GitCommit(project, message string) error
+    GitStage(project, path string, stageAll, unstage bool) error
+    GitPush(project string) (string, error)
+    GitPull(project string) (string, error)
+    GitFetch(project string) (string, error)
+    Ports(project string) ([]PortBinding, error)
+
+    // Push-notification hooks; implementations without events may no-op.
+    SetOnStateChange(fn func(project string, state ServiceState))
+    SetOnActionStateChange(fn func(project string, state ActionState))
+    SetOnGitChange(fn func(project string))
 }
 
 // Backend is the per-project interface (one supervisor).
 type Backend interface {
     States() []protocol.ServiceState
+    ActionStates() []protocol.ActionState
     Stop(ctx context.Context) error
     StopService(name string) error
+    StartService(name string) error
     KillService(name, signal string) error
     Restart(name string) error
     Top(name string) ([]protocol.ServiceStat, error)
+    Ports() ([]protocol.PortBinding, error)
     LogPath(name string) (string, error)
     PreviousLogPath(name string) (string, error)
+    ListActions() []protocol.ActionInfo
+    RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error)
+    ActionLogPath(name string) (string, error)
+    ActionPreviousLogPath(name string) (string, error)
 }
 ```
 

@@ -175,8 +175,9 @@ with `done` on shutdown or client disconnect.
 
 `Client` is the matching thin client used by every CLI command and the web
 UI. One client owns one connection and serves one request at a time — **not**
-safe for concurrent use. The web proxy opens separate connections for its
-periodic `List` polls and its long-lived log-follow stream.
+safe for concurrent use. The web bridge dials a short-lived connection per
+request and a dedicated long-lived connection per log-follow stream or event
+subscription.
 
 Wire format and message kinds are documented in
 [control-protocol.md](control-protocol.md).
@@ -184,10 +185,19 @@ Wire format and message kinds are documented in
 ## Web UI (`internal/web`)
 
 The web UI is a WebSocket frontend over the same control socket. Start it with
-`local-compose web` (proxy mode): it dials the daemon socket and serves an
-embedded SolidJS SPA (built with bun + Vite, using xterm.js for log rendering)
-from `internal/web/dist/` via `go:embed`. The WS endpoint translates browser
-JSON to control-protocol frames.
+`local-compose web`: it dials the daemon socket and serves an embedded SolidJS
+SPA (built with bun + Vite, using xterm.js for log rendering) from
+`internal/web/dist/` via `go:embed`. The WS endpoint is a pure bridge: browser
+JSON messages are translated to control-protocol frames on short-lived
+connections, daemon events are fanned out to every browser from one persistent
+`subscribe_events` connection, log tailing lives entirely in the daemon, and
+interactive terminals are spawned locally via `creack/pty`.
+
+Every message sent to a browser goes through a per-connection outbound queue
+drained by a single writer goroutine: enqueueing never blocks, so a dead or
+slow tab can't stall supervision callbacks or other viewers. A ping/pong loop
+reaps half-open connections; terminals are torn down with their whole process
+group when the owning browser disconnects.
 
 Default bind address is `127.0.0.1:9090` (loopback only). Override with
 `--host` / `--port`, or set defaults in the global config (`web.host`,
@@ -241,7 +251,10 @@ produce a warning but don't error.
   connection.
 - One signal-handler goroutine in the daemon child.
 - One goroutine per health checker; one per pipe reader.
-- One goroutine per WS connection in the web server.
+- One goroutine per WS connection in the web server (reader) plus one writer
+  goroutine per connected browser draining its outbound queue; one goroutine
+  per log subscription and per running action; one persistent daemon event
+  pump with reconnect backoff.
 - Shared mutable state is a small locked struct (`serviceRuntime.mu` per
   service, `Supervisor.mu` for the map, `Daemon.mu` for the projects map).
   Atomic flags (`started`, `stopped`, `failed`, `startedOnce`, `stopped`)

@@ -483,7 +483,7 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 
 	snap, err := LoadState(s.opts.Locations)
 	if err != nil && s.opts.Stdout != nil {
-		fmt.Fprintf(s.opts.Stdout, "supervisor: load state: %v\n", err)
+		_, _ = fmt.Fprintf(s.opts.Stdout, "supervisor: load state: %v\n", err)
 	}
 
 	if s.opts.InstallSignalHandler {
@@ -1669,7 +1669,7 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	actionCmd := newCommand(shell, "-c", fullCmd)
 	actionCmd.dir = workDir
 	actionCmd.env = env
-	applyProcessGroup(actionCmd)
+	_ = applyProcessGroup(actionCmd)
 
 	stdoutPipe, stderrPipe, err := actionCmd.pipes()
 	if err != nil {

@@ -60,27 +60,27 @@ var daemonStatusCmd = &cobra.Command{
 		}
 		if pid == 0 {
 			_ = daemon.RemoveDaemonPidfile(locs)
-			fmt.Fprintln(os.Stdout, "Daemon status: stopped")
+			_, _ = fmt.Fprintln(os.Stdout, "Daemon status: stopped")
 			return nil
 		}
 
 		c, err := control.Dial(locs.Socket)
 		if err != nil {
-			fmt.Fprintf(os.Stdout, "Daemon status: unresponsive (pid %d, socket unavailable)\n", pid)
+			_, _ = fmt.Fprintf(os.Stdout, "Daemon status: unresponsive (pid %d, socket unavailable)\n", pid)
 			return nil
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 
 		projects, err := c.ListProjects()
 		if err != nil {
-			fmt.Fprintf(os.Stdout, "Daemon status: running (pid %d), error listing projects: %v\n", pid, err)
+			_, _ = fmt.Fprintf(os.Stdout, "Daemon status: running (pid %d), error listing projects: %v\n", pid, err)
 			return nil
 		}
 
-		fmt.Fprintf(os.Stdout, "Daemon status: running (pid %d)\n", pid)
-		fmt.Fprintf(os.Stdout, "Active projects: %d\n", len(projects))
+		_, _ = fmt.Fprintf(os.Stdout, "Daemon status: running (pid %d)\n", pid)
+		_, _ = fmt.Fprintf(os.Stdout, "Active projects: %d\n", len(projects))
 		for _, p := range projects {
-			fmt.Fprintf(os.Stdout, "  - %s (%s) [%s]\n", p.Name, p.Status, p.ConfigPath)
+			_, _ = fmt.Fprintf(os.Stdout, "  - %s (%s) [%s]\n", p.Name, p.Status, p.ConfigPath)
 		}
 		return nil
 	},
@@ -164,7 +164,7 @@ func runDaemonReload(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return nil, err
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		return c.ListProjects()
 	}()
 	if err != nil {
@@ -185,7 +185,7 @@ func runDaemonReload(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		return c.StopDaemon()
 	}(); err != nil {
 		return fmt.Errorf("stop daemon: %w", err)
@@ -210,7 +210,7 @@ func runDaemonReload(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return nil, err
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		return c.ListProjects()
 	}()
 	if err != nil {
@@ -231,7 +231,7 @@ func runDaemonReload(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return err
 			}
-			defer c.Close()
+			defer func() { _ = c.Close() }()
 			return c.StartProject(cfgPath, false, "", true)
 		}(); err != nil {
 			if !isAlreadyRunning(err, alreadyRunning) {

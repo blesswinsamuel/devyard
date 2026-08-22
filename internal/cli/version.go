@@ -21,12 +21,12 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the local-compose version, commit, and build date",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Fprintf(cmd.OutOrStdout(), "local-compose version %s\n", Version)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "local-compose version %s\n", Version)
 		if Commit != "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "commit: %s\n", Commit)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "commit: %s\n", Commit)
 		}
 		if Date != "" {
-			fmt.Fprintf(cmd.OutOrStdout(), "date: %s\n", Date)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "date: %s\n", Date)
 		}
 		return nil
 	},

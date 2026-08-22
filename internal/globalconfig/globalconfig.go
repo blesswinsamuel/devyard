@@ -115,7 +115,7 @@ func loadFile(path string, read readerFunc, errOut io.Writer) (*Config, error) {
 
 	for key := range raw {
 		if !knownTopLevel[key] {
-			fmt.Fprintf(errOut, "local-compose: warning: unknown field %q in global config\n", key)
+			_, _ = fmt.Fprintf(errOut, "local-compose: warning: unknown field %q in global config\n", key)
 		}
 	}
 
@@ -173,6 +173,6 @@ func SaveForTest(path string, cfg *Config) error {
 // String returns a human-readable summary of the config (for logging).
 func (c *Config) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("web=%s:%d", c.Web.Host, c.Web.Port))
+	fmt.Fprintf(&sb, "web=%s:%d", c.Web.Host, c.Web.Port)
 	return sb.String()
 }

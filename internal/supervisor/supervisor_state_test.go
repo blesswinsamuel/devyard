@@ -34,7 +34,7 @@ func TestStateSaveAndLoad(t *testing.T) {
 	if err := s.Start(ctx); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer s.Stop(context.Background())
+	defer func() { _ = s.Stop(context.Background()) }()
 
 	// Give s1 time to start
 	time.Sleep(50 * time.Millisecond)

@@ -1,7 +1,8 @@
-// Package web serves the HTTP and WebSocket browser frontend. It is a fourth
-// frontend over the same control protocol used by the CLI: the WS
-// server dispatches JSON messages to the daemon's MultiBackend, bridging
-// project/service management and log streaming to the browser.
+// Package web serves the embedded SPA and a WebSocket endpoint (/ws) for the
+// browser frontend. It is a thin bridge between browser JSON messages and the
+// daemon's control socket: requests are translated to control-protocol
+// frames, daemon events are fanned out to connected browsers, and interactive
+// terminals are spawned locally. No process supervision happens here.
 package web
 
 import (
@@ -9,12 +10,9 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -28,87 +26,65 @@ import (
 //go:embed dist/*
 var distFS embed.FS
 
-// Server is the HTTP + WebSocket server for the web UI. It serves the embedded
-// SPA at / and a WebSocket endpoint at /ws. In in-process mode (used by the
-// daemon) the handler dispatches directly to a MultiBackend. In proxy mode
-// (used by the `web` subcommand) it translates WS messages to control-protocol
-// frames over a Unix socket.
+const (
+	writeTimeout   = 5 * time.Second
+	pingInterval   = 30 * time.Second
+	pingTimeout    = 10 * time.Second
+	maxReadLimit   = 1 << 20 // 1 MiB per browser message
+	sendBufferSize = 256
+)
+
+// Server is the HTTP + WebSocket server for the web UI. It serves the
+// embedded SPA at / and bridges /ws traffic to the daemon over its Unix
+// control socket.
 type Server struct {
-	backend    control.MultiBackend // the daemon's MultiBackend (nil in proxy mode)
-	socketPath string               // daemon socket path (empty in in-process mode)
-	addr       string               // host:port
-	listener   net.Listener
-	closed     bool
-	mu         sync.Mutex
+	addr       string
+	socketPath string
 
-	// Connected WS clients, guarded by clientsMu.
+	mu       sync.Mutex
+	listener net.Listener
+	closed   bool
+	done     chan struct{}
+	events   *control.Client // live event-subscription connection, closed on shutdown
+
 	clientsMu sync.Mutex
-	clients   map[*wsClient]struct{}
+	clients   map[*client]struct{}
 }
 
-// wsClient tracks one active WebSocket connection for broadcast purposes.
-type wsClient struct {
-	conn *websocket.Conn
-	ctx  context.Context
+// NewServer creates a web server bound to addr that forwards browser traffic
+// to the daemon listening on socketPath.
+func NewServer(addr, socketPath string) *Server {
+	return &Server{
+		addr:       addr,
+		socketPath: socketPath,
+		done:       make(chan struct{}),
+		clients:    make(map[*client]struct{}),
+	}
 }
 
-// NewServer creates a web server bound to addr. The daemon's MultiBackend is
-// used for all WS dispatch (in-process, no socket dialing).
-func NewServer(addr string, backend control.MultiBackend) *Server {
-	return &Server{addr: addr, backend: backend, clients: make(map[*wsClient]struct{})}
-}
-
-// NewProxyServer creates a web server that proxies WS messages to the daemon
-// over the given Unix socket, without holding an in-process MultiBackend.
-func NewProxyServer(addr, socketPath string) *Server {
-	return &Server{addr: addr, socketPath: socketPath, clients: make(map[*wsClient]struct{})}
-}
-
-// ListenAndServe starts the HTTP server. It returns once the listener is
-// ready. Call Close to stop.
+// ListenAndServe starts serving HTTP and the daemon event fan-out. It returns
+// once the listener is ready. Call Close to stop.
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return fmt.Errorf("web: listen %s: %w", s.addr, err)
 	}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		_ = ln.Close()
+		return fmt.Errorf("web: server is closed")
+	}
 	s.listener = ln
 	s.mu.Unlock()
 
-	if s.backend != nil {
-		s.backend.SetOnStateChange(func(project string, state protocol.ServiceState) {
-			data, _ := json.Marshal(state)
-			s.broadcast(wsResponse{
-				Type:    "state_changed",
-				Project: project,
-				Service: state.Name,
-				Data:    data,
-			})
-		})
-		s.backend.SetOnActionStateChange(func(project string, state protocol.ActionState) {
-			data, _ := json.Marshal(state)
-			s.broadcast(wsResponse{
-				Type:    "action_state_changed",
-				Project: project,
-				Action:  state.Name,
-				Data:    data,
-			})
-		})
-		s.backend.SetOnGitChange(func(project string) {
-			s.broadcast(wsResponse{
-				Type:    "git_changed",
-				Project: project,
-			})
-		})
-	} else if s.socketPath != "" {
-		go s.startProxyEventSubscription()
-	}
+	go s.runEvents()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.Handle("/", s.spaHandler())
-	srv := &http.Server{Handler: mux}
-	go func() { _ = srv.Serve(ln) }()
+	httpSrv := &http.Server{Handler: mux}
+	go func() { _ = httpSrv.Serve(ln) }()
 	return nil
 }
 
@@ -122,18 +98,37 @@ func (s *Server) Addr() string {
 	return s.listener.Addr().String()
 }
 
-// Close stops the listener.
+// Close stops accepting connections, tears down every active WS client, and
+// unblocks the event subscription. It is safe to call more than once.
 func (s *Server) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
 		return nil
 	}
 	s.closed = true
-	if s.listener != nil {
-		return s.listener.Close()
+	ln := s.listener
+	ev := s.events
+	close(s.done)
+	s.mu.Unlock()
+
+	if ev != nil {
+		_ = ev.Close()
 	}
-	return nil
+	var err error
+	if ln != nil {
+		err = ln.Close()
+	}
+	s.clientsMu.Lock()
+	remaining := make([]*client, 0, len(s.clients))
+	for cl := range s.clients {
+		remaining = append(remaining, cl)
+	}
+	s.clientsMu.Unlock()
+	for _, cl := range remaining {
+		cl.close()
+	}
+	return err
 }
 
 // spaHandler serves the embedded SPA. Any path that doesn't match a static
@@ -161,7 +156,7 @@ func (s *Server) spaHandler() http.Handler {
 
 // --- WebSocket message types ---
 
-// wsRequest is a JSON message from the browser to the daemon.
+// wsRequest is a JSON message from the browser.
 type wsRequest struct {
 	Type          string   `json:"type"`
 	Project       string   `json:"project,omitempty"`
@@ -187,7 +182,7 @@ type wsRequest struct {
 	Rows uint16 `json:"rows,omitempty"`
 }
 
-// wsResponse is a JSON message from the daemon to the browser.
+// wsResponse is a JSON message to the browser.
 type wsResponse struct {
 	Type     string          `json:"type"`
 	Project  string          `json:"project,omitempty"`
@@ -205,708 +200,299 @@ type wsResponse struct {
 	Output string `json:"output,omitempty"`
 }
 
-// handleWS upgrades to WebSocket and runs the JSON message loop.
+// --- per-client plumbing ---
+
+// client tracks one browser WebSocket connection. Every message sent to the
+// browser goes through sendCh so ordering is guaranteed and no goroutine ever
+// blocks on a dead peer: enqueues are non-blocking, and the single writer
+// goroutine drops the whole client when a write fails or the queue overflows.
+type client struct {
+	srv  *Server
+	conn *websocket.Conn
+	ctx  context.Context
+	send chan wsResponse
+	done chan struct{}
+
+	closeOnce sync.Once
+	cancelCtx context.CancelFunc
+	mu        sync.Mutex
+	dead      bool
+
+	subs *subTracker
+	ptys *ptyManager
+}
+
+func (s *Server) addClient(conn *websocket.Conn) *client {
+	ctx, cancel := context.WithCancel(context.Background())
+	cl := &client{
+		srv:  s,
+		conn: conn,
+		ctx:  ctx,
+		send: make(chan wsResponse, sendBufferSize),
+		done: make(chan struct{}),
+		subs: newSubTracker(),
+		ptys: newPTYManager(),
+	}
+	// cancel is invoked by close; keep it referenced there.
+	cl.cancelCtx = cancel
+
+	s.clientsMu.Lock()
+	s.clients[cl] = struct{}{}
+	s.clientsMu.Unlock()
+	go cl.writeLoop()
+	return cl
+}
+
+func (cl *client) enqueue(resp wsResponse) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	if cl.dead {
+		return
+	}
+	select {
+	case cl.send <- resp:
+	default:
+		// Slow consumer: drop the connection instead of blocking broadcasts.
+		cl.dead = true
+		go cl.close()
+	}
+}
+
+func (cl *client) writeLoop() {
+	pinger := time.NewTicker(pingInterval)
+	defer pinger.Stop()
+	for {
+		select {
+		case resp := <-cl.send:
+			data, err := json.Marshal(resp)
+			if err != nil {
+				continue
+			}
+			wctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
+			err = cl.conn.Write(wctx, websocket.MessageText, data)
+			cancel()
+			if err != nil {
+				cl.close()
+				return
+			}
+		case <-pinger.C:
+			pctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+			err := cl.conn.Ping(pctx)
+			cancel()
+			if err != nil {
+				cl.close()
+				return
+			}
+		case <-cl.done:
+			return
+		}
+	}
+}
+
+func (cl *client) close() {
+	cl.closeOnce.Do(func() {
+		cl.mu.Lock()
+		cl.dead = true
+		cl.mu.Unlock()
+		close(cl.done)
+		if cl.cancelCtx != nil {
+			cl.cancelCtx()
+		}
+		_ = cl.conn.CloseNow()
+		cl.subs.closeAll()
+		cl.ptys.closeAll()
+		cl.srv.removeClient(cl)
+	})
+}
+
+func (s *Server) removeClient(cl *client) {
+	s.clientsMu.Lock()
+	delete(s.clients, cl)
+	s.clientsMu.Unlock()
+}
+
+// broadcast sends a message to every connected client. Enqueueing is
+// non-blocking, so this never stalls on a slow consumer.
+func (s *Server) broadcast(resp wsResponse) {
+	s.clientsMu.Lock()
+	defer s.clientsMu.Unlock()
+	for cl := range s.clients {
+		cl.enqueue(resp)
+	}
+}
+
+// --- connection handling ---
+
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: []string{"localhost", "127.0.0.1"},
 	})
 	if err != nil {
 		return
 	}
-	defer func() { _ = c.CloseNow() }()
+	defer func() { _ = conn.CloseNow() }()
+	conn.SetReadLimit(maxReadLimit)
 
-	ctx := r.Context()
-	s.addClient(c, ctx)
-	defer s.removeClient(c)
-
-	// Track active log subscriptions so we can cancel them on disconnect.
-	subs := newSubTracker()
-	defer subs.closeAll()
-
-	ptys := newPTYManager()
-	defer ptys.closeAll()
+	cl := s.addClient(conn)
+	defer cl.close()
 
 	for {
-		_, msg, err := c.Read(ctx)
+		_, msg, err := conn.Read(r.Context())
 		if err != nil {
 			return
 		}
 		var req wsRequest
 		if err := json.Unmarshal(msg, &req); err != nil {
-			s.sendError(c, ctx, "invalid message: "+err.Error())
+			cl.enqueue(wsResponse{Type: "error", Error: "invalid message: " + err.Error()})
 			continue
 		}
-		if s.socketPath != "" {
-			s.proxyDispatch(c, ctx, &req, subs, ptys)
-		} else {
-			s.dispatchWS(c, ctx, &req, subs, ptys)
-		}
+		s.dispatch(cl, &req)
 	}
 }
 
-func (s *Server) dispatchWS(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker, ptys *ptyManager) {
+// dispatch routes one browser message. Terminal messages are handled locally;
+// everything else proxies to the daemon.
+func (s *Server) dispatch(cl *client, req *wsRequest) {
 	switch req.Type {
 	case "list_projects":
-		s.handleListProjects(c, ctx)
+		s.handleListProjects(cl)
 	case "list_services":
-		s.handleListServices(c, ctx, req)
+		s.handleListServices(cl, req)
 	case "start_project":
-		s.handleStartProject(c, ctx, req)
+		s.handleStartProject(cl, req)
 	case "stop_project":
-		s.handleStopProject(c, ctx, req)
+		s.handleStopProject(cl, req)
 	case "restart_service":
-		s.handleRestartService(c, ctx, req)
+		s.handleServiceOp(cl, req, protocol.KindRestart, "result")
 	case "stop_service":
-		s.handleStopService(c, ctx, req)
+		s.handleServiceOp(cl, req, protocol.KindStopService, "result")
 	case "start_service":
-		s.handleStartService(c, ctx, req)
+		s.handleServiceOp(cl, req, protocol.KindStartService, "result")
 	case "kill_service":
-		s.handleKillService(c, ctx, req)
+		s.handleKillService(cl, req)
 	case "subscribe_logs":
-		s.handleSubscribeLogs(c, ctx, req, subs)
+		s.handleSubscribeLogs(cl, req)
 	case "unsubscribe_logs":
-		s.handleUnsubscribeLogs(req, subs)
+		cl.subs.cancel(logSubKey(logTarget{project: req.Project, service: req.Service}))
 	case "subscribe_action_logs":
-		s.handleSubscribeActionLogs(c, ctx, req, subs)
+		s.handleSubscribeActionLogs(cl, req)
 	case "unsubscribe_action_logs":
-		s.handleUnsubscribeActionLogs(req, subs)
+		cl.subs.cancel(logSubKey(logTarget{project: req.Project, action: req.Action}))
 	case "spawn_terminal":
-		s.handleSpawnTerminal(c, ctx, req, ptys)
+		s.handleSpawnTerminal(cl, req)
 	case "terminal_input":
-		_ = ptys.write(req.ID, req.Data)
+		if err := cl.ptys.write(req.ID, req.Data); err != nil {
+			cl.enqueue(wsResponse{Type: "error", Error: err.Error()})
+		}
 	case "terminal_resize":
-		_ = ptys.resize(req.ID, req.Cols, req.Rows)
+		if err := cl.ptys.resize(req.ID, req.Cols, req.Rows); err != nil {
+			cl.enqueue(wsResponse{Type: "error", Error: err.Error()})
+		}
 	case "close_terminal":
-		ptys.closeSession(req.ID)
+		cl.ptys.closeSession(req.ID)
 	case "list_actions":
-		s.handleListActions(c, ctx, req)
+		s.handleListActions(cl, req)
 	case "list_action_states":
-		s.handleListActionStates(c, ctx, req)
+		s.handleListActionStates(cl, req)
 	case "run_action":
-		s.handleRunAction(c, ctx, req)
+		s.runAction(cl, req)
 	case "git_log":
-		s.handleGitLog(c, ctx, req)
+		s.handleGitLog(cl, req)
 	case "git_diff":
-		s.handleGitDiff(c, ctx, req)
+		s.handleGitDiff(cl, req)
 	case "git_commit":
-		s.handleGitCommit(c, ctx, req)
+		s.handleGitCommit(cl, req)
 	case "git_stage":
-		s.handleGitStage(c, ctx, req)
+		s.handleGitStage(cl, req)
 	case "git_push":
-		s.handleGitPush(c, ctx, req)
+		s.handleGitRemote(cl, req, protocol.KindGitPush)
 	case "git_pull":
-		s.handleGitPull(c, ctx, req)
+		s.handleGitRemote(cl, req, protocol.KindGitPull)
 	case "git_fetch":
-		s.handleGitFetch(c, ctx, req)
+		s.handleGitRemote(cl, req, protocol.KindGitFetch)
 	case "daemon_status":
-		s.handleDaemonStatus(c, ctx)
+		s.handleDaemonStatus(cl)
 	case "restart_daemon":
-		s.handleRestartDaemon(c, ctx)
+		s.handleRestartDaemon(cl)
 	case "list_ports":
-		s.handleListPorts(c, ctx, req)
+		s.handleListPorts(cl, req)
 	default:
-		s.sendError(c, ctx, "unknown message type: "+req.Type)
+		cl.enqueue(wsResponse{Type: "error", Error: "unknown message type: " + req.Type})
 	}
 }
 
-func (s *Server) resolveProjectDir(project string) string {
-	if project == "" {
-		dir, _ := os.Getwd()
-		return dir
-	}
-	var configPath string
-	if s.backend != nil {
-		for _, p := range s.backend.ListProjects() {
-			if p.Name == project {
-				configPath = p.ConfigPath
-				break
-			}
-		}
-	} else if s.socketPath != "" {
-		resp, err := s.dialAndSend(protocol.Request{Kind: protocol.KindListProjects})
-		if err == nil && resp.Kind != protocol.KindError {
-			for _, p := range resp.Projects {
-				if p.Name == project {
-					configPath = p.ConfigPath
-					break
-				}
-			}
-		}
-	}
-	if configPath != "" {
-		return filepath.Dir(configPath)
-	}
-	dir, _ := os.Getwd()
-	return dir
-}
+// --- daemon event fan-out ---
 
-func (s *Server) handleSpawnTerminal(c *websocket.Conn, ctx context.Context, req *wsRequest, ptys *ptyManager) {
-	dir := s.resolveProjectDir(req.Project)
-	err := ptys.spawn(ctx, req.ID, dir, req.Cols, req.Rows,
-		func(output string) {
-			s.send(c, ctx, wsResponse{Type: "terminal_output", ID: req.ID, Output: output})
-		},
-		func() {
-			s.send(c, ctx, wsResponse{Type: "terminal_exit", ID: req.ID})
-		},
-	)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-	}
-}
-
-func (s *Server) handleListProjects(c *websocket.Conn, ctx context.Context) {
-	projects := s.backend.ListProjects()
-	data, _ := json.Marshal(projects)
-	s.send(c, ctx, wsResponse{Type: "projects", Data: data})
-}
-
-func (s *Server) handleDaemonStatus(c *websocket.Conn, ctx context.Context) {
-	info, err := s.backend.DaemonStatus()
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	data, _ := json.Marshal(info)
-	s.send(c, ctx, wsResponse{Type: "daemon_status", Data: data})
-}
-
-func (s *Server) handleRestartDaemon(c *websocket.Conn, ctx context.Context) {
-	if err := s.backend.RestartDaemon(); err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "done", Ok: true})
-}
-
-func (s *Server) handleListServices(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	states := b.States()
-	data, _ := json.Marshal(states)
-	s.send(c, ctx, wsResponse{Type: "services", Project: req.Project, Data: data})
-}
-
-func (s *Server) handleListPorts(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	ports, err := s.backend.Ports(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	data, _ := json.Marshal(ports)
-	s.send(c, ctx, wsResponse{Type: "ports", Project: req.Project, Data: data})
-}
-
-func (s *Server) handleStartProject(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	if req.ConfigPath == "" && req.Project != "" {
-		for _, p := range s.backend.ListProjects() {
-			if p.Name == req.Project {
-				req.ConfigPath = p.ConfigPath
-				break
-			}
-		}
-	}
-	if req.ConfigPath == "" {
-		s.sendError(c, ctx, "config_path is required")
-		return
-	}
-	removeOrphans := true
-	if req.RemoveOrphans != nil {
-		removeOrphans = *req.RemoveOrphans
-	}
-	if err := s.backend.StartProject(req.ConfigPath, false, req.EnvFile, removeOrphans); err != nil {
-		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
-}
-
-func (s *Server) handleStopProject(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	if err := s.backend.StopProject(req.Project); err != nil {
-		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
-}
-
-func (s *Server) handleRestartService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	if err := b.Restart(req.Service); err != nil {
-		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
-}
-
-func (s *Server) handleStopService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	if err := b.StopService(req.Service); err != nil {
-		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
-}
-
-func (s *Server) handleStartService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	if err := b.StartService(req.Service); err != nil {
-		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
-}
-
-func (s *Server) handleKillService(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	if err := b.KillService(req.Service, req.Signal); err != nil {
-		s.send(c, ctx, wsResponse{Type: "result", Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "result", Ok: true})
-}
-
-func (s *Server) handleListActions(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	actions := b.ListActions()
-	data, _ := json.Marshal(actions)
-	s.send(c, ctx, wsResponse{Type: "actions", Project: req.Project, Data: data})
-}
-
-func (s *Server) handleListActionStates(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		s.sendError(c, ctx, err.Error())
-		return
-	}
-	states := b.ActionStates()
-	data, _ := json.Marshal(states)
-	s.send(c, ctx, wsResponse{Type: "action_states", Project: req.Project, Data: data})
-}
-
-func (s *Server) handleGitLog(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	commits, branches, tags, stashes, err := s.backend.GitLog(req.Project)
-	if err != nil {
-		s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: false, Error: err.Error()})
-		return
-	}
-	payload := map[string]any{
-		"commits":  commits,
-		"branches": branches,
-		"tags":     tags,
-		"stashes":  stashes,
-	}
-	data, _ := json.Marshal(payload)
-	s.send(c, ctx, wsResponse{Type: "git_commits", Project: req.Project, Ok: true, Data: data})
-}
-
-func (s *Server) handleGitDiff(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	diffRes, err := s.backend.GitDiff(req.Project, req.Hash, req.ContextLines)
-	if err != nil {
-		s.send(c, ctx, wsResponse{Type: "git_diff", Project: req.Project, Ok: false, Error: err.Error()})
-		return
-	}
-	data, _ := json.Marshal(diffRes)
-	s.send(c, ctx, wsResponse{Type: "git_diff", Project: req.Project, Ok: true, Data: data})
-}
-
-func (s *Server) handleGitCommit(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	if err := s.backend.GitCommit(req.Project, req.Message); err != nil {
-		s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "git_commit_result", Project: req.Project, Ok: true})
-}
-
-func (s *Server) handleGitStage(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	if err := s.backend.GitStage(req.Project, req.Path, req.StageAll, req.Unstage); err != nil {
-		s.send(c, ctx, wsResponse{Type: "git_stage_result", Project: req.Project, Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "git_stage_result", Project: req.Project, Ok: true})
-}
-
-func (s *Server) handleGitPush(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	output, err := s.backend.GitPush(req.Project)
-	if err != nil {
-		s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: true, Line: output})
-}
-
-func (s *Server) handleGitPull(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	output, err := s.backend.GitPull(req.Project)
-	if err != nil {
-		s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: true, Line: output})
-}
-
-func (s *Server) handleGitFetch(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	output, err := s.backend.GitFetch(req.Project)
-	if err != nil {
-		s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: false, Error: err.Error()})
-		return
-	}
-	s.send(c, ctx, wsResponse{Type: "git_remote_result", Project: req.Project, Ok: true, Line: output})
-}
-
-func (s *Server) handleRunAction(c *websocket.Conn, ctx context.Context, req *wsRequest) {
-	go func() {
-		b, err := s.backend.ProjectBackend(req.Project)
-		if err != nil {
-			s.sendError(c, ctx, err.Error())
-			return
-		}
-		// Output is captured to the action's log file by the supervisor; the
-		// browser follows it through the subscribe_action_logs stream (also
-		// initiated by the UI), so nothing is streamed over this message.
-		code, err := b.RunAction(ctx, req.Action, req.Args, io.Discard)
-		if err != nil {
-			s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: false, Error: err.Error()})
-			return
-		}
-		s.send(c, ctx, wsResponse{Type: "action_done", Project: req.Project, Action: req.Action, Ok: true, ExitCode: &code})
-	}()
-}
-
-func (s *Server) startLogSubscription(
-	c *websocket.Conn,
-	ctx context.Context,
-	subs *subTracker,
-	key string,
-	project string,
-	getPath func(b control.Backend, subCtx context.Context) (string, error),
-	onStream func(path string, subCtx context.Context),
-) {
-	subs.cancel(key)
-
-	subCtx, cancel := context.WithCancel(ctx)
-	subs.add(key, cancel)
-
-	go func() {
-		b, err := s.backend.ProjectBackend(project)
-		if err != nil {
-			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
-			return
-		}
-		path, err := getPath(b, subCtx)
-		if err != nil {
-			if subCtx.Err() != nil {
-				return
-			}
-			s.send(c, subCtx, wsResponse{Type: "error", Error: err.Error()})
-			return
-		}
-		onStream(path, subCtx)
-	}()
-}
-
-func (s *Server) handleSubscribeLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
-	key := req.Project + "/" + req.Service
-	s.startLogSubscription(
-		c, ctx, subs, key, req.Project,
-		func(b control.Backend, _ context.Context) (string, error) {
-			if req.Previous {
-				return b.PreviousLogPath(req.Service)
-			}
-			return b.LogPath(req.Service)
-		},
-		func(path string, subCtx context.Context) {
-			streamLogFile(c, subCtx, path, req.Project, req.Service, "", req.Previous, !req.Previous)
-		},
-	)
-}
-
-func (s *Server) handleUnsubscribeLogs(req *wsRequest, subs *subTracker) {
-	key := req.Project + "/" + req.Service
-	subs.cancel(key)
-}
-
-// actionSubKey is the subscription-tracker key for an action log stream. It is
-// namespaced separately from service log streams so a service and an action
-// sharing a name don't cancel each other's subscriptions.
-func actionSubKey(project, action string) string {
-	return "a:" + project + "/" + action
-}
-
-// handleSubscribeActionLogs follows an action's log file, waiting for it to
-// appear on the first run. It mirrors handleSubscribeLogs but targets the
-// action's log and tags each streamed line with the action name so the browser
-// routes it to the action pane rather than a service pane.
-func (s *Server) handleSubscribeActionLogs(c *websocket.Conn, ctx context.Context, req *wsRequest, subs *subTracker) {
-	key := actionSubKey(req.Project, req.Action)
-	s.startLogSubscription(
-		c, ctx, subs, key, req.Project,
-		func(b control.Backend, subCtx context.Context) (string, error) {
-			if req.Previous {
-				return b.ActionPreviousLogPath(req.Action)
-			}
-			return control.WaitForActionLog(subCtx, b, req.Action)
-		},
-		func(path string, subCtx context.Context) {
-			streamLogFile(c, subCtx, path, req.Project, "", req.Action, req.Previous, !req.Previous)
-		},
-	)
-}
-
-func (s *Server) handleUnsubscribeActionLogs(req *wsRequest, subs *subTracker) {
-	subs.cancel(actionSubKey(req.Project, req.Action))
-}
-
-func (s *Server) send(c *websocket.Conn, ctx context.Context, resp wsResponse) {
-	data, _ := json.Marshal(resp)
-	writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
-	defer cancel()
-	_ = c.Write(writeCtx, websocket.MessageText, data)
-}
-
-func (s *Server) sendError(c *websocket.Conn, ctx context.Context, msg string) {
-	s.send(c, ctx, wsResponse{Type: "error", Error: msg})
-}
-
-func (s *Server) addClient(c *websocket.Conn, ctx context.Context) {
-	s.clientsMu.Lock()
-	s.clients[&wsClient{conn: c, ctx: ctx}] = struct{}{}
-	s.clientsMu.Unlock()
-}
-
-func (s *Server) removeClient(c *websocket.Conn) {
-	s.clientsMu.Lock()
-	for cl := range s.clients {
-		if cl.conn == c {
-			delete(s.clients, cl)
-			break
-		}
-	}
-	s.clientsMu.Unlock()
-}
-
-// broadcast sends a WS response to every connected client. Clients that fail
-// to write are silently removed.
-func (s *Server) broadcast(resp wsResponse) {
-	data, _ := json.Marshal(resp)
-	s.clientsMu.Lock()
-	var dead []*wsClient
-	for cl := range s.clients {
-		writeCtx, cancel := context.WithTimeout(cl.ctx, writeTimeout)
-		if err := cl.conn.Write(writeCtx, websocket.MessageText, data); err != nil {
-			dead = append(dead, cl)
-		}
-		cancel()
-	}
-	for _, cl := range dead {
-		delete(s.clients, cl)
-	}
-	s.clientsMu.Unlock()
-}
-
-const writeTimeout = 5 * time.Second
-
-// streamLogFile reads existing log content (last DefaultLogTail lines) and,
-// when follow is true, tails for new lines, sending log_line WS messages for
-// each line. It returns when the context is cancelled (unsubscribe or
-// disconnect) or, when follow is false, after the file's content is fully
-// streamed. Exactly one of service and action is non-empty: service logs are
-// tagged with the service name, action logs with the action name, so the
-// browser can route each stream to the right pane. previous marks a previous
-// run's completed log (the current file's ".prev.log"); every line carries
-// that flag so the browser can render it distinctly.
-func streamLogFile(c *websocket.Conn, ctx context.Context, path, project, service, action string, previous, follow bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		resp, _ := json.Marshal(wsResponse{
-			Type:    "error",
-			Project: project,
-			Service: service,
-			Action:  action,
-			Error:   err.Error(),
-		})
-		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
-		defer cancel()
-		_ = c.Write(writeCtx, websocket.MessageText, resp)
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	buf := make([]byte, 4096)
-	var leftover []byte
-
-	sendLine := func(line string) {
-		resp, _ := json.Marshal(wsResponse{
-			Type:    "log_line",
-			Project: project,
-			Service: service,
-			Action:  action,
-			Prev:    previous,
-			Line:    line,
-		})
-		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
-		defer cancel()
-		if err := c.Write(writeCtx, websocket.MessageText, resp); err != nil {
-			cancel() // connection closed
-		}
-	}
-
-	// sendRotated tells the browser that a new run started (the log was
-	// rotated), so the SPA can reset its log view to the fresh run.
-	sendRotated := func() {
-		resp, _ := json.Marshal(wsResponse{
-			Type:    "log_rotated",
-			Project: project,
-			Service: service,
-			Action:  action,
-		})
-		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
-		defer cancel()
-		if err := c.Write(writeCtx, websocket.MessageText, resp); err != nil {
-			cancel() // connection closed
-		}
-	}
-
-	flush := func(chunk []byte) {
-		leftover = append(leftover, chunk...)
-		for {
-			i := indexByte(leftover, '\n')
-			if i < 0 {
-				return
-			}
-			line := string(leftover[:i])
-			leftover = append([]byte(nil), leftover[i+1:]...)
-			sendLine(line)
-		}
-	}
-
-	// Drain tailed history (same window as the control protocol).
-	history, err := control.ReadLogHistory(f, protocol.DefaultLogTail)
-	if err != nil {
-		return
-	}
-	if len(history) > 0 {
-		flush(history)
-		if len(leftover) > 0 {
-			sendLine(string(leftover))
-			leftover = leftover[:0]
-		}
-	}
-
-	// A previous run has already ended; stream its stored content and stop
-	// rather than following (nothing is live and the file never rotates).
-	if !follow {
-		return
-	}
-
-	select {
-	case <-ctx.Done():
-		return
-	default:
-	}
-
-	// Follow: poll for new content. Reopen the file if it rotates (the
-	// supervisor swaps <name>.log for a fresh file on each spawn) so the
-	// stream keeps following the live run instead of freezing on the old one.
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+// runEvents keeps a persistent KindSubscribeEvents connection to the daemon,
+// rebroadcasting state/action/git changes to every browser. It reconnects
+// until the server is closed.
+func (s *Server) runEvents() {
 	for {
-		select {
-		case <-ctx.Done():
+		if s.isClosed() {
 			return
-		case <-ticker.C:
-			nf, err := control.ReopenIfRotated(f, path)
-			if err != nil {
-				return
+		}
+		c, err := control.Dial(s.socketPath)
+		if err == nil {
+			s.setEvents(c)
+			err = c.Send(protocol.Request{Kind: protocol.KindSubscribeEvents})
+			if err == nil {
+				s.pumpEvents(c)
 			}
-			if nf != f {
-				_ = f.Close()
-				f = nf
-				leftover = leftover[:0]
-				sendRotated()
-			}
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				n, err := f.Read(buf)
-				if n > 0 {
-					flush(buf[:n])
-				}
-				if err != nil {
-					break
-				}
-			}
+			s.setEvents(nil)
+			_ = c.Close()
+		}
+		if s.isClosed() {
+			return
+		}
+		select {
+		case <-s.done:
+			return
+		case <-time.After(time.Second):
 		}
 	}
 }
 
-func indexByte(data []byte, b byte) int {
-	for i, c := range data {
-		if c == b {
-			return i
+func (s *Server) pumpEvents(c *control.Client) {
+	for {
+		resp, err := c.Recv()
+		if err != nil {
+			return
+		}
+		switch resp.Kind {
+		case protocol.KindEventStateChanged:
+			if resp.SingleState != nil {
+				data, _ := json.Marshal(resp.SingleState)
+				s.broadcast(wsResponse{
+					Type:    "state_changed",
+					Project: resp.Project,
+					Service: resp.Service,
+					Data:    data,
+				})
+			}
+		case protocol.KindEventActionStateChanged:
+			if resp.SingleActionState != nil {
+				data, _ := json.Marshal(resp.SingleActionState)
+				s.broadcast(wsResponse{
+					Type:    "action_state_changed",
+					Project: resp.Project,
+					Action:  resp.Action,
+					Data:    data,
+				})
+			}
+		case protocol.KindEventGitChanged:
+			s.broadcast(wsResponse{Type: "git_changed", Project: resp.Project})
 		}
 	}
-	return -1
 }
 
-// --- subscription tracking ---
-
-type subTracker struct {
-	mu   sync.Mutex
-	subs map[string]context.CancelFunc
+func (s *Server) isClosed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closed
 }
 
-func newSubTracker() *subTracker {
-	return &subTracker{subs: make(map[string]context.CancelFunc)}
-}
-
-func (t *subTracker) add(key string, cancel context.CancelFunc) {
-	t.mu.Lock()
-	if old, ok := t.subs[key]; ok {
-		old()
-	}
-	t.subs[key] = cancel
-	t.mu.Unlock()
-}
-
-func (t *subTracker) cancel(key string) {
-	t.mu.Lock()
-	if cancel, ok := t.subs[key]; ok {
-		cancel()
-		delete(t.subs, key)
-	}
-	t.mu.Unlock()
-}
-
-func (t *subTracker) closeAll() {
-	t.mu.Lock()
-	for _, cancel := range t.subs {
-		cancel()
-	}
-	t.subs = nil
-	t.mu.Unlock()
+func (s *Server) setEvents(c *control.Client) {
+	s.mu.Lock()
+	s.events = c
+	s.mu.Unlock()
 }

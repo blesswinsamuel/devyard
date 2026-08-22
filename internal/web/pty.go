@@ -1,26 +1,31 @@
 package web
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"
 )
 
-const maxHistorySize = 512 * 1024 // 512KB history buffer per terminal session
+const (
+	maxHistorySize = 512 << 10 // 512KB of replayable output per session
+	maxSessions    = 8         // per connection
+)
 
+// ptySession is one interactive shell bound to a browser terminal pane.
 type ptySession struct {
-	id     string
-	cmd    *exec.Cmd
-	ptmx   *os.File
-	cancel context.CancelFunc
+	id   string
+	cmd  *exec.Cmd
+	ptmx *os.File
 
-	mu       sync.Mutex
-	history  []byte
+	mu        sync.Mutex
+	history   []byte
+	closeOnce sync.Once
+
 	onOutput func(output string)
 }
 
@@ -30,31 +35,30 @@ type ptyManager struct {
 }
 
 func newPTYManager() *ptyManager {
-	return &ptyManager{
-		sessions: make(map[string]*ptySession),
-	}
+	return &ptyManager{sessions: make(map[string]*ptySession)}
 }
 
-func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint16, onOutput func(output string), onExit func()) error {
+// get returns the live session with id, if any.
+func (m *ptyManager) get(id string) (*ptySession, bool) {
 	m.mu.Lock()
-	sess, exists := m.sessions[id]
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	sess, ok := m.sessions[id]
+	return sess, ok
+}
 
-	if exists {
-		if cols > 0 && rows > 0 {
-			_ = pty.Setsize(sess.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
-		}
-		sess.mu.Lock()
-		sess.onOutput = onOutput
-		histCopy := make([]byte, len(sess.history))
-		copy(histCopy, sess.history)
-		sess.mu.Unlock()
-
-		if len(histCopy) > 0 {
-			onOutput(string(histCopy))
-		}
-		return nil
+// spawn starts a shell in a new PTY rooted at dir and streams its output to
+// onOutput until it exits or is closed. Sessions are torn down with the
+// owning connection, so respawning an id always creates a fresh shell.
+func (m *ptyManager) spawn(dir, id string, cols, rows uint16, onOutput func(output string), onExit func()) error {
+	if _, exists := m.get(id); exists {
+		return fmt.Errorf("terminal %q already exists", id)
 	}
+	m.mu.Lock()
+	if len(m.sessions) >= maxSessions {
+		m.mu.Unlock()
+		return fmt.Errorf("web: too many terminals (max %d)", maxSessions)
+	}
+	m.mu.Unlock()
 
 	shell := os.Getenv("SHELL")
 	if shell == "" {
@@ -65,65 +69,44 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 	}
 
 	cmd := exec.Command(shell)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-
-	envMap := make(map[string]string)
-	for _, e := range os.Environ() {
-		if parts := strings.SplitN(e, "=", 2); len(parts) == 2 {
-			envMap[parts[0]] = parts[1]
-		}
-	}
-	envMap["TERM"] = "xterm-256color"
-	envMap["COLORTERM"] = "truecolor"
-	if lang, ok := envMap["LANG"]; !ok || lang == "" || lang == "C" || lang == "POSIX" {
-		envMap["LANG"] = "en_US.UTF-8"
-	}
-	cmdEnv := make([]string, 0, len(envMap))
-	for k, v := range envMap {
-		cmdEnv = append(cmdEnv, k+"="+v)
-	}
-	cmd.Env = cmdEnv
+	cmd.Dir = dir
+	// No explicit Setpgid here: creack/pty starts the child as a session
+	// leader (setsid), which makes its process group id equal to its own pid
+	// — exactly what closeSession's killpg teardown needs. Setting Setpgid
+	// additionally fails with EPERM on macOS once the child is already a
+	// session leader.
+	cmd.Env = terminalEnv()
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		return fmt.Errorf("pty start: %w", err)
+		return fmt.Errorf("web: start shell: %w", err)
 	}
-
 	if cols > 0 && rows > 0 {
 		_ = pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols})
 	}
 
-	subCtx, cancel := context.WithCancel(ctx)
-	sess = &ptySession{
-		id:       id,
-		cmd:      cmd,
-		ptmx:     ptmx,
-		cancel:   cancel,
-		onOutput: onOutput,
-	}
+	sess := &ptySession{id: id, cmd: cmd, ptmx: ptmx, onOutput: onOutput}
 
 	m.mu.Lock()
+	if _, dup := m.sessions[id]; dup {
+		m.mu.Unlock()
+		closeSession(sess)
+		return fmt.Errorf("terminal %q already exists", id)
+	}
 	m.sessions[id] = sess
 	m.mu.Unlock()
 
 	go func() {
 		defer func() {
-			m.closeSession(id)
+			m.remove(id)
+			closeSession(sess)
 			onExit()
 		}()
-
 		buf := make([]byte, 4096)
 		for {
-			select {
-			case <-subCtx.Done():
-				return
-			default:
-			}
-			n, err := ptmx.Read(buf)
+			n, err := ptmx.Read(buf) // unblocked by closeSession closing ptmx
 			if n > 0 {
-				chunk := buf[:n]
+				chunk := string(buf[:n])
 				sess.mu.Lock()
 				sess.history = append(sess.history, chunk...)
 				if len(sess.history) > maxHistorySize {
@@ -131,9 +114,8 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 				}
 				cb := sess.onOutput
 				sess.mu.Unlock()
-
 				if cb != nil {
-					cb(string(chunk))
+					cb(chunk)
 				}
 			}
 			if err != nil {
@@ -145,61 +127,84 @@ func (m *ptyManager) spawn(ctx context.Context, id, dir string, cols, rows uint1
 	return nil
 }
 
-func (m *ptyManager) write(id, data string) error {
+func (m *ptyManager) remove(id string) {
 	m.mu.Lock()
-	sess, ok := m.sessions[id]
+	delete(m.sessions, id)
 	m.mu.Unlock()
+}
+
+func (m *ptyManager) write(id, data string) error {
+	sess, ok := m.get(id)
 	if !ok {
-		return fmt.Errorf("pty session %q not found", id)
+		return fmt.Errorf("web: terminal %q not found", id)
 	}
 	_, err := sess.ptmx.Write([]byte(data))
 	return err
 }
 
 func (m *ptyManager) resize(id string, cols, rows uint16) error {
-	m.mu.Lock()
-	sess, ok := m.sessions[id]
-	m.mu.Unlock()
+	sess, ok := m.get(id)
 	if !ok {
-		return fmt.Errorf("pty session %q not found", id)
+		return fmt.Errorf("web: terminal %q not found", id)
 	}
-	if cols > 0 && rows > 0 {
-		return pty.Setsize(sess.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
+	if cols == 0 || rows == 0 {
+		return nil
 	}
-	return nil
+	return pty.Setsize(sess.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
 }
 
 func (m *ptyManager) closeSession(id string) {
-	m.mu.Lock()
-	sess, ok := m.sessions[id]
-	if ok {
-		delete(m.sessions, id)
-	}
-	m.mu.Unlock()
-
-	if ok {
-		sess.cancel()
-		_ = sess.ptmx.Close()
-		if sess.cmd.Process != nil {
-			_ = sess.cmd.Process.Kill()
-		}
+	if sess, ok := m.get(id); ok {
+		m.remove(id)
+		closeSession(sess)
 	}
 }
 
 func (m *ptyManager) closeAll() {
 	m.mu.Lock()
 	sessions := make([]*ptySession, 0, len(m.sessions))
-	for _, sess := range m.sessions {
+	for id, sess := range m.sessions {
 		sessions = append(sessions, sess)
+		delete(m.sessions, id)
 	}
-	m.sessions = make(map[string]*ptySession)
 	m.mu.Unlock()
-
 	for _, sess := range sessions {
-		sess.cancel()
+		closeSession(sess)
+	}
+}
+
+// closeSession tears down one session exactly once, no matter which path
+// gets here first (shell exit or connection close): it closes the PTY master
+// (SIGHUPs the foreground job), kills the whole process group so
+// background jobs don't leak, and reaps the shell.
+func closeSession(sess *ptySession) {
+	sess.closeOnce.Do(func() {
 		_ = sess.ptmx.Close()
 		if sess.cmd.Process != nil {
-			_ = sess.cmd.Process.Kill()
+			// The child leads its own process group via setsid; signal the
+			// group, not just the shell pid.
+			_ = syscall.Kill(-sess.cmd.Process.Pid, syscall.SIGKILL)
+		}
+		_ = sess.cmd.Wait()
+	})
+}
+
+// terminalEnv builds the environment for spawned shells.
+func terminalEnv() []string {
+	envMap := make(map[string]string)
+	for _, e := range os.Environ() {
+		if k, v, ok := strings.Cut(e, "="); ok {
+			envMap[k] = v
 		}
 	}
+	envMap["TERM"] = "xterm-256color"
+	envMap["COLORTERM"] = "truecolor"
+	if lang, ok := envMap["LANG"]; !ok || lang == "" || lang == "C" || lang == "POSIX" {
+		envMap["LANG"] = "en_US.UTF-8"
+	}
+	env := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		env = append(env, k+"="+v)
+	}
+	return env
 }

@@ -29,7 +29,7 @@ var webCmd = &cobra.Command{
 		}
 
 		addr := fmt.Sprintf("%s:%d", webHost, webPort)
-		srv := web.NewProxyServer(addr, socket)
+		srv := web.NewServer(addr, socket)
 		if err := srv.ListenAndServe(); err != nil {
 			return err
 		}

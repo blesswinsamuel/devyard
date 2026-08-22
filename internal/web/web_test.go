@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,68 +20,217 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/web"
 )
 
-// fakeMultiBackend is a minimal control.MultiBackend for testing the WS server.
+// fakeBackend is an in-memory control.Backend for exercising the daemon-side
+// control server behind the web bridge.
+type fakeBackend struct {
+	mu             sync.Mutex
+	states         []protocol.ServiceState
+	logPaths       map[string]string
+	actions        []protocol.ActionInfo
+	actionLogPaths map[string]string
+	restarts       []string
+	stopped        []string
+	started        []string
+	killed         []string
+	runActionFn    func(name string, args []string, out io.Writer) (int, error)
+}
+
+func newFakeBackend() *fakeBackend {
+	return &fakeBackend{
+		logPaths:       make(map[string]string),
+		actionLogPaths: make(map[string]string),
+	}
+}
+
+func (b *fakeBackend) States() []protocol.ServiceState {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]protocol.ServiceState, len(b.states))
+	copy(out, b.states)
+	return out
+}
+
+func (b *fakeBackend) ActionStates() []protocol.ActionState { return nil }
+
+func (b *fakeBackend) Stop(context.Context) error { return nil }
+
+func (b *fakeBackend) StopService(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stopped = append(b.stopped, name)
+	return nil
+}
+
+func (b *fakeBackend) StartService(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.started = append(b.started, name)
+	return nil
+}
+
+func (b *fakeBackend) KillService(name, _ string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.killed = append(b.killed, name)
+	return nil
+}
+
+func (b *fakeBackend) Restart(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.restarts = append(b.restarts, name)
+	return nil
+}
+
+func (b *fakeBackend) Top(string) ([]protocol.ServiceStat, error) { return nil, nil }
+
+func (b *fakeBackend) Ports() ([]protocol.PortBinding, error) { return nil, nil }
+
+func (b *fakeBackend) LogPath(name string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if p, ok := b.logPaths[name]; ok {
+		return p, nil
+	}
+	return "", fmt.Errorf("unknown service %q", name)
+}
+
+func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if p, ok := b.logPaths[name]; ok {
+		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
+	}
+	return "", fmt.Errorf("unknown service %q", name)
+}
+
+func (b *fakeBackend) ListActions() []protocol.ActionInfo {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]protocol.ActionInfo, len(b.actions))
+	copy(out, b.actions)
+	return out
+}
+
+func (b *fakeBackend) RunAction(_ context.Context, name string, args []string, out io.Writer) (int, error) {
+	b.mu.Lock()
+	fn := b.runActionFn
+	b.mu.Unlock()
+	if fn != nil {
+		return fn(name, args, out)
+	}
+	return 0, nil
+}
+
+func (b *fakeBackend) ActionLogPath(name string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	p, ok := b.actionLogPaths[name]
+	if !ok {
+		return "", fmt.Errorf("action %q has no log file yet", name)
+	}
+	return p, nil
+}
+
+func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	p, ok := b.actionLogPaths[name]
+	if !ok {
+		return "", fmt.Errorf("unknown action %q", name)
+	}
+	return strings.TrimSuffix(p, ".log") + ".prev.log", nil
+}
+
+// setActionLogPath registers an action's log path (simulating a first run
+// creating the log file).
+func (b *fakeBackend) setActionLogPath(action, path string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.actionLogPaths[action] = path
+}
+
+// fakeMultiBackend is an in-memory control.MultiBackend.
 type fakeMultiBackend struct {
 	mu         sync.Mutex
-	projects   map[string]control.Backend
-	started    []string
-	stopped    []string
+	projects   map[string]*projectEntry
+	onState    func(project string, state protocol.ServiceState)
+	onAction   func(project string, state protocol.ActionState)
+	onGit      func(project string)
 	daemonStop chan struct{}
+}
+
+type projectEntry struct {
+	backend    *fakeBackend
+	configPath string
 }
 
 func newFakeMulti() *fakeMultiBackend {
 	return &fakeMultiBackend{
-		projects:   make(map[string]control.Backend),
+		projects:   make(map[string]*projectEntry),
 		daemonStop: make(chan struct{}),
 	}
+}
+
+func (m *fakeMultiBackend) addProject(t *testing.T, name, configPath string, b *fakeBackend) {
+	t.Helper()
+	if configPath == "" {
+		configPath = filepath.Join(t.TempDir(), "local-compose.yml")
+	}
+	m.mu.Lock()
+	m.projects[name] = &projectEntry{backend: b, configPath: configPath}
+	m.mu.Unlock()
 }
 
 func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]protocol.ProjectInfo, 0, len(m.projects))
-	for name, b := range m.projects {
-		status := "running"
-		if fb, ok := b.(*fakeBackend); ok {
-			if fb.stoppedProj {
-				status = "stopped"
+	names := make([]string, 0, len(m.projects))
+	for name := range m.projects {
+		names = append(names, name)
+	}
+	sortStrings(names)
+	out := make([]protocol.ProjectInfo, 0, len(names))
+	for _, name := range names {
+		e := m.projects[name]
+		total, runningCount := 0, 0
+		for _, st := range e.backend.States() {
+			total++
+			if st.Status == "running" {
+				runningCount++
 			}
 		}
+		status := "stopped"
+		if total == 0 || runningCount > 0 {
+			status = "running"
+		}
 		out = append(out, protocol.ProjectInfo{
-			Name:   name,
-			Status: status,
+			Name:            name,
+			Status:          status,
+			ConfigPath:      e.configPath,
+			RunningServices: runningCount,
+			TotalServices:   total,
 		})
 	}
 	return out
 }
 
-func (m *fakeMultiBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {
+func (m *fakeMultiBackend) StartProject(configPath string, _ bool, _ string, _ bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.started = append(m.started, configPath)
-	m.projects[filepath.Base(filepath.Dir(configPath))] = &fakeBackend{}
+	name := filepath.Base(filepath.Dir(configPath))
+	m.projects[name] = &projectEntry{backend: newFakeBackend(), configPath: configPath}
 	return nil
 }
 
 func (m *fakeMultiBackend) StopProject(name string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	b, ok := m.projects[name]
+	e, ok := m.projects[name]
+	m.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("project %q not running", name)
 	}
-	m.stopped = append(m.stopped, name)
-	return b.Stop(context.Background())
-}
-
-func (m *fakeMultiBackend) StartService(project, service string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	b, ok := m.projects[project]
-	if !ok {
-		return fmt.Errorf("project %q not running", project)
-	}
-	return b.StartService(service)
+	return e.backend.Stop(context.Background())
 }
 
 func (m *fakeMultiBackend) RemoveProject(name string) error {
@@ -95,7 +243,19 @@ func (m *fakeMultiBackend) RemoveProject(name string) error {
 	return nil
 }
 
+func (m *fakeMultiBackend) StartService(project, service string) error {
+	m.mu.Lock()
+	e, ok := m.projects[project]
+	m.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("project %q not running", project)
+	}
+	return e.backend.StartService(service)
+}
+
 func (m *fakeMultiBackend) StopDaemon() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	select {
 	case <-m.daemonStop:
 	default:
@@ -106,130 +266,132 @@ func (m *fakeMultiBackend) StopDaemon() error {
 
 func (m *fakeMultiBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
 	return &protocol.DaemonInfo{
-		PID:         1234,
-		StartTime:   time.Now(),
-		Goroutines:  10,
-		MemoryAlloc: 1024,
-		MemorySys:   2048,
-		MemoryRss:   4096,
-		GoVersion:   "go1.26.0",
+		PID:        1234,
+		StartTime:  time.Now(),
+		Goroutines: 10,
+		GoVersion:  "go1.26.0",
 	}, nil
 }
 
-func (m *fakeMultiBackend) RestartDaemon() error {
-	return m.StopDaemon()
-}
+func (m *fakeMultiBackend) RestartDaemon() error { return m.StopDaemon() }
 
 func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	b, ok := m.projects[project]
+	e, ok := m.projects[project]
 	if !ok {
-		return nil, fmt.Errorf("project %q not running", project)
+		return nil, fmt.Errorf("project %q is not running", project)
 	}
-	return b, nil
+	return e.backend, nil
 }
 
-func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
-func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
-func (m *fakeMultiBackend) SetOnGitChange(func(string))                               {}
+func (m *fakeMultiBackend) SetOnStateChange(fn func(string, protocol.ServiceState)) {
+	m.mu.Lock()
+	m.onState = fn
+	m.mu.Unlock()
+}
+
+func (m *fakeMultiBackend) SetOnActionStateChange(fn func(string, protocol.ActionState)) {
+	m.mu.Lock()
+	m.onAction = fn
+	m.mu.Unlock()
+}
+
+func (m *fakeMultiBackend) SetOnGitChange(fn func(string)) {
+	m.mu.Lock()
+	m.onGit = fn
+	m.mu.Unlock()
+}
 
 func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
-	return nil, nil, nil, nil, nil
-}
-func (m *fakeMultiBackend) GitDiff(string, string, ...int) (*protocol.GitDiffResult, error) {
-	return nil, nil
-}
-func (m *fakeMultiBackend) GitCommit(string, string) error               { return nil }
-func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error    { return nil }
-func (m *fakeMultiBackend) GitPush(string) (string, error)               { return "", nil }
-func (m *fakeMultiBackend) GitPull(string) (string, error)               { return "", nil }
-func (m *fakeMultiBackend) GitFetch(string) (string, error)              { return "", nil }
-func (m *fakeMultiBackend) Ports(string) ([]protocol.PortBinding, error) { return nil, nil }
-
-// fakeBackend is a minimal control.Backend for WS testing.
-type fakeBackend struct {
-	states         []protocol.ServiceState
-	logPaths       map[string]string
-	actions        []protocol.ActionInfo
-	actionLogPaths map[string]string
-	restarts       []string
-	stopped        []string
-	started        []string
-	killed         []string
-	stoppedProj    bool
+	commits := []protocol.GitCommit{{Hash: "abc123", Short: "abc123", Subject: "initial"}}
+	return commits, nil, nil, nil, nil
 }
 
-func (b *fakeBackend) States() []protocol.ServiceState      { return b.states }
-func (b *fakeBackend) ActionStates() []protocol.ActionState { return nil }
-func (b *fakeBackend) Stop(context.Context) error           { b.stoppedProj = true; return nil }
-func (b *fakeBackend) StopService(name string) error {
-	b.stopped = append(b.stopped, name)
-	return nil
+func (m *fakeMultiBackend) GitDiff(_ string, hash string, _ ...int) (*protocol.GitDiffResult, error) {
+	return &protocol.GitDiffResult{Commit: protocol.GitCommit{Hash: hash}, Diff: "diff"}, nil
 }
-func (b *fakeBackend) StartService(name string) error {
-	b.started = append(b.started, name)
-	return nil
-}
-func (b *fakeBackend) KillService(name, signal string) error {
-	b.killed = append(b.killed, name)
-	return nil
-}
-func (b *fakeBackend) Restart(name string) error {
-	b.restarts = append(b.restarts, name)
-	return nil
-}
-func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
-	return nil, nil
-}
-func (b *fakeBackend) Ports() ([]protocol.PortBinding, error) {
-	return nil, nil
-}
-func (b *fakeBackend) LogPath(name string) (string, error) {
-	if p, ok := b.logPaths[name]; ok {
-		return p, nil
+
+func (m *fakeMultiBackend) GitCommit(string, string) error            { return nil }
+func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return nil }
+func (m *fakeMultiBackend) GitPush(string) (string, error)            { return "pushed", nil }
+func (m *fakeMultiBackend) GitPull(string) (string, error)            { return "pulled", nil }
+func (m *fakeMultiBackend) GitFetch(string) (string, error)           { return "fetched", nil }
+
+func (m *fakeMultiBackend) Ports(project string) ([]protocol.PortBinding, error) {
+	m.mu.Lock()
+	_, ok := m.projects[project]
+	m.mu.Unlock()
+	if project != "" && !ok {
+		return nil, fmt.Errorf("project %q is not running", project)
 	}
-	return "", fmt.Errorf("unknown service %q", name)
+	return []protocol.PortBinding{{
+		Project: project, Service: "web", PID: 42,
+		IP: "127.0.0.1", Port: 3000, Protocol: "tcp",
+	}}, nil
 }
 
-func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
-	if p, ok := b.logPaths[name]; ok {
-		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
+// fireState simulates a supervisor state change notification.
+func (m *fakeMultiBackend) fireState(project string, state protocol.ServiceState) {
+	m.mu.Lock()
+	fn := m.onState
+	m.mu.Unlock()
+	if fn != nil {
+		fn(project, state)
 	}
-	return "", fmt.Errorf("unknown service %q", name)
 }
 
-func (b *fakeBackend) ListActions() []protocol.ActionInfo {
-	return b.actions
-}
-
-func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
-	return 0, nil
-}
-
-func (b *fakeBackend) ActionLogPath(name string) (string, error) {
-	p, ok := b.actionLogPaths[name]
-	if !ok {
-		return "", fmt.Errorf("unknown action %q", name)
+// fireActionState simulates an action state change notification.
+func (m *fakeMultiBackend) fireActionState(project string, state protocol.ActionState) {
+	m.mu.Lock()
+	fn := m.onAction
+	m.mu.Unlock()
+	if fn != nil {
+		fn(project, state)
 	}
-	if _, err := os.Stat(p); err != nil {
-		return "", fmt.Errorf("action %q has no log file yet", name)
-	}
-	return p, nil
 }
 
-func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
-	if p, ok := b.logPaths[name]; ok {
-		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
+// fireGit simulates a repository change notification.
+func (m *fakeMultiBackend) fireGit(project string) {
+	m.mu.Lock()
+	fn := m.onGit
+	m.mu.Unlock()
+	if fn != nil {
+		fn(project)
 	}
-	return "", fmt.Errorf("unknown action %q", name)
 }
 
-func newWebServer(t *testing.T, backend control.MultiBackend) *web.Server {
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
+}
+
+// startStack boots a real control.Server on a temp Unix socket backed by the
+// given fake multi backend, plus a web server proxying to it — exercising the
+// exact production path of every WS message.
+func startStack(t *testing.T, m *fakeMultiBackend) *web.Server {
 	t.Helper()
-	srv := web.NewServer("127.0.0.1:0", backend)
+	// t.TempDir() paths can exceed the ~104-char Unix socket limit on macOS;
+	// use a short /tmp dir for the socket itself.
+	sockDir, err := os.MkdirTemp("/tmp", "lc-web")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
+	sock := filepath.Join(sockDir, "s.sock")
+
+	ctrl := control.NewServer(sock, m)
+	if err := ctrl.ListenAndServe(); err != nil {
+		t.Fatalf("control ListenAndServe: %v", err)
+	}
+	t.Cleanup(func() { _ = ctrl.Close() })
+
+	srv := web.NewServer("127.0.0.1:0", sock)
 	if err := srv.ListenAndServe(); err != nil {
-		t.Fatalf("ListenAndServe: %v", err)
+		t.Fatalf("web ListenAndServe: %v", err)
 	}
 	t.Cleanup(func() { _ = srv.Close() })
 	return srv
@@ -237,8 +399,7 @@ func newWebServer(t *testing.T, backend control.MultiBackend) *web.Server {
 
 func dialWS(t *testing.T, addr string) *websocket.Conn {
 	t.Helper()
-	url := fmt.Sprintf("ws://%s/ws", addr)
-	c, _, err := websocket.Dial(context.Background(), url, nil)
+	c, _, err := websocket.Dial(context.Background(), fmt.Sprintf("ws://%s/ws", addr), nil)
 	if err != nil {
 		t.Fatalf("Dial WS: %v", err)
 	}
@@ -252,19 +413,6 @@ func sendWSMsg(t *testing.T, c *websocket.Conn, msg any) {
 	if err := c.Write(context.Background(), websocket.MessageText, data); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-}
-
-func recvWSMsg(t *testing.T, c *websocket.Conn) map[string]any {
-	t.Helper()
-	_, data, err := c.Read(context.Background())
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-	return m
 }
 
 func recvWSMsgTimeout(t *testing.T, c *websocket.Conn, timeout time.Duration) (map[string]any, bool) {
@@ -282,519 +430,564 @@ func recvWSMsgTimeout(t *testing.T, c *websocket.Conn, timeout time.Duration) (m
 	return m, true
 }
 
+// expectType reads messages until one of the wanted type arrives (skipping
+// unrelated pushes such as events), failing on timeout with what was seen.
+func expectType(t *testing.T, c *websocket.Conn, want string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var seen []string
+	for {
+		timeout := time.Until(deadline)
+		if timeout <= 0 {
+			break
+		}
+		msg, ok := recvWSMsgTimeout(t, c, timeout)
+		if !ok {
+			break
+		}
+		typeName, _ := msg["type"].(string)
+		if typeName == want {
+			return msg
+		}
+		seen = append(seen, typeName)
+	}
+	t.Fatalf("no %q message received (saw %v)", want, seen)
+	return nil
+}
+
+// --- HTTP tests ---
+
+func TestHTTPIndex(t *testing.T) {
+	srv := startStack(t, newFakeMulti())
+	resp, err := http.Get(fmt.Sprintf("http://%s/", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("content-type = %q, want text/html", ct)
+	}
+}
+
+func TestHTTPSPAFallback(t *testing.T) {
+	srv := startStack(t, newFakeMulti())
+	resp, err := http.Get(fmt.Sprintf("http://%s/projects/api/services/web", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("content-type = %q, want text/html fallback", ct)
+	}
+}
+
+// --- query dispatch tests ---
+
 func TestWSListProjects(t *testing.T) {
 	m := newFakeMulti()
-	m.projects["api"] = &fakeBackend{states: []protocol.ServiceState{{Name: "svc", Status: "running"}}}
-	srv := newWebServer(t, m)
+	b := newFakeBackend()
+	b.states = []protocol.ServiceState{{Name: "svc", Status: "running"}}
+	m.addProject(t, "api", "", b)
+	srv := startStack(t, m)
 
 	c := dialWS(t, srv.Addr())
 	sendWSMsg(t, c, map[string]string{"type": "list_projects"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "projects" {
-		t.Fatalf("type = %v, want projects", resp["type"])
+	resp := expectType(t, c, "projects")
+	data, _ := json.Marshal(resp["data"])
+	var projects []protocol.ProjectInfo
+	if err := json.Unmarshal(data, &projects); err != nil {
+		t.Fatalf("unmarshal projects: %v", err)
+	}
+	if len(projects) != 1 || projects[0].Name != "api" || projects[0].Status != "running" {
+		t.Fatalf("projects = %+v", projects)
+	}
+	if projects[0].ConfigPath == "" {
+		t.Errorf("config_path should be forwarded so terminals resolve cwd")
 	}
 }
 
-func TestWSListServices(t *testing.T) {
-	m := newFakeMulti()
-	m.projects["api"] = &fakeBackend{
-		states: []protocol.ServiceState{{Name: "svc", Status: "running", PID: 42}},
-	}
-	srv := newWebServer(t, m)
-
+func TestWSListServicesUnknownProject(t *testing.T) {
+	srv := startStack(t, newFakeMulti())
 	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "list_services", "project": "api"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "services" {
-		t.Fatalf("type = %v, want services", resp["type"])
-	}
-	if resp["project"] != "api" {
-		t.Errorf("project = %v, want api", resp["project"])
+	sendWSMsg(t, c, map[string]string{"type": "list_services", "project": "nope"})
+	resp := expectType(t, c, "error")
+	if resp["error"] == "" {
+		t.Fatalf("expected error text, got %+v", resp)
 	}
 }
 
-func TestWSStartProject(t *testing.T) {
-	m := newFakeMulti()
-	srv := newWebServer(t, m)
-
-	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "start_project", "config_path": "/path/to/local-compose.yml"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "result" || resp["ok"] != true {
-		t.Fatalf("resp = %+v, want result ok=true", resp)
+func TestWSServiceOps(t *testing.T) {
+	tests := []struct {
+		msg   map[string]any
+		check func(b *fakeBackend)
+	}{
+		{
+			msg: map[string]any{"type": "restart_service", "project": "api", "service": "web"},
+			check: func(b *fakeBackend) {
+				if len(b.restarts) != 1 || b.restarts[0] != "web" {
+					t.Errorf("restarts = %v", b.restarts)
+				}
+			},
+		},
+		{
+			msg: map[string]any{"type": "stop_service", "project": "api", "service": "web"},
+			check: func(b *fakeBackend) {
+				if len(b.stopped) != 1 || b.stopped[0] != "web" {
+					t.Errorf("stopped = %v", b.stopped)
+				}
+			},
+		},
+		{
+			msg: map[string]any{"type": "start_service", "project": "api", "service": "web"},
+			check: func(b *fakeBackend) {
+				if len(b.started) != 1 || b.started[0] != "web" {
+					t.Errorf("started = %v", b.started)
+				}
+			},
+		},
+		{
+			msg: map[string]any{"type": "kill_service", "project": "api", "service": "web", "signal": "SIGTERM"},
+			check: func(b *fakeBackend) {
+				if len(b.killed) != 1 || b.killed[0] != "web" {
+					t.Errorf("killed = %v", b.killed)
+				}
+			},
+		},
 	}
-	if len(m.started) != 1 || m.started[0] != "/path/to/local-compose.yml" {
-		t.Errorf("started = %v", m.started)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.msg["type"].(string), func(t *testing.T) {
+			b := newFakeBackend()
+			b.states = []protocol.ServiceState{{Name: "web", Status: "running"}}
+			m := newFakeMulti()
+			m.addProject(t, "api", "", b)
+			srv := startStack(t, m)
 
-func TestWSStopProject(t *testing.T) {
-	m := newFakeMulti()
-	m.projects["api"] = &fakeBackend{}
-	srv := newWebServer(t, m)
-
-	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "stop_project", "project": "api"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "result" || resp["ok"] != true {
-		t.Fatalf("resp = %+v, want result ok=true", resp)
-	}
-	if len(m.stopped) != 1 || m.stopped[0] != "api" {
-		t.Errorf("stopped = %v", m.stopped)
-	}
-}
-
-func TestWSRestartService(t *testing.T) {
-	b := &fakeBackend{states: []protocol.ServiceState{{Name: "web", Status: "running"}}}
-	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
-
-	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "restart_service", "project": "api", "service": "web"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "result" || resp["ok"] != true {
-		t.Fatalf("resp = %+v, want result ok=true", resp)
-	}
-	if len(b.restarts) != 1 || b.restarts[0] != "web" {
-		t.Errorf("restarts = %v", b.restarts)
-	}
-}
-
-func TestWSStopService(t *testing.T) {
-	b := &fakeBackend{states: []protocol.ServiceState{{Name: "web", Status: "running"}}}
-	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
-
-	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "stop_service", "project": "api", "service": "web"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "result" || resp["ok"] != true {
-		t.Fatalf("resp = %+v, want result ok=true", resp)
-	}
-	if len(b.stopped) != 1 || b.stopped[0] != "web" {
-		t.Errorf("stopped = %v", b.stopped)
+			c := dialWS(t, srv.Addr())
+			sendWSMsg(t, c, tt.msg)
+			resp := expectType(t, c, "result")
+			if resp["ok"] != true {
+				t.Fatalf("resp = %+v, want ok=true", resp)
+			}
+			tt.check(b)
+		})
 	}
 }
 
-func TestWSStartService(t *testing.T) {
-	b := &fakeBackend{states: []protocol.ServiceState{{Name: "web", Status: "stopped"}}}
+func TestWSStartProjectResolvesConfigPathByName(t *testing.T) {
 	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
+	srv := startStack(t, m)
+
+	// Prime the registry exactly like a prior `up` would have.
+	m.addProject(t, "api", "/somewhere/api/local-compose.yml", newFakeBackend())
 
 	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "start_service", "project": "api", "service": "web"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "result" || resp["ok"] != true {
-		t.Fatalf("resp = %+v, want result ok=true", resp)
+	// No config_path: the bridge must resolve it from the registered project.
+	sendWSMsg(t, c, map[string]any{"type": "start_project", "project": "api"})
+	resp := expectType(t, c, "result")
+	if resp["ok"] != true {
+		t.Fatalf("resp = %+v, want ok=true", resp)
 	}
-	if len(b.started) != 1 || b.started[0] != "web" {
-		t.Errorf("started = %v", b.started)
-	}
-}
 
-func TestWSKillService(t *testing.T) {
-	b := &fakeBackend{states: []protocol.ServiceState{{Name: "web", Status: "running"}}}
-	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
-
-	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "kill_service", "project": "api", "service": "web"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "result" || resp["ok"] != true {
-		t.Fatalf("resp = %+v, want result ok=true", resp)
-	}
-	if len(b.killed) != 1 || b.killed[0] != "web" {
-		t.Errorf("killed = %v", b.killed)
+	// A truly unknown project without config_path must fail clearly.
+	sendWSMsg(t, c, map[string]any{"type": "start_project", "project": "ghost"})
+	resp = expectType(t, c, "result")
+	if resp["ok"] != false || resp["error"] == "" {
+		t.Fatalf("resp = %+v, want ok=false with error", resp)
 	}
 }
 
 func TestWSUnknownType(t *testing.T) {
-	m := newFakeMulti()
-	srv := newWebServer(t, m)
-
+	srv := startStack(t, newFakeMulti())
 	c := dialWS(t, srv.Addr())
 	sendWSMsg(t, c, map[string]string{"type": "bogus"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "error" {
-		t.Fatalf("type = %v, want error", resp["type"])
+	resp := expectType(t, c, "error")
+	if !strings.Contains(fmt.Sprint(resp["error"]), "unknown message type") {
+		t.Fatalf("resp = %+v", resp)
 	}
 }
 
-func TestWSGitRemote(t *testing.T) {
-	for _, tt := range []struct {
-		typeName string
-	}{
-		{"git_push"},
-		{"git_pull"},
-		{"git_fetch"},
-	} {
-		t.Run(tt.typeName, func(t *testing.T) {
-			m := newFakeMulti()
-			srv := newWebServer(t, m)
+func TestWSDaemonStatusAndPorts(t *testing.T) {
+	m := newFakeMulti()
+	m.addProject(t, "api", "", newFakeBackend())
+	srv := startStack(t, m)
 
+	c := dialWS(t, srv.Addr())
+
+	sendWSMsg(t, c, map[string]string{"type": "daemon_status"})
+	resp := expectType(t, c, "daemon_status")
+	data, _ := json.Marshal(resp["data"])
+	var info protocol.DaemonInfo
+	if err := json.Unmarshal(data, &info); err != nil || info.PID != 1234 {
+		t.Fatalf("daemon_status data = %s (%v)", data, err)
+	}
+
+	sendWSMsg(t, c, map[string]string{"type": "list_ports", "project": "api"})
+	resp = expectType(t, c, "ports")
+	data, _ = json.Marshal(resp["data"])
+	var ports []protocol.PortBinding
+	if err := json.Unmarshal(data, &ports); err != nil || len(ports) != 1 || ports[0].Port != 3000 {
+		t.Fatalf("ports data = %s (%v)", data, err)
+	}
+}
+
+func TestWSActions(t *testing.T) {
+	m := newFakeMulti()
+	b := newFakeBackend()
+	b.actions = []protocol.ActionInfo{{Name: "migrate", Command: "bin/migrate"}}
+	m.addProject(t, "api", "", b)
+	srv := startStack(t, m)
+
+	c := dialWS(t, srv.Addr())
+
+	sendWSMsg(t, c, map[string]string{"type": "list_actions", "project": "api"})
+	resp := expectType(t, c, "actions")
+	data, _ := json.Marshal(resp["data"])
+	var actions []protocol.ActionInfo
+	if err := json.Unmarshal(data, &actions); err != nil || len(actions) != 1 || actions[0].Name != "migrate" {
+		t.Fatalf("actions data = %s (%v)", data, err)
+	}
+
+	sendWSMsg(t, c, map[string]string{"type": "list_action_states", "project": "api"})
+	expectType(t, c, "action_states")
+
+	// run_action returns the action's exit code via action_done.
+	b.runActionFn = func(name string, _ []string, w io.Writer) (int, error) {
+		if name != "migrate" {
+			return 0, fmt.Errorf("action %q not found", name)
+		}
+		_, _ = fmt.Fprintf(w, "migrating\n")
+		return 3, nil
+	}
+	sendWSMsg(t, c, map[string]any{"type": "run_action", "project": "api", "action": "migrate"})
+	resp = expectType(t, c, "action_done")
+	if resp["ok"] != true {
+		t.Fatalf("action_done resp = %+v, want ok=true", resp)
+	}
+	if code, _ := resp["exit_code"].(float64); int(code) != 3 {
+		t.Fatalf("exit_code = %v, want 3", resp["exit_code"])
+	}
+
+	// Unknown actions surface as failed action_done, not a bare error.
+	sendWSMsg(t, c, map[string]any{"type": "run_action", "project": "api", "action": "nope"})
+	resp = expectType(t, c, "action_done")
+	if resp["ok"] != false {
+		t.Fatalf("action_done resp = %+v, want ok=false", resp)
+	}
+}
+
+// --- git dispatch tests ---
+
+func TestWSGitDispatch(t *testing.T) {
+	m := newFakeMulti()
+	m.addProject(t, "repo", "", newFakeBackend())
+	srv := startStack(t, m)
+
+	tests := []struct {
+		msg      map[string]any
+		wantType string
+	}{
+		{msg: map[string]any{"type": "git_log", "project": "repo"}, wantType: "git_commits"},
+		{msg: map[string]any{"type": "git_diff", "project": "repo", "hash": "abc123"}, wantType: "git_diff"},
+		{msg: map[string]any{"type": "git_commit", "project": "repo", "message": "msg"}, wantType: "git_commit_result"},
+		{msg: map[string]any{"type": "git_stage", "project": "repo", "stage_all": true}, wantType: "git_stage_result"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.msg["type"].(string), func(t *testing.T) {
 			c := dialWS(t, srv.Addr())
-			sendWSMsg(t, c, map[string]string{"type": tt.typeName, "project": "api"})
-			resp := recvWSMsg(t, c)
-			if resp["type"] != "git_remote_result" {
-				t.Fatalf("type = %v, want git_remote_result", resp["type"])
+			sendWSMsg(t, c, tt.msg)
+			resp := expectType(t, c, tt.wantType)
+			if resp["ok"] != true {
+				t.Fatalf("resp = %+v, want ok=true", resp)
 			}
-			if ok, _ := resp["ok"].(bool); !ok {
-				t.Fatalf("ok = %v, want true (dispatch should not hit 'unknown message type')", resp["ok"])
+			if tt.wantType == "git_commits" {
+				data, _ := json.Marshal(resp["data"])
+				var payload struct {
+					Commits []protocol.GitCommit `json:"commits"`
+				}
+				if err := json.Unmarshal(data, &payload); err != nil || len(payload.Commits) != 1 {
+					t.Fatalf("payload = %s (%v)", data, err)
+				}
 			}
 		})
 	}
 }
 
-func TestWSListServicesUnknownProject(t *testing.T) {
+func TestWSGitRemoteOutput(t *testing.T) {
 	m := newFakeMulti()
-	srv := newWebServer(t, m)
-
+	m.addProject(t, "repo", "", newFakeBackend())
+	srv := startStack(t, m)
 	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "list_services", "project": "nope"})
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "error" {
-		t.Fatalf("type = %v, want error", resp["type"])
+
+	for _, tt := range []struct{ typeName, want string }{
+		{"git_push", "pushed"},
+		{"git_pull", "pulled"},
+		{"git_fetch", "fetched"},
+	} {
+		sendWSMsg(t, c, map[string]string{"type": tt.typeName, "project": "repo"})
+		resp := expectType(t, c, "git_remote_result")
+		if resp["ok"] != true || resp["line"] != tt.want {
+			t.Fatalf("%s resp = %+v, want line=%q", tt.typeName, resp, tt.want)
+		}
 	}
 }
 
-func TestWSSubscribeLogs(t *testing.T) {
+// --- log streaming (through the real daemon tailer) ---
+
+func appendToLog(t *testing.T, path, content string) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWSSubscribeLogsHistoryAndLive(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "web.log")
 	if err := os.WriteFile(logPath, []byte("line1\nline2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	b := &fakeBackend{logPaths: map[string]string{"web": logPath}}
 	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
+	b := newFakeBackend()
+	b.logPaths["web"] = logPath
+	m.addProject(t, "api", "", b)
+	srv := startStack(t, m)
 
 	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "subscribe_logs", "project": "api", "service": "web"})
+	sendWSMsg(t, c, map[string]any{"type": "subscribe_logs", "project": "api", "service": "web"})
 
-	// Should receive existing log lines.
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "log_line" || resp["line"] != "line1" {
-		t.Fatalf("first line = %+v, want log_line line1", resp)
-	}
-	resp = recvWSMsg(t, c)
-	if resp["type"] != "log_line" || resp["line"] != "line2" {
-		t.Fatalf("second line = %+v, want log_line line2", resp)
-	}
-
-	// Append more content; the follow loop should pick it up.
-	if err := appendToLog(logPath, "line3\n"); err != nil {
-		t.Fatal(err)
-	}
-	resp, ok := recvWSMsgTimeout(t, c, 2*time.Second)
-	if !ok {
-		t.Fatalf("did not receive line3")
-	}
-	if resp["type"] != "log_line" || resp["line"] != "line3" {
-		t.Fatalf("third line = %+v, want log_line line3", resp)
+	for _, want := range []string{"line1", "line2"} {
+		msg := expectType(t, c, "log_line")
+		if msg["service"] != "web" || msg["prev"] == true {
+			t.Fatalf("log_line routing/tag wrong: %+v", msg)
+		}
+		if msg["line"] != want {
+			t.Fatalf("line = %v, want %q", msg["line"], want)
+		}
 	}
 
-	// Unsubscribe.
-	sendWSMsg(t, c, map[string]string{"type": "unsubscribe_logs", "project": "api", "service": "web"})
-	time.Sleep(200 * time.Millisecond)
-
-	// Append more content; should NOT receive it after unsubscribe.
-	_ = appendToLog(logPath, "line4\n")
-	_, ok = recvWSMsgTimeout(t, c, 500*time.Millisecond)
-	if ok {
-		t.Fatalf("received message after unsubscribe")
-	}
-}
-
-func TestWSLogRotationEmitsMarker(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "web.log")
-	prevPath := filepath.Join(dir, "web.prev.log")
-	if err := os.WriteFile(logPath, []byte("first\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	b := &fakeBackend{logPaths: map[string]string{"web": logPath}}
-	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
-
-	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "subscribe_logs", "project": "api", "service": "web"})
-
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "log_line" || resp["line"] != "first" {
-		t.Fatalf("first line = %+v, want log_line first", resp)
+	// Live tailing: appending surfaces as another log_line.
+	appendToLog(t, logPath, "line3\n")
+	msg := expectType(t, c, "log_line")
+	if msg["line"] != "line3" {
+		t.Fatalf("line = %v, want line3", msg["line"])
 	}
 
-	// Simulate the supervisor's rotation: current -> previous, fresh current.
-	if err := os.Rename(logPath, prevPath); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(logPath, []byte("second\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	resp, ok := recvWSMsgTimeout(t, c, 2*time.Second)
-	if !ok {
-		t.Fatalf("did not receive log_rotated")
-	}
-	if resp["type"] != "log_rotated" || resp["project"] != "api" || resp["service"] != "web" {
-		t.Fatalf("rotated = %+v, want log_rotated for api/web", resp)
-	}
-
-	resp, ok = recvWSMsgTimeout(t, c, 2*time.Second)
-	if !ok {
-		t.Fatalf("did not receive second line")
-	}
-	if resp["type"] != "log_line" || resp["line"] != "second" {
-		t.Fatalf("second line = %+v, want log_line second", resp)
+	// Unsubscribe stops the flow.
+	sendWSMsg(t, c, map[string]any{"type": "unsubscribe_logs", "project": "api", "service": "web"})
+	appendToLog(t, logPath, "line4\n")
+	if extra, ok := recvWSMsgTimeout(t, c, 500*time.Millisecond); ok {
+		t.Fatalf("received message after unsubscribe: %v", extra)
 	}
 }
 
 func TestWSSubscribePreviousLogs(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "web.log")
 	prevPath := filepath.Join(dir, "web.prev.log")
-	if err := os.WriteFile(logPath, []byte("current\n"), 0o644); err != nil {
+	if err := os.WriteFile(prevPath, []byte("old1\nold2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(prevPath, []byte("previous run\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	b := &fakeBackend{logPaths: map[string]string{"web": logPath}}
 	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
+	b := newFakeBackend()
+	b.logPaths["web"] = filepath.Join(dir, "web.log")
+	m.addProject(t, "api", "", b)
+	srv := startStack(t, m)
 
 	c := dialWS(t, srv.Addr())
 	sendWSMsg(t, c, map[string]any{"type": "subscribe_logs", "project": "api", "service": "web", "prev": true})
 
-	// The previous run's stored content is streamed once and tagged prev, not
-	// the live (current) file's content.
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "log_line" || resp["line"] != "previous run" {
-		t.Fatalf("first line = %+v, want log_line 'previous run'", resp)
+	for i, want := range []string{"old1", "old2"} {
+		msg := expectType(t, c, "log_line")
+		if msg["prev"] != true {
+			t.Fatalf("previous stream line not tagged prev: %+v", msg)
+		}
+		if msg["line"] != want {
+			t.Fatalf("line[%d] = %v, want %q", i, msg["line"], want)
+		}
 	}
-	if resp["prev"] != true {
-		t.Fatalf("prev = %v, want true", resp["prev"])
-	}
-
-	// Appending to the live log must NOT arrive: a previous run never follows.
-	_ = appendToLog(logPath, "new live line\n")
-	_, ok := recvWSMsgTimeout(t, c, 500*time.Millisecond)
-	if ok {
-		t.Fatalf("received a message after a previous-run subscribe")
+	// A previous run's log never follows; the stream ends after draining.
+	if extra, ok := recvWSMsgTimeout(t, c, 400*time.Millisecond); ok {
+		t.Fatalf("previous-log stream kept sending: %v", extra)
 	}
 }
 
-func TestWSSubscribeActionLogs(t *testing.T) {
+func TestWSLogRotationMarkerForwarded(t *testing.T) {
 	dir := t.TempDir()
-	logPath := filepath.Join(dir, "migrate.log")
-	b := &fakeBackend{
-		actions:        []protocol.ActionInfo{{Name: "migrate"}},
-		actionLogPaths: map[string]string{"migrate": logPath},
+	logPath := filepath.Join(dir, "web.log")
+	if err := os.WriteFile(logPath, []byte("gen1\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	m := newFakeMulti()
-	m.projects["api"] = b
-	srv := newWebServer(t, m)
+	b := newFakeBackend()
+	b.logPaths["web"] = logPath
+	m.addProject(t, "api", "", b)
+	srv := startStack(t, m)
 
 	c := dialWS(t, srv.Addr())
-	sendWSMsg(t, c, map[string]string{"type": "subscribe_action_logs", "project": "api", "action": "migrate"})
+	sendWSMsg(t, c, map[string]any{"type": "subscribe_logs", "project": "api", "service": "web"})
+	expectType(t, c, "log_line") // gen1
 
-	// The action has never run, so no log file exists yet. Simulate a first
-	// run by creating it while the subscription waits; the stream must pick up
-	// the lines tagged with the action name.
-	time.Sleep(300 * time.Millisecond)
-	if err := os.WriteFile(logPath, []byte("action line 1\n"), 0o644); err != nil {
+	// Simulate the supervisor rotating: swap in a fresh file under the same
+	// path while the daemon holds the old handle open.
+	if err := os.Rename(logPath, logPath+".old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("gen2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	resp := recvWSMsg(t, c)
-	if resp["type"] != "log_line" || resp["action"] != "migrate" || resp["line"] != "action line 1" {
-		t.Fatalf("first line = %+v, want log_line for action migrate", resp)
+	msg := expectType(t, c, "log_rotated")
+	if msg["service"] != "web" {
+		t.Fatalf("log_rotated = %+v", msg)
 	}
-
-	// Append more content; the follow loop should pick it up.
-	if err := appendToLog(logPath, "action line 2\n"); err != nil {
-		t.Fatal(err)
-	}
-	resp, ok := recvWSMsgTimeout(t, c, 2*time.Second)
-	if !ok {
-		t.Fatalf("did not receive action line 2")
-	}
-	if resp["type"] != "log_line" || resp["action"] != "migrate" || resp["line"] != "action line 2" {
-		t.Fatalf("second line = %+v, want log_line for action migrate", resp)
-	}
-
-	// Unsubscribe.
-	sendWSMsg(t, c, map[string]string{"type": "unsubscribe_action_logs", "project": "api", "action": "migrate"})
-	time.Sleep(200 * time.Millisecond)
-
-	// Append more content; should NOT receive it after unsubscribe.
-	_ = appendToLog(logPath, "action line 3\n")
-	_, ok = recvWSMsgTimeout(t, c, 500*time.Millisecond)
-	if ok {
-		t.Fatalf("received message after unsubscribe")
+	next := expectType(t, c, "log_line")
+	if next["line"] != "gen2" {
+		t.Fatalf("post-rotation line = %v, want gen2", next["line"])
 	}
 }
 
-func TestHTTPServesIndex(t *testing.T) {
+func TestWSSubscribeActionLogsWaitsForFirstRun(t *testing.T) {
+	dir := t.TempDir()
 	m := newFakeMulti()
-	srv := newWebServer(t, m)
+	b := newFakeBackend()
+	b.actions = []protocol.ActionInfo{{Name: "migrate", Command: "bin/migrate"}}
+	m.addProject(t, "api", "", b)
+	srv := startStack(t, m)
 
-	resp, err := http.Get(fmt.Sprintf("http://%s/", srv.Addr()))
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != 200 {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	actionLog := filepath.Join(dir, "migrate.log")
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		if err := os.WriteFile(actionLog, []byte("migration done\n"), 0o644); err != nil {
+			t.Error(err)
+			return
+		}
+		b.setActionLogPath("migrate", actionLog)
+	}()
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]any{"type": "subscribe_action_logs", "project": "api", "action": "migrate"})
+	msg := expectType(t, c, "log_line")
+	if msg["action"] != "migrate" || msg["line"] != "migration done" {
+		t.Fatalf("action log line routed wrong: %+v", msg)
 	}
 }
 
-func TestHTTPDeepLinkRoutesServeIndex(t *testing.T) {
-	m := newFakeMulti()
-	srv := newWebServer(t, m)
+// --- event fan-out ---
 
-	routes := []string{
-		"/projects/my-app",
-		"/projects/my-app/services/web",
-		"/projects/my-app/actions/db-migrate",
+func TestWSEventFanOut(t *testing.T) {
+	m := newFakeMulti()
+	m.addProject(t, "api", "", newFakeBackend())
+	srv := startStack(t, m)
+
+	c1 := dialWS(t, srv.Addr())
+	c2 := dialWS(t, srv.Addr())
+
+	// Give both daemon-side event subscriptions a beat to register.
+	time.Sleep(150 * time.Millisecond)
+
+	state := protocol.ServiceState{Name: "web", Status: "exited", ExitCode: 1}
+	m.fireState("api", state)
+	for _, c := range []*websocket.Conn{c1, c2} {
+		msg := expectType(t, c, "state_changed")
+		if msg["project"] != "api" || msg["service"] != "web" {
+			t.Fatalf("state_changed = %+v", msg)
+		}
+		data, _ := json.Marshal(msg["data"])
+		var got protocol.ServiceState
+		if err := json.Unmarshal(data, &got); err != nil || got.Status != "exited" {
+			t.Fatalf("state payload = %s (%v)", data, err)
+		}
 	}
 
-	for _, route := range routes {
-		resp, err := http.Get(fmt.Sprintf("http://%s%s", srv.Addr(), route))
-		if err != nil {
-			t.Fatalf("GET %s: %v", route, err)
+	m.fireActionState("api", protocol.ActionState{Name: "migrate", Status: "running"})
+	for _, c := range []*websocket.Conn{c1, c2} {
+		msg := expectType(t, c, "action_state_changed")
+		if msg["action"] != "migrate" {
+			t.Fatalf("action_state_changed = %+v", msg)
 		}
-		_ = resp.Body.Close()
-		if resp.StatusCode != 200 {
-			t.Fatalf("status for %s = %d, want 200", route, resp.StatusCode)
-		}
-		ct := resp.Header.Get("Content-Type")
-		if !strings.Contains(ct, "text/html") {
-			t.Fatalf("Content-Type for %s = %q, want text/html SPA fallback", route, ct)
+	}
+
+	m.fireGit("api")
+	for _, c := range []*websocket.Conn{c1, c2} {
+		msg := expectType(t, c, "git_changed")
+		if msg["project"] != "api" {
+			t.Fatalf("git_changed = %+v", msg)
 		}
 	}
 }
 
-func TestHTTPServesJSAsset(t *testing.T) {
-	m := newFakeMulti()
-	srv := newWebServer(t, m)
+// --- terminals ---
 
-	// Discover a hashed asset path from the embedded dist (Vite fingerprint).
-	entries, err := os.ReadDir("dist/assets")
-	if err != nil {
-		// Tests run with package dir as cwd; fall back for alternate layouts.
-		t.Skipf("dist/assets not readable: %v", err)
-	}
-	var jsName string
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".js") {
-			jsName = e.Name()
+func TestWSSpawnTerminalRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	m := newFakeMulti()
+	m.addProject(t, "api", filepath.Join(dir, "local-compose.yml"), newFakeBackend())
+	srv := startStack(t, m)
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]any{"type": "spawn_terminal", "id": "t1", "project": "api", "cols": 80, "rows": 24})
+
+	// Send echo immediately; don't depend on when (or whether) the shell
+	// paints its first prompt.
+	sendWSMsg(t, c, map[string]any{"type": "terminal_input", "id": "t1", "data": "echo hello_pty\n"})
+
+	var blob strings.Builder
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		msg, ok := recvWSMsgTimeout(t, c, time.Until(deadline))
+		if !ok {
 			break
 		}
-	}
-	if jsName == "" {
-		t.Fatal("no .js asset in dist/assets")
-	}
-
-	resp, err := http.Get(fmt.Sprintf("http://%s/assets/%s", srv.Addr(), jsName))
-	if err != nil {
-		t.Fatalf("GET asset: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != 200 {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
-	}
-	ct := resp.Header.Get("Content-Type")
-	if strings.Contains(ct, "text/html") {
-		t.Fatalf("Content-Type = %q, want JS (not HTML SPA fallback)", ct)
-	}
-}
-
-func appendToLog(path, content string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	_, err = f.WriteString(content)
-	return err
-}
-
-func TestWSTerminal(t *testing.T) {
-	m := newFakeMulti()
-	srv := newWebServer(t, m)
-
-	wsURL := fmt.Sprintf("ws://%s/ws", srv.Addr())
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	c, _, err := websocket.Dial(ctx, wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial WS: %v", err)
-	}
-	defer func() { _ = c.CloseNow() }()
-
-	// Spawn terminal
-	spawnMsg, _ := json.Marshal(map[string]any{
-		"type": "spawn_terminal",
-		"id":   "term-test-1",
-		"cols": 80,
-		"rows": 24,
-	})
-	if err := c.Write(ctx, websocket.MessageText, spawnMsg); err != nil {
-		t.Fatalf("write spawn_terminal: %v", err)
-	}
-
-	// Send terminal input
-	inputMsg, _ := json.Marshal(map[string]any{
-		"type": "terminal_input",
-		"id":   "term-test-1",
-		"data": "echo hello_pty\n",
-	})
-	if err := c.Write(ctx, websocket.MessageText, inputMsg); err != nil {
-		t.Fatalf("write terminal_input: %v", err)
-	}
-
-	// Read responses until output contains hello_pty
-	found := false
-	for i := 0; i < 20; i++ {
-		_, msg, err := c.Read(ctx)
-		if err != nil {
-			t.Fatalf("read frame: %v", err)
-		}
-		var resp map[string]any
-		if err := json.Unmarshal(msg, &resp); err == nil {
-			if resp["type"] == "terminal_output" && resp["id"] == "term-test-1" {
-				if out, ok := resp["output"].(string); ok && strings.Contains(out, "hello_pty") {
-					found = true
-					break
-				}
+		switch msg["type"] {
+		case "error":
+			t.Fatalf("terminal error: %v", msg["error"])
+		case "terminal_output":
+			fmt.Fprintf(&blob, "%v", msg["output"]) //nolint:errcheck
+			if strings.Contains(blob.String(), "hello_pty") {
+				sendWSMsg(t, c, map[string]any{"type": "close_terminal", "id": "t1"})
+				return
 			}
 		}
 	}
-	if !found {
-		t.Errorf("did not receive expected terminal output 'hello_pty'")
-	}
-
-	// Close terminal
-	closeMsg, _ := json.Marshal(map[string]any{
-		"type": "close_terminal",
-		"id":   "term-test-1",
-	})
-	_ = c.Write(ctx, websocket.MessageText, closeMsg)
+	t.Fatalf("never saw hello_pty in terminal output; got %q", blob.String())
 }
 
-// Ensure fakeMultiBackend satisfies control.MultiBackend.
-var _ control.MultiBackend = (*fakeMultiBackend)(nil)
+func TestWSSpawnTerminalUnknownProject(t *testing.T) {
+	m := newFakeMulti()
+	srv := startStack(t, m)
 
-// Ensure fakeBackend satisfies control.Backend.
-var _ control.Backend = (*fakeBackend)(nil)
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]string{"type": "spawn_terminal", "id": "t1"})
+	resp := expectType(t, c, "error")
+	if !strings.Contains(fmt.Sprint(resp["error"]), "project is required") {
+		t.Fatalf("resp = %+v, want required-project error", resp)
+	}
 
-// Suppress unused warning for net import used by type assertion.
-var _ = net.Listen
+	// A known-name miss must also be rejected rather than silently opening a
+	// shell in the web process's cwd.
+	sendWSMsg(t, c, map[string]string{"type": "spawn_terminal", "id": "t2", "project": "ghost"})
+	resp = expectType(t, c, "error")
+	if !strings.Contains(fmt.Sprint(resp["error"]), "unknown project") {
+		t.Fatalf("resp = %+v, want unknown-project error", resp)
+	}
+}
+
+func TestWSTerminalInputUnknownSessionErrors(t *testing.T) {
+	srv := startStack(t, newFakeMulti())
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]string{"type": "terminal_input", "id": "ghost", "data": "x"})
+	resp := expectType(t, c, "error")
+	if !strings.Contains(fmt.Sprint(resp["error"]), "not found") {
+		t.Fatalf("resp = %+v", resp)
+	}
+}

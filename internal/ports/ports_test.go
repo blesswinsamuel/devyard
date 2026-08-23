@@ -3,6 +3,7 @@ package ports
 import (
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -30,6 +31,43 @@ python  67890 user    5u  IPv4 0x9abc      0t0  TCP 0.0.0.0:5432 (LISTEN)
 	}
 	if bindings[2].PID != 67890 || bindings[2].IP != "0.0.0.0" || bindings[2].Port != 5432 || bindings[2].Protocol != "tcp" {
 		t.Errorf("unexpected binding 2: %+v", bindings[2])
+	}
+}
+
+func TestInspectLsofExitOneWithMatches(t *testing.T) {
+	// Regression: lsof exits 1 when any -i selection (here: UDP) has no
+	// matches, even while stdout carries valid TCP LISTEN rows. The detector
+	// must parse the output instead of treating exit 1 as "no matches".
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "lsof")
+	writeFake := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(fake, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFake("#!/bin/sh\ncat <<'EOF'\nCOMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\nnode    12345 user   22u  IPv4 0x1234      0t0  TCP 127.0.0.1:3000 (LISTEN)\nEOF\nexit 1\n")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	bindings, err := inspectLsof([]int{12345})
+	if err != nil {
+		t.Fatalf("inspectLsof: %v", err)
+	}
+	if len(bindings) != 1 {
+		t.Fatalf("expected 1 binding from exit-1 lsof output, got %+v", bindings)
+	}
+	if bindings[0].PID != 12345 || bindings[0].Port != 3000 {
+		t.Errorf("unexpected binding: %+v", bindings[0])
+	}
+
+	// Empty stdout with exit 1 still means "no matches".
+	writeFake("#!/bin/sh\nexit 1\n")
+	bindings, err = inspectLsof([]int{12345})
+	if err != nil {
+		t.Fatalf("inspectLsof (empty): %v", err)
+	}
+	if len(bindings) != 0 {
+		t.Fatalf("expected no bindings for empty output, got %+v", bindings)
 	}
 }
 

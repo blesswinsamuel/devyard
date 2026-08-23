@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
@@ -48,12 +49,16 @@ func inspectLsof(pids []int) ([]Binding, error) {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 
-	if err := cmd.Run(); err != nil {
-		// Exit status 1 from lsof when no matches are found is normal
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return nil, nil
+	err := cmd.Run()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("lsof: %w", err)
 		}
-		return nil, fmt.Errorf("lsof: %w", err)
+		// lsof exits 1 when ANY -i selection had no match — including the UDP
+		// half of this query — while stdout still carries TCP LISTEN rows.
+		// Exit status therefore doesn't mean "no matches": always parse the
+		// output; empty output means no listeners.
 	}
 
 	return parseLsofOutput(out.Bytes())

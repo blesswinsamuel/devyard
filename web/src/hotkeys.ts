@@ -1,26 +1,38 @@
 import {
   actionProject,
   actionService,
-  closeHelp,
   commitKeyboardCursor,
-  killService,
   moveKeyboardCursor,
   moveKeyboardCursorToEnd,
   navigateKeyboardHorizontal,
+  openGitView,
   previousTarget,
-  projects,
-  restartService,
-  showHelp,
-  startProject,
-  stopProject,
-  stopService,
-  toggleHelp,
-  togglePreviousLogs,
-} from "./store";
+} from "~/stores/nav";
+import { killService, restartService, startProject, stopProject, stopService } from "~/stores/data";
+import { anyOverlayOpen, closeHelp, pushToast, showHelp, toggleHelp } from "~/stores/app";
+import { openTerminalPanel } from "~/stores/app";
+import { tabKey, togglePreviousLogs } from "~/stores/logs";
 
-function isXtermTextarea(el: EventTarget | null): boolean {
-  if (!(el instanceof Element)) return false;
-  return el.classList.contains("xterm-helper-textarea") || Boolean(el.closest(".xterm"));
+/**
+ * Destructive keys require a second press within CONFIRM_WINDOW to fire.
+ * The first press raises an explanatory toast instead of acting.
+ */
+const CONFIRM_WINDOW = 2000;
+let pendingConfirm: { key: string; label: string; run: () => void; expires: number } | null = null;
+
+function confirmable(key: string, label: string, toastText: string, run: () => void): void {
+  const now = Date.now();
+  if (pendingConfirm && pendingConfirm.key === key && now < pendingConfirm.expires) {
+    pendingConfirm = null;
+    run();
+    return;
+  }
+  pendingConfirm = { key, label, run, expires: now + CONFIRM_WINDOW };
+  pushToast(toastText, "info");
+}
+
+function isXtermTarget(el: EventTarget | null): boolean {
+  return el instanceof Element && (el.classList.contains("xterm-helper-textarea") || !!el.closest(".xterm"));
 }
 
 function isEditableTarget(el: EventTarget | null): boolean {
@@ -32,59 +44,53 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 function isMenuTarget(el: EventTarget | null): boolean {
   if (!(el instanceof Element)) return false;
-  return Boolean(el.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-kbd-ignore]'));
+  return !!el.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-kbd-ignore]');
 }
 
-function blurXtermAndFocusSidebar() {
+function focusSidebar() {
   const active = document.activeElement;
   if (active instanceof HTMLElement) active.blur();
-  const nav = document.querySelector<HTMLElement>("[data-sidebar-nav]");
-  nav?.focus({ preventScroll: true });
+  document.querySelector<HTMLElement>("[data-sidebar-nav]")?.focus({ preventScroll: true });
 }
 
 function scrollCursorIntoView() {
-  // Defer so Solid can paint the new cursor highlight first.
   requestAnimationFrame(() => {
-    const el = document.querySelector<HTMLElement>("[data-kbd-cursor]");
-    el?.scrollIntoView({ block: "nearest" });
+    document
+      .querySelector<HTMLElement>("[data-kbd-cursor]")
+      ?.scrollIntoView({ block: "nearest" });
   });
 }
 
-function handleKeyDown(e: KeyboardEvent) {
+async function handleKeyDown(e: KeyboardEvent): Promise<void> {
   if (e.defaultPrevented) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
 
   const target = e.target;
-  const inXterm = isXtermTextarea(target);
+  const inXterm = isXtermTarget(target);
   const inEditable = isEditableTarget(target) && !inXterm;
   const inMenu = isMenuTarget(target);
 
-  // Esc always wins: close help, leave the terminal, or blur inputs.
+  // Escape always wins.
   if (e.key === "Escape") {
-    if (showHelp()) {
+    if (anyOverlayOpen()) {
       e.preventDefault();
       closeHelp();
       return;
     }
     if (inXterm || inEditable) {
       e.preventDefault();
-      blurXtermAndFocusSidebar();
-      return;
+      focusSidebar();
     }
     return;
   }
 
-  // While xterm / form fields / menus have focus, leave keys alone so
-  // future interactive terminal sessions (and Kobalte menus) keep working.
+  // Leave interactive surfaces alone.
   if (inXterm || inEditable || inMenu) return;
 
   if (showHelp()) {
-    if (e.key === "?" || e.key === "Escape") {
-      e.preventDefault();
-      closeHelp();
-    }
-    // Swallow other keys while help is open (matches TUI).
     e.preventDefault();
+    if (e.key === "?" ) toggleHelp();
+    else closeHelp();
     return;
   }
 
@@ -123,6 +129,23 @@ function handleKeyDown(e: KeyboardEvent) {
       e.preventDefault();
       commitKeyboardCursor();
       break;
+    case "?":
+      e.preventDefault();
+      toggleHelp();
+      break;
+    case "g":
+    case "G": {
+      const project = actionProject();
+      if (!project) return;
+      e.preventDefault();
+      openGitView(project);
+      break;
+    }
+    case "t":
+    case "T":
+      e.preventDefault();
+      openTerminalPanel();
+      break;
     case "r":
     case "R": {
       const t = actionService();
@@ -144,7 +167,9 @@ function handleKeyDown(e: KeyboardEvent) {
       const t = actionService();
       if (!t) return;
       e.preventDefault();
-      killService(t.project, t.service);
+      confirmable("k", `kill ${t.service}`, `Press k again within 2s to kill '${t.service}'`, () =>
+        killService(t.project, t.service)
+      );
       break;
     }
     case "u":
@@ -160,28 +185,42 @@ function handleKeyDown(e: KeyboardEvent) {
       const project = actionProject();
       if (!project) return;
       e.preventDefault();
-      stopProject(project);
+      confirmable("d", `stop ${project}`, `Press d again within 2s to stop project '${project}'`, () =>
+        stopProject(project)
+      );
       break;
     }
     case "p":
     case "P": {
-      const target = previousTarget();
-      if (!target) return;
+      const t = previousTarget();
+      if (!t || t.kind === "project") return;
       e.preventDefault();
-      togglePreviousLogs(target);
+      const name = t.kind === "service" ? t.service : t.action;
+      togglePreviousLogs(tabKey(t.project, t.kind, name));
       break;
     }
-    case "?":
-      e.preventDefault();
-      toggleHelp();
-      break;
     default:
       break;
   }
 }
 
-/** Install global keyboard shortcuts. Returns a disposer. */
+/** Installs global shortcuts plus the pointer-focus guard. Returns a disposer. */
 export function setupHotkeys(): () => void {
   window.addEventListener("keydown", handleKeyDown);
-  return () => window.removeEventListener("keydown", handleKeyDown);
+
+  // After mouse clicks on buttons/links, drop focus so single-letter shortcuts
+  // keep working (keyboard users are unaffected — Tab focus still lands).
+  const onPointerUp = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse") return;
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && (el.tagName === "BUTTON" || el.tagName === "A")) {
+      el.blur();
+    }
+  };
+  window.addEventListener("pointerup", onPointerUp);
+
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("pointerup", onPointerUp);
+  };
 }

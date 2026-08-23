@@ -14,7 +14,7 @@ export function DropdownMenuContent(
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         class={cn(
-          "z-50 min-w-32 border border-border bg-popover p-1 text-popover-foreground shadow-md",
+          "z-50 min-w-36 origin-top-left rounded-lg border border-border-strong bg-popover p-1 text-popover-foreground shadow-md animate-fade-in",
           local.class
         )}
         {...rest}
@@ -30,9 +30,19 @@ export function DropdownMenuItem(
   return (
     <DropdownMenuPrimitive.Item
       class={cn(
-        "relative flex cursor-pointer select-none items-center gap-2 px-2 py-1.5 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-accent focus:text-accent-foreground [&_svg]:size-3.5",
+        "relative flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50 focus:bg-muted focus:text-foreground [&_svg]:size-3.5 [&_svg]:text-muted-foreground",
         local.class
       )}
+      {...rest}
+    />
+  );
+}
+
+export function DropdownMenuShortcut(props: ComponentProps<"span">) {
+  const [local, rest] = splitProps(props, ["class"]);
+  return (
+    <span
+      class={cn("ml-auto font-mono text-[10px] tracking-widest text-muted-foreground/70", local.class)}
       {...rest}
     />
   );

@@ -1,0 +1,81 @@
+import { untrack } from "solid-js";
+import { createSignal } from "solid-js";
+
+export interface LogTab {
+  /** Stable identity: `s:project/service` or `a:project/action`. */
+  key: string;
+  project: string;
+  kind: "service" | "action";
+  name: string;
+}
+
+const [tabs, setTabs] = createSignal<LogTab[]>([]);
+/** The selected tab; may be null (e.g. after closing the active one). */
+const [activeKey, setActiveKey] = createSignal<string | null>(null);
+/**
+ * Tabs showing the previous run instead of the live one. Non-live panes
+ * never follow or auto-reset.
+ */
+const [previousKeys, setPreviousKeys] = createSignal<Set<string>>(new Set());
+
+export { tabs, activeKey, previousKeys };
+
+export function tabKey(project: string, kind: LogTab["kind"], name: string): string {
+  return `${kind === "service" ? "s" : "a"}:${project}/${name}`;
+}
+
+export function isPreviousLogs(key: string): boolean {
+  return previousKeys().has(key);
+}
+
+export function togglePreviousLogs(key: string) {
+  setPreviousKeys((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+}
+
+/** Opens (or focuses) a log tab. Deduped by key. */
+export function openLogTab(project: string, kind: LogTab["kind"], name: string) {
+  const key = tabKey(project, kind, name);
+  setActiveKey(key);
+  if (untrack(tabs).some((t) => t.key === key)) return;
+  setTabs((prev) => [...prev, { key, project, kind, name }]);
+}
+
+export function closeLogTab(key: string) {
+  setTabs((prev) => {
+    const idx = prev.findIndex((t) => t.key === key);
+    if (idx === -1) return prev;
+    // If we're closing the active tab, activate its neighbor.
+    const wasActive = untrack(activeKey) === key;
+    if (wasActive) {
+      const neighbor = prev[idx + 1] ?? prev[idx - 1];
+      setActiveKey(neighbor?.key ?? null);
+    }
+    return prev.filter((t) => t.key !== key);
+  });
+}
+
+/** Drops tabs whose target no longer exists (project removed / service deleted). */
+export function pruneLogTabs(validKeys: Set<string>) {
+  setTabs((prev) => {
+    const kept = prev.filter((t) => validKeys.has(t.key));
+    if (kept.length === prev.length) return prev;
+    if (untrack(activeKey) && !kept.some((t) => t.key === untrack(activeKey))) {
+      setActiveKey(null);
+    }
+    return kept;
+  });
+  setPreviousKeys((prev) => {
+    let changed = false;
+    const next = new Set<string>();
+    for (const k of prev) {
+      if (validKeys.has(k)) next.add(k);
+      else changed = true;
+    }
+    return changed ? next : prev;
+  });
+}

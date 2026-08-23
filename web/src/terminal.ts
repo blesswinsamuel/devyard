@@ -2,18 +2,18 @@ import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import { theme } from "./store";
+import type { Theme } from "~/stores/app";
 
-// Official Catppuccin ANSI 16-color palettes (Mocha / Latte). Using the
-// palette's ANSI mapping — not surface/text roles — so \e[30m–\e[37m and
-// bright variants match a real Catppuccin terminal.
-const themes: Record<"dark" | "light", ITheme> = {
+// Catppuccin ANSI 16-color palettes (Mocha / Latte) for terminal *content*,
+// with backgrounds tuned to match the app's surface tokens so panes blend
+// into the chrome.
+const themes: Record<Theme, ITheme> = {
   dark: {
-    background: "#1e1e2e",
-    foreground: "#cdd6f4",
-    cursor: "#89b4fa",
-    cursorAccent: "#1e1e2e",
-    selectionBackground: "#45475a",
+    background: "#101014",
+    foreground: "#d5d6dd",
+    cursor: "#818cf8",
+    cursorAccent: "#101014",
+    selectionBackground: "#3b3b52",
     black: "#45475a",
     red: "#f38ba8",
     green: "#a6e3a1",
@@ -32,11 +32,11 @@ const themes: Record<"dark" | "light", ITheme> = {
     brightWhite: "#a6adc8",
   },
   light: {
-    background: "#eff1f5",
-    foreground: "#4c4f69",
-    cursor: "#1e66f5",
-    cursorAccent: "#eff1f5",
-    selectionBackground: "#ccd0da",
+    background: "#fbfbfc",
+    foreground: "#45475a",
+    cursor: "#4f46e5",
+    cursorAccent: "#fbfbfc",
+    selectionBackground: "#cfd2dc",
     black: "#5c5f77",
     red: "#d20f39",
     green: "#40a02b",
@@ -56,7 +56,7 @@ const themes: Record<"dark" | "light", ITheme> = {
   },
 };
 
-export function terminalTheme(t: "dark" | "light"): ITheme {
+export function terminalTheme(t: Theme): ITheme {
   return themes[t];
 }
 
@@ -64,34 +64,35 @@ export interface AppTerminal extends Terminal {
   fit: () => void;
 }
 
-export function createTerminal(container: HTMLElement): AppTerminal {
+export function createTerminal(container: HTMLElement, initialTheme: Theme): AppTerminal {
   const term = new Terminal({
     fontFamily:
-      '"FiraCode Nerd Font", "JetBrainsMono Nerd Font", "Fira Code Nerd Font", "JetBrains Mono Nerd Font", "Hack Nerd Font", "MesloLGS NF", "DejaVuSansMono Nerd Font", "Symbols Nerd Font", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    fontSize: 13,
+      '"JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    fontSize: 12.5,
+    lineHeight: 1.25,
     scrollback: 5000,
     convertEol: true,
-    theme: themes[theme()],
+    theme: themes[initialTheme],
   });
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
   term.loadAddon(new WebLinksAddon());
   term.open(container);
-  if (container.offsetWidth > 0 && container.offsetHeight > 0) {
-    fitAddon.fit();
-  }
 
   const safeFit = () => {
     if (container.offsetWidth > 0 && container.offsetHeight > 0) {
       fitAddon.fit();
     }
   };
+  if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+    fitAddon.fit();
+  }
 
   const resizeObserver = new ResizeObserver(safeFit);
   resizeObserver.observe(container);
 
   const origDispose = term.dispose.bind(term);
-  (term as any).fit = safeFit;
+  (term as unknown as { fit: () => void }).fit = safeFit;
   term.dispose = () => {
     resizeObserver.disconnect();
     origDispose();

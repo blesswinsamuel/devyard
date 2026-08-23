@@ -1,6 +1,6 @@
-import type { ServiceState } from "~/types";
+import type { ServiceState } from "~/lib/types";
 
-export type StatusTone = "success" | "warning" | "destructive" | "muted";
+export type StatusTone = "success" | "warning" | "destructive" | "info" | "muted";
 
 export function statusTone(status: string): StatusTone {
   switch (status) {
@@ -8,33 +8,40 @@ export function statusTone(status: string): StatusTone {
       return "success";
     case "starting":
     case "stopping":
-      return "warning";
     case "backoff":
-      return "destructive";
+      return "warning";
     case "exited":
-    case "stopped":
-      return "muted";
+      return statusExitedTone();
     default:
       return "muted";
   }
 }
 
+function statusExitedTone(): StatusTone {
+  return "muted";
+}
+
 export function statusDot(status: string): string {
   switch (statusTone(status)) {
     case "success":
-      return "bg-success";
+      return "bg-success shadow-[0_0_6px_var(--success)]";
     case "warning":
-      return "bg-warning";
+      return "bg-warning animate-pulse";
     case "destructive":
       return "bg-destructive";
+    case "info":
+      return "bg-info animate-pulse";
     default:
-      return "bg-muted-foreground/60";
+      return "bg-muted-foreground/50";
   }
 }
 
 export function statusLabel(status: string, exitCode: number): string {
   if (status === "exited" && exitCode !== 0) {
     return `exited(${exitCode})`;
+  }
+  if (status === "backoff") {
+    return "restart backoff";
   }
   return status;
 }
@@ -64,7 +71,7 @@ export function healthDot(hasHealth: boolean, health: string): string {
     case "destructive":
       return "bg-destructive animate-pulse";
     default:
-      return "bg-muted-foreground/60";
+      return "bg-muted-foreground/50";
   }
 }
 
@@ -78,5 +85,3 @@ export function serviceMeta(s: ServiceState): string {
   }
   return parts.join("  ·  ");
 }
-
-

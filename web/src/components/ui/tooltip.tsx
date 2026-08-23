@@ -16,7 +16,7 @@ export function TooltipContent(
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
         class={cn(
-          "z-50 border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md",
+          "z-50 rounded-md border border-border-strong bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md animate-fade-in",
           local.class
         )}
         {...rest}

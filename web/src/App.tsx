@@ -1,9 +1,13 @@
-import { For, Show, onCleanup } from "solid-js";
-import { start, toasts } from "./store";
-import { setupHotkeys } from "./hotkeys";
-import { Sidebar } from "./components/sidebar";
-import { Main } from "./components/main";
-import { HelpOverlay } from "./components/help";
+import { onCleanup, Show } from "solid-js";
+import { start } from "~/stores/nav";
+import { setupHotkeys } from "~/hotkeys";
+import { Sidebar } from "~/components/sidebar";
+import { Main } from "~/components/main";
+import { HelpOverlay } from "~/components/help";
+import { AddProjectModal } from "~/components/add_project_modal";
+import { DaemonStatusModal } from "~/components/daemon_modal";
+import { Toasts } from "~/components/toasts";
+import { ReconnectBanner } from "~/components/reconnect_banner";
 
 export function App() {
   const stop = start();
@@ -18,23 +22,11 @@ export function App() {
       <Sidebar />
       <Main />
       <HelpOverlay />
-
-      {/* Toasts */}
-      <div class="pointer-events-none fixed right-4 top-4 z-[100] flex w-80 flex-col gap-2">
-        <For each={toasts()}>
-          {(t) => (
-            <div
-              class="pointer-events-auto border bg-popover px-3 py-2 text-sm shadow-md"
-              classList={{
-                "border-destructive/60 text-destructive": t.kind === "error",
-                "border-border text-foreground": t.kind === "info",
-              }}
-            >
-              {t.message}
-            </div>
-          )}
-        </For>
-      </div>
+      <AddProjectModal />
+      <DaemonStatusModal />
+      <ReconnectBanner />
+      <Toasts />
+      <Show when={false}>{null}</Show>
     </div>
   );
 }

@@ -1,40 +1,28 @@
-import { Show, createSignal, onCleanup } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import { Maximize2, Minimize2, SquareTerminal, X } from "lucide-solid";
-import {
-  selectedProject,
-  panelOpen,
-  setPanelOpen,
-  panelTab,
-  openPanelTab,
-  panelHeight,
-  setPanelHeight,
-  panelMaximized,
-  togglePanelMaximized,
-} from "~/store";
-import { ShellWorkspace, ShellTabBar } from "~/components/shell_workspace";
+import { selectedProject } from "~/stores/nav";
+import { panelHeight, panelMaximized, panelOpen, setPanelHeight, setPanelOpen, togglePanelMaximized } from "~/stores/app";
+import { ShellTabBar, ShellWorkspace } from "~/components/shell/shell_workspace";
 import { Button } from "~/components/ui/button";
 
 export function BottomPanel() {
-  const [isResizing, setIsResizing] = createSignal(false);
+  const [resizing, setResizing] = createSignal(false);
 
   const startResize = (e: MouseEvent) => {
     e.preventDefault();
-    setIsResizing(true);
+    setResizing(true);
     const startY = e.clientY;
     const startH = panelHeight();
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaY = startY - moveEvent.clientY;
-      const nextH = Math.max(150, Math.min(window.innerHeight - 100, startH + deltaY));
+      const nextH = Math.max(150, Math.min(window.innerHeight - 100, startH + (startY - moveEvent.clientY)));
       setPanelHeight(nextH);
     };
-
     const onMouseUp = () => {
-      setIsResizing(false);
+      setResizing(false);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
   };
@@ -42,64 +30,43 @@ export function BottomPanel() {
   return (
     <Show when={selectedProject() && panelOpen()}>
       <div
-        class="relative flex shrink-0 flex-col border-t border-border bg-background transition-all"
-        style={{
-          height: panelMaximized() ? "100%" : `${panelHeight()}px`,
-        }}
+        class="relative flex shrink-0 flex-col border-t bg-card"
+        style={{ height: panelMaximized() ? "100%" : `${panelHeight()}px` }}
       >
-        {/* Resize Handle */}
         <Show when={!panelMaximized()}>
           <div
-            class="group absolute -top-1.5 left-0 right-0 z-10 flex h-3 cursor-row-resize items-center justify-center"
+            class="group absolute -top-1 left-0 right-0 z-10 flex h-2 cursor-row-resize items-center justify-center"
             onMouseDown={startResize}
           >
-            <div class="h-1 w-12 rounded-full bg-border group-hover:bg-primary transition-colors" />
+            <div
+              class="h-1 w-10 rounded-full bg-border-strong transition-colors group-hover:bg-primary"
+              classList={{ "bg-primary/60": resizing() }}
+            />
           </div>
         </Show>
 
-        {/* Panel Header */}
-        <div class="flex h-9 shrink-0 items-center justify-between border-b border-border/60 bg-muted/30 px-2 text-xs">
-          {/* Left Tabs / Shell Tabs */}
-          <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto">
-            <SquareTerminal class="size-4 shrink-0 text-muted-foreground ml-1 mr-0.5" />
-            <Show when={panelTab() === "shell"}>
-              <ShellTabBar />
-            </Show>
+        {/* Panel header */}
+        <div class="flex h-8 shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-1.5">
+          <div class="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-0.5">
+            <SquareTerminal class="ml-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            <ShellTabBar />
           </div>
-
-          {/* Right Action Controls */}
-          <div class="flex items-center gap-1 shrink-0 ml-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              class="size-6 rounded text-muted-foreground hover:text-foreground"
-              onClick={togglePanelMaximized}
-              title={panelMaximized() ? "Restore Height" : "Maximize Height"}
-            >
-              <Show when={panelMaximized()} fallback={<Maximize2 class="size-3.5" />}>
-                <Minimize2 class="size-3.5" />
+          <div class="flex shrink-0 items-center gap-0.5 pr-0.5">
+            <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-foreground" onClick={togglePanelMaximized} title={panelMaximized() ? "Restore" : "Maximize"}>
+              <Show when={panelMaximized()} fallback={<Maximize2 class="!size-3" />}>
+                <Minimize2 class="!size-3" />
               </Show>
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              class="size-6 rounded text-muted-foreground hover:text-foreground"
-              onClick={() => setPanelOpen(false)}
-              title="Close Panel"
-            >
-              <X class="size-3.5" />
+            <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-foreground" onClick={() => setPanelOpen(false)} title="Close panel (t)">
+              <X class="!size-3" />
             </Button>
           </div>
         </div>
 
-        {/* Panel Content Workspace */}
         <div class="relative min-h-0 flex-1">
-          <Show when={panelTab() === "shell"}>
-            <ShellWorkspace />
-          </Show>
+          <ShellWorkspace />
         </div>
       </div>
     </Show>
   );
 }
-

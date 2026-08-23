@@ -1,4 +1,4 @@
-import type { GitCommit } from "../types";
+import type { GitCommit } from "~/lib/types";
 
 export interface GraphConnection {
   fromColumn: number;
@@ -15,14 +15,14 @@ export interface CommitGraphInfo {
 }
 
 export const GRAPH_COLORS = [
-  "#3b82f6", // blue
-  "#10b981", // emerald
-  "#8b5cf6", // violet
-  "#f59e0b", // amber
-  "#ec4899", // pink
-  "#06b6d4", // cyan
-  "#f97316", // orange
-  "#84cc16", // lime
+  "#818cf8", // indigo
+  "#34d399", // emerald
+  "#fbbf24", // amber
+  "#f472b6", // pink
+  "#38bdf8", // sky
+  "#a78bfa", // violet
+  "#fb923c", // orange
+  "#2dd4bf", // teal
 ];
 
 /**

@@ -1,78 +1,92 @@
-@import url('https://cdn.jsdelivr.net/gh/mshaugh/nerdfont-webfonts@v3.3.0/build/firacode-nerd-font.css');
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
 
-/* Catppuccin Latte (light) */
+/* ---------------------------------------------------------------------------
+ * Design tokens — "modern devtool" system.
+ * Neutral zinc surfaces with layered depth, one indigo accent, semantic
+ * status ramp. Terminals keep their own ANSI themes inside xterm.
+ * ------------------------------------------------------------------------- */
+
 :root {
-  --radius: 0px;
+  --radius: 0.5rem;
 
-  --background: #eff1f5;
-  --foreground: #4c4f69;
+  /* Light theme */
+  --background: #f7f7f8;
+  --foreground: #1b1b1f;
 
-  --card: #e6e9ef;
-  --card-foreground: #4c4f69;
+  --card: #ffffff;
+  --card-foreground: #1b1b1f;
 
-  --popover: #e6e9ef;
-  --popover-foreground: #4c4f69;
+  --popover: #ffffff;
+  --popover-foreground: #1b1b1f;
 
-  --primary: #1e66f5;
-  --primary-foreground: #eff1f5;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
 
-  --secondary: #bcc0cc;
-  --secondary-foreground: #4c4f69;
+  --secondary: #ececed;
+  --secondary-foreground: #1b1b1f;
 
-  --muted: #ccd0da;
-  --muted-foreground: #6c6f85;
+  --muted: #ededee;
+  --muted-foreground: #6f6f78;
 
-  --accent: #ccd0da;
-  --accent-foreground: #4c4f69;
+  --accent: #eef0fe;
+  --accent-foreground: #3730a3;
 
-  --destructive: #d20f39;
-  --destructive-foreground: #eff1f5;
+  --destructive: #e11d48;
+  --destructive-foreground: #ffffff;
 
-  --border: #bcc0cc;
-  --input: #bcc0cc;
-  --ring: #1e66f5;
+  --success: #059669;
+  --warning: #d97706;
+  --info: #0369a1;
+  --backoff: #e11d48;
 
-  --success: #40a02b;
-  --warning: #df8e1d;
-  --backoff: #d20f39;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --input: #d4d4d8;
+  --ring: rgba(79, 70, 229, 0.45);
+
+  --shadow-color: 220 15% 40%;
 }
 
-/* Catppuccin Mocha (dark) */
 .dark {
-  --background: #1e1e2e;
-  --foreground: #cdd6f4;
+  --background: #0c0c0f;
+  --foreground: #e7e7ea;
 
-  --card: #181825;
-  --card-foreground: #cdd6f4;
+  --card: #131317;
+  --card-foreground: #e7e7ea;
 
-  --popover: #181825;
-  --popover-foreground: #cdd6f4;
+  --popover: #191920;
+  --popover-foreground: #e7e7ea;
 
-  --primary: #89b4fa;
-  --primary-foreground: #1e1e2e;
+  --primary: #818cf8;
+  --primary-foreground: #0c0c0f;
 
-  --secondary: #45475a;
-  --secondary-foreground: #cdd6f4;
+  --secondary: #202027;
+  --secondary-foreground: #e7e7ea;
 
-  --muted: #313244;
-  --muted-foreground: #7f849c;
+  --muted: #1c1c22;
+  --muted-foreground: #9a9aa4;
 
-  --accent: #313244;
-  --accent-foreground: #cdd6f4;
+  --accent: #23233d;
+  --accent-foreground: #c7d2fe;
 
-  --destructive: #f38ba8;
-  --destructive-foreground: #1e1e2e;
+  --destructive: #fb7185;
+  --destructive-foreground: #0c0c0f;
 
-  --border: #45475a;
-  --input: #45475a;
-  --ring: #89b4fa;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --info: #38bdf8;
+  --backoff: #fb7185;
 
-  --success: #a6e3a1;
-  --warning: #f9e2af;
-  --backoff: #f38ba8;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: rgba(129, 140, 248, 0.55);
+
+  --shadow-color: 240 30% 3%;
 }
 
 @theme inline {
@@ -92,12 +106,50 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-backoff: var(--backoff);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.25);
+  --shadow-md: 0 2px 8px hsl(var(--shadow-color) / 0.28);
+  --shadow-lg: 0 8px 32px hsl(var(--shadow-color) / 0.42);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  --animate-toast-in: toast-in 180ms cubic-bezier(0.21, 1.02, 0.73, 1);
+  --animate-fade-in: fade-in 150ms ease-out;
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }
 
 @layer base {
@@ -115,23 +167,70 @@
     margin: 0;
     background: var(--background);
     color: var(--foreground);
-    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
-      "Liberation Mono", monospace;
-    font-size: 14px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
+  /* Numeric UI data aligns in tabular figures. */
+  .tabular,
+  [data-tabular] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 26%, transparent);
+  }
+
+  /* Thin overlay scrollbars. */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
   }
-
-  ::-webkit-scrollbar-thumb {
-    background: var(--muted);
-    border: 2px solid var(--background);
-  }
-
   ::-webkit-scrollbar-track {
     background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--foreground) 16%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--foreground) 30%, transparent);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Keyboard shortcut chips. */
+  kbd {
+    display: inline-block;
+    min-width: 1.4rem;
+    text-align: center;
+    padding: 1px 5px;
+    border: 1px solid var(--border-strong);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: var(--muted);
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.3;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

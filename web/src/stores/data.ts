@@ -360,6 +360,23 @@ export function initDataHandlers() {
   onWS("ports", (resp) => {
     const list = (resp.data ?? []) as PortBinding[];
     const project = resp.project ?? "";
+    if (project === "") {
+      // Global snapshot: rebuild the whole map so per-project badges, sidebar
+      // chips, and the dialog's all-projects view stay in sync from one fetch.
+      setPorts(() => {
+        const next: Record<string, PortBinding[]> = { "": list };
+        for (const b of list) {
+          const bucket = next[b.project];
+          if (bucket) {
+            bucket.push(b);
+          } else {
+            next[b.project] = [b];
+          }
+        }
+        return next;
+      });
+      return;
+    }
     setPorts((m) => ({ ...m, [project]: list }));
   });
 

@@ -1,8 +1,8 @@
 import { Show } from "solid-js";
-import { PackageOpen, SquareTerminal, Play } from "lucide-solid";
-import { actions as actionsMap } from "~/stores/data";
+import { Globe, PackageOpen, Play, SquareTerminal } from "lucide-solid";
+import { actions as actionsMap, fetchPorts, runAction } from "~/stores/data";
 import { activeView, selectedAction, selectedProject, selectedService } from "~/stores/nav";
-import { runAction } from "~/stores/data";
+import { openPortsModal } from "~/stores/app";
 import { Button } from "~/components/ui/button";
 import { ActionHeader, ProjectHeader, ServiceHeader } from "~/components/header";
 import { LogView } from "~/components/logs";
@@ -72,10 +72,24 @@ export function Main() {
         <Show
           when={selectedProject()}
           fallback={
-            <span class="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
-              <SquareTerminal class="size-4 text-primary" />
-              local-compose
-            </span>
+            <>
+              <span class="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
+                <SquareTerminal class="size-4 text-primary" />
+                local-compose
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="ml-auto mr-1 text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  fetchPorts();
+                  openPortsModal("all");
+                }}
+              >
+                <Globe class="!size-3.5" />
+                Open ports
+              </Button>
+            </>
           }
         >
           <Show

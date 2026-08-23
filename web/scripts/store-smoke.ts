@@ -123,6 +123,27 @@ async function main() {
   sock.receive({ type: "log_line", project: "demo", service: "web", line: "hello" });
   assert.equal(gotLine, "hello", "log line routed to subscriber");
 
+  // A global ports snapshot is distributed into per-project buckets so
+  // sidebar chips and badges light up from the periodic refresh.
+  sock.receive({
+    type: "ports",
+    data: [
+      { project: "demo", service: "web", pid: 42, ip: "127.0.0.1", port: 3000, protocol: "tcp" },
+      { project: "other", service: "api", pid: 7, ip: "0.0.0.0", port: 8080, protocol: "tcp" },
+    ],
+  });
+  const portsMap = data.ports();
+  assert.equal(portsMap[""]?.length, 2, "global snapshot cached under ''");
+  assert.equal(portsMap["demo"]?.length, 1, "per-project bucket populated");
+  assert.equal(portsMap["other"]?.length, 1, "other-project bucket populated");
+  // An explicit per-project fetch still lands under its own key.
+  sock.receive({
+    type: "ports",
+    project: "solo",
+    data: [{ project: "solo", service: "db", pid: 9, ip: "::1", port: 5432, protocol: "tcp" }],
+  });
+  assert.equal(data.ports()["solo"]?.length, 1, "scoped fetch stored by project");
+
   stop();
   console.log("store-smoke: OK — handlers wired, signals update, streams route");
 }

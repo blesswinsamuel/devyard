@@ -31,7 +31,7 @@ import {
   tabKey,
   togglePreviousLogs,
 } from "~/stores/logs";
-import { openTerminalPanel, panelOpen, setShowPortsModal } from "~/stores/app";
+import { openPortsModal, openTerminalPanel, panelOpen } from "~/stores/app";
 import { healthTone, serviceMeta, statusLabel, statusTone } from "~/lib/status";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -50,7 +50,7 @@ function HeaderButtons(props: { project: string }) {
           class="text-muted-foreground hover:text-foreground"
           onClick={() => {
             fetchPorts(props.project);
-            setShowPortsModal(true);
+            openPortsModal("project");
           }}
         >
           <Globe class="!size-3.5" />

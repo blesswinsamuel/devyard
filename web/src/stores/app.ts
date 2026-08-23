@@ -69,6 +69,8 @@ export { dismiss as dismissToast };
 // --- overlays -------------------------------------------------------------
 
 const [showPortsModal, setShowPortsModal] = createSignal(false);
+/** Which scope the ports dialog was opened in: current project or all projects. */
+const [portsScope, setPortsScope] = createSignal<"project" | "all">("project");
 const [showAddProject, setShowAddProject] = createSignal(false);
 const [showDaemonModal, setShowDaemonModal] = createSignal(false);
 const [showHelp, setShowHelp] = createSignal(false);
@@ -76,6 +78,7 @@ const [showHelp, setShowHelp] = createSignal(false);
 export {
   showPortsModal,
   setShowPortsModal,
+  portsScope,
   showAddProject,
   setShowAddProject,
   showDaemonModal,
@@ -83,6 +86,14 @@ export {
   showHelp,
   setShowHelp,
 };
+
+/** Opens the ports dialog pre-scoped to one project or to every project. */
+export function openPortsModal(scope: "project" | "all") {
+  batch(() => {
+    setPortsScope(scope);
+    setShowPortsModal(true);
+  });
+}
 
 export function toggleHelp() {
   setShowHelp((v) => !v);

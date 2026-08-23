@@ -5,6 +5,7 @@ import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } 
 import {
   actions as actionsData,
   clearSelectedCommit,
+  initDataHandlers,
   loadGitLog,
   projects as projectsData,
   refreshAll,
@@ -377,6 +378,10 @@ export function start(): () => void {
       selectProject(route.project, { skipPush: true });
     }
   });
+
+  // Register the data handlers first so signals are updated before nav-side
+  // reactions (prune/fetch-on-arrival) observe them.
+  initDataHandlers();
 
   // nav-side reactions to data arrivals (data.ts owns its own handlers).
   const stopProjectsHandler = onWS("projects", onProjectsArrived);

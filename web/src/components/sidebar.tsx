@@ -49,7 +49,7 @@ import { cn } from "~/lib/utils";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
-import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from "~/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -253,7 +253,7 @@ function ActionRow(props: { project: string; name: string }) {
           size="icon-sm"
           class="border border-border shadow-sm"
           title={`Run ${props.name}`}
-          onClick={(e) => {
+          onClick={(e: MouseEvent) => {
             e.stopPropagation();
             selectAction(props.project, props.name);
             runAction(props.project, props.name);
@@ -287,7 +287,7 @@ function ProjectItem(props: { name: string }) {
   return (
     <Show when={project()}>
       {(p) => (
-        <CollapsibleRoot
+        <Collapsible
           open={isProjectExpanded(props.name)}
           onOpenChange={(open) => setProjectExpanded(props.name, open)}
         >
@@ -339,7 +339,7 @@ function ProjectItem(props: { name: string }) {
                   variant="ghost"
                   size="icon-sm"
                   class="text-muted-foreground hover:text-foreground"
-                  onClick={(e) => {
+                  onClick={(e: MouseEvent) => {
                     e.stopPropagation();
                     openGitView(props.name);
                   }}
@@ -358,7 +358,7 @@ function ProjectItem(props: { name: string }) {
                       variant="ghost"
                       size="icon-sm"
                       class="text-success hover:text-success"
-                      onClick={(e) => {
+                      onClick={(e: MouseEvent) => {
                         e.stopPropagation();
                         startProject(props.name);
                       }}
@@ -377,7 +377,7 @@ function ProjectItem(props: { name: string }) {
                       variant="ghost"
                       size="icon-sm"
                       class="text-muted-foreground hover:text-foreground"
-                      onClick={(e) => {
+                      onClick={(e: MouseEvent) => {
                         e.stopPropagation();
                         startProject(props.name);
                       }}
@@ -393,7 +393,7 @@ function ProjectItem(props: { name: string }) {
                       variant="ghost"
                       size="icon-sm"
                       class="text-muted-foreground hover:text-destructive"
-                      onClick={(e) => {
+                      onClick={(e: MouseEvent) => {
                         e.stopPropagation();
                         stopProject(props.name);
                       }}
@@ -433,7 +433,7 @@ function ProjectItem(props: { name: string }) {
               </Show>
             </div>
           </CollapsibleContent>
-        </CollapsibleRoot>
+        </Collapsible>
       )}
     </Show>
   );

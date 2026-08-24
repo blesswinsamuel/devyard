@@ -1,36 +1,55 @@
-import { splitProps, type ComponentProps } from "solid-js";
+import { type BadgeRootProps, Root } from "@kobalte/core/badge";
+import type { PolymorphicProps } from "@kobalte/core/polymorphic";
 import { cva, type VariantProps } from "class-variance-authority";
+import { splitProps, type ValidComponent } from "solid-js";
 import { cn } from "~/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4",
+  "group/badge z-badge inline-flex w-fit shrink-0 items-center justify-center overflow-hidden whitespace-nowrap focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none",
   {
     variants: {
       variant: {
-        default: "bg-primary/15 text-primary",
-        secondary: "bg-muted text-muted-foreground",
-        outline: "border border-border-strong text-muted-foreground",
-        success: "bg-success/15 text-success",
-        warning: "bg-warning/15 text-warning",
-        destructive: "bg-destructive/15 text-destructive",
-        info: "bg-info/15 text-info",
-        muted: "bg-muted text-muted-foreground",
+        default: "z-badge-variant-default",
+        secondary: "z-badge-variant-secondary",
+        muted: "z-badge-variant-secondary",
+        success: "z-badge-variant-success-light",
+        warning: "z-badge-variant-warning-light",
+        info: "z-badge-variant-info-light",
+        destructive: "z-badge-variant-destructive",
+        outline: "z-badge-variant-outline",
+        ghost: "z-badge-variant-ghost",
+        link: "z-badge-variant-link",
+        "primary-light": "z-badge-variant-primary-light",
+        "destructive-light": "z-badge-variant-destructive-light",
+        "success-light": "z-badge-variant-success-light",
+        "warning-light": "z-badge-variant-warning-light",
+        "info-light": "z-badge-variant-info-light",
+        "primary-outline": "z-badge-variant-primary-outline",
+        "destructive-outline": "z-badge-variant-destructive-outline",
+        "success-outline": "z-badge-variant-success-outline",
+        "warning-outline": "z-badge-variant-warning-outline",
+        "info-outline": "z-badge-variant-info-outline",
       },
     },
     defaultVariants: {
       variant: "default",
     },
-  }
+  },
 );
 
-type BadgeProps = ComponentProps<"span"> & VariantProps<typeof badgeVariants>;
+type BadgeProps<T extends ValidComponent = "span"> = PolymorphicProps<T, BadgeRootProps<T>> &
+  VariantProps<typeof badgeVariants>;
 
-export function Badge(props: BadgeProps) {
-  const [local, rest] = splitProps(props, ["class", "variant"]);
+const Badge = <T extends ValidComponent = "span">(props: BadgeProps<T>) => {
+  const [local, others] = splitProps(props as BadgeProps, ["class", "variant"]);
   return (
-    <span
+    <Root
       class={cn(badgeVariants({ variant: local.variant }), local.class)}
-      {...rest}
+      data-slot="badge"
+      data-variant={local.variant ?? "default"}
+      {...others}
     />
   );
-}
+};
+
+export { Badge, badgeVariants };

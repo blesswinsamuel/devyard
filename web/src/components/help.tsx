@@ -1,6 +1,6 @@
 import { For } from "solid-js";
 import { closeHelp, showHelp } from "~/stores/app";
-import { Dialog, DialogContent } from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 
 const SECTIONS: { title: string; rows: { keys: string; label: string }[] }[] = [
   {
@@ -37,32 +37,33 @@ const SECTIONS: { title: string; rows: { keys: string; label: string }[] }[] = [
 export function HelpOverlay() {
   return (
     <Dialog open={showHelp()} onOpenChange={(open) => !open && closeHelp()}>
-      <DialogContent title="Keyboard shortcuts">
-        <div class="flex flex-col gap-4 px-5 py-4">
-          <For each={SECTIONS}>
-            {(section) => (
-              <div>
-                <p class="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {section.title}
-                </p>
-                <ul class="flex flex-col gap-1.5">
-                  <For each={section.rows}>
-                    {(row) => (
-                      <li class="flex items-center justify-between gap-4 text-[13px]">
-                        <span class="text-muted-foreground">{row.label}</span>
-                        <kbd>{row.keys}</kbd>
-                      </li>
-                    )}
-                  </For>
-                </ul>
-              </div>
-            )}
-          </For>
-          <p class="mt-1 border-t pt-3 text-xs leading-relaxed text-muted-foreground">
-            Shortcuts are inactive while a terminal or form has focus, so interactive
-            sessions can use the same keys. Press Esc to return focus to the sidebar.
-          </p>
-        </div>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Keyboard shortcuts</DialogTitle>
+        </DialogHeader>
+        <For each={SECTIONS}>
+          {(section) => (
+            <div>
+              <p class="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {section.title}
+              </p>
+              <ul class="flex flex-col gap-1.5">
+                <For each={section.rows}>
+                  {(row) => (
+                    <li class="flex items-center justify-between gap-4 text-[13px]">
+                      <span class="text-muted-foreground">{row.label}</span>
+                      <kbd>{row.keys}</kbd>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </div>
+          )}
+        </For>
+        <p class="border-t pt-3 text-xs leading-relaxed text-muted-foreground">
+          Shortcuts are inactive while a terminal or form has focus, so interactive
+          sessions can use the same keys. Press Esc to return focus to the sidebar.
+        </p>
       </DialogContent>
     </Dialog>
   );

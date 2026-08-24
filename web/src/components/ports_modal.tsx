@@ -6,7 +6,7 @@ import { openPortsModal, portsScope, setShowPortsModal, showPortsModal } from "~
 import type { PortBinding } from "~/lib/types";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Dialog, DialogContent } from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { cn } from "~/lib/utils";
 
 function makeUrl(binding: PortBinding): string {
@@ -74,8 +74,11 @@ export function PortsModal() {
 
   return (
     <Dialog open={showPortsModal()} onOpenChange={setShowPortsModal}>
-      <DialogContent title="Open Ports" class="max-w-2xl">
-        <div class="px-5 py-4">
+      <DialogContent class="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Open Ports</DialogTitle>
+        </DialogHeader>
+        <div>
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             {/* Scope switch */}
             <div class="flex items-center rounded-lg border bg-muted/60 p-0.5 text-xs">

@@ -2,7 +2,7 @@ import { createSignal } from "solid-js";
 import { startProjectByPath } from "~/stores/data";
 import { setShowAddProject, showAddProject } from "~/stores/app";
 import { Button } from "~/components/ui/button";
-import { Dialog, DialogContent } from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 
 export function AddProjectModal() {
   const [configPath, setConfigPath] = createSignal("");
@@ -24,8 +24,11 @@ export function AddProjectModal() {
 
   return (
     <Dialog open={showAddProject()} onOpenChange={setShowAddProject}>
-      <DialogContent title="Add Project">
-        <form onSubmit={handleSubmit} class="space-y-4 px-5 py-4">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Project</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} class="space-y-4">
           <div class="space-y-1.5">
             <label for="add-project-config" class="text-xs font-medium text-muted-foreground">
               Config path

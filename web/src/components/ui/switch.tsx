@@ -1,25 +1,43 @@
-import { splitProps, type ComponentProps } from "solid-js";
-import { Switch as SwitchPrimitive } from "@kobalte/core";
+import type { PolymorphicProps } from "@kobalte/core/polymorphic";
+import * as SwitchPrimitive from "@kobalte/core/switch";
+import { type ComponentProps, mergeProps, splitProps, type ValidComponent } from "solid-js";
+
 import { cn } from "~/lib/utils";
 
-export function Switch(props: ComponentProps<typeof SwitchPrimitive.Root>) {
-  const [local, rest] = splitProps(props, ["class"]);
+type SwitchProps<T extends ValidComponent = "div"> = PolymorphicProps<
+  T,
+  SwitchPrimitive.SwitchRootProps<T>
+> &
+  Pick<ComponentProps<T>, "class" | "children"> & {
+    size?: "sm" | "default";
+  };
+
+const Switch = <T extends ValidComponent = "div">(props: SwitchProps<T>) => {
+  const mergedProps = mergeProps({ size: "default" as const }, props);
+  const [local, others] = splitProps(mergedProps as SwitchProps, ["class", "size", "id"]);
   return (
     <SwitchPrimitive.Root
+      data-slot="switch"
+      data-size={local.size}
       class={cn(
-        "inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-input bg-muted transition-colors duration-100 data-[checked]:border-primary data-[checked]:bg-primary data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        local.class
+        "peer group/switch relative z-switch inline-flex items-center outline-none transition-all data-disabled:cursor-not-allowed data-disabled:opacity-50",
+        local.class,
       )}
-      {...rest}
+      {...others}
     >
-      <SwitchPrimitive.Input />
-      <SwitchPrimitive.Control class="flex h-full w-full items-center rounded-full px-0.5">
+      <SwitchPrimitive.Input data-slot="switch-input" class="peer sr-only" id={local.id} />
+      <SwitchPrimitive.Control
+        data-slot="switch-control"
+        class="absolute inset-0 flex cursor-pointer items-center rounded-full transition-colors data-disabled:cursor-not-allowed"
+        onClick={(e) => e.preventDefault()}
+      >
         <SwitchPrimitive.Thumb
-          class={cn(
-            "block size-3.5 rounded-full bg-white shadow-sm transition-transform duration-100 dark:bg-zinc-300 data-[checked]:translate-x-4 data-[checked]:bg-primary-foreground"
-          )}
+          data-slot="switch-thumb"
+          class="pointer-events-none z-switch-thumb block rounded-full ring-0 transition-transform"
         />
       </SwitchPrimitive.Control>
     </SwitchPrimitive.Root>
   );
-}
+};
+
+export { Switch };

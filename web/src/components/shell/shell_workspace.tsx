@@ -25,7 +25,7 @@ function SplitNodeContainer(props: { node: SplitPaneNode; project: string; activ
     return Array(children().length).fill(100 / children().length);
   };
 
-  const startResize = (index: number, e: MouseEvent) => {
+  const startResize = (index: number, e: PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const isVertical = props.node.direction === "vertical";
@@ -34,7 +34,7 @@ function SplitNodeContainer(props: { node: SplitPaneNode; project: string; activ
     const startPos = isVertical ? e.clientX : e.clientY;
     const initialSizes = [...sizes()];
 
-    const onMouseMove = (moveEvent: MouseEvent) => {
+    const onPointerMove = (moveEvent: PointerEvent) => {
       const currentPos = isVertical ? moveEvent.clientX : moveEvent.clientY;
       const deltaPct = ((currentPos - startPos) / totalPx) * 100;
       const newSizes = [...initialSizes];
@@ -54,12 +54,14 @@ function SplitNodeContainer(props: { node: SplitPaneNode; project: string; activ
       newSizes[index + 1] = nextRight;
       updateSplitSizes(props.project, props.node.id, newSizes);
     };
-    const onMouseUp = () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+    const onPointerUp = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
   };
 
   const isVertical = () => props.node.direction === "vertical";
@@ -81,12 +83,12 @@ function SplitNodeContainer(props: { node: SplitPaneNode; project: string; activ
             </div>
             <Show when={idx() < children().length - 1}>
               <div
-                class="relative z-10 flex shrink-0 select-none items-center justify-center transition-colors hover:bg-primary/60"
+                class="relative z-10 flex shrink-0 select-none touch-none items-center justify-center transition-colors hover:bg-primary/60"
                 classList={{
                   "w-px cursor-col-resize hover:w-1": isVertical(),
                   "h-px cursor-row-resize hover:h-1": !isVertical(),
                 }}
-                onMouseDown={(e) => startResize(idx(), e)}
+                onPointerDown={(e) => startResize(idx(), e)}
               >
                 <div
                   class="rounded-full bg-border-strong/70 group-hover:bg-primary"

@@ -201,6 +201,16 @@
     height: 100%;
   }
 
+  /* Mobile browsers: track the visual viewport so the URL bar / keyboard
+     don't clip the app. */
+  @supports (height: 100dvh) {
+    html,
+    body,
+    #root {
+      height: 100dvh;
+    }
+  }
+
   body {
     margin: 0;
     background: var(--background);

@@ -8,23 +8,25 @@ import { Button } from "~/components/ui/button";
 export function BottomPanel() {
   const [resizing, setResizing] = createSignal(false);
 
-  const startResize = (e: MouseEvent) => {
+  const startResize = (e: PointerEvent) => {
     e.preventDefault();
     setResizing(true);
     const startY = e.clientY;
     const startH = panelHeight();
 
-    const onMouseMove = (moveEvent: MouseEvent) => {
+    const onPointerMove = (moveEvent: PointerEvent) => {
       const nextH = Math.max(150, Math.min(window.innerHeight - 100, startH + (startY - moveEvent.clientY)));
       setPanelHeight(nextH);
     };
-    const onMouseUp = () => {
+    const onPointerUp = () => {
       setResizing(false);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
   };
 
   return (
@@ -35,8 +37,8 @@ export function BottomPanel() {
       >
         <Show when={!panelMaximized()}>
           <div
-            class="group absolute -top-1 left-0 right-0 z-10 flex h-2 cursor-row-resize items-center justify-center"
-            onMouseDown={startResize}
+            class="group absolute -top-1 left-0 right-0 z-10 flex h-2 cursor-row-resize touch-none items-center justify-center"
+            onPointerDown={startResize}
           >
             <div
               class="h-1 w-10 rounded-full bg-border-strong transition-colors group-hover:bg-primary"

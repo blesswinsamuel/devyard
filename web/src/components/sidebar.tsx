@@ -10,6 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
   Skull,
+  X,
 } from "lucide-solid";
 import {
   isProjectExpanded,
@@ -41,7 +42,7 @@ import {
   stopService,
 } from "~/stores/data";
 import { setShowAddProject, setShowDaemonModal, theme, setTheme } from "~/stores/app";
-import { toggleHelp } from "~/stores/app";
+import { toggleHelp, sidebarOpen, setSidebarOpen } from "~/stores/app";
 import { openGitView } from "~/stores/nav";
 import { wsStatus } from "~/lib/ws";
 import { healthDot, statusDot, statusTone } from "~/lib/status";
@@ -443,7 +444,22 @@ export function Sidebar() {
   const projectNames = createMemo(() => projectsList().map((p) => p.name));
 
   return (
-    <aside class="flex h-full w-72 shrink-0 flex-col border-r bg-card">
+    <>
+      {/* Mobile backdrop: tap to dismiss the drawer. */}
+      <Show when={sidebarOpen()}>
+        <div
+          class="fixed inset-0 z-30 bg-black/50 backdrop-blur-[2px] md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      </Show>
+      <aside
+        class={cn(
+          "flex h-full w-72 shrink-0 flex-col border-r bg-card",
+          // Drawer on phones, static column on desktop.
+          "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:max-w-[85vw] max-md:shadow-lg max-md:transition-transform max-md:duration-200"
+        )}
+        classList={{ "max-md:-translate-x-full": !sidebarOpen() }}
+      >
       {/* Brand header */}
       <header class="flex h-12 shrink-0 items-center justify-between border-b px-3">
         <button
@@ -460,21 +476,31 @@ export function Sidebar() {
           <span class="truncate text-[13px] font-semibold tracking-tight">local-compose</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            fetchDaemonStatus();
-            setShowDaemonModal(true);
-          }}
-          class="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title="Daemon status"
-        >
-          <WsDot />
-          <span class="capitalize">{wsStatus()}</span>
-          <Show when={daemonInfo()?.pid}>
-            <span class="font-mono tabular opacity-70">:{daemonInfo()?.pid}</span>
-          </Show>
-        </button>
+        <div class="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => {
+              fetchDaemonStatus();
+              setShowDaemonModal(true);
+            }}
+            class="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title="Daemon status"
+          >
+            <WsDot />
+            <span class="capitalize">{wsStatus()}</span>
+            <Show when={daemonInfo()?.pid}>
+              <span class="font-mono tabular opacity-70">:{daemonInfo()?.pid}</span>
+            </Show>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            class="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+            aria-label="Close menu"
+          >
+            <X class="size-4" />
+          </button>
+        </div>
       </header>
 
       {/* Project list */}
@@ -515,7 +541,8 @@ export function Sidebar() {
         </button>
         <ThemeToggle />
       </footer>
-    </aside>
+      </aside>
+    </>
   );
 }
 

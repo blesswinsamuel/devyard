@@ -1,8 +1,8 @@
 import { Show } from "solid-js";
-import { Globe, PackageOpen, Play, SquareTerminal } from "lucide-solid";
+import { Globe, Menu, PackageOpen, Play, SquareTerminal } from "lucide-solid";
 import { actions as actionsMap, fetchPorts, runAction } from "~/stores/data";
 import { activeView, selectedAction, selectedProject, selectedService } from "~/stores/nav";
-import { openPortsModal } from "~/stores/app";
+import { openPortsModal, setSidebarOpen } from "~/stores/app";
 import { Button } from "~/components/ui/button";
 import { ActionHeader, ProjectHeader, ServiceHeader } from "~/components/header";
 import { LogView } from "~/components/logs";
@@ -68,7 +68,16 @@ export function Main() {
   return (
     <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Context header */}
-      <header class="flex h-11 shrink-0 items-center gap-2 border-b bg-card/50 px-3 backdrop-blur">
+      <header class="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b bg-card/50 px-3 backdrop-blur">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class="shrink-0 text-muted-foreground hover:text-foreground md:hidden"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu class="!size-4" />
+        </Button>
         <Show
           when={selectedProject()}
           fallback={
@@ -87,7 +96,7 @@ export function Main() {
                 }}
               >
                 <Globe class="!size-3.5" />
-                Open ports
+                <span class="hidden sm:inline">Open ports</span>
               </Button>
             </>
           }

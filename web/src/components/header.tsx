@@ -54,7 +54,7 @@ function HeaderButtons(props: { project: string }) {
           }}
         >
           <Globe class="!size-3.5" />
-          Ports
+          <span class="hidden md:inline">Ports</span>
           <Show when={count() > 0}>
             <span class="rounded-full bg-primary/12 px-1.5 font-mono text-[10px] tabular text-primary">
               {count()}
@@ -72,7 +72,7 @@ function HeaderButtons(props: { project: string }) {
           onClick={() => openTerminalPanel()}
         >
           <SquareTerminal class="!size-3.5" />
-          Terminal
+          <span class="hidden md:inline">Terminal</span>
         </TooltipTrigger>
         <TooltipContent>Toggle terminal panel (t)</TooltipContent>
       </Tooltip>
@@ -96,7 +96,7 @@ function PrevRunButton(props: { project: string; kind: "service" | "action"; nam
         onClick={() => togglePreviousLogs(key())}
       >
         <History class="!size-3.5" />
-        {isPreviousLogs(key()) ? "Previous run" : "Live"}
+        <span class="hidden md:inline">{isPreviousLogs(key()) ? "Previous run" : "Live"}</span>
       </TooltipTrigger>
       <TooltipContent>Show previous run's logs (p)</TooltipContent>
     </Tooltip>
@@ -147,7 +147,9 @@ export function ServiceHeader() {
           <>
             <Badge variant={statusTone(s().status)}>{statusLabel(s().status, s().exit_code)}</Badge>
             <Show when={s().has_health}>
-              <Badge variant={healthTone(s().has_health, s().health)}>health: {s().health}</Badge>
+              <Badge variant={healthTone(s().has_health, s().health)} class="max-[420px]:hidden">
+                health: {s().health}
+              </Badge>
             </Show>
             <span data-tabular class="hidden truncate font-mono text-[11px] text-muted-foreground lg:inline">
               {serviceMeta(s())}
@@ -163,19 +165,19 @@ export function ServiceHeader() {
         <Show
           when={state()?.status !== "stopped" && state()?.status !== "exited"}
           fallback={
-            <Button size="sm" onClick={() => startService(project(), service())}>
+            <Button size="sm" aria-label="Start service" onClick={() => startService(project(), service())}>
               <Play class="!size-3.5" />
-              Start
+              <span class="hidden md:inline">Start</span>
             </Button>
           }
         >
-          <Button size="sm" variant="secondary" onClick={() => restartService(project(), service())}>
+          <Button size="sm" variant="secondary" aria-label="Restart service" onClick={() => restartService(project(), service())}>
             <RotateCcw class="!size-3.5" />
-            Restart
+            <span class="hidden md:inline">Restart</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={() => stopService(project(), service())}>
+          <Button size="sm" variant="outline" aria-label="Stop service" onClick={() => stopService(project(), service())}>
             <Power class="!size-3.5" />
-            Stop
+            <span class="hidden md:inline">Stop</span>
           </Button>
         </Show>
         <Tooltip>
@@ -214,19 +216,19 @@ export function ProjectHeader() {
         <Show
           when={!isStopped()}
           fallback={
-            <Button size="sm" onClick={() => startProject(project())}>
+            <Button size="sm" aria-label="Start project" onClick={() => startProject(project())}>
               <Play class="!size-3.5" />
-              Start project
+              <span class="hidden md:inline">Start project</span>
             </Button>
           }
         >
-          <Button size="sm" variant="outline" onClick={() => startProject(project())}>
+          <Button size="sm" variant="outline" aria-label="Reload config" onClick={() => startProject(project())}>
             <RefreshCw class="!size-3.5" />
-            Reload config
+            <span class="hidden md:inline">Reload config</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={() => stopProject(project())}>
+          <Button size="sm" variant="outline" aria-label="Stop project" onClick={() => stopProject(project())}>
             <Power class="!size-3.5" />
-            Stop project
+            <span class="hidden md:inline">Stop project</span>
           </Button>
         </Show>
       </div>
@@ -267,9 +269,9 @@ export function ActionHeader() {
         <HeaderButtons project={project()} />
         <div class="mx-1 h-4 w-px bg-border" />
         <PrevRunButton project={project()} kind="action" name={actionName()} />
-        <Button size="sm" onClick={() => runAction(project(), actionName())}>
+        <Button size="sm" aria-label="Run action" onClick={() => runAction(project(), actionName())}>
           <Play class="!size-3.5" />
-          Run action
+          <span class="hidden md:inline">Run action</span>
         </Button>
       </div>
     </>

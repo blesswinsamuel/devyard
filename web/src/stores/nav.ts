@@ -16,6 +16,8 @@ import {
   selectedCommitHash,
 } from "~/stores/data";
 import { ensureShellWorkspace } from "~/stores/shells";
+import { setSidebarOpen } from "~/stores/app";
+import { isMobile } from "~/lib/is-mobile";
 
 // --- navigation model -------------------------------------------------------
 
@@ -226,6 +228,8 @@ function applySelection(
     setSelectedAction(action);
     setActiveView(view);
   });
+  // On phones the sidebar is a drawer; picking a target slides it away.
+  if (project && isMobile()) setSidebarOpen(false);
   // Shell workspaces are created eagerly so getters never mutate during render.
   if (project) ensureShellWorkspace(project);
 }
@@ -354,6 +358,9 @@ export function start(): () => void {
           ? { kind: "action", project, action }
           : { kind: "project", project: project! }
     );
+  } else if (isMobile()) {
+    // Nothing selected yet: lead phone users straight to the project list.
+    setSidebarOpen(true);
   }
 
   const stopPopState = listenPopState((route: RouteState) => {

@@ -68,6 +68,11 @@ export { dismiss as dismissToast };
 
 // --- overlays -------------------------------------------------------------
 
+/** Mobile-only: whether the project sidebar drawer is slid in. */
+const [sidebarOpen, setSidebarOpen] = createSignal(false);
+
+export { sidebarOpen, setSidebarOpen };
+
 const [showPortsModal, setShowPortsModal] = createSignal(false);
 /** Which scope the ports dialog was opened in: current project or all projects. */
 const [portsScope, setPortsScope] = createSignal<"project" | "all">("project");

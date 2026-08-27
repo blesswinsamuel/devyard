@@ -109,11 +109,11 @@ type Options struct {
 	// OnStateChange, when non-nil, is called whenever a service's observable
 	// state transitions (starting → running, running → exited, etc.).
 	// The callback is invoked with the service runtime lock held.
-	OnStateChange func(service string, state protocol.ServiceState)
+	OnStateChange func(service string, state *protocol.ServiceState)
 
 	// OnActionStateChange, when non-nil, is called whenever an action's
 	// runtime state changes (started, completed).
-	OnActionStateChange func(action string, state protocol.ActionState)
+	OnActionStateChange func(action string, state *protocol.ActionState)
 }
 
 // actionRuntime tracks the mutable state of a running or recently-completed
@@ -138,14 +138,14 @@ func (s *Supervisor) notifyActionStateChange(rt *actionRuntime) {
 		return
 	}
 	rt.mu.Lock()
-	state := protocol.ActionState{
+	state := &protocol.ActionState{
 		Name:       rt.name,
 		Command:    rt.command,
 		Status:     string(rt.status),
-		PID:        rt.pid,
-		ExitCode:   rt.exitCode,
-		StartedAt:  protocol.FormatTime(rt.startedAt),
-		FinishedAt: protocol.FormatTime(rt.finishedAt),
+		Pid:        int32(rt.pid),
+		ExitCode:   int32(rt.exitCode),
+		StartedAt:  protocol.TimeToProto(rt.startedAt),
+		FinishedAt: protocol.TimeToProto(rt.finishedAt),
 	}
 	rt.mu.Unlock()
 	s.opts.OnActionStateChange(rt.name, state)
@@ -274,14 +274,14 @@ func (s *Supervisor) notifyStateChange(rt *serviceRuntime) {
 		}
 	}
 
-	state := protocol.ServiceState{
+	state := &protocol.ServiceState{
 		Name:       name,
 		Status:     status,
-		PID:        pid,
-		ExitCode:   exitCode,
-		Restarts:   restarts,
-		StartedAt:  protocol.FormatTime(startedAt),
-		FinishedAt: protocol.FormatTime(finishedAt),
+		Pid:        int32(pid),
+		ExitCode:   int32(exitCode),
+		Restarts:   int32(restarts),
+		StartedAt:  protocol.TimeToProto(startedAt),
+		FinishedAt: protocol.TimeToProto(finishedAt),
 		HasHealth:  hasHealth,
 		Health:     healthStr,
 	}
@@ -1353,7 +1353,7 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 }
 
 // Ports returns a list of open listening sockets for all running services in the project.
-func (s *Supervisor) Ports() ([]protocol.PortBinding, error) {
+func (s *Supervisor) Ports() ([]*protocol.PortBinding, error) {
 	s.mu.Lock()
 	pgidToSvc := make(map[int]string)
 	var pgids []int
@@ -1387,15 +1387,15 @@ func (s *Supervisor) Ports() ([]protocol.PortBinding, error) {
 		projName = s.opts.File.Name
 	}
 
-	var results []protocol.PortBinding
+	var results []*protocol.PortBinding
 	for _, b := range bindings {
 		svcName := pgidToSvc[b.PGID]
-		results = append(results, protocol.PortBinding{
+		results = append(results, &protocol.PortBinding{
 			Project:  projName,
 			Service:  svcName,
-			PID:      b.PID,
-			IP:       b.IP,
-			Port:     b.Port,
+			Pid:      int32(b.PID),
+			Ip:       b.IP,
+			Port:     int32(b.Port),
 			Protocol: b.Protocol,
 		})
 	}
@@ -1527,11 +1527,10 @@ func (s *Supervisor) Close() error {
 	return firstErr
 }
 
-// ListActionsFromFile returns a snapshot of the actions defined in file,
-// sorted by name. It is shared with the orchestrator's stopped-project backend
-// so a stopped project reports the same actions a running supervisor does.
-func ListActionsFromFile(file *config.File) []protocol.ActionInfo {
-	if file == nil || len(file.Actions) == 0 {
+// ListActionsFromFile returns action metadata directly from a config file
+// without requiring an active supervisor.
+func ListActionsFromFile(file *config.File) []*protocol.ActionInfo {
+	if file == nil {
 		return nil
 	}
 	names := make([]string, 0, len(file.Actions))
@@ -1539,20 +1538,17 @@ func ListActionsFromFile(file *config.File) []protocol.ActionInfo {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-
-	out := make([]protocol.ActionInfo, len(names))
+	out := make([]*protocol.ActionInfo, len(names))
 	for i, name := range names {
 		act := file.Actions[name]
-		var deps []string
-		for depName := range act.Spec.DependsOn.Entries {
-			deps = append(deps, depName)
-		}
+		deps := make([]string, len(act.Spec.DependsOn.Order))
+		copy(deps, act.Spec.DependsOn.Order)
 		sort.Strings(deps)
-		out[i] = protocol.ActionInfo{
+		out[i] = &protocol.ActionInfo{
 			Name:       name,
 			Command:    act.Spec.Command,
 			WorkingDir: act.Spec.WorkingDir,
-			TTY:        act.Spec.TTY,
+			Tty:        act.Spec.TTY,
 			DependsOn:  deps,
 		}
 	}
@@ -1560,7 +1556,7 @@ func ListActionsFromFile(file *config.File) []protocol.ActionInfo {
 }
 
 // ListActions returns a snapshot of defined actions for the project.
-func (s *Supervisor) ListActions() []protocol.ActionInfo {
+func (s *Supervisor) ListActions() []*protocol.ActionInfo {
 	return ListActionsFromFile(s.opts.File)
 }
 
@@ -1568,7 +1564,7 @@ func (s *Supervisor) ListActions() []protocol.ActionInfo {
 // merged with the action's command from config. Actions with no runtime entry
 // (never run in this daemon lifetime or loaded from state.json as stopped)
 // show status "idle".
-func (s *Supervisor) ActionStates() []protocol.ActionState {
+func (s *Supervisor) ActionStates() []*protocol.ActionState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.opts.File == nil {
@@ -1579,10 +1575,10 @@ func (s *Supervisor) ActionStates() []protocol.ActionState {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out := make([]protocol.ActionState, 0, len(names))
+	out := make([]*protocol.ActionState, 0, len(names))
 	for _, name := range names {
 		act := s.opts.File.Actions[name]
-		st := protocol.ActionState{
+		st := &protocol.ActionState{
 			Name:    name,
 			Command: act.Spec.Command,
 			Status:  "idle",
@@ -1590,10 +1586,10 @@ func (s *Supervisor) ActionStates() []protocol.ActionState {
 		if rt, ok := s.actionRuntimes[name]; ok {
 			rt.mu.Lock()
 			st.Status = string(rt.status)
-			st.PID = rt.pid
-			st.ExitCode = rt.exitCode
-			st.StartedAt = protocol.FormatTime(rt.startedAt)
-			st.FinishedAt = protocol.FormatTime(rt.finishedAt)
+			st.Pid = int32(rt.pid)
+			st.ExitCode = int32(rt.exitCode)
+			st.StartedAt = protocol.TimeToProto(rt.startedAt)
+			st.FinishedAt = protocol.TimeToProto(rt.finishedAt)
 			rt.mu.Unlock()
 		}
 		out = append(out, st)

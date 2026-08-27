@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -62,21 +63,11 @@ var upCmd = &cobra.Command{
 // colored prefixes and blocks until all services have exited or been stopped.
 // Ctrl+C sends stop_project to the daemon and waits for it to complete.
 func followForeground(socket, project string, order []string) error {
+	logsCtx, cancelLogs := context.WithCancel(context.Background())
+	defer cancelLogs()
+
 	stop := make(chan struct{})
 	stopOnce := sync.Once{}
-
-	// Track follow clients so we can close them when services are done.
-	var followMu sync.Mutex
-	var followClients []*control.Client
-
-	closeAllFollows := func() {
-		followMu.Lock()
-		for _, c := range followClients {
-			_ = c.Close()
-		}
-		followClients = nil
-		followMu.Unlock()
-	}
 
 	// Signal handler: Ctrl+C → stop_project → exit.
 	sigCh := make(chan os.Signal, 1)
@@ -87,7 +78,7 @@ func followForeground(socket, project string, order []string) error {
 		select {
 		case <-sigCh:
 			stopOnce.Do(func() { close(stop) })
-			closeAllFollows()
+			cancelLogs()
 			c, err := control.Dial(socket)
 			if err != nil {
 				return
@@ -98,39 +89,33 @@ func followForeground(socket, project string, order []string) error {
 		}
 	}()
 
+	client, err := control.Dial(socket)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
 	// Follow logs for each service in its own goroutine.
 	var wg sync.WaitGroup
 	for _, svc := range order {
 		wg.Add(1)
 		go func(name string) {
 			defer wg.Done()
-			c, err := control.Dial(socket)
-			if err != nil {
-				return
-			}
-			followMu.Lock()
-			followClients = append(followClients, c)
-			followMu.Unlock()
-			_ = c.Logs(project, name, true, false, protocol.DefaultLogTail, newLogPrinter(name))
+			_ = client.LogsCtx(logsCtx, project, name, true, false, protocol.DefaultLogTail, newLogPrinter(name))
 		}(svc)
 	}
 
 	// Poll list until all services are exited or stopped.
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-stop:
-			closeAllFollows()
+			cancelLogs()
 			wg.Wait()
 			return nil
 		case <-ticker.C:
-			c, err := control.Dial(socket)
-			if err != nil {
-				continue
-			}
-			states, err := c.List(project)
-			_ = c.Close()
+			states, err := client.List(project)
 			if err != nil {
 				continue
 			}
@@ -143,7 +128,7 @@ func followForeground(socket, project string, order []string) error {
 			}
 			if allDone {
 				stopOnce.Do(func() { close(stop) })
-				closeAllFollows()
+				cancelLogs()
 			}
 		}
 	}

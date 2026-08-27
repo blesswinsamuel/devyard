@@ -7,151 +7,134 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c" //nolint:staticcheck // h2c is standard for cleartext HTTP/2 on unix sockets
+
+	localcomposev1 "github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1"
+	"github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1/localcomposev1connect"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 )
 
-// Backend is the surface the control server needs from the supervisor. The
-// interface keeps control decoupled from internal/supervisor so the same
-// server can be driven by a fake in tests, and so CLI/web clients that only
-// import the Client don't transitively pull the supervisor package.
-type Backend interface {
-	// States returns a snapshot of every service, in start order.
-	States() []protocol.ServiceState
-	// ActionStates returns a snapshot of every defined action's runtime state.
-	ActionStates() []protocol.ActionState
-	// Stop gracefully stops every service. Used by `down`.
-	Stop(ctx context.Context) error
-	// StopService stops a single service in place (no restart), used by
-	// `stop <service>`.
-	StopService(name string) error
-	// StartService starts a single stopped service in place (no-op when it is
-	// already up), used by `start <service>`.
-	StartService(name string) error
-	// KillService sends signal to a single service's process group without a
-	// grace period. signal is a signal name (e.g. "SIGKILL", "SIGTERM"); empty
-	// means SIGKILL.
-	KillService(name, signal string) error
-	// Restart stops and relaunches one service by name.
-	Restart(name string) error
-	// Top returns a CPU/memory snapshot for one service (or all when name is
-	// empty), used by the `top` command. The implementation samples process
-	// groups over a short interval and blocks for it.
-	Top(name string) ([]protocol.ServiceStat, error)
-	// ListActions returns a snapshot of defined actions for the project.
-	ListActions() []protocol.ActionInfo
-	// RunAction executes a named action with extra CLI args, streaming output to out.
-	// Returns the exit code of the action process.
-	RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error)
-	// LogPath returns the absolute path of a service's log file.
-	LogPath(name string) (string, error)
-	// PreviousLogPath returns the absolute path of a service's previous-run
-	// log file (the run immediately before the current one).
-	PreviousLogPath(name string) (string, error)
-	// ActionLogPath returns the absolute path of an action's log file.
-	ActionLogPath(name string) (string, error)
-	// ActionPreviousLogPath returns the absolute path of an action's previous-run log file.
-	ActionPreviousLogPath(name string) (string, error)
-	// Ports returns a list of open listening sockets for services in the project.
-	Ports() ([]protocol.PortBinding, error)
-}
-
-// Server is the Unix-socket control server. It accepts connections from
-// CLI/web clients, dispatches each request to the MultiBackend, and
-// streams responses back as length-prefixed JSON frames. Each connection serves
-// a single request; streaming requests (Logs follow) hold the connection until
-// the stream ends or the client disconnects.
+// Server is the Unix-socket control server powered by ConnectRPC.
 type Server struct {
 	socket  string
 	backend MultiBackend
 
 	mu          sync.Mutex
 	ln          net.Listener
+	httpServer  *http.Server
 	closed      bool
-	subscribers map[chan protocol.Response]struct{}
+	subscribers map[chan *localcomposev1.Event]struct{}
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
-	wg       sync.WaitGroup
 }
 
 // NewServer creates a control server that will listen on socket when
-// ListenAndServe is called. The socket's parent directory must already exist
-// (call project.Locations.MkdirAll first).
+// ListenAndServe is called.
 func NewServer(socket string, backend MultiBackend) *Server {
 	srv := &Server{
 		socket:      socket,
 		backend:     backend,
-		subscribers: make(map[chan protocol.Response]struct{}),
+		subscribers: make(map[chan *localcomposev1.Event]struct{}),
 		stopCh:      make(chan struct{}),
 	}
 	if backend != nil {
-		backend.SetOnStateChange(func(project string, state protocol.ServiceState) {
-			srv.broadcastEvent(protocol.Response{
-				Kind:        protocol.KindEventStateChanged,
-				Project:     project,
-				Service:     state.Name,
-				SingleState: &state,
+		backend.SetOnStateChange(func(project string, state *protocol.ServiceState) {
+			srv.broadcastEvent(&localcomposev1.Event{
+				Event: &localcomposev1.Event_ServiceStateChanged{
+					ServiceStateChanged: &localcomposev1.ServiceStateChangedEvent{
+						Project: project,
+						State:   state,
+					},
+				},
 			})
 		})
-		backend.SetOnActionStateChange(func(project string, state protocol.ActionState) {
-			srv.broadcastEvent(protocol.Response{
-				Kind:              protocol.KindEventActionStateChanged,
-				Project:           project,
-				Action:            state.Name,
-				SingleActionState: &state,
+		backend.SetOnActionStateChange(func(project string, state *protocol.ActionState) {
+			srv.broadcastEvent(&localcomposev1.Event{
+				Event: &localcomposev1.Event_ActionStateChanged{
+					ActionStateChanged: &localcomposev1.ActionStateChangedEvent{
+						Project: project,
+						State:   state,
+					},
+				},
 			})
 		})
 		backend.SetOnGitChange(func(project string) {
-			srv.broadcastEvent(protocol.Response{
-				Kind:    protocol.KindEventGitChanged,
-				Project: project,
+			srv.broadcastEvent(&localcomposev1.Event{
+				Event: &localcomposev1.Event_GitChanged{
+					GitChanged: &localcomposev1.GitChangedEvent{
+						Project: project,
+					},
+				},
 			})
 		})
 	}
 	return srv
 }
 
-func (s *Server) broadcastEvent(resp protocol.Response) {
+func (s *Server) broadcastEvent(event *localcomposev1.Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for ch := range s.subscribers {
+	for sub := range s.subscribers {
 		select {
-		case ch <- resp:
+		case sub <- event:
 		default:
 		}
 	}
 }
 
-// ListenAndServe binds the Unix socket and starts accepting connections in a
-// background goroutine. It returns once the listener is ready. Call Close to
-// stop accepting and wait for in-flight handlers to finish.
+// ListenAndServe starts serving ConnectRPC over HTTP/2 on the Unix socket.
 func (s *Server) ListenAndServe() error {
-	// A stale socket from a crashed previous run would block Listen.
 	_ = os.Remove(s.socket)
 	ln, err := net.Listen("unix", s.socket)
 	if err != nil {
 		return fmt.Errorf("control: listen %s: %w", s.socket, err)
 	}
+
+	mux := http.NewServeMux()
+	path, handler := localcomposev1connect.NewDaemonServiceHandler(s)
+	mux.Handle(path, handler)
+
+	//nolint:staticcheck // h2c is standard for cleartext HTTP/2 on unix sockets
+	httpServer := &http.Server{
+		Handler: h2c.NewHandler(mux, &http2.Server{}),
+	}
+
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		_ = ln.Close()
+		return errors.New("server is closed")
+	}
 	s.ln = ln
+	s.httpServer = httpServer
 	s.mu.Unlock()
 
-	s.wg.Add(1)
-	go s.acceptLoop(ln)
+	go func() {
+		_ = httpServer.Serve(ln)
+	}()
 	return nil
 }
 
-// Addr returns the socket path the server is bound to, useful for tests.
-func (s *Server) Addr() string { return s.socket }
+// Addr returns the Unix socket path.
+func (s *Server) Addr() string {
+	return s.socket
+}
 
-// Close stops accepting new connections, signals streaming handlers to wind
-// down, waits for in-flight handlers to return, and removes the socket file.
-// It is safe to call multiple times.
+// Socket returns the Unix socket path.
+func (s *Server) Socket() string {
+	return s.socket
+}
+
+// Close closes the server listener and cancels all active streams.
 func (s *Server) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -159,515 +142,273 @@ func (s *Server) Close() error {
 		return nil
 	}
 	s.closed = true
-	ln := s.ln
+	s.stopOnce.Do(func() { close(s.stopCh) })
+
+	var err error
+	if s.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		err = s.httpServer.Shutdown(ctx)
+		cancel()
+	} else if s.ln != nil {
+		err = s.ln.Close()
+	}
+
+	for sub := range s.subscribers {
+		close(sub)
+	}
+	s.subscribers = make(map[chan *localcomposev1.Event]struct{})
 	s.mu.Unlock()
 
-	s.stopOnce.Do(func() { close(s.stopCh) })
-	var err error
-	if ln != nil {
-		err = ln.Close()
-	}
-	s.wg.Wait()
 	_ = os.Remove(s.socket)
 	return err
 }
 
-func (s *Server) acceptLoop(ln net.Listener) {
-	defer s.wg.Done()
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			s.mu.Lock()
-			closed := s.closed
-			s.mu.Unlock()
-			if closed {
-				return
-			}
-			// Transient accept error: brief backoff then retry.
-			time.Sleep(5 * time.Millisecond)
-			continue
-		}
-		s.wg.Add(1)
-		go s.serveConn(conn)
-	}
+// Handler returns the HTTP handler path and handler for mounting on external HTTP servers (e.g. web UI server).
+func (s *Server) Handler() (string, http.Handler) {
+	return localcomposev1connect.NewDaemonServiceHandler(s)
 }
 
-// WaitForActionLog resolves an action's log path, waiting for the log file to
-// exist. An action only creates its log file on the first run, so following an
-// action that has not run yet must wait for the file rather than erroring. The
-// action must be defined in the current config; unknown actions fail
-// immediately instead of polling forever. Cancelling ctx aborts the wait.
-func WaitForActionLog(ctx context.Context, b Backend, action string) (string, error) {
-	known := false
-	for _, a := range b.ListActions() {
-		if a.Name == action {
-			known = true
-			break
-		}
-	}
-	if !known {
-		return "", fmt.Errorf("action %q not found", action)
-	}
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if path, err := b.ActionLogPath(action); err == nil {
-			return path, nil
-		}
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-ticker.C:
-		}
-	}
+// -----------------------------------------------------------------------------
+// DaemonServiceHandler Implementation
+// -----------------------------------------------------------------------------
+
+func (s *Server) ListProjects(ctx context.Context, req *connect.Request[localcomposev1.ListProjectsRequest]) (*connect.Response[localcomposev1.ListProjectsResponse], error) {
+	projects := s.backend.ListProjects()
+	return connect.NewResponse(&localcomposev1.ListProjectsResponse{
+		Projects: projects,
+	}), nil
 }
 
-// serveConn handles one request on one connection, then closes it. Streaming
-// requests (Logs follow) block here until the stream ends, the client
-// disconnects (write error), or the server is closed (stopCh).
-func (s *Server) serveConn(conn net.Conn) {
-	defer s.wg.Done()
-	defer func() { _ = conn.Close() }()
+func (s *Server) StartProject(ctx context.Context, req *connect.Request[localcomposev1.StartProjectRequest]) (*connect.Response[localcomposev1.StartProjectResponse], error) {
+	configPath := req.Msg.ConfigPath
+	if configPath == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("start_project: config_path is required"))
+	}
+	removeOrphans := true
+	if req.Msg.RemoveOrphans != nil {
+		removeOrphans = *req.Msg.RemoveOrphans
+	}
+	if err := s.backend.StartProject(configPath, req.Msg.Build, req.Msg.EnvFile, removeOrphans); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.StartProjectResponse{}), nil
+}
 
-	var req protocol.Request
-	if err := protocol.ReadFrame(conn, &req); err != nil {
-		if !errors.Is(err, io.EOF) {
-			_ = protocol.WriteFrame(conn, protocol.Response{
-				Kind:  protocol.KindError,
-				Error: err.Error(),
-			})
+func (s *Server) StopProject(ctx context.Context, req *connect.Request[localcomposev1.StopProjectRequest]) (*connect.Response[localcomposev1.StopProjectResponse], error) {
+	if err := s.backend.StopProject(req.Msg.Project); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.StopProjectResponse{}), nil
+}
+
+func (s *Server) RemoveProject(ctx context.Context, req *connect.Request[localcomposev1.RemoveProjectRequest]) (*connect.Response[localcomposev1.RemoveProjectResponse], error) {
+	if err := s.backend.RemoveProject(req.Msg.Project); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.RemoveProjectResponse{}), nil
+}
+
+func (s *Server) DaemonStatus(ctx context.Context, req *connect.Request[localcomposev1.DaemonStatusRequest]) (*connect.Response[localcomposev1.DaemonStatusResponse], error) {
+	info, err := s.backend.DaemonStatus()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.DaemonStatusResponse{
+		Info: info,
+	}), nil
+}
+
+func (s *Server) StopDaemon(ctx context.Context, req *connect.Request[localcomposev1.StopDaemonRequest]) (*connect.Response[localcomposev1.StopDaemonResponse], error) {
+	if err := s.backend.StopDaemon(); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.StopDaemonResponse{}), nil
+}
+
+func (s *Server) RestartDaemon(ctx context.Context, req *connect.Request[localcomposev1.RestartDaemonRequest]) (*connect.Response[localcomposev1.RestartDaemonResponse], error) {
+	if err := s.backend.RestartDaemon(); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.RestartDaemonResponse{}), nil
+}
+
+func (s *Server) ListServices(ctx context.Context, req *connect.Request[localcomposev1.ListServicesRequest]) (*connect.Response[localcomposev1.ListServicesResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	return connect.NewResponse(&localcomposev1.ListServicesResponse{
+		States: b.States(),
+	}), nil
+}
+
+func (s *Server) StartService(ctx context.Context, req *connect.Request[localcomposev1.StartServiceRequest]) (*connect.Response[localcomposev1.StartServiceResponse], error) {
+	if req.Msg.Service == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service is required"))
+	}
+	if err := s.backend.StartService(req.Msg.Project, req.Msg.Service); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.StartServiceResponse{}), nil
+}
+
+func (s *Server) StopService(ctx context.Context, req *connect.Request[localcomposev1.StopServiceRequest]) (*connect.Response[localcomposev1.StopServiceResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	if req.Msg.Service == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service is required"))
+	}
+	if err := b.StopService(req.Msg.Service); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.StopServiceResponse{}), nil
+}
+
+func (s *Server) KillService(ctx context.Context, req *connect.Request[localcomposev1.KillServiceRequest]) (*connect.Response[localcomposev1.KillServiceResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	sig := req.Msg.Signal
+	if sig == "" {
+		sig = "SIGKILL"
+	}
+	if req.Msg.Service == "" {
+		for _, st := range b.States() {
+			_ = b.KillService(st.Name, sig)
 		}
-		return
+	} else {
+		if err := b.KillService(req.Msg.Service, sig); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
+		}
 	}
-	s.dispatch(context.Background(), conn, req)
+	return connect.NewResponse(&localcomposev1.KillServiceResponse{}), nil
 }
 
-// dispatch routes a request to the backend and writes responses. Any error
-// not already communicated to the client is sent as a KindError frame.
-func (s *Server) dispatch(ctx context.Context, w io.Writer, req protocol.Request) {
-	switch req.Kind {
-	case protocol.KindList:
-		s.handleList(w, req)
-	case protocol.KindStop:
-		s.handleStop(ctx, w, req)
-	case protocol.KindStopService:
-		s.handleStopService(w, req)
-	case protocol.KindStartService:
-		s.handleStartService(w, req)
-	case protocol.KindKillService:
-		s.handleKillService(w, req)
-	case protocol.KindRestart:
-		s.handleRestart(w, req)
-	case protocol.KindTop:
-		s.handleTop(w, req)
-	case protocol.KindLogs:
-		s.handleLogs(ctx, w, req)
-	case protocol.KindListProjects:
-		s.handleListProjects(w)
-	case protocol.KindStartProject:
-		s.handleStartProject(w, req)
-	case protocol.KindStopProject:
-		s.handleStopProject(w, req)
-	case protocol.KindRemoveProject:
-		s.handleRemoveProject(w, req)
-	case protocol.KindStopDaemon:
-		s.handleStopDaemon(w)
-	case protocol.KindDaemonStatus:
-		s.handleDaemonStatus(w)
-	case protocol.KindRestartDaemon:
-		s.handleRestartDaemon(w)
-	case protocol.KindListActions:
-		s.handleListActions(w, req)
-	case protocol.KindListActionStates:
-		s.handleListActionStates(w, req)
-	case protocol.KindRunAction:
-		s.handleRunAction(ctx, w, req)
-	case protocol.KindGitLog:
-		s.handleGitLog(w, req)
-	case protocol.KindGitDiff:
-		s.handleGitDiff(w, req)
-	case protocol.KindGitCommit:
-		s.handleGitCommit(w, req)
-	case protocol.KindGitStage:
-		s.handleGitStage(w, req)
-	case protocol.KindGitPush:
-		s.handleGitPush(w, req)
-	case protocol.KindGitPull:
-		s.handleGitPull(w, req)
-	case protocol.KindGitFetch:
-		s.handleGitFetch(w, req)
-	case protocol.KindSubscribeEvents:
-		s.handleSubscribeEvents(ctx, w)
-	case protocol.KindListPorts:
-		s.handlePorts(w, req)
-	default:
-		_ = writeError(w, fmt.Sprintf("unknown request kind %q", req.Kind))
+func (s *Server) Restart(ctx context.Context, req *connect.Request[localcomposev1.RestartRequest]) (*connect.Response[localcomposev1.RestartResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-}
-
-func (s *Server) handleSubscribeEvents(ctx context.Context, w io.Writer) {
-	ch := make(chan protocol.Response, 64)
-	s.mu.Lock()
-	s.subscribers[ch] = struct{}{}
-	s.mu.Unlock()
-
-	defer func() {
-		s.mu.Lock()
-		delete(s.subscribers, ch)
-		s.mu.Unlock()
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-s.stopCh:
-			return
-		case resp, ok := <-ch:
-			if !ok {
-				return
-			}
-			if err := protocol.WriteFrame(w, resp); err != nil {
-				return
+	if req.Msg.Service == "" {
+		for _, st := range b.States() {
+			if err := b.Restart(st.Name); err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err)
 			}
 		}
-	}
-}
-func (s *Server) handleList(w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	states := b.States()
-	if err := protocol.WriteFrame(w, protocol.Response{
-		Kind:   protocol.KindStates,
-		States: states,
-	}); err != nil {
-		_ = err
-	}
-}
-
-func (s *Server) handleStop(ctx context.Context, w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	if err := b.Stop(ctx); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleStopService(w io.Writer, req protocol.Request) {
-	if req.Service == "" {
-		_ = writeError(w, "stop_service: service is required")
-		return
-	}
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	if err := b.StopService(req.Service); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleStartService(w io.Writer, req protocol.Request) {
-	if req.Service == "" {
-		_ = writeError(w, "start_service: service is required")
-		return
-	}
-	if err := s.backend.StartService(req.Project, req.Service); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleKillService(w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	if req.Service != "" {
-		if err := b.KillService(req.Service, req.Signal); err != nil {
-			_ = writeError(w, err.Error())
-			return
-		}
-		_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-		return
-	}
-	// Kill all: iterate the current snapshot in start order.
-	for _, st := range b.States() {
-		if err := b.KillService(st.Name, req.Signal); err != nil {
-			_ = writeError(w, fmt.Sprintf("kill %s: %v", st.Name, err))
-			return
+	} else {
+		if err := b.Restart(req.Msg.Service); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
+	return connect.NewResponse(&localcomposev1.RestartResponse{}), nil
 }
 
-func (s *Server) handleRestart(w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
+func (s *Server) Top(ctx context.Context, req *connect.Request[localcomposev1.TopRequest]) (*connect.Response[localcomposev1.TopResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	if req.Service != "" {
-		if err := b.Restart(req.Service); err != nil {
-			_ = writeError(w, err.Error())
-			return
-		}
-		_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-		return
-	}
-	// Restart all: iterate the current snapshot in start order.
-	for _, st := range b.States() {
-		if err := b.Restart(st.Name); err != nil {
-			_ = writeError(w, fmt.Sprintf("restart %s: %v", st.Name, err))
-			return
-		}
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleTop(w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
+	stats, err := b.Top(req.Msg.Service)
 	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	stats, err := b.Top(req.Service)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	if err := protocol.WriteFrame(w, protocol.Response{
-		Kind:  protocol.KindStats,
+	return connect.NewResponse(&localcomposev1.TopResponse{
 		Stats: stats,
-	}); err != nil {
-		_ = err
-	}
+	}), nil
 }
 
-func (s *Server) handlePorts(w io.Writer, req protocol.Request) {
-	ports, err := s.backend.Ports(req.Project)
+func (s *Server) Ports(ctx context.Context, req *connect.Request[localcomposev1.PortsRequest]) (*connect.Response[localcomposev1.PortsResponse], error) {
+	ports, err := s.backend.Ports(req.Msg.Project)
 	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	if err := protocol.WriteFrame(w, protocol.Response{
-		Kind:  protocol.KindPorts,
+	return connect.NewResponse(&localcomposev1.PortsResponse{
 		Ports: ports,
-	}); err != nil {
-		_ = err
-	}
+	}), nil
 }
 
-func (s *Server) handleLogs(ctx context.Context, w io.Writer, req protocol.Request) {
-	target := req.Service
-	if target == "" {
-		target = req.Action
-	}
-	if target == "" {
-		_ = writeError(w, "logs: service or action is required")
-		return
-	}
-	b, err := s.backend.ProjectBackend(req.Project)
+func (s *Server) ListActions(ctx context.Context, req *connect.Request[localcomposev1.ListActionsRequest]) (*connect.Response[localcomposev1.ListActionsResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	return connect.NewResponse(&localcomposev1.ListActionsResponse{
+		Actions: b.ListActions(),
+	}), nil
+}
+
+func (s *Server) ListActionStates(ctx context.Context, req *connect.Request[localcomposev1.ListActionStatesRequest]) (*connect.Response[localcomposev1.ListActionStatesResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	return connect.NewResponse(&localcomposev1.ListActionStatesResponse{
+		States: b.ActionStates(),
+	}), nil
+}
+
+func (s *Server) Logs(ctx context.Context, req *connect.Request[localcomposev1.LogsRequest], stream *connect.ServerStream[localcomposev1.LogChunk]) error {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	if err != nil {
+		return connect.NewError(connect.CodeNotFound, err)
 	}
 
-	// Following an action that has never run must wait for its log file to be
-	// created by the first run instead of erroring. Cancel the wait when the
-	// daemon shuts down so it doesn't hold the connection open forever.
-	waitCtx, cancel := context.WithCancel(ctx)
-	stop := s.stopCh
-	go func() {
-		select {
-		case <-stop:
-			cancel()
-		case <-waitCtx.Done():
-		}
-	}()
+	target := req.Msg.Service
+	if target == "" {
+		target = req.Msg.Action
+	}
+	if target == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("service or action is required"))
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	var path string
 	switch {
-	case req.Action != "" && req.Previous:
-		path, err = b.ActionPreviousLogPath(req.Action)
-	case req.Action != "" && req.Follow:
-		path, err = WaitForActionLog(waitCtx, b, req.Action)
-	case req.Action != "":
-		path, err = b.ActionLogPath(req.Action)
-	case req.Previous:
-		path, err = b.PreviousLogPath(req.Service)
+	case req.Msg.Action != "" && req.Msg.Previous:
+		path, err = b.ActionPreviousLogPath(req.Msg.Action)
+	case req.Msg.Action != "" && req.Msg.Follow:
+		path, err = WaitForActionLog(waitCtx, b, req.Msg.Action)
+	case req.Msg.Action != "":
+		path, err = b.ActionLogPath(req.Msg.Action)
+	case req.Msg.Previous:
+		path, err = b.PreviousLogPath(req.Msg.Service)
 	default:
-		path, err = b.LogPath(req.Service)
+		path, err = b.LogPath(req.Msg.Service)
 	}
 	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+		return connect.NewError(connect.CodeNotFound, err)
 	}
-	if req.Previous {
+	if req.Msg.Previous {
 		if _, err := os.Stat(path); err != nil {
-			_ = writeError(w, fmt.Sprintf("logs: no previous run for %q", target))
-			return
+			return connect.NewError(connect.CodeNotFound, fmt.Errorf("logs: no previous run for %q", target))
 		}
 	}
-	// Follow tails the live file, which rotates between spawns; the previous
-	// log is a completed run, so rotation tracking is unnecessary for it.
-	if err := streamLogs(w, path, req.Follow, !req.Previous, req.Tail, s.stopCh, req.Project, target); err != nil {
-		_ = writeError(w, err.Error())
-	}
+
+	return streamLogsConnect(ctx, path, req.Msg.Follow, !req.Msg.Previous, int(req.Msg.Tail), s.stopCh, req.Msg.Project, req.Msg.Service, req.Msg.Action, stream)
 }
 
-func (s *Server) handleListProjects(w io.Writer) {
-	projects := s.backend.ListProjects()
-	if err := protocol.WriteFrame(w, protocol.Response{
-		Kind:     protocol.KindProjects,
-		Projects: projects,
-	}); err != nil {
-		_ = err
-	}
-}
-
-func (s *Server) handleStartProject(w io.Writer, req protocol.Request) {
-	if req.ConfigPath == "" && req.Project != "" {
-		for _, p := range s.backend.ListProjects() {
-			if p.Name == req.Project {
-				req.ConfigPath = p.ConfigPath
-				break
-			}
-		}
-	}
-	if req.ConfigPath == "" {
-		_ = writeError(w, "start_project: config_path is required")
-		return
-	}
-	removeOrphans := true
-	if req.RemoveOrphans != nil {
-		removeOrphans = *req.RemoveOrphans
-	}
-	if err := s.backend.StartProject(req.ConfigPath, req.Build, req.EnvFile, removeOrphans); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleStopProject(w io.Writer, req protocol.Request) {
-	if req.Project == "" {
-		_ = writeError(w, "stop_project: project is required")
-		return
-	}
-	if err := s.backend.StopProject(req.Project); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleRemoveProject(w io.Writer, req protocol.Request) {
-	if req.Project == "" {
-		_ = writeError(w, "remove_project: project is required")
-		return
-	}
-	if err := s.backend.RemoveProject(req.Project); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleStopDaemon(w io.Writer) {
-	if err := s.backend.StopDaemon(); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-func (s *Server) handleDaemonStatus(w io.Writer) {
-	info, err := s.backend.DaemonStatus()
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:       protocol.KindDaemonInfo,
-		DaemonInfo: info,
-	})
-}
-
-func (s *Server) handleRestartDaemon(w io.Writer) {
-	if err := s.backend.RestartDaemon(); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-// writeError sends a KindError frame, swallowing the error (the connection is
-// usually already broken by the time we get here).
-func writeError(w io.Writer, msg string) error {
-	return protocol.WriteFrame(w, protocol.Response{
-		Kind:  protocol.KindError,
-		Error: msg,
-	})
-}
-
-// followPollInterval is how often the follow tailer checks for new log content.
 const followPollInterval = 100 * time.Millisecond
 
-// streamLogs reads existing content of path (honoring tail), emitting one
-// KindLogContent frame, then (if follow) tails the file for new lines until
-// the client disconnects (write error) or stop is closed. A final KindDone
-// frame is sent when the stream ends cleanly. Rotated/truncated files are
-// handled by reopening or rewinding to offset 0 when the file at path no
-// longer matches the open handle (trackRotation) or the read offset is past
-// the file size.
-func streamLogs(w io.Writer, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service string) error {
+func streamLogsConnect(ctx context.Context, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service, action string, stream *connect.ServerStream[localcomposev1.LogChunk]) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
 
-	if err := tailFile(w, f, path, follow, trackRotation, tail, stop, project, service); err != nil {
-		return err
-	}
-	return protocol.WriteFrame(w, protocol.Response{Kind: protocol.KindDone})
-}
-
-// tailFile sends existing file content as a single bulk frame (last `tail`
-// lines when tail > 0, else all subject to MaxLogContentBytes) and optionally
-// keeps tailing for appended content. During the follow phase, incomplete
-// trailing bytes (no newline) are withheld until a newline arrives, so each
-// frame is a complete line.
-func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service string) error {
-	// Close the handle the loop ends up on (possibly a reopened one) so a
-	// rotated file isn't leaked when the stream finishes.
-	defer func() { _ = f.Close() }()
-
-	// Send history in one frame so the client can render it instantly without
-	// a line-by-line scroll animation.
 	content, err := ReadLogHistory(f, tail)
 	if err != nil {
 		return err
 	}
-	if err := protocol.WriteFrame(w, protocol.Response{
-		Kind:    protocol.KindLogContent,
+	if err := stream.Send(&localcomposev1.LogChunk{
 		Project: project,
 		Service: service,
+		Action:  action,
 		Content: string(content),
 	}); err != nil {
 		return err
@@ -677,36 +418,40 @@ func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, 
 		return nil
 	}
 
-	// Follow: poll for new content until stop or the writer errors.
 	var leftover []byte
 	buf := make([]byte, 4096)
 
 	flush := func(chunk []byte) error {
 		data := append(leftover, chunk...)
 		leftover = leftover[:0]
+		var lines []string
 		for {
 			i := bytes.IndexByte(data, '\n')
 			if i < 0 {
 				leftover = append(leftover, data...)
-				return nil
+				break
 			}
 			line := string(data[:i])
 			data = data[i+1:]
-			if err := protocol.WriteFrame(w, protocol.Response{
-				Kind:    protocol.KindLogLine,
+			lines = append(lines, line)
+		}
+		if len(lines) > 0 {
+			return stream.Send(&localcomposev1.LogChunk{
 				Project: project,
 				Service: service,
-				Line:    line,
-			}); err != nil {
-				return err
-			}
+				Action:  action,
+				Lines:   lines,
+			})
 		}
+		return nil
 	}
 
 	ticker := time.NewTicker(followPollInterval)
 	defer ticker.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			return nil
 		case <-stop:
 			return nil
 		case <-ticker.C:
@@ -718,13 +463,11 @@ func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, 
 				if nf != f {
 					f = nf
 					leftover = leftover[:0]
-					// The previous run's log ended and a fresh one began; tell
-					// frontends with a scrollback buffer to reset their view so
-					// they show only the new run.
-					if err := protocol.WriteFrame(w, protocol.Response{
-						Kind:    protocol.KindLogRotated,
+					if err := stream.Send(&localcomposev1.LogChunk{
 						Project: project,
 						Service: service,
+						Action:  action,
+						Rotated: true,
 					}); err != nil {
 						return err
 					}
@@ -753,11 +496,6 @@ func tailFile(w io.Writer, f *os.File, path string, follow, trackRotation bool, 
 	}
 }
 
-// ReopenIfRotated reports whether the file at path is no longer the same file
-// as f (e.g. the supervisor rotated <name>.log to <name>.prev.log and created
-// a fresh <name>.log for the next run) and, if so, returns a handle to the
-// new file positioned at the start. Otherwise it returns f unchanged. Shared
-// with the web UI's log tailer, which faces the same rotation.
 func ReopenIfRotated(f *os.File, path string) (*os.File, error) {
 	cur, err := os.Stat(path)
 	if err != nil {
@@ -781,8 +519,6 @@ func ReopenIfRotated(f *os.File, path string) (*os.File, error) {
 	return nf, nil
 }
 
-// rewindIfRotated reports whether the file has been truncated/rotated
-// (current read offset past end-of-file) and, if so, seeks back to offset 0.
 func rewindIfRotated(f *os.File) (bool, error) {
 	off, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
@@ -801,131 +537,29 @@ func rewindIfRotated(f *os.File) (bool, error) {
 	return false, nil
 }
 
-func (s *Server) handleListActions(w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+func WaitForActionLog(ctx context.Context, b Backend, action string) (string, error) {
+	for {
+		path, err := b.ActionLogPath(action)
+		if err == nil {
+			return path, nil
+		}
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("action %q log did not appear: %w", action, ctx.Err())
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
-	actions := b.ListActions()
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:    protocol.KindActions,
-		Actions: actions,
-	})
 }
 
-func (s *Server) handleListActionStates(w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	states := b.ActionStates()
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:         protocol.KindActionStates,
-		ActionStates: states,
-	})
-}
-
-func (s *Server) handleGitLog(w io.Writer, req protocol.Request) {
-	commits, branches, tags, stashes, err := s.backend.GitLog(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:        protocol.KindGitCommits,
-		Project:     req.Project,
-		GitCommits:  commits,
-		GitBranches: branches,
-		GitTags:     tags,
-		GitStashes:  stashes,
-	})
-}
-
-func (s *Server) handleGitDiff(w io.Writer, req protocol.Request) {
-	diffRes, err := s.backend.GitDiff(req.Project, req.Hash, req.ContextLines)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:    protocol.KindGitDiffData,
-		Project: req.Project,
-		GitDiff: diffRes,
-	})
-}
-
-func (s *Server) handleGitCommit(w io.Writer, req protocol.Request) {
-	if err := s.backend.GitCommit(req.Project, req.Message); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:    protocol.KindDone,
-		Project: req.Project,
-	})
-}
-
-func (s *Server) handleGitStage(w io.Writer, req protocol.Request) {
-	if err := s.backend.GitStage(req.Project, req.Path, req.StageAll, req.Unstage); err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:    protocol.KindDone,
-		Project: req.Project,
-	})
-}
-
-func (s *Server) handleGitPush(w io.Writer, req protocol.Request) {
-	output, err := s.backend.GitPush(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:      protocol.KindDone,
-		Project:   req.Project,
-		GitOutput: output,
-	})
-}
-
-func (s *Server) handleGitPull(w io.Writer, req protocol.Request) {
-	output, err := s.backend.GitPull(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:      protocol.KindDone,
-		Project:   req.Project,
-		GitOutput: output,
-	})
-}
-
-func (s *Server) handleGitFetch(w io.Writer, req protocol.Request) {
-	output, err := s.backend.GitFetch(req.Project)
-	if err != nil {
-		_ = writeError(w, err.Error())
-		return
-	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:      protocol.KindDone,
-		Project:   req.Project,
-		GitOutput: output,
-	})
-}
-
-type actionLineFrameWriter struct {
-	w       io.Writer
+type actionConnectWriter struct {
 	project string
 	action  string
+	stream  *connect.ServerStream[localcomposev1.ActionOutputChunk]
 	buf     bytes.Buffer
 	mu      sync.Mutex
 }
 
-func (l *actionLineFrameWriter) Write(p []byte) (int, error) {
+func (l *actionConnectWriter) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	n := len(p)
@@ -937,8 +571,7 @@ func (l *actionLineFrameWriter) Write(p []byte) (int, error) {
 			break
 		}
 		line = strings.TrimRight(line, "\r\n")
-		_ = protocol.WriteFrame(l.w, protocol.Response{
-			Kind:    protocol.KindLogLine,
+		_ = l.stream.Send(&localcomposev1.ActionOutputChunk{
 			Project: l.project,
 			Action:  l.action,
 			Line:    line,
@@ -947,15 +580,14 @@ func (l *actionLineFrameWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func (l *actionLineFrameWriter) Flush() {
+func (l *actionConnectWriter) Flush() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.buf.Len() > 0 {
 		line := strings.TrimRight(l.buf.String(), "\r\n")
 		l.buf.Reset()
 		if line != "" {
-			_ = protocol.WriteFrame(l.w, protocol.Response{
-				Kind:    protocol.KindLogLine,
+			_ = l.stream.Send(&localcomposev1.ActionOutputChunk{
 				Project: l.project,
 				Action:  l.action,
 				Line:    line,
@@ -964,25 +596,121 @@ func (l *actionLineFrameWriter) Flush() {
 	}
 }
 
-func (s *Server) handleRunAction(ctx context.Context, w io.Writer, req protocol.Request) {
-	b, err := s.backend.ProjectBackend(req.Project)
+func (s *Server) RunAction(ctx context.Context, req *connect.Request[localcomposev1.RunActionRequest], stream *connect.ServerStream[localcomposev1.ActionOutputChunk]) error {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+		return connect.NewError(connect.CodeNotFound, err)
 	}
-	writer := &actionLineFrameWriter{
-		w:       w,
-		project: req.Project,
-		action:  req.Action,
+	writer := &actionConnectWriter{
+		project: req.Msg.Project,
+		action:  req.Msg.Action,
+		stream:  stream,
 	}
-	exitCode, err := b.RunAction(ctx, req.Action, req.Args, writer)
+	exitCode, err := b.RunAction(ctx, req.Msg.Action, req.Msg.Args, writer)
 	writer.Flush()
 	if err != nil {
-		_ = writeError(w, err.Error())
-		return
+		return connect.NewError(connect.CodeInternal, err)
 	}
-	_ = protocol.WriteFrame(w, protocol.Response{
-		Kind:           protocol.KindDone,
-		ActionExitCode: &exitCode,
+	ec := int32(exitCode)
+	return stream.Send(&localcomposev1.ActionOutputChunk{
+		Project:  req.Msg.Project,
+		Action:   req.Msg.Action,
+		ExitCode: &ec,
 	})
+}
+
+func (s *Server) GitLog(ctx context.Context, req *connect.Request[localcomposev1.GitLogRequest]) (*connect.Response[localcomposev1.GitLogResponse], error) {
+	commits, branches, tags, stashes, err := s.backend.GitLog(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitLogResponse{
+		Commits:  commits,
+		Branches: branches,
+		Tags:     tags,
+		Stashes:  stashes,
+	}), nil
+}
+
+func (s *Server) GitDiff(ctx context.Context, req *connect.Request[localcomposev1.GitDiffRequest]) (*connect.Response[localcomposev1.GitDiffResponse], error) {
+	diffRes, err := s.backend.GitDiff(req.Msg.Project, req.Msg.Hash, req.Msg.Path, int(req.Msg.ContextLines))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitDiffResponse{
+		Result: diffRes,
+	}), nil
+}
+
+func (s *Server) GitCommit(ctx context.Context, req *connect.Request[localcomposev1.GitCommitRequest]) (*connect.Response[localcomposev1.GitCommitResponse], error) {
+	if err := s.backend.GitCommit(req.Msg.Project, req.Msg.Message); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitCommitResponse{}), nil
+}
+
+func (s *Server) GitStage(ctx context.Context, req *connect.Request[localcomposev1.GitStageRequest]) (*connect.Response[localcomposev1.GitStageResponse], error) {
+	if err := s.backend.GitStage(req.Msg.Project, req.Msg.Path, req.Msg.StageAll, req.Msg.Unstage); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitStageResponse{}), nil
+}
+
+func (s *Server) GitPush(ctx context.Context, req *connect.Request[localcomposev1.GitPushRequest]) (*connect.Response[localcomposev1.GitPushResponse], error) {
+	output, err := s.backend.GitPush(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitPushResponse{
+		Output: output,
+	}), nil
+}
+
+func (s *Server) GitPull(ctx context.Context, req *connect.Request[localcomposev1.GitPullRequest]) (*connect.Response[localcomposev1.GitPullResponse], error) {
+	output, err := s.backend.GitPull(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitPullResponse{
+		Output: output,
+	}), nil
+}
+
+func (s *Server) GitFetch(ctx context.Context, req *connect.Request[localcomposev1.GitFetchRequest]) (*connect.Response[localcomposev1.GitFetchResponse], error) {
+	output, err := s.backend.GitFetch(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitFetchResponse{
+		Output: output,
+	}), nil
+}
+
+func (s *Server) SubscribeEvents(ctx context.Context, req *connect.Request[localcomposev1.SubscribeEventsRequest], stream *connect.ServerStream[localcomposev1.Event]) error {
+	ch := make(chan *localcomposev1.Event, 64)
+	s.mu.Lock()
+	s.subscribers[ch] = struct{}{}
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.subscribers, ch)
+		s.mu.Unlock()
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-s.stopCh:
+			return nil
+		case ev, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := stream.Send(ev); err != nil {
+				return err
+			}
+		}
+	}
 }

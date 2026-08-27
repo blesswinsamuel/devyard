@@ -54,12 +54,7 @@ var psCmd = &cobra.Command{
 			}
 			var allStates []projState
 			for _, p := range projects {
-				c, err := control.Dial(socket)
-				if err != nil {
-					continue
-				}
-				states, err := c.List(p.Name)
-				_ = c.Close()
+				states, err := client.List(p.Name)
 				if err != nil {
 					continue
 				}
@@ -84,7 +79,7 @@ var psCmd = &cobra.Command{
 }
 
 // printStates renders the service snapshot for a single project as an aligned table.
-func printStates(states []protocol.ServiceState) {
+func printStates(states []*protocol.ServiceState) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tPID\tRESTARTS\tHEALTH")
 	if len(states) == 0 {
@@ -94,8 +89,8 @@ func printStates(states []protocol.ServiceState) {
 	}
 	for _, st := range states {
 		pid := "-"
-		if st.PID > 0 {
-			pid = fmt.Sprintf("%d", st.PID)
+		if st.Pid > 0 {
+			pid = fmt.Sprintf("%d", st.Pid)
 		}
 		health := "-"
 		if st.HasHealth {
@@ -112,7 +107,7 @@ func printStates(states []protocol.ServiceState) {
 
 type projState struct {
 	Project string
-	State   protocol.ServiceState
+	State   *protocol.ServiceState
 }
 
 // printAllStates renders the service snapshot across all projects with a PROJECT column.
@@ -127,8 +122,8 @@ func printAllStates(allStates []projState) {
 	for _, ps := range allStates {
 		st := ps.State
 		pid := "-"
-		if st.PID > 0 {
-			pid = fmt.Sprintf("%d", st.PID)
+		if st.Pid > 0 {
+			pid = fmt.Sprintf("%d", st.Pid)
 		}
 		health := "-"
 		if st.HasHealth {

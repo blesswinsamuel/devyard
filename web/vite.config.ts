@@ -15,7 +15,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    host: "127.0.0.1",
+    host: "0.0.0.0",
+    port: 19095,
+    strictPort: true,
     proxy: {
       "/ws": {
         target: "http://127.0.0.1:9090",

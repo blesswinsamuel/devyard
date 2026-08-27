@@ -32,6 +32,7 @@ func initRepo(t *testing.T) string {
 	run("git", "init", "-q", "-b", "main")
 	run("git", "config", "user.email", "test@example.com")
 	run("git", "config", "user.name", "Test Author")
+	run("git", "config", "commit.gpgsign", "false")
 	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -75,8 +76,8 @@ func TestLog(t *testing.T) {
 	if commits[0].Author != "Test Author" || commits[0].Email != "test@example.com" {
 		t.Fatalf("unexpected author: %+v", commits[0])
 	}
-	if commits[0].Time == "" {
-		t.Fatalf("expected commit time, got empty")
+	if commits[0].Time == nil {
+		t.Fatalf("expected commit time, got nil")
 	}
 	if !commits[0].Head {
 		t.Fatalf("expected most recent commit to be marked HEAD, got %+v", commits[0])
@@ -124,7 +125,7 @@ func TestDiff(t *testing.T) {
 	}
 	headHash := commits[0].Hash
 
-	res, err := Diff(dir, headHash)
+	res, err := Diff(dir, headHash, "")
 	if err != nil {
 		t.Fatalf("Diff: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestUncommittedAndCommit(t *testing.T) {
 		t.Fatalf("expected first commit to be WORKDIR, got %+v", commits[0])
 	}
 
-	diffRes, err := Diff(dir, "WORKDIR")
+	diffRes, err := Diff(dir, "WORKDIR", "")
 	if err != nil {
 		t.Fatalf("Diff WORKDIR: %v", err)
 	}
@@ -172,6 +173,9 @@ func TestUncommittedAndCommit(t *testing.T) {
 	}
 
 	// Commit the changes
+	if err := Stage(dir, "c.txt", false, false); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
 	if err := Commit(dir, "third commit"); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -195,7 +199,7 @@ func TestStageAndUnstage(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	diffRes, err := Diff(dir, "WORKDIR")
+	diffRes, err := Diff(dir, "WORKDIR", "")
 	if err != nil {
 		t.Fatalf("Diff WORKDIR: %v", err)
 	}
@@ -208,7 +212,7 @@ func TestStageAndUnstage(t *testing.T) {
 		t.Fatalf("Stage untracked: %v", err)
 	}
 
-	diffStaged, err := Diff(dir, "WORKDIR")
+	diffStaged, err := Diff(dir, "WORKDIR", "")
 	if err != nil {
 		t.Fatalf("Diff WORKDIR after stage: %v", err)
 	}
@@ -221,7 +225,7 @@ func TestStageAndUnstage(t *testing.T) {
 		t.Fatalf("Unstage file: %v", err)
 	}
 
-	diffUnstaged, err := Diff(dir, "WORKDIR")
+	diffUnstaged, err := Diff(dir, "WORKDIR", "")
 	if err != nil {
 		t.Fatalf("Diff WORKDIR after unstage: %v", err)
 	}
@@ -269,8 +273,9 @@ func TestPushPullFetch(t *testing.T) {
 		t.Fatalf("Push with no upstream: expected error, got nil")
 	}
 
-	// Push with an explicit remote and set upstream.
-	output, err := Push(dir, "origin", "-u", "main")
+	// Set upstream and push.
+	runIn("push", "-u", "origin", "main")
+	output, err := Push(dir, "origin")
 	if err != nil {
 		t.Fatalf("Push: %v (output: %s)", err, output)
 	}
@@ -278,7 +283,7 @@ func TestPushPullFetch(t *testing.T) {
 	// Cloning dir gives the pushed commits; fetch should download them and
 	// pull should fast-forward to match.
 	clone := t.TempDir()
-	runInClone := exec.Command("git", "clone", "-q", remote, clone)
+	runInClone := exec.Command("git", "clone", "-q", "-b", "main", remote, clone)
 	if out, err := runInClone.CombinedOutput(); err != nil {
 		t.Fatalf("git clone: %v\n%s", err, out)
 	}
@@ -290,7 +295,7 @@ func TestPushPullFetch(t *testing.T) {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		cmd := exec.Command("sh", "-c",
-			"git add -A && git -c user.name='Test Author' -c user.email='test@example.com' commit -q -m '"+msg+"' && git push -q origin HEAD")
+			"git add -A && git -c commit.gpgsign=false -c user.name='Test Author' -c user.email='test@example.com' commit -q -m '"+msg+"' && git push -q origin main")
 		cmd.Dir = repo
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("commit+push: %v\n%s", err, out)
@@ -350,9 +355,9 @@ func TestParseAheadBehind(t *testing.T) {
 		{"", 0, 0},
 	}
 	for _, tc := range tests {
-		a, b := parseAheadBehind(tc.input)
+		a, b := parseTracking(tc.input)
 		if a != tc.ahead || b != tc.behind {
-			t.Errorf("parseAheadBehind(%q) = (%d, %d), want (%d, %d)", tc.input, a, b, tc.ahead, tc.behind)
+			t.Errorf("parseTracking(%q) = (%d, %d), want (%d, %d)", tc.input, a, b, tc.ahead, tc.behind)
 		}
 	}
 }

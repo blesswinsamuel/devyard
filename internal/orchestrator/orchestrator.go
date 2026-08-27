@@ -80,8 +80,8 @@ type Daemon struct {
 	stopOnce sync.Once
 	exited   chan struct{}
 
-	onStateChange       func(project string, state protocol.ServiceState)
-	onActionStateChange func(project string, state protocol.ActionState)
+	onStateChange       func(project string, state *protocol.ServiceState)
+	onActionStateChange func(project string, state *protocol.ActionState)
 	onGitChange         func(project string)
 
 	watcher *gitwatcher.RepoWatcher
@@ -117,7 +117,7 @@ func (d *Daemon) StopCh() <-chan struct{} { return d.stopCh }
 // SetOnStateChange registers a callback that fires whenever any supervised
 // service changes state. The callback is invoked from the service's run-loop
 // goroutine, NOT under the daemon lock.
-func (d *Daemon) SetOnStateChange(fn func(project string, state protocol.ServiceState)) {
+func (d *Daemon) SetOnStateChange(fn func(project string, state *protocol.ServiceState)) {
 	d.mu.Lock()
 	d.onStateChange = fn
 	d.mu.Unlock()
@@ -125,7 +125,7 @@ func (d *Daemon) SetOnStateChange(fn func(project string, state protocol.Service
 
 // SetOnActionStateChange registers a callback that fires whenever any action's
 // runtime state changes (started, completed). Same semantics as SetOnStateChange.
-func (d *Daemon) SetOnActionStateChange(fn func(project string, state protocol.ActionState)) {
+func (d *Daemon) SetOnActionStateChange(fn func(project string, state *protocol.ActionState)) {
 	d.mu.Lock()
 	d.onActionStateChange = fn
 	d.mu.Unlock()
@@ -315,7 +315,7 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		Foreground: false,
 		Env:        config.BaseEnv(cfg.DotEnv),
 		Selected:   selectedNames,
-		OnStateChange: func(svc string, state protocol.ServiceState) {
+		OnStateChange: func(svc string, state *protocol.ServiceState) {
 			d.mu.Lock()
 			fn := d.onStateChange
 			d.mu.Unlock()
@@ -323,7 +323,7 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 				fn(name, state)
 			}
 		},
-		OnActionStateChange: func(action string, state protocol.ActionState) {
+		OnActionStateChange: func(action string, state *protocol.ActionState) {
 			d.mu.Lock()
 			fn := d.onActionStateChange
 			d.mu.Unlock()
@@ -506,7 +506,7 @@ func (d *Daemon) RemoveProject(name string) error {
 // Projects remain in the map as stopped; no project .stopped marker is written
 // so autostart can resume them after a daemon restart.
 func (d *Daemon) StopDaemon() error {
-	d.stopOnce.Do(func() { close(d.stopCh) })
+	defer d.stopOnce.Do(func() { close(d.stopCh) })
 
 	d.mu.Lock()
 	projects := make([]*Project, 0, len(d.projects))
@@ -570,9 +570,9 @@ func (d *Daemon) DaemonStatus() (*protocol.DaemonInfo, error) {
 	}
 
 	return &protocol.DaemonInfo{
-		PID:         pid,
-		StartTime:   startTime,
-		Goroutines:  runtime.NumGoroutine(),
+		Pid:         int32(pid),
+		StartTime:   protocol.TimeToProto(startTime),
+		Goroutines:  int32(runtime.NumGoroutine()),
 		MemoryAlloc: mem.Alloc,
 		MemorySys:   mem.Sys,
 		MemoryRss:   rss,
@@ -599,11 +599,11 @@ func (d *Daemon) RestartDaemon() error {
 // ListProjects returns a snapshot of all known projects (both running and stopped)
 // and their statuses, service counts, and auto-cleans any stale projects whose
 // config files no longer exist on disk.
-func (d *Daemon) ListProjects() []protocol.ProjectInfo {
+func (d *Daemon) ListProjects() []*protocol.ProjectInfo {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	out := make([]protocol.ProjectInfo, 0, len(d.projects))
+	out := make([]*protocol.ProjectInfo, 0, len(d.projects))
 	var stale []string
 
 	for name, p := range d.projects {
@@ -612,17 +612,17 @@ func (d *Daemon) ListProjects() []protocol.ProjectInfo {
 			continue
 		}
 
-		info := protocol.ProjectInfo{
+		info := &protocol.ProjectInfo{
 			Name:          name,
 			Status:        p.Status(),
 			ConfigPath:    p.ConfigPath,
-			TotalServices: p.TotalServices,
+			TotalServices: int32(p.TotalServices),
 		}
 
 		if p.Sup != nil && info.Status == "running" {
 			states := p.Sup.States()
 			if len(states) > 0 {
-				info.TotalServices = len(states)
+				info.TotalServices = int32(len(states))
 			}
 			for _, st := range states {
 				if st.Status == supervisor.StatusRunning || st.Status == supervisor.StatusStarting || st.Status == supervisor.StatusBackoff {
@@ -672,7 +672,7 @@ func (d *Daemon) ProjectBackend(project string) (control.Backend, error) {
 // GitLog returns the git commit log for a project's working directory (the
 // directory containing its config file), newest first. It errors when the
 // project is unknown or its directory is not a git repository.
-func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
+func (d *Daemon) GitLog(name string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error) {
 	d.mu.Lock()
 	p, ok := d.projects[name]
 	d.mu.Unlock()
@@ -693,7 +693,7 @@ func (d *Daemon) GitLog(name string) ([]protocol.GitCommit, []protocol.GitBranch
 }
 
 // GitDiff returns the metadata, changed file list, and patch diff for a commit in a project's working directory.
-func (d *Daemon) GitDiff(name string, hash string, contextLines ...int) (*protocol.GitDiffResult, error) {
+func (d *Daemon) GitDiff(name string, hash string, path string, contextLines ...int) (*protocol.GitDiffResult, error) {
 	d.mu.Lock()
 	p, ok := d.projects[name]
 	d.mu.Unlock()
@@ -703,7 +703,7 @@ func (d *Daemon) GitDiff(name string, hash string, contextLines ...int) (*protoc
 	if !gitlog.IsRepo(p.BaseDir) {
 		return nil, fmt.Errorf("project %q is not a git repository", name)
 	}
-	return gitlog.Diff(p.BaseDir, hash, contextLines...)
+	return gitlog.Diff(p.BaseDir, hash, path, contextLines...)
 }
 
 // GitCommit stages all changes and creates a new commit in a project's working directory.
@@ -794,10 +794,10 @@ func (b stoppedBackend) err() error {
 	return fmt.Errorf("project %q is stopped", b.project)
 }
 
-func (b stoppedBackend) States() []protocol.ServiceState {
-	out := make([]protocol.ServiceState, 0, len(b.order))
+func (b stoppedBackend) States() []*protocol.ServiceState {
+	out := make([]*protocol.ServiceState, 0, len(b.order))
 	for _, name := range b.order {
-		st := protocol.ServiceState{
+		st := &protocol.ServiceState{
 			Name:   name,
 			Status: string(supervisor.StatusStopped),
 			Health: "n/a",
@@ -810,13 +810,13 @@ func (b stoppedBackend) States() []protocol.ServiceState {
 	return out
 }
 
-func (b stoppedBackend) ActionStates() []protocol.ActionState {
+func (b stoppedBackend) ActionStates() []*protocol.ActionState {
 	if b.file == nil {
 		return nil
 	}
-	out := make([]protocol.ActionState, 0, len(b.file.Actions))
+	out := make([]*protocol.ActionState, 0, len(b.file.Actions))
 	for name, act := range b.file.Actions {
-		out = append(out, protocol.ActionState{
+		out = append(out, &protocol.ActionState{
 			Name:    name,
 			Command: act.Spec.Command,
 			Status:  "idle",
@@ -830,13 +830,13 @@ func (b stoppedBackend) StopService(string) error      { return b.err() }
 func (b stoppedBackend) StartService(string) error     { return b.err() }
 func (b stoppedBackend) KillService(_, _ string) error { return b.err() }
 func (b stoppedBackend) Restart(string) error          { return b.err() }
-func (b stoppedBackend) Top(string) ([]protocol.ServiceStat, error) {
+func (b stoppedBackend) Top(string) ([]*protocol.ServiceStat, error) {
 	return nil, b.err()
 }
-func (b stoppedBackend) Ports() ([]protocol.PortBinding, error) {
+func (b stoppedBackend) Ports() ([]*protocol.PortBinding, error) {
 	return nil, nil
 }
-func (b stoppedBackend) ListActions() []protocol.ActionInfo {
+func (b stoppedBackend) ListActions() []*protocol.ActionInfo {
 	return supervisor.ListActionsFromFile(b.file)
 }
 func (b stoppedBackend) RunAction(context.Context, string, []string, io.Writer) (int, error) {
@@ -1153,7 +1153,7 @@ func closedChan() chan struct{} {
 }
 
 // Ports returns open listening sockets for a project (or all projects when project is empty).
-func (d *Daemon) Ports(project string) ([]protocol.PortBinding, error) {
+func (d *Daemon) Ports(project string) ([]*protocol.PortBinding, error) {
 	if project != "" {
 		b, err := d.ProjectBackend(project)
 		if err != nil {
@@ -1169,7 +1169,7 @@ func (d *Daemon) Ports(project string) ([]protocol.PortBinding, error) {
 	}
 	d.mu.Unlock()
 
-	var all []protocol.PortBinding
+	var all []*protocol.PortBinding
 	for _, name := range projects {
 		b, err := d.ProjectBackend(name)
 		if err != nil {

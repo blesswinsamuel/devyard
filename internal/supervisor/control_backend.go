@@ -24,18 +24,18 @@ func NewControlBackend(s *Supervisor) *ControlBackend {
 }
 
 // States returns a wire snapshot of every service in start order.
-func (b *ControlBackend) States() []protocol.ServiceState {
+func (b *ControlBackend) States() []*protocol.ServiceState {
 	in := b.s.States()
-	out := make([]protocol.ServiceState, len(in))
+	out := make([]*protocol.ServiceState, len(in))
 	for i, st := range in {
-		out[i] = protocol.ServiceState{
+		out[i] = &protocol.ServiceState{
 			Name:       st.Name,
 			Status:     string(st.Status),
-			PID:        st.PID,
-			ExitCode:   st.ExitCode,
-			Restarts:   st.Restarts,
-			StartedAt:  protocol.FormatTime(st.StartedAt),
-			FinishedAt: protocol.FormatTime(st.FinishedAt),
+			Pid:        int32(st.PID),
+			ExitCode:   int32(st.ExitCode),
+			Restarts:   int32(st.Restarts),
+			StartedAt:  protocol.TimeToProto(st.StartedAt),
+			FinishedAt: protocol.TimeToProto(st.FinishedAt),
 			HasHealth:  st.HasHealth,
 			Health:     st.Health,
 		}
@@ -44,7 +44,7 @@ func (b *ControlBackend) States() []protocol.ServiceState {
 }
 
 // ActionStates returns a wire snapshot of every defined action's runtime state.
-func (b *ControlBackend) ActionStates() []protocol.ActionState {
+func (b *ControlBackend) ActionStates() []*protocol.ActionState {
 	return b.s.ActionStates()
 }
 
@@ -78,28 +78,28 @@ func (b *ControlBackend) Restart(name string) error {
 // Top returns a wire snapshot of per-service CPU/memory usage for one service
 // (or all when name is empty). It blocks for the supervisor's sampling
 // interval while the daemon derives CPU usage.
-func (b *ControlBackend) Top(name string) ([]protocol.ServiceStat, error) {
+func (b *ControlBackend) Top(name string) ([]*protocol.ServiceStat, error) {
 	in, err := b.s.Top(name)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]protocol.ServiceStat, len(in))
+	out := make([]*protocol.ServiceStat, len(in))
 	for i, st := range in {
-		out[i] = protocol.ServiceStat{
+		out[i] = &protocol.ServiceStat{
 			Name:     st.Name,
 			Status:   string(st.Status),
-			PID:      st.PID,
-			PGID:     st.PGID,
-			Procs:    st.Procs,
-			CPU:      st.CPU,
-			RSSBytes: st.RSS,
+			Pid:      int32(st.PID),
+			Pgid:     int32(st.PGID),
+			Procs:    int32(st.Procs),
+			Cpu:      st.CPU,
+			RssBytes: st.RSS,
 		}
 	}
 	return out, nil
 }
 
 // Ports returns a list of open listening sockets for all running services in the project.
-func (b *ControlBackend) Ports() ([]protocol.PortBinding, error) {
+func (b *ControlBackend) Ports() ([]*protocol.PortBinding, error) {
 	return b.s.Ports()
 }
 
@@ -114,7 +114,7 @@ func (b *ControlBackend) PreviousLogPath(name string) (string, error) {
 }
 
 // ListActions returns a snapshot of defined actions for the project.
-func (b *ControlBackend) ListActions() []protocol.ActionInfo {
+func (b *ControlBackend) ListActions() []*protocol.ActionInfo {
 	return b.s.ListActions()
 }
 

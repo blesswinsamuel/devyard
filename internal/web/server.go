@@ -1,23 +1,24 @@
 // Package web serves the embedded SPA and a WebSocket endpoint (/ws) for the
-// browser frontend. It is a thin bridge between browser JSON messages and the
-// daemon's control socket: requests are translated to control-protocol
-// frames, daemon events are fanned out to connected browsers, and interactive
-// terminals are spawned locally. No process supervision happens here.
+// browser frontend. It is a thin bridge between browser messages and the
+// daemon's control socket.
 package web
 
 import (
 	"context"
+	"crypto/tls"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
+	"golang.org/x/net/http2"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
@@ -35,7 +36,7 @@ const (
 )
 
 // Server is the HTTP + WebSocket server for the web UI. It serves the
-// embedded SPA at / and bridges /ws traffic to the daemon over its Unix
+// embedded SPA at / and bridges /ws traffic and ConnectRPC calls to the daemon over its Unix
 // control socket.
 type Server struct {
 	addr       string
@@ -81,6 +82,24 @@ func (s *Server) ListenAndServe() error {
 	go s.runEvents()
 
 	mux := http.NewServeMux()
+
+	// Reverse proxy for direct ConnectRPC calls from browser to Unix socket
+	transport := &http2.Transport{
+		AllowHTTP: true,
+		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", s.socketPath)
+		},
+	}
+	proxy := &httputil.ReverseProxy{
+		Director: func(req *http.Request) {
+			req.URL.Scheme = "http"
+			req.URL.Host = "localhost"
+		},
+		Transport: transport,
+	}
+	mux.Handle("/localcompose.v1.DaemonService/", proxy)
+
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.Handle("/", s.spaHandler())
 	httpSrv := &http.Server{Handler: mux}
@@ -156,7 +175,6 @@ func (s *Server) spaHandler() http.Handler {
 
 // --- WebSocket message types ---
 
-// wsRequest is a JSON message from the browser.
 type wsRequest struct {
 	Type          string   `json:"type"`
 	Project       string   `json:"project,omitempty"`
@@ -182,7 +200,6 @@ type wsRequest struct {
 	Rows uint16 `json:"rows,omitempty"`
 }
 
-// wsResponse is a JSON message to the browser.
 type wsResponse struct {
 	Type     string          `json:"type"`
 	Project  string          `json:"project,omitempty"`
@@ -200,12 +217,6 @@ type wsResponse struct {
 	Output string `json:"output,omitempty"`
 }
 
-// --- per-client plumbing ---
-
-// client tracks one browser WebSocket connection. Every message sent to the
-// browser goes through sendCh so ordering is guaranteed and no goroutine ever
-// blocks on a dead peer: enqueues are non-blocking, and the single writer
-// goroutine drops the whole client when a write fails or the queue overflows.
 type client struct {
 	srv  *Server
 	conn *websocket.Conn
@@ -233,7 +244,6 @@ func (s *Server) addClient(conn *websocket.Conn) *client {
 		subs: newSubTracker(),
 		ptys: newPTYManager(),
 	}
-	// cancel is invoked by close; keep it referenced there.
 	cl.cancelCtx = cancel
 
 	s.clientsMu.Lock()
@@ -252,31 +262,33 @@ func (cl *client) enqueue(resp wsResponse) {
 	select {
 	case cl.send <- resp:
 	default:
-		// Slow consumer: drop the connection instead of blocking broadcasts.
-		cl.dead = true
 		go cl.close()
 	}
 }
 
 func (cl *client) writeLoop() {
-	pinger := time.NewTicker(pingInterval)
-	defer pinger.Stop()
+	ticker := time.NewTicker(pingInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case resp := <-cl.send:
+		case resp, ok := <-cl.send:
+			if !ok {
+				return
+			}
 			data, err := json.Marshal(resp)
 			if err != nil {
 				continue
 			}
-			wctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
-			err = cl.conn.Write(wctx, websocket.MessageText, data)
+			ctx, cancel := context.WithTimeout(cl.ctx, writeTimeout)
+			err = cl.conn.Write(ctx, websocket.MessageText, data)
 			cancel()
 			if err != nil {
 				cl.close()
 				return
 			}
-		case <-pinger.C:
-			pctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		case <-ticker.C:
+			pctx, cancel := context.WithTimeout(cl.ctx, pingTimeout)
 			err := cl.conn.Ping(pctx)
 			cancel()
 			if err != nil {
@@ -311,8 +323,6 @@ func (s *Server) removeClient(cl *client) {
 	s.clientsMu.Unlock()
 }
 
-// broadcast sends a message to every connected client. Enqueueing is
-// non-blocking, so this never stalls on a slow consumer.
 func (s *Server) broadcast(resp wsResponse) {
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
@@ -320,8 +330,6 @@ func (s *Server) broadcast(resp wsResponse) {
 		cl.enqueue(resp)
 	}
 }
-
-// --- connection handling ---
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
@@ -350,8 +358,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// dispatch routes one browser message. Terminal messages are handled locally;
-// everything else proxies to the daemon.
 func (s *Server) dispatch(cl *client, req *wsRequest) {
 	switch req.Type {
 	case "list_projects":
@@ -363,11 +369,11 @@ func (s *Server) dispatch(cl *client, req *wsRequest) {
 	case "stop_project":
 		s.handleStopProject(cl, req)
 	case "restart_service":
-		s.handleServiceOp(cl, req, protocol.KindRestart, "result")
+		s.handleServiceOp(cl, req, "restart", "result")
 	case "stop_service":
-		s.handleServiceOp(cl, req, protocol.KindStopService, "result")
+		s.handleServiceOp(cl, req, "stop", "result")
 	case "start_service":
-		s.handleServiceOp(cl, req, protocol.KindStartService, "result")
+		s.handleServiceOp(cl, req, "start", "result")
 	case "kill_service":
 		s.handleKillService(cl, req)
 	case "subscribe_logs":
@@ -405,11 +411,11 @@ func (s *Server) dispatch(cl *client, req *wsRequest) {
 	case "git_stage":
 		s.handleGitStage(cl, req)
 	case "git_push":
-		s.handleGitRemote(cl, req, protocol.KindGitPush)
+		s.handleGitRemote(cl, req, "push")
 	case "git_pull":
-		s.handleGitRemote(cl, req, protocol.KindGitPull)
+		s.handleGitRemote(cl, req, "pull")
 	case "git_fetch":
-		s.handleGitRemote(cl, req, protocol.KindGitFetch)
+		s.handleGitRemote(cl, req, "fetch")
 	case "daemon_status":
 		s.handleDaemonStatus(cl)
 	case "restart_daemon":
@@ -423,9 +429,6 @@ func (s *Server) dispatch(cl *client, req *wsRequest) {
 
 // --- daemon event fan-out ---
 
-// runEvents keeps a persistent KindSubscribeEvents connection to the daemon,
-// rebroadcasting state/action/git changes to every browser. It reconnects
-// until the server is closed.
 func (s *Server) runEvents() {
 	for {
 		if s.isClosed() {
@@ -434,10 +437,36 @@ func (s *Server) runEvents() {
 		c, err := control.Dial(s.socketPath)
 		if err == nil {
 			s.setEvents(c)
-			err = c.Send(protocol.Request{Kind: protocol.KindSubscribeEvents})
-			if err == nil {
-				s.pumpEvents(c)
-			}
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				select {
+				case <-s.done:
+					cancel()
+				case <-ctx.Done():
+				}
+			}()
+			_ = c.SubscribeEvents(ctx, func(ev *protocol.Event) {
+				if sc := ev.GetServiceStateChanged(); sc != nil {
+					data, _ := json.Marshal(sc.State)
+					s.broadcast(wsResponse{
+						Type:    "state_changed",
+						Project: sc.Project,
+						Service: sc.State.GetName(),
+						Data:    data,
+					})
+				} else if ac := ev.GetActionStateChanged(); ac != nil {
+					data, _ := json.Marshal(ac.State)
+					s.broadcast(wsResponse{
+						Type:    "action_state_changed",
+						Project: ac.Project,
+						Action:  ac.State.GetName(),
+						Data:    data,
+					})
+				} else if gc := ev.GetGitChanged(); gc != nil {
+					s.broadcast(wsResponse{Type: "git_changed", Project: gc.Project})
+				}
+			})
+			cancel()
 			s.setEvents(nil)
 			_ = c.Close()
 		}
@@ -448,39 +477,6 @@ func (s *Server) runEvents() {
 		case <-s.done:
 			return
 		case <-time.After(time.Second):
-		}
-	}
-}
-
-func (s *Server) pumpEvents(c *control.Client) {
-	for {
-		resp, err := c.Recv()
-		if err != nil {
-			return
-		}
-		switch resp.Kind {
-		case protocol.KindEventStateChanged:
-			if resp.SingleState != nil {
-				data, _ := json.Marshal(resp.SingleState)
-				s.broadcast(wsResponse{
-					Type:    "state_changed",
-					Project: resp.Project,
-					Service: resp.Service,
-					Data:    data,
-				})
-			}
-		case protocol.KindEventActionStateChanged:
-			if resp.SingleActionState != nil {
-				data, _ := json.Marshal(resp.SingleActionState)
-				s.broadcast(wsResponse{
-					Type:    "action_state_changed",
-					Project: resp.Project,
-					Action:  resp.Action,
-					Data:    data,
-				})
-			}
-		case protocol.KindEventGitChanged:
-			s.broadcast(wsResponse{Type: "git_changed", Project: resp.Project})
 		}
 	}
 }

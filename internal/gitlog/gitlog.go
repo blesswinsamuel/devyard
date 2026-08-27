@@ -19,7 +19,7 @@ const CommitLimit = 100
 
 // Log runs `git log` in dir and returns up to CommitLimit commits, newest
 // first, along with branches, tags, and stashes.
-func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
+func Log(dir string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error) {
 	if dir == "" {
 		return nil, nil, nil, nil, fmt.Errorf("git: no working directory")
 	}
@@ -39,12 +39,12 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 	// fail with exit 128. Surface that as an empty log (or uncommitted changes) rather than an error.
 	if head == "" {
 		if hasUncommitted {
-			return []protocol.GitCommit{{
+			return []*protocol.GitCommit{{
 				Hash:    "WORKDIR",
 				Short:   "WORKDIR",
 				Subject: "Uncommitted Changes",
 				Author:  "Working Directory",
-				Time:    protocol.FormatTime(time.Now()),
+				Time:    protocol.TimeToProto(time.Now()),
 			}}, branches, tags, stashes, nil
 		}
 		return nil, branches, tags, stashes, nil
@@ -64,7 +64,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 	}
 
 	raw := out.String()
-	commits := make([]protocol.GitCommit, 0)
+	commits := make([]*protocol.GitCommit, 0)
 	if raw != "" {
 		lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
 		for _, line := range lines {
@@ -72,12 +72,13 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 			if len(fields) < 7 {
 				continue
 			}
-			c := protocol.GitCommit{
+			t, _ := time.Parse(time.RFC3339, fields[4])
+			c := &protocol.GitCommit{
 				Hash:    fields[0],
 				Short:   fields[1],
 				Author:  fields[2],
 				Email:   fields[3],
-				Time:    fields[4],
+				Time:    protocol.TimeToProto(t),
 				Subject: fields[6],
 			}
 			if parents := fields[5]; parents != "" {
@@ -86,7 +87,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 			c.Head = c.Hash == head
 
 			if len(fields) >= 8 && fields[7] != "" {
-				var refs []protocol.GitRef
+				var refs []*protocol.GitRef
 				seenRefs := make(map[string]bool)
 
 				for _, rawRef := range strings.Split(fields[7], ",") {
@@ -98,7 +99,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 						bName := strings.TrimPrefix(ref, "HEAD -> ")
 						if !seenRefs[bName] {
 							seenRefs[bName] = true
-							refs = append(refs, protocol.GitRef{
+							refs = append(refs, &protocol.GitRef{
 								Name:     bName,
 								Type:     "branch",
 								IsActive: true,
@@ -106,7 +107,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 						}
 						if !seenRefs["HEAD"] {
 							seenRefs["HEAD"] = true
-							refs = append(refs, protocol.GitRef{
+							refs = append(refs, &protocol.GitRef{
 								Name:     "HEAD",
 								Type:     "head",
 								IsActive: true,
@@ -115,7 +116,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 					} else if ref == "HEAD" {
 						if !seenRefs["HEAD"] {
 							seenRefs["HEAD"] = true
-							refs = append(refs, protocol.GitRef{
+							refs = append(refs, &protocol.GitRef{
 								Name:     "HEAD",
 								Type:     "head",
 								IsActive: true,
@@ -125,7 +126,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 						tName := strings.TrimPrefix(ref, "tag: ")
 						if !seenRefs[tName] {
 							seenRefs[tName] = true
-							refs = append(refs, protocol.GitRef{
+							refs = append(refs, &protocol.GitRef{
 								Name: tName,
 								Type: "tag",
 							})
@@ -133,7 +134,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 					} else if ref == "stash" || strings.HasPrefix(ref, "refs/stash") {
 						if !seenRefs[ref] {
 							seenRefs[ref] = true
-							refs = append(refs, protocol.GitRef{
+							refs = append(refs, &protocol.GitRef{
 								Name: ref,
 								Type: "stash",
 							})
@@ -147,7 +148,7 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 								refType = "remote"
 							}
 							isActive := activeBranch != "" && ref == activeBranch
-							refs = append(refs, protocol.GitRef{
+							refs = append(refs, &protocol.GitRef{
 								Name:     ref,
 								Type:     refType,
 								IsActive: isActive,
@@ -163,17 +164,17 @@ func Log(dir string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.Git
 	}
 
 	if hasUncommitted {
-		workdirCommit := protocol.GitCommit{
+		workdirCommit := &protocol.GitCommit{
 			Hash:    "WORKDIR",
 			Short:   "WORKDIR",
 			Subject: "Uncommitted Changes",
 			Author:  "Working Directory",
-			Time:    protocol.FormatTime(time.Now()),
+			Time:    protocol.TimeToProto(time.Now()),
 		}
 		if head != "" {
 			workdirCommit.Parents = []string{head}
 		}
-		commits = append([]protocol.GitCommit{workdirCommit}, commits...)
+		commits = append([]*protocol.GitCommit{workdirCommit}, commits...)
 	}
 
 	return commits, branches, tags, stashes, nil
@@ -190,7 +191,7 @@ func resolveActiveBranch(dir string) string {
 }
 
 // GetBranches returns all local and remote branches in dir.
-func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
+func GetBranches(dir string, activeBranch string) []*protocol.GitBranch {
 	cmd := exec.Command("git", "-C", dir, "branch", "-a", "--format=%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -198,8 +199,7 @@ func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
 		return nil
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	var branches []protocol.GitBranch
-	seen := make(map[string]bool)
+	var branches []*protocol.GitBranch
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -209,29 +209,24 @@ func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
 		if len(parts) < 3 {
 			continue
 		}
-		headMarker := strings.TrimSpace(parts[0])
+		isHead := strings.TrimSpace(parts[0]) == "*"
 		name := strings.TrimSpace(parts[1])
 		hash := strings.TrimSpace(parts[2])
 		upstream := ""
 		if len(parts) >= 4 {
 			upstream = strings.TrimSpace(parts[3])
 		}
-		trackStr := ""
+		var ahead, behind int32
 		if len(parts) >= 5 {
-			trackStr = strings.TrimSpace(parts[4])
+			a, b := parseTracking(parts[4])
+			ahead = int32(a)
+			behind = int32(b)
 		}
 
-		if name == "HEAD" || strings.HasSuffix(name, "/HEAD") || seen[name] {
-			continue
-		}
-		seen[name] = true
+		isRemote := strings.HasPrefix(name, "remotes/") || strings.HasPrefix(name, "origin/")
+		isActive := isHead || (activeBranch != "" && name == activeBranch)
 
-		isActive := headMarker == "*" || (activeBranch != "" && name == activeBranch)
-		isRemote := strings.HasPrefix(name, "origin/") || (strings.Contains(name, "/") && !strings.HasPrefix(name, "heads/"))
-
-		ahead, behind := parseAheadBehind(trackStr)
-
-		branches = append(branches, protocol.GitBranch{
+		branches = append(branches, &protocol.GitBranch{
 			Name:     name,
 			Hash:     hash,
 			IsActive: isActive,
@@ -244,8 +239,10 @@ func GetBranches(dir string, activeBranch string) []protocol.GitBranch {
 	return branches
 }
 
-func parseAheadBehind(trackStr string) (ahead int, behind int) {
-	if trackStr == "" || trackStr == "gone" {
+func parseTracking(trackStr string) (int, int) {
+	trackStr = strings.TrimSpace(trackStr)
+	var ahead, behind int
+	if trackStr == "" {
 		return 0, 0
 	}
 	for _, part := range strings.Split(trackStr, ",") {
@@ -260,7 +257,7 @@ func parseAheadBehind(trackStr string) (ahead int, behind int) {
 }
 
 // GetTags returns all tags in dir.
-func GetTags(dir string) []protocol.GitTag {
+func GetTags(dir string) []*protocol.GitTag {
 	cmd := exec.Command("git", "-C", dir, "tag", "-l", "--format=%(refname:short)\x1f%(objectname)")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -268,7 +265,7 @@ func GetTags(dir string) []protocol.GitTag {
 		return nil
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	var tags []protocol.GitTag
+	var tags []*protocol.GitTag
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -278,7 +275,7 @@ func GetTags(dir string) []protocol.GitTag {
 		if len(parts) < 2 {
 			continue
 		}
-		tags = append(tags, protocol.GitTag{
+		tags = append(tags, &protocol.GitTag{
 			Name: strings.TrimSpace(parts[0]),
 			Hash: strings.TrimSpace(parts[1]),
 		})
@@ -287,7 +284,7 @@ func GetTags(dir string) []protocol.GitTag {
 }
 
 // GetStashes returns all stashes in dir.
-func GetStashes(dir string) []protocol.GitStash {
+func GetStashes(dir string) []*protocol.GitStash {
 	cmd := exec.Command("git", "-C", dir, "stash", "list", "--format=%gd\x1f%gs\x1f%H\x1f%aI")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -295,7 +292,7 @@ func GetStashes(dir string) []protocol.GitStash {
 		return nil
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	var stashes []protocol.GitStash
+	var stashes []*protocol.GitStash
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -305,13 +302,14 @@ func GetStashes(dir string) []protocol.GitStash {
 		if len(parts) < 3 {
 			continue
 		}
-		st := protocol.GitStash{
+		st := &protocol.GitStash{
 			Index: strings.TrimSpace(parts[0]),
 			Name:  strings.TrimSpace(parts[1]),
 			Hash:  strings.TrimSpace(parts[2]),
 		}
 		if len(parts) >= 4 {
-			st.Time = strings.TrimSpace(parts[3])
+			t, _ := time.Parse(time.RFC3339, strings.TrimSpace(parts[3]))
+			st.Time = protocol.TimeToProto(t)
 		}
 		stashes = append(stashes, st)
 	}
@@ -359,7 +357,7 @@ func RepoRoot(dir string) string {
 }
 
 // Diff returns the commit metadata, list of changed files, and unified patch diff for hash (or HEAD if hash is empty).
-func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult, error) {
+func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*protocol.GitDiffResult, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("git: no working directory")
 	}
@@ -373,7 +371,7 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 	}
 
 	if hash == "WORKDIR" {
-		return diffWorkdir(dir, ctxLines)
+		return diffWorkdir(dir, pathFilter, ctxLines)
 	}
 
 	if hash == "" {
@@ -402,12 +400,13 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 	}
 
 	head := resolveHead(dir)
-	commit := protocol.GitCommit{
+	t, _ := time.Parse(time.RFC3339, fields[4])
+	commit := &protocol.GitCommit{
 		Hash:    fields[0],
 		Short:   fields[1],
 		Author:  fields[2],
 		Email:   fields[3],
-		Time:    fields[4],
+		Time:    protocol.TimeToProto(t),
 		Subject: fields[6],
 		Head:    fields[0] == head,
 	}
@@ -425,7 +424,7 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 	cmdNumstat.Stdout = &outNumstat
 	_ = cmdNumstat.Run()
 
-	type stats struct{ add, del int }
+	type stats struct{ add, del int32 }
 	numstatMap := make(map[string]stats)
 	for _, line := range strings.Split(outNumstat.String(), "\n") {
 		line = strings.TrimSpace(line)
@@ -434,7 +433,7 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 		}
 		parts := strings.Split(line, "\t")
 		if len(parts) >= 3 {
-			var add, del int
+			var add, del int32
 			_, _ = fmt.Sscanf(parts[0], "%d", &add)
 			_, _ = fmt.Sscanf(parts[1], "%d", &del)
 			path := parts[len(parts)-1]
@@ -442,7 +441,7 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 		}
 	}
 
-	var files []protocol.GitFileChange
+	var files []*protocol.GitFileChange
 	for _, line := range strings.Split(outStatus.String(), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -457,12 +456,15 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 				oldPath = parts[1]
 				path = parts[2]
 			}
+			if pathFilter != "" && path != pathFilter {
+				continue
+			}
 			s := numstatMap[path]
 			statusLetter := st
 			if len(st) > 0 {
 				statusLetter = string(st[0])
 			}
-			files = append(files, protocol.GitFileChange{
+			files = append(files, &protocol.GitFileChange{
 				Path:      path,
 				OldPath:   oldPath,
 				Status:    statusLetter,
@@ -472,7 +474,11 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 		}
 	}
 
-	cmdDiff := exec.Command("git", "-C", dir, "show", fmt.Sprintf("-U%d", ctxLines), "--patch", "--format=", hash)
+	diffArgs := []string{"show", fmt.Sprintf("-U%d", ctxLines), "--patch", "--format=", hash}
+	if pathFilter != "" {
+		diffArgs = append(diffArgs, "--", pathFilter)
+	}
+	cmdDiff := exec.Command("git", append([]string{"-C", dir}, diffArgs...)...)
 	var outDiff bytes.Buffer
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
@@ -484,14 +490,14 @@ func Diff(dir string, hash string, contextLines ...int) (*protocol.GitDiffResult
 	}, nil
 }
 
-func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
+func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiffResult, error) {
 	head := resolveHead(dir)
-	commit := protocol.GitCommit{
+	commit := &protocol.GitCommit{
 		Hash:    "WORKDIR",
 		Short:   "WORKDIR",
 		Author:  "Working Directory",
 		Subject: "Uncommitted Changes",
-		Time:    protocol.FormatTime(time.Now()),
+		Time:    protocol.TimeToProto(time.Now()),
 	}
 	if head != "" {
 		commit.Parents = []string{head}
@@ -507,7 +513,7 @@ func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 	cmdNumstat.Stdout = &outNumstat
 	_ = cmdNumstat.Run()
 
-	type stats struct{ add, del int }
+	type stats struct{ add, del int32 }
 	numstatMap := make(map[string]stats)
 	for _, line := range strings.Split(outNumstat.String(), "\n") {
 		line = strings.TrimSpace(line)
@@ -516,7 +522,7 @@ func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 		}
 		parts := strings.Split(line, "\t")
 		if len(parts) >= 3 {
-			var add, del int
+			var add, del int32
 			_, _ = fmt.Sscanf(parts[0], "%d", &add)
 			_, _ = fmt.Sscanf(parts[1], "%d", &del)
 			path := parts[len(parts)-1]
@@ -524,7 +530,7 @@ func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 		}
 	}
 
-	var files []protocol.GitFileChange
+	var files []*protocol.GitFileChange
 	statusLines := strings.Split(outStatus.String(), "\n")
 	for _, rawLine := range statusLines {
 		if len(rawLine) < 3 {
@@ -541,11 +547,15 @@ func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 			path = parts[1]
 		}
 
+		if pathFilter != "" && path != pathFilter {
+			continue
+		}
+
 		s := numstatMap[path]
 
 		// Check for untracked file
 		if stX == '?' && stY == '?' {
-			files = append(files, protocol.GitFileChange{
+			files = append(files, &protocol.GitFileChange{
 				Path:      path,
 				Status:    "A",
 				Additions: s.add,
@@ -557,7 +567,7 @@ func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 
 		// Check for staged changes (stX != ' ')
 		if stX != ' ' {
-			files = append(files, protocol.GitFileChange{
+			files = append(files, &protocol.GitFileChange{
 				Path:      path,
 				OldPath:   oldPath,
 				Status:    string(stX),
@@ -569,7 +579,7 @@ func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 
 		// Check for unstaged changes (stY != ' ')
 		if stY != ' ' {
-			files = append(files, protocol.GitFileChange{
+			files = append(files, &protocol.GitFileChange{
 				Path:      path,
 				OldPath:   oldPath,
 				Status:    string(stY),
@@ -580,7 +590,11 @@ func diffWorkdir(dir string, ctxLines int) (*protocol.GitDiffResult, error) {
 		}
 	}
 
-	cmdDiff := exec.Command("git", "-C", dir, "diff", "HEAD", fmt.Sprintf("-U%d", ctxLines))
+	diffArgs := []string{"diff", "HEAD", fmt.Sprintf("-U%d", ctxLines)}
+	if pathFilter != "" {
+		diffArgs = append(diffArgs, "--", pathFilter)
+	}
+	cmdDiff := exec.Command("git", append([]string{"-C", dir}, diffArgs...)...)
 	var outDiff bytes.Buffer
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
@@ -652,7 +666,7 @@ func Stage(dir string, path string, stageAll bool, unstage bool) error {
 	return nil
 }
 
-// Commit creates a new git commit with message. If staged changes exist, commits staged files; otherwise stages all.
+// Commit creates a new commit with the given message.
 func Commit(dir string, message string) error {
 	if dir == "" {
 		return fmt.Errorf("git: no working directory")
@@ -660,107 +674,112 @@ func Commit(dir string, message string) error {
 	if !IsRepo(dir) {
 		return fmt.Errorf("git: %s is not a git repository", dir)
 	}
-	message = strings.TrimSpace(message)
-	if message == "" {
+	if strings.TrimSpace(message) == "" {
 		return fmt.Errorf("git: commit message cannot be empty")
 	}
 
-	cmdCheckStaged := exec.Command("git", "-C", dir, "diff", "--cached", "--quiet")
-	hasStaged := cmdCheckStaged.Run() != nil
-
-	if !hasStaged {
-		cmdAdd := exec.Command("git", "-C", dir, "add", "-A")
-		var errAdd bytes.Buffer
-		cmdAdd.Stderr = &errAdd
-		if err := cmdAdd.Run(); err != nil {
-			return fmt.Errorf("git add: %s: %w", strings.TrimSpace(errAdd.String()), err)
-		}
-	}
-
-	cmdCommit := exec.Command("git", "-C", dir, "commit", "-m", message)
-	var errCommit bytes.Buffer
-	cmdCommit.Stderr = &errCommit
-	if err := cmdCommit.Run(); err != nil {
-		msg := strings.TrimSpace(errCommit.String())
+	cmd := exec.Command("git", "-C", dir, "commit", "-m", message)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
 		if msg == "" {
 			msg = err.Error()
 		}
 		return fmt.Errorf("git commit: %s: %w", msg, err)
 	}
-
 	return nil
 }
 
-// runRemote runs a git remote command (push/pull/fetch) in dir with args,
-// capturing combined output. It returns the combined output on both success
-// and failure so callers can surface real git messages (auth prompts, rejected
-// pushes, merge conflicts) rather than a bare error string.
-func runRemote(dir, name string, args ...string) (string, error) {
-	fullArgs := append([]string{"-C", dir, name}, args...)
-	cmd := exec.Command("git", fullArgs...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+// Push pushes the current branch to its upstream remote.
+func Push(dir string, remote string) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return "", fmt.Errorf("git: %s is not a git repository", dir)
+	}
+
+	var args []string
+	if remote != "" {
+		args = []string{"push", remote}
+	} else {
+		args = []string{"push"}
+	}
+
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(out.String())
-		if msg == "" {
-			msg = err.Error()
+		combined := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
+		if combined == "" {
+			combined = err.Error()
 		}
-		return msg, fmt.Errorf("git %s: %s: %w", name, msg, err)
+		return combined, fmt.Errorf("git push: %s: %w", combined, err)
 	}
-	return strings.TrimSpace(out.String()), nil
+	combined := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
+	return combined, nil
 }
 
-// Push pushes the current branch to its upstream remote. Without an upstream
-// set, git errors with guidance; remote + args allow an explicit target (remote
-// is inserted after the verb, before any refspec args). It returns the command
-// output so the UI can show progress/errors.
-func Push(dir, remote string, args ...string) (string, error) {
+// Pull pulls changes from the current branch's upstream remote.
+func Pull(dir string, remote string) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("git: no working directory")
 	}
 	if !IsRepo(dir) {
 		return "", fmt.Errorf("git: %s is not a git repository", dir)
 	}
-	full := []string{}
+
+	var args []string
 	if remote != "" {
-		full = append(full, remote)
+		args = []string{"pull", remote}
+	} else {
+		args = []string{"pull"}
 	}
-	full = append(full, args...)
-	return runRemote(dir, "push", full...)
+
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		combined := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
+		if combined == "" {
+			combined = err.Error()
+		}
+		return combined, fmt.Errorf("git pull: %s: %w", combined, err)
+	}
+	combined := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
+	return combined, nil
 }
 
-// Pull pulls changes from the current branch's upstream remote. remote + args
-// allow an explicit target (remote is inserted after the verb). Returns the
-// command output.
-func Pull(dir, remote string, args ...string) (string, error) {
+// Fetch fetches refs from the remote without modifying the working directory.
+func Fetch(dir string, remote string) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("git: no working directory")
 	}
 	if !IsRepo(dir) {
 		return "", fmt.Errorf("git: %s is not a git repository", dir)
 	}
-	full := []string{}
-	if remote != "" {
-		full = append(full, remote)
-	}
-	full = append(full, args...)
-	return runRemote(dir, "pull", full...)
-}
 
-// Fetch downloads objects and refs from the default remote (or remote when
-// given) without touching the working tree. Returns the command output.
-func Fetch(dir, remote string, args ...string) (string, error) {
-	if dir == "" {
-		return "", fmt.Errorf("git: no working directory")
-	}
-	if !IsRepo(dir) {
-		return "", fmt.Errorf("git: %s is not a git repository", dir)
-	}
-	full := []string{}
+	var args []string
 	if remote != "" {
-		full = append(full, remote)
+		args = []string{"fetch", remote}
+	} else {
+		args = []string{"fetch"}
 	}
-	full = append(full, args...)
-	return runRemote(dir, "fetch", full...)
+
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		combined := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
+		if combined == "" {
+			combined = err.Error()
+		}
+		return combined, fmt.Errorf("git fetch: %s: %w", combined, err)
+	}
+	combined := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
+	return combined, nil
 }

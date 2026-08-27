@@ -1,0 +1,411 @@
+syntax = "proto3";
+
+package localcompose.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1;localcomposev1";
+
+service DaemonService {
+  // Project Lifecycle
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  rpc StartProject(StartProjectRequest) returns (StartProjectResponse);
+  rpc StopProject(StopProjectRequest) returns (StopProjectResponse);
+  rpc RemoveProject(RemoveProjectRequest) returns (RemoveProjectResponse);
+
+  // Daemon Management
+  rpc DaemonStatus(DaemonStatusRequest) returns (DaemonStatusResponse);
+  rpc StopDaemon(StopDaemonRequest) returns (StopDaemonResponse);
+  rpc RestartDaemon(RestartDaemonRequest) returns (RestartDaemonResponse);
+
+  // Service Management
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  rpc StartService(StartServiceRequest) returns (StartServiceResponse);
+  rpc StopService(StopServiceRequest) returns (StopServiceResponse);
+  rpc KillService(KillServiceRequest) returns (KillServiceResponse);
+  rpc Restart(RestartRequest) returns (RestartResponse);
+  rpc Top(TopRequest) returns (TopResponse);
+  rpc Logs(LogsRequest) returns (stream LogChunk);
+  rpc Ports(PortsRequest) returns (PortsResponse);
+
+  // Actions
+  rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
+  rpc ListActionStates(ListActionStatesRequest) returns (ListActionStatesResponse);
+  rpc RunAction(RunActionRequest) returns (stream ActionOutputChunk);
+
+  // Git Operations
+  rpc GitLog(GitLogRequest) returns (GitLogResponse);
+  rpc GitDiff(GitDiffRequest) returns (GitDiffResponse);
+  rpc GitCommit(GitCommitRequest) returns (GitCommitResponse);
+  rpc GitStage(GitStageRequest) returns (GitStageResponse);
+  rpc GitPush(GitPushRequest) returns (GitPushResponse);
+  rpc GitPull(GitPullRequest) returns (GitPullResponse);
+  rpc GitFetch(GitFetchRequest) returns (GitFetchResponse);
+
+  // Real-time Event Subscription
+  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream Event);
+}
+
+// -----------------------------------------------------------------------------
+// Common Types
+// -----------------------------------------------------------------------------
+
+message DaemonInfo {
+  int32 pid = 1;
+  google.protobuf.Timestamp start_time = 2;
+  int32 goroutines = 3;
+  uint64 memory_alloc = 4;
+  uint64 memory_sys = 5;
+  uint64 memory_rss = 6;
+  string go_version = 7;
+}
+
+message ServiceState {
+  string name = 1;
+  string status = 2;
+  int32 pid = 3;
+  int32 exit_code = 4;
+  int32 restarts = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp finished_at = 7;
+  bool has_health = 8;
+  string health = 9;
+}
+
+message ActionInfo {
+  string name = 1;
+  string command = 2;
+  string working_dir = 3;
+  bool tty = 4;
+  repeated string depends_on = 5;
+}
+
+message ActionState {
+  string name = 1;
+  string command = 2;
+  string status = 3;
+  int32 pid = 4;
+  int32 exit_code = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp finished_at = 7;
+}
+
+message ProjectInfo {
+  string name = 1;
+  string status = 2;
+  string config_path = 3;
+  int32 running_services = 4;
+  int32 total_services = 5;
+}
+
+message ServiceStat {
+  string name = 1;
+  string status = 2;
+  int32 pid = 3;
+  int32 pgid = 4;
+  int32 procs = 5;
+  double cpu = 6;
+  uint64 rss_bytes = 7;
+}
+
+message PortBinding {
+  string project = 1;
+  string service = 2;
+  int32 pid = 3;
+  string ip = 4;
+  int32 port = 5;
+  string protocol = 6;
+}
+
+message GitRef {
+  string name = 1;
+  string type = 2;
+  bool is_active = 3;
+}
+
+message GitBranch {
+  string name = 1;
+  string hash = 2;
+  bool is_active = 3;
+  bool is_remote = 4;
+  string upstream = 5;
+  int32 ahead = 6;
+  int32 behind = 7;
+}
+
+message GitTag {
+  string name = 1;
+  string hash = 2;
+}
+
+message GitStash {
+  string index = 1;
+  string name = 2;
+  string hash = 3;
+  google.protobuf.Timestamp time = 4;
+}
+
+message GitCommit {
+  string hash = 1;
+  string short = 2;
+  string author = 3;
+  string email = 4;
+  google.protobuf.Timestamp time = 5;
+  repeated string parents = 6;
+  string subject = 7;
+  bool head = 8;
+  repeated GitRef refs = 9;
+}
+
+message GitFileChange {
+  string path = 1;
+  string old_path = 2;
+  string status = 3;
+  int32 additions = 4;
+  int32 deletions = 5;
+  bool staged = 6;
+  bool unstaged = 7;
+  bool untracked = 8;
+}
+
+message GitDiffResult {
+  GitCommit commit = 1;
+  repeated GitFileChange files = 2;
+  string diff = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Streaming Messages
+// -----------------------------------------------------------------------------
+
+message LogChunk {
+  string project = 1;
+  string service = 2;
+  string action = 3;
+  repeated string lines = 4;
+  string content = 5;
+  bool rotated = 6;
+}
+
+message ActionOutputChunk {
+  string project = 1;
+  string action = 2;
+  string line = 3;
+  optional int32 exit_code = 4;
+}
+
+message ServiceStateChangedEvent {
+  string project = 1;
+  ServiceState state = 2;
+}
+
+message ActionStateChangedEvent {
+  string project = 1;
+  ActionState state = 2;
+}
+
+message GitChangedEvent {
+  string project = 1;
+}
+
+message Event {
+  oneof event {
+    ServiceStateChangedEvent service_state_changed = 1;
+    ActionStateChangedEvent action_state_changed = 2;
+    GitChangedEvent git_changed = 3;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Request & Response Payloads
+// -----------------------------------------------------------------------------
+
+message ListProjectsRequest {}
+
+message ListProjectsResponse {
+  repeated ProjectInfo projects = 1;
+}
+
+message StartProjectRequest {
+  string config_path = 1;
+  bool build = 2;
+  string env_file = 3;
+  optional bool remove_orphans = 4;
+}
+
+message StartProjectResponse {}
+
+message StopProjectRequest {
+  string project = 1;
+}
+
+message StopProjectResponse {}
+
+message RemoveProjectRequest {
+  string project = 1;
+}
+
+message RemoveProjectResponse {}
+
+message DaemonStatusRequest {}
+
+message DaemonStatusResponse {
+  DaemonInfo info = 1;
+}
+
+message StopDaemonRequest {}
+
+message StopDaemonResponse {}
+
+message RestartDaemonRequest {}
+
+message RestartDaemonResponse {}
+
+message ListServicesRequest {
+  string project = 1;
+}
+
+message ListServicesResponse {
+  repeated ServiceState states = 1;
+}
+
+message StartServiceRequest {
+  string project = 1;
+  string service = 2;
+}
+
+message StartServiceResponse {}
+
+message StopServiceRequest {
+  string project = 1;
+  string service = 2;
+}
+
+message StopServiceResponse {}
+
+message KillServiceRequest {
+  string project = 1;
+  string service = 2;
+  string signal = 3;
+}
+
+message KillServiceResponse {}
+
+message RestartRequest {
+  string project = 1;
+  string service = 2;
+}
+
+message RestartResponse {}
+
+message TopRequest {
+  string project = 1;
+  string service = 2;
+}
+
+message TopResponse {
+  repeated ServiceStat stats = 1;
+}
+
+message LogsRequest {
+  string project = 1;
+  string service = 2;
+  string action = 3;
+  bool follow = 4;
+  bool previous = 5;
+  int32 tail = 6;
+}
+
+message PortsRequest {
+  string project = 1;
+}
+
+message PortsResponse {
+  repeated PortBinding ports = 1;
+}
+
+message ListActionsRequest {
+  string project = 1;
+}
+
+message ListActionsResponse {
+  repeated ActionInfo actions = 1;
+}
+
+message ListActionStatesRequest {
+  string project = 1;
+}
+
+message ListActionStatesResponse {
+  repeated ActionState states = 1;
+}
+
+message RunActionRequest {
+  string project = 1;
+  string action = 2;
+  repeated string args = 3;
+}
+
+message GitLogRequest {
+  string project = 1;
+}
+
+message GitLogResponse {
+  repeated GitCommit commits = 1;
+  repeated GitBranch branches = 2;
+  repeated GitTag tags = 3;
+  repeated GitStash stashes = 4;
+}
+
+message GitDiffRequest {
+  string project = 1;
+  string hash = 2;
+  string path = 3;
+  int32 context_lines = 4;
+}
+
+message GitDiffResponse {
+  GitDiffResult result = 1;
+}
+
+message GitCommitRequest {
+  string project = 1;
+  string message = 2;
+}
+
+message GitCommitResponse {}
+
+message GitStageRequest {
+  string project = 1;
+  string path = 2;
+  bool stage_all = 3;
+  bool unstage = 4;
+}
+
+message GitStageResponse {}
+
+message GitPushRequest {
+  string project = 1;
+}
+
+message GitPushResponse {
+  string output = 1;
+}
+
+message GitPullRequest {
+  string project = 1;
+}
+
+message GitPullResponse {
+  string output = 1;
+}
+
+message GitFetchRequest {
+  string project = 1;
+}
+
+message GitFetchResponse {
+  string output = 1;
+}
+
+message SubscribeEventsRequest {}

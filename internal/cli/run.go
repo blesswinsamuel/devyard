@@ -38,13 +38,7 @@ var runCmd = &cobra.Command{
 			return fmt.Errorf("start project: %w", err)
 		}
 
-		client2, err := control.Dial(sock)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = client2.Close() }()
-
-		exitCode, err := client2.RunAction(cfg.Project, actionName, extraArgs, func(line string) {
+		exitCode, err := client.RunAction(cmd.Context(), cfg.Project, actionName, extraArgs, func(line string) {
 			fmt.Println(line)
 		})
 		if err != nil {

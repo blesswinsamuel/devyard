@@ -159,7 +159,7 @@ func runDaemonReload(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	projects, err := func() ([]protocol.ProjectInfo, error) {
+	projects, err := func() ([]*protocol.ProjectInfo, error) {
 		c, err := control.Dial(locs.Socket)
 		if err != nil {
 			return nil, err
@@ -205,7 +205,7 @@ func runDaemonReload(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("wait for daemon: %w", err)
 	}
 
-	newProjects, err := func() ([]protocol.ProjectInfo, error) {
+	newProjects, err := func() ([]*protocol.ProjectInfo, error) {
 		c, err := control.Dial(locs.Socket)
 		if err != nil {
 			return nil, err

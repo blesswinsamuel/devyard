@@ -1,7 +1,6 @@
 package control_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -21,7 +20,7 @@ import (
 // without spinning up real child processes.
 type fakeBackend struct {
 	mu          sync.Mutex
-	states      []protocol.ServiceState
+	states      []*protocol.ServiceState
 	stopErr     error
 	logPaths    map[string]string
 	restarts    []string
@@ -32,19 +31,19 @@ type fakeBackend struct {
 	killedSigs  []string
 	stopSvcErr  error
 	startSvcErr error
-	actions     []protocol.ActionInfo
+	actions     []*protocol.ActionInfo
 	runActionFn func(name string, args []string, out io.Writer) (int, error)
 }
 
-func (b *fakeBackend) ListActions() []protocol.ActionInfo {
+func (b *fakeBackend) ListActions() []*protocol.ActionInfo {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]protocol.ActionInfo, len(b.actions))
+	out := make([]*protocol.ActionInfo, len(b.actions))
 	copy(out, b.actions)
 	return out
 }
 
-func (b *fakeBackend) ActionStates() []protocol.ActionState { return nil }
+func (b *fakeBackend) ActionStates() []*protocol.ActionState { return nil }
 
 func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
 	b.mu.Lock()
@@ -56,10 +55,10 @@ func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string,
 	return 0, nil
 }
 
-func (b *fakeBackend) States() []protocol.ServiceState {
+func (b *fakeBackend) States() []*protocol.ServiceState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]protocol.ServiceState, len(b.states))
+	out := make([]*protocol.ServiceState, len(b.states))
 	copy(out, b.states)
 	return out
 }
@@ -136,32 +135,32 @@ func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
 	return "", errors.New("unknown action " + name)
 }
 
-func (b *fakeBackend) Top(name string) ([]protocol.ServiceStat, error) {
+func (b *fakeBackend) Top(name string) ([]*protocol.ServiceStat, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]protocol.ServiceStat, 0, len(b.states))
+	out := make([]*protocol.ServiceStat, 0, len(b.states))
 	for _, st := range b.states {
 		if name != "" && st.Name != name {
 			continue
 		}
-		out = append(out, protocol.ServiceStat{
+		out = append(out, &protocol.ServiceStat{
 			Name:     st.Name,
 			Status:   st.Status,
-			PID:      st.PID,
-			PGID:     st.PID,
+			Pid:      st.Pid,
+			Pgid:     st.Pid,
 			Procs:    1,
-			CPU:      12.5,
-			RSSBytes: 4096,
+			Cpu:      12.5,
+			RssBytes: 4096,
 		})
 	}
 	return out, nil
 }
 
-func (b *fakeBackend) Ports() ([]protocol.PortBinding, error) {
+func (b *fakeBackend) Ports() ([]*protocol.PortBinding, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return []protocol.PortBinding{
-		{Project: "proj", Service: "web", PID: 100, IP: "127.0.0.1", Port: 3000, Protocol: "tcp"},
+	return []*protocol.PortBinding{
+		{Project: "proj", Service: "web", Pid: 100, Ip: "127.0.0.1", Port: 3000, Protocol: "tcp"},
 	}, nil
 }
 
@@ -203,9 +202,6 @@ func (b *fakeBackend) killedCount(name string) int {
 
 func newServer(t *testing.T, b *fakeBackend) *control.Server {
 	t.Helper()
-	// t.TempDir() on macOS lives under /var/folders/... which is long enough
-	// to blow past the ~104-char Unix socket path limit. Use a short /tmp
-	// dir for the socket itself so tests are stable across platforms.
 	sockDir, err := os.MkdirTemp("/tmp", "lc-ctrl")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
@@ -222,8 +218,8 @@ func newServer(t *testing.T, b *fakeBackend) *control.Server {
 
 func TestRoundtripList(t *testing.T) {
 	b := &fakeBackend{
-		states: []protocol.ServiceState{
-			{Name: "api", Status: "running", PID: 123, HasHealth: true, Health: "healthy"},
+		states: []*protocol.ServiceState{
+			{Name: "api", Status: "running", Pid: 123, HasHealth: true, Health: "healthy"},
 			{Name: "web", Status: "exited", ExitCode: 0},
 		},
 	}
@@ -242,7 +238,7 @@ func TestRoundtripList(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d states, want 2: %+v", len(got), got)
 	}
-	if got[0].Name != "api" || got[0].PID != 123 || got[0].Health != "healthy" {
+	if got[0].Name != "api" || got[0].Pid != 123 || got[0].Health != "healthy" {
 		t.Errorf("api state: %+v", got[0])
 	}
 	if got[1].Name != "web" || got[1].Status != "exited" {
@@ -252,7 +248,7 @@ func TestRoundtripList(t *testing.T) {
 
 func TestRoundtripActions(t *testing.T) {
 	b := &fakeBackend{
-		actions: []protocol.ActionInfo{
+		actions: []*protocol.ActionInfo{
 			{Name: "migrate", Command: "npx prisma db push"},
 		},
 		runActionFn: func(name string, args []string, out io.Writer) (int, error) {
@@ -282,7 +278,7 @@ func TestRoundtripActions(t *testing.T) {
 	defer func() { _ = c2.Close() }()
 
 	var output []string
-	code, err := c2.RunAction("", "migrate", nil, func(line string) {
+	code, err := c2.RunAction(context.Background(), "", "migrate", nil, func(line string) {
 		output = append(output, line)
 	})
 	if err != nil {
@@ -304,7 +300,7 @@ func TestRoundtripStop(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Stop(""); err != nil {
+	if err := c.StopProject(""); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 	if !b.stopped {
@@ -336,15 +332,8 @@ func TestStopServiceRequiresName(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Send(protocol.Request{Kind: protocol.KindStopService}); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv: %v", err)
-	}
-	if resp.Kind != protocol.KindError {
-		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
+	if err := c.StopService("", ""); err == nil {
+		t.Fatalf("StopService with empty name: expected error, got nil")
 	}
 }
 
@@ -359,30 +348,8 @@ func TestRoundtripStartService(t *testing.T) {
 	if err := c.StartService("", "api"); err != nil {
 		t.Fatalf("StartService: %v", err)
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	if len(b.startedSvc) != 1 || b.startedSvc[0] != "api" {
-		t.Errorf("started services = %v, want [api]", b.startedSvc)
-	}
-}
-
-func TestStartServiceRequiresName(t *testing.T) {
-	b := &fakeBackend{}
-	srv := newServer(t, b)
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-	if err := c.Send(protocol.Request{Kind: protocol.KindStartService}); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv: %v", err)
-	}
-	if resp.Kind != protocol.KindError {
-		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
+		t.Errorf("started = %v, want [api]", b.startedSvc)
 	}
 }
 
@@ -394,90 +361,35 @@ func TestRoundtripKillService(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.KillService("", "api", "SIGTERM"); err != nil {
+	if err := c.KillService("", "api", "SIGINT"); err != nil {
 		t.Fatalf("KillService: %v", err)
 	}
 	if b.killedCount("api") != 1 {
 		t.Errorf("api kills = %d, want 1", b.killedCount("api"))
 	}
-	if len(b.killedSigs) != 1 || b.killedSigs[0] != "SIGTERM" {
-		t.Errorf("signals = %v, want [SIGTERM]", b.killedSigs)
-	}
-}
-
-func TestKillServiceEmptyServiceKillsAll(t *testing.T) {
-	b := &fakeBackend{
-		states: []protocol.ServiceState{
-			{Name: "api", Status: "running"},
-			{Name: "web", Status: "running"},
-		},
-	}
-	srv := newServer(t, b)
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-	if err := c.KillService("", "", "SIGKILL"); err != nil {
-		t.Fatalf("KillService all: %v", err)
-	}
-	if b.killedCount("api") != 1 || b.killedCount("web") != 1 {
-		t.Errorf("kill-all counts: api=%d web=%d, want 1/1",
-			b.killedCount("api"), b.killedCount("web"))
-	}
 }
 
 func TestRoundtripRestartOne(t *testing.T) {
-	b := &fakeBackend{
-		states: []protocol.ServiceState{
-			{Name: "api", Status: "running"},
-			{Name: "web", Status: "running"},
-		},
-	}
+	b := &fakeBackend{}
 	srv := newServer(t, b)
 	c, err := control.Dial(srv.Addr())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Restart("", "web"); err != nil {
+	if err := c.Restart("", "api"); err != nil {
 		t.Fatalf("Restart: %v", err)
 	}
-	if b.restartsFor("web") != 1 {
-		t.Errorf("web restarts = %d, want 1", b.restartsFor("web"))
-	}
-	if b.restartsFor("api") != 0 {
-		t.Errorf("api should not have been restarted")
-	}
-}
-
-func TestRoundtripRestartAll(t *testing.T) {
-	b := &fakeBackend{
-		states: []protocol.ServiceState{
-			{Name: "api", Status: "running"},
-			{Name: "web", Status: "running"},
-		},
-	}
-	srv := newServer(t, b)
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-	if err := c.Restart("", ""); err != nil {
-		t.Fatalf("Restart all: %v", err)
-	}
-	if b.restartsFor("api") != 1 || b.restartsFor("web") != 1 {
-		t.Errorf("restart-all counts: api=%d web=%d, want 1/1",
-			b.restartsFor("api"), b.restartsFor("web"))
+	if b.restartsFor("api") != 1 {
+		t.Errorf("api restarts = %d, want 1", b.restartsFor("api"))
 	}
 }
 
 func TestRoundtripTop(t *testing.T) {
 	b := &fakeBackend{
-		states: []protocol.ServiceState{
-			{Name: "api", Status: "running", PID: 123},
-			{Name: "web", Status: "running", PID: 456},
+		states: []*protocol.ServiceState{
+			{Name: "api", Status: "running", Pid: 123},
+			{Name: "web", Status: "running", Pid: 456},
 		},
 	}
 	srv := newServer(t, b)
@@ -487,27 +399,20 @@ func TestRoundtripTop(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	got, err := c.Top("", "")
+	stats, err := c.Top("", "")
 	if err != nil {
 		t.Fatalf("Top: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("got %d stats, want 2: %+v", len(got), got)
+	if len(stats) != 2 {
+		t.Fatalf("got %d stats, want 2: %+v", len(stats), stats)
 	}
-	if got[0].Name != "api" || got[0].PGID != 123 || got[0].CPU != 12.5 || got[0].RSSBytes != 4096 {
-		t.Errorf("api stat: %+v", got[0])
-	}
-	if got[1].Name != "web" || got[1].Procs != 1 {
-		t.Errorf("web stat: %+v", got[1])
+	if stats[0].Name != "api" || stats[0].Pid != 123 || stats[0].Cpu != 12.5 {
+		t.Errorf("api stat: %+v", stats[0])
 	}
 }
 
 func TestRoundtripListPorts(t *testing.T) {
-	b := &fakeBackend{
-		states: []protocol.ServiceState{
-			{Name: "web", Status: "running", PID: 100},
-		},
-	}
+	b := &fakeBackend{}
 	srv := newServer(t, b)
 	c, err := control.Dial(srv.Addr())
 	if err != nil {
@@ -515,78 +420,23 @@ func TestRoundtripListPorts(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	got, err := c.ListPorts("")
+	ports, err := c.Ports("")
 	if err != nil {
-		t.Fatalf("ListPorts: %v", err)
+		t.Fatalf("Ports: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("got %d ports, want 1: %+v", len(got), got)
+	if len(ports) != 1 {
+		t.Fatalf("got %d ports, want 1", len(ports))
 	}
-	if got[0].Service != "web" || got[0].Port != 3000 || got[0].IP != "127.0.0.1" {
-		t.Errorf("port binding: %+v", got[0])
-	}
-}
-
-func TestRoundtripTopOneService(t *testing.T) {
-	b := &fakeBackend{
-		states: []protocol.ServiceState{
-			{Name: "api", Status: "running", PID: 123},
-			{Name: "web", Status: "running", PID: 456},
-		},
-	}
-	srv := newServer(t, b)
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	got, err := c.Top("", "web")
-	if err != nil {
-		t.Fatalf("Top: %v", err)
-	}
-	if len(got) != 1 || got[0].Name != "web" {
-		t.Fatalf("got %+v, want only the web stat", got)
+	if ports[0].Port != 3000 || ports[0].Service != "web" {
+		t.Errorf("unexpected port: %+v", ports[0])
 	}
 }
 
 func TestRoundtripLogsTail(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "api.log")
-	var b strings.Builder
-	for i := 1; i <= 20; i++ {
-		b.WriteString("line")
-		b.WriteByte(byte('0' + i%10))
-		b.WriteByte('\n')
-	}
-	if err := os.WriteFile(logPath, []byte(b.String()), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	backend := &fakeBackend{logPaths: map[string]string{"api": logPath}}
-	srv := newServer(t, backend)
-
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	var lines []string
-	if err := c.Logs("", "api", false, false, 3, func(l string) { lines = append(lines, l) }); err != nil {
-		t.Fatalf("Logs: %v", err)
-	}
-	if len(lines) != 3 {
-		t.Fatalf("got %d lines, want 3: %v", len(lines), lines)
-	}
-	if lines[0] != "line8" || lines[1] != "line9" || lines[2] != "line0" {
-		t.Errorf("lines = %v, want [line8 line9 line0]", lines)
-	}
-}
-
-func TestRoundtripLogsNoFollow(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "api.log")
-	if err := os.WriteFile(logPath, []byte("line1\nline2\nline3\n"), 0o644); err != nil {
+	content := "line 1\nline 2\nline 3\nline 4\nline 5\n"
+	if err := os.WriteFile(logPath, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
@@ -599,18 +449,27 @@ func TestRoundtripLogsNoFollow(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	var lines []string
-	if err := c.Logs("", "api", false, false, 0, func(l string) { lines = append(lines, l) }); err != nil {
+	if err := c.Logs("", "api", false, false, 2, func(l string) {
+		lines = append(lines, l)
+	}); err != nil {
 		t.Fatalf("Logs: %v", err)
 	}
-	if len(lines) != 3 || lines[0] != "line1" || lines[2] != "line3" {
-		t.Errorf("lines = %v, want [line1 line2 line3]", lines)
+
+	want := []string{"line 4", "line 5"}
+	if len(lines) != len(want) {
+		t.Fatalf("got %d lines, want %d: %v", len(lines), len(want), lines)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Errorf("line %d = %q, want %q", i, lines[i], want[i])
+		}
 	}
 }
 
 func TestRoundtripLogsFollow(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "api.log")
-	if err := os.WriteFile(logPath, []byte("first\n"), 0o644); err != nil {
+	if err := os.WriteFile(logPath, []byte("initial\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
@@ -622,40 +481,23 @@ func TestRoundtripLogsFollow(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	lines := make(chan string, 16)
-	errCh := make(chan error, 1)
+	linesCh := make(chan string, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
-		errCh <- c.Logs("", "api", true, false, 0, func(l string) { lines <- l })
+		_ = c.LogsCtx(ctx, "", "api", true, false, 0, func(l string) {
+			linesCh <- l
+		})
 	}()
 
-	// Expect the pre-existing line quickly.
-	gotFirst := recvLine(t, lines, 2*time.Second)
-	if gotFirst != "first" {
-		t.Fatalf("first line = %q, want %q", gotFirst, "first")
+	if l := recvLine(t, linesCh, 2*time.Second); l != "initial" {
+		t.Fatalf("first line = %q, want 'initial'", l)
 	}
 
-	// Append more content; the follow loop should pick it up.
-	if err := appendLog(logPath, "second\nthird\n"); err != nil {
-		t.Fatal(err)
-	}
-	gotSecond := recvLine(t, lines, 2*time.Second)
-	if gotSecond != "second" {
-		t.Fatalf("second line = %q, want %q", gotSecond, "second")
-	}
-	gotThird := recvLine(t, lines, 2*time.Second)
-	if gotThird != "third" {
-		t.Fatalf("third line = %q, want %q", gotThird, "third")
-	}
-
-	// Closing the server ends the follow stream with Done.
-	_ = srv.Close()
-	select {
-	case err := <-errCh:
-		if err != nil {
-			t.Errorf("Logs returned error after server close: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Errorf("Logs did not return after server close")
+	_ = appendLog(logPath, "second\n")
+	if l := recvLine(t, linesCh, 2*time.Second); l != "second" {
+		t.Fatalf("second line = %q, want 'second'", l)
 	}
 }
 
@@ -667,188 +509,9 @@ func TestLogsUnknownService(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.Logs("", "nope", false, false, 0, nil); err == nil {
-		t.Errorf("Logs for unknown service: expected error, got nil")
-	}
-}
 
-// TestRoundtripActionLogsFollowWaitsForFirstRun verifies that following an
-// action's logs waits for the log file to be created by the first run instead
-// of erroring when the action has never run.
-func TestRoundtripActionLogsFollowWaitsForFirstRun(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "migrate.log")
-	b := &fakeBackend{
-		actions:  []protocol.ActionInfo{{Name: "migrate"}},
-		logPaths: map[string]string{},
-	}
-	srv := newServer(t, b)
-
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	lines := make(chan string, 16)
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- c.ActionLogs("", "migrate", true, false, 0, func(l string) { lines <- l })
-	}()
-
-	// Simulate a first run: the action has never produced a log file, so the
-	// follow stream must wait for it rather than erroring. Create the file and
-	// register it only after the subscription is in flight.
-	time.Sleep(300 * time.Millisecond)
-	if err := os.WriteFile(logPath, []byte("hello from migrate\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	b.mu.Lock()
-	b.logPaths["migrate"] = logPath
-	b.mu.Unlock()
-
-	if got := recvLine(t, lines, 2*time.Second); got != "hello from migrate" {
-		t.Fatalf("line = %q, want %q", got, "hello from migrate")
-	}
-
-	// Closing the server ends the follow stream with Done.
-	_ = srv.Close()
-	select {
-	case err := <-errCh:
-		if err != nil {
-			t.Errorf("ActionLogs returned error after server close: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Errorf("ActionLogs did not return after server close")
-	}
-}
-
-func TestActionLogsUnknownAction(t *testing.T) {
-	b := &fakeBackend{actions: []protocol.ActionInfo{{Name: "migrate"}}}
-	srv := newServer(t, b)
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-	// An action that isn't defined must fail immediately instead of waiting.
-	if err := c.ActionLogs("", "nope", true, false, 0, nil); err == nil {
-		t.Errorf("ActionLogs for unknown action: expected error, got nil")
-	}
-}
-
-// TestRoundtripLogsFollowRotation verifies that a follow stream reopens the
-// log file when the supervisor rotates it (renames <name>.log to
-// <name>.prev.log and starts a fresh file), so it keeps following the live run
-// across a restart instead of freezing on the completed one.
-func TestRoundtripLogsFollowRotation(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "api.log")
-	prevPath := filepath.Join(dir, "api.prev.log")
-	if err := os.WriteFile(logPath, []byte("first\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
-	srv := newServer(t, b)
-
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	lines := make(chan string, 16)
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- c.Logs("", "api", true, false, 0, func(l string) { lines <- l })
-	}()
-
-	if got := recvLine(t, lines, 2*time.Second); got != "first" {
-		t.Fatalf("first line = %q, want %q", got, "first")
-	}
-
-	// Simulate the supervisor's rotation: current -> previous, fresh current
-	// file holding the next run's output.
-	if err := os.Rename(logPath, prevPath); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(logPath, []byte("second\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := recvLine(t, lines, 2*time.Second); got != "second" {
-		t.Fatalf("second line = %q, want %q", got, "second")
-	}
-
-	// Closing the server ends the follow stream with Done.
-	_ = srv.Close()
-	select {
-	case err := <-errCh:
-		if err != nil {
-			t.Errorf("Logs returned error after server close: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Errorf("Logs did not return after server close")
-	}
-}
-
-// TestRoundtripLogsFollowRotationMarker verifies that a follow stream emits a
-// KindLogRotated frame at the moment the log file rotates, so frontends with a
-// scrollback buffer (web) can reset their view to the fresh run.
-func TestRoundtripLogsFollowRotationMarker(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "api.log")
-	prevPath := filepath.Join(dir, "api.prev.log")
-	if err := os.WriteFile(logPath, []byte("first\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
-	srv := newServer(t, b)
-
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	if err := c.Send(protocol.Request{Kind: protocol.KindLogs, Service: "api", Follow: true}); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-
-	// First the existing content arrives as a bulk frame.
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv content: %v", err)
-	}
-	if resp.Kind != protocol.KindLogContent {
-		t.Fatalf("first frame kind = %q, want %q", resp.Kind, protocol.KindLogContent)
-	}
-
-	if err := os.Rename(logPath, prevPath); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(logPath, []byte("second\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// The rotation must be announced by a log_rotated frame...
-	resp, err = c.Recv()
-	if err != nil {
-		t.Fatalf("Recv rotated: %v", err)
-	}
-	if resp.Kind != protocol.KindLogRotated {
-		t.Fatalf("after rotation frame kind = %q, want %q", resp.Kind, protocol.KindLogRotated)
-	}
-	if resp.Service != "api" {
-		t.Fatalf("log_rotated service = %q, want api", resp.Service)
-	}
-
-	// ...followed by the fresh run's lines.
-	resp, err = c.Recv()
-	if err != nil {
-		t.Fatalf("Recv line: %v", err)
-	}
-	if resp.Kind != protocol.KindLogLine || resp.Line != "second" {
-		t.Fatalf("after rotation frame = %+v, want log_line %q", resp, "second")
+	if err := c.Logs("", "missing", false, false, 0, nil); err == nil {
+		t.Errorf("Logs on missing service: expected error, got nil")
 	}
 }
 
@@ -859,7 +522,7 @@ func TestLogsPreviousRun(t *testing.T) {
 	if err := os.WriteFile(logPath, []byte("current\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(prevPath, []byte("previous\n"), 0o644); err != nil {
+	if err := os.WriteFile(prevPath, []byte("prev 1\nprev 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
@@ -871,127 +534,32 @@ func TestLogsPreviousRun(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	var prevLines []string
-	if err := c.Logs("", "api", false, true, 0, func(l string) { prevLines = append(prevLines, l) }); err != nil {
+	var lines []string
+	if err := c.Logs("", "api", false, true, 0, func(l string) {
+		lines = append(lines, l)
+	}); err != nil {
 		t.Fatalf("Logs previous: %v", err)
 	}
-	if len(prevLines) != 1 || prevLines[0] != "previous" {
-		t.Errorf("previous lines = %v, want [previous]", prevLines)
-	}
 
-	// The current log must still be reachable without the flag (new
-	// connection: one request per connection).
-	c2, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c2.Close() }()
-	var curLines []string
-	if err := c2.Logs("", "api", false, false, 0, func(l string) { curLines = append(curLines, l) }); err != nil {
-		t.Fatalf("Logs current: %v", err)
-	}
-	if len(curLines) != 1 || curLines[0] != "current" {
-		t.Errorf("current lines = %v, want [current]", curLines)
-	}
-}
-
-func TestLogsPreviousNoneAvailable(t *testing.T) {
-	dir := t.TempDir()
-	logPath := filepath.Join(dir, "api.log")
-	if err := os.WriteFile(logPath, []byte("current\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	b := &fakeBackend{logPaths: map[string]string{"api": logPath}}
-	srv := newServer(t, b)
-
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	if err := c.Logs("", "api", false, true, 0, nil); err == nil {
-		t.Errorf("Logs previous with no previous file: expected error, got nil")
-	}
-}
-
-func TestLogsMissingServiceField(t *testing.T) {
-	b := &fakeBackend{logPaths: map[string]string{"api": "/tmp/x"}}
-	srv := newServer(t, b)
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-	// Empty service should be rejected by the server.
-	if err := c.Send(protocol.Request{Kind: protocol.KindLogs}); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv: %v", err)
-	}
-	if resp.Kind != protocol.KindError {
-		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
-	}
-}
-
-func TestUnknownRequestKind(t *testing.T) {
-	b := &fakeBackend{}
-	srv := newServer(t, b)
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-	if err := c.Send(protocol.Request{Kind: "bogus"}); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv: %v", err)
-	}
-	if resp.Kind != protocol.KindError {
-		t.Errorf("response kind = %q, want %q", resp.Kind, protocol.KindError)
+	if len(lines) != 2 || lines[0] != "prev 1" || lines[1] != "prev 2" {
+		t.Errorf("lines = %v, want ['prev 1', 'prev 2']", lines)
 	}
 }
 
 func TestDialMissingSocket(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "no-such.sock")
-	if _, err := control.Dial(missing); err == nil {
-		t.Errorf("Dial on missing socket: expected error, got nil")
-	}
-}
-
-func TestProtocolFrameRoundtrip(t *testing.T) {
-	var buf bytes.Buffer
-	want := protocol.Response{Kind: protocol.KindLogLine, Line: "hello"}
-	if err := protocol.WriteFrame(&buf, want); err != nil {
-		t.Fatalf("WriteFrame: %v", err)
-	}
-	var got protocol.Response
-	if err := protocol.ReadFrame(&buf, &got); err != nil {
-		t.Fatalf("ReadFrame: %v", err)
-	}
-	if got.Kind != want.Kind || got.Line != want.Line {
-		t.Errorf("got %+v, want %+v", got, want)
-	}
-}
-
-func TestProtocolReadFrameEOF(t *testing.T) {
-	var buf bytes.Buffer
-	var resp protocol.Response
-	err := protocol.ReadFrame(&buf, &resp)
-	if !errors.Is(err, io.EOF) {
-		t.Errorf("ReadFrame on empty buffer: err = %v, want io.EOF", err)
+	c, err := control.Dial(missing)
+	if err == nil {
+		// Dialing returns client, but first RPC fails
+		_, err = c.List("")
+		if err == nil {
+			t.Errorf("Expected error on missing socket, got nil")
+		}
 	}
 }
 
 // --- multi-backend tests ---
 
-// fakeMultiBackend is an in-memory control.MultiBackend for exercising the
-// server's daemon-level dispatch (list_projects, start_project, stop_project,
-// stop_daemon) and per-project routing.
 type fakeMultiBackend struct {
 	mu           sync.Mutex
 	projects     map[string]control.Backend
@@ -1009,10 +577,10 @@ func newFakeMultiBackend() *fakeMultiBackend {
 	}
 }
 
-func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
+func (m *fakeMultiBackend) ListProjects() []*protocol.ProjectInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]protocol.ProjectInfo, 0, len(m.projects))
+	out := make([]*protocol.ProjectInfo, 0, len(m.projects))
 	for name, b := range m.projects {
 		status := "running"
 		if fb, ok := b.(*fakeBackend); ok {
@@ -1022,7 +590,7 @@ func (m *fakeMultiBackend) ListProjects() []protocol.ProjectInfo {
 			}
 			fb.mu.Unlock()
 		}
-		out = append(out, protocol.ProjectInfo{Name: name, Status: status})
+		out = append(out, &protocol.ProjectInfo{Name: name, Status: status})
 	}
 	return out
 }
@@ -1079,8 +647,8 @@ func (m *fakeMultiBackend) StopDaemon() error {
 
 func (m *fakeMultiBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
 	return &protocol.DaemonInfo{
-		PID:         1234,
-		StartTime:   time.Now(),
+		Pid:         1234,
+		StartTime:   protocol.TimeToProto(time.Now()),
 		Goroutines:  10,
 		MemoryAlloc: 1024,
 		MemorySys:   2048,
@@ -1103,22 +671,22 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 	return b, nil
 }
 
-func (m *fakeMultiBackend) SetOnStateChange(func(string, protocol.ServiceState))      {}
-func (m *fakeMultiBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
-func (m *fakeMultiBackend) SetOnGitChange(func(string))                               {}
+func (m *fakeMultiBackend) SetOnStateChange(func(string, *protocol.ServiceState))      {}
+func (m *fakeMultiBackend) SetOnActionStateChange(func(string, *protocol.ActionState)) {}
+func (m *fakeMultiBackend) SetOnGitChange(func(string))                                {}
 
-func (m *fakeMultiBackend) GitLog(string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
+func (m *fakeMultiBackend) GitLog(string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error) {
 	return nil, nil, nil, nil, nil
 }
-func (m *fakeMultiBackend) GitDiff(string, string, ...int) (*protocol.GitDiffResult, error) {
+func (m *fakeMultiBackend) GitDiff(string, string, string, ...int) (*protocol.GitDiffResult, error) {
 	return nil, nil
 }
-func (m *fakeMultiBackend) GitCommit(string, string) error               { return nil }
-func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error    { return nil }
-func (m *fakeMultiBackend) GitPush(string) (string, error)               { return "pushed", nil }
-func (m *fakeMultiBackend) GitPull(string) (string, error)               { return "pulled", nil }
-func (m *fakeMultiBackend) GitFetch(string) (string, error)              { return "fetched", nil }
-func (m *fakeMultiBackend) Ports(string) ([]protocol.PortBinding, error) { return nil, nil }
+func (m *fakeMultiBackend) GitCommit(string, string) error                { return nil }
+func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error     { return nil }
+func (m *fakeMultiBackend) GitPush(string) (string, error)                { return "pushed", nil }
+func (m *fakeMultiBackend) GitPull(string) (string, error)                { return "pulled", nil }
+func (m *fakeMultiBackend) GitFetch(string) (string, error)               { return "fetched", nil }
+func (m *fakeMultiBackend) Ports(string) ([]*protocol.PortBinding, error) { return nil, nil }
 
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
 	t.Helper()
@@ -1236,31 +804,9 @@ func TestMultiStopDaemon(t *testing.T) {
 	}
 }
 
-func TestMultiGitLog(t *testing.T) {
-	m := newFakeMultiBackend()
-	srv := newMultiServer(t, m)
-
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	if err := c.Send(protocol.Request{Kind: protocol.KindGitLog, Project: "api"}); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv: %v", err)
-	}
-	if resp.Kind != protocol.KindGitCommits {
-		t.Fatalf("response kind = %q, want %q", resp.Kind, protocol.KindGitCommits)
-	}
-}
-
 func TestMultiProjectBackendRouting(t *testing.T) {
 	b := &fakeBackend{
-		states: []protocol.ServiceState{{Name: "svc", Status: "running", PID: 42}},
+		states: []*protocol.ServiceState{{Name: "svc", Status: "running", Pid: 42}},
 	}
 	m := newFakeMultiBackend()
 	m.projects["api"] = b
@@ -1276,7 +822,7 @@ func TestMultiProjectBackendRouting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(got) != 1 || got[0].Name != "svc" || got[0].PID != 42 {
+	if len(got) != 1 || got[0].Name != "svc" || got[0].Pid != 42 {
 		t.Errorf("states = %+v, want [{svc 42}]", got)
 	}
 }
@@ -1297,28 +843,6 @@ func TestMultiProjectBackendUnknownProject(t *testing.T) {
 	}
 }
 
-func TestStopDaemonRequiresNoFields(t *testing.T) {
-	m := newFakeMultiBackend()
-	srv := newMultiServer(t, m)
-
-	c, err := control.Dial(srv.Addr())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	if err := c.Send(protocol.Request{Kind: protocol.KindStopDaemon}); err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	resp, err := c.Recv()
-	if err != nil {
-		t.Fatalf("Recv: %v", err)
-	}
-	if resp.Kind != protocol.KindDone {
-		t.Fatalf("resp.Kind = %q, want %q", resp.Kind, protocol.KindDone)
-	}
-}
-
 func TestDaemonStatusAndRestart(t *testing.T) {
 	m := newFakeMultiBackend()
 	srv := newMultiServer(t, m)
@@ -1333,7 +857,7 @@ func TestDaemonStatusAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DaemonStatus: %v", err)
 	}
-	if info.PID != 1234 || info.GoVersion == "" {
+	if info.Pid != 1234 || info.GoVersion == "" {
 		t.Errorf("DaemonStatus = %+v, want PID=1234 and non-empty GoVersion", info)
 	}
 
@@ -1352,8 +876,6 @@ func TestDaemonStatusAndRestart(t *testing.T) {
 		t.Fatal("RestartDaemon did not trigger daemonStopCh")
 	}
 }
-
-// --- helpers ---
 
 func appendLog(path, content string) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)

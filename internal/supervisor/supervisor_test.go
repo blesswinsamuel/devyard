@@ -1061,14 +1061,14 @@ func TestOnStateChange(t *testing.T) {
 	})
 
 	var mu sync.Mutex
-	var transitions []protocol.ServiceState
+	var transitions []*protocol.ServiceState
 	s, err := supervisor.New(supervisor.Options{
 		Locations: testLocations(t),
 		File:      file,
 		Order:     []string{"svc"},
 		BaseDir:   t.TempDir(),
 		Backoff:   testBackoff(),
-		OnStateChange: func(_ string, state protocol.ServiceState) {
+		OnStateChange: func(_ string, state *protocol.ServiceState) {
 			mu.Lock()
 			transitions = append(transitions, state)
 			mu.Unlock()

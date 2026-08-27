@@ -55,7 +55,7 @@ var topCmd = &cobra.Command{
 
 // printTop renders the per-service resource snapshot as an aligned table.
 // Services without a live process group show "-" for the stats columns.
-func printTop(stats []protocol.ServiceStat) {
+func printTop(stats []*protocol.ServiceStat) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tPID\tPROCS\tCPU%\tMEM")
 	if len(stats) == 0 {
@@ -65,14 +65,14 @@ func printTop(stats []protocol.ServiceStat) {
 	}
 	for _, st := range stats {
 		pid := "-"
-		if st.PID > 0 {
-			pid = fmt.Sprintf("%d", st.PID)
+		if st.Pid > 0 {
+			pid = fmt.Sprintf("%d", st.Pid)
 		}
 		procs, cpu, mem := "-", "-", "-"
 		if st.Procs > 0 {
 			procs = fmt.Sprintf("%d", st.Procs)
-			cpu = fmt.Sprintf("%.1f", st.CPU)
-			mem = fmtBytes(st.RSSBytes)
+			cpu = fmt.Sprintf("%.1f", st.Cpu)
+			mem = fmtBytes(st.RssBytes)
 		}
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", st.Name, st.Status, pid, procs, cpu, mem)
 	}

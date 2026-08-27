@@ -37,7 +37,7 @@ var lsCmd = &cobra.Command{
 	},
 }
 
-func printProjects(projects []protocol.ProjectInfo) {
+func printProjects(projects []*protocol.ProjectInfo) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tSERVICES\tCONFIG PATH")
 	if len(projects) == 0 {

@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"time"
@@ -11,70 +12,51 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
 )
 
+// Backend is the surface the control server needs from the supervisor.
+type Backend interface {
+	States() []*protocol.ServiceState
+	ActionStates() []*protocol.ActionState
+	Stop(ctx context.Context) error
+	StopService(name string) error
+	StartService(name string) error
+	KillService(name, signal string) error
+	Restart(name string) error
+	Top(name string) ([]*protocol.ServiceStat, error)
+	ListActions() []*protocol.ActionInfo
+	RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error)
+	LogPath(name string) (string, error)
+	PreviousLogPath(name string) (string, error)
+	ActionLogPath(name string) (string, error)
+	ActionPreviousLogPath(name string) (string, error)
+	Ports() ([]*protocol.PortBinding, error)
+}
+
 // MultiBackend is the surface the control server needs from the daemon. It
 // manages multiple projects and routes per-project requests to the right
 // Backend.
 type MultiBackend interface {
-	// ListProjects returns a snapshot of all known projects.
-	ListProjects() []protocol.ProjectInfo
-	// StartProject loads the config at configPath and starts a supervisor
-	// for it. If build is true, pre-start builds are run first. envFile is
-	// the absolute path to an env file (empty falls back to .env next to
-	// the config file). removeOrphans controls whether services deleted from
-	// the config are stopped on reload.
+	ListProjects() []*protocol.ProjectInfo
 	StartProject(configPath string, build bool, envFile string, removeOrphans bool) error
-	// StartService starts one service of a project by name. When the project
-	// is running the service is resumed in place; when the project is stopped
-	// a supervisor is lazily materialized that starts just the requested
-	// service and its depends_on chain.
 	StartService(project, service string) error
-	// StopProject stops the named project's services.
 	StopProject(name string) error
-	// RemoveProject stops the named project's services and removes it from the daemon.
 	RemoveProject(name string) error
-	// StopDaemon stops all projects and signals the daemon to exit.
 	StopDaemon() error
-	// DaemonStatus returns current daemon status and runtime metrics.
 	DaemonStatus() (*protocol.DaemonInfo, error)
-	// RestartDaemon restarts the daemon process.
 	RestartDaemon() error
-	// ProjectBackend returns the Backend for the named project, or an
-	// error if the project is not running. An empty project name is valid
-	// for single-project servers.
 	ProjectBackend(project string) (Backend, error)
-	// GitLog returns the git commit log for the named project's working
-	// directory, newest first, along with branches, tags, and stashes. It errors if the project's directory is not a
-	// git repository.
-	GitLog(project string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error)
-	// GitDiff returns the commit metadata, changed files list, and diff for hash
-	// in the named project's working directory.
-	GitDiff(project string, hash string, contextLines ...int) (*protocol.GitDiffResult, error)
-	// GitCommit stages changes and creates a commit with message in the project's repository.
+
+	GitLog(project string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error)
+	GitDiff(project string, hash string, path string, contextLines ...int) (*protocol.GitDiffResult, error)
 	GitCommit(project string, message string) error
-	// GitStage stages or unstages files in the project's repository.
 	GitStage(project string, path string, stageAll bool, unstage bool) error
-	// GitPush pushes the current branch to its upstream remote in the
-	// project's repository, returning the command output.
 	GitPush(project string) (string, error)
-	// GitPull pulls changes from the current branch's upstream remote in the
-	// project's repository, returning the command output.
 	GitPull(project string) (string, error)
-	// GitFetch downloads refs from the remote in the project's repository
-	// without touching the working tree, returning the command output.
 	GitFetch(project string) (string, error)
-	// SetOnStateChange registers a callback that is invoked whenever any
-	// project's service state changes. The project name and the
-	// per-service state snapshot are passed. Implementations that do not
-	// support push notifications may leave this as a no-op.
-	SetOnStateChange(fn func(project string, state protocol.ServiceState))
-	// SetOnActionStateChange registers a callback that is invoked whenever any
-	// project's action runtime state changes.
-	SetOnActionStateChange(fn func(project string, state protocol.ActionState))
-	// SetOnGitChange registers a callback that is invoked whenever any
-	// project's repository files change.
+	Ports(project string) ([]*protocol.PortBinding, error)
+
+	SetOnStateChange(fn func(project string, state *protocol.ServiceState))
+	SetOnActionStateChange(fn func(project string, state *protocol.ActionState))
 	SetOnGitChange(fn func(project string))
-	// Ports returns a list of open listening sockets for a project (or all projects when project is empty).
-	Ports(project string) ([]protocol.PortBinding, error)
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
@@ -89,11 +71,11 @@ type SingleProjectBackend struct {
 	GitDir string
 }
 
-func (s SingleProjectBackend) ListProjects() []protocol.ProjectInfo {
-	return []protocol.ProjectInfo{{Name: s.Project, Status: "running"}}
+func (s SingleProjectBackend) ListProjects() []*protocol.ProjectInfo {
+	return []*protocol.ProjectInfo{{Name: s.Project, Status: "running"}}
 }
 
-func (s SingleProjectBackend) GitLog(string) ([]protocol.GitCommit, []protocol.GitBranch, []protocol.GitTag, []protocol.GitStash, error) {
+func (s SingleProjectBackend) GitLog(string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error) {
 	dir := s.GitDir
 	if dir == "" {
 		dir, _ = os.Getwd()
@@ -104,7 +86,7 @@ func (s SingleProjectBackend) GitLog(string) ([]protocol.GitCommit, []protocol.G
 	return gitlog.Log(dir)
 }
 
-func (s SingleProjectBackend) GitDiff(_ string, hash string, contextLines ...int) (*protocol.GitDiffResult, error) {
+func (s SingleProjectBackend) GitDiff(_ string, hash string, path string, contextLines ...int) (*protocol.GitDiffResult, error) {
 	dir := s.GitDir
 	if dir == "" {
 		dir, _ = os.Getwd()
@@ -112,7 +94,7 @@ func (s SingleProjectBackend) GitDiff(_ string, hash string, contextLines ...int
 	if !gitlog.IsRepo(dir) {
 		return nil, fmt.Errorf("project %q is not a git repository", s.Project)
 	}
-	return gitlog.Diff(dir, hash, contextLines...)
+	return gitlog.Diff(dir, hash, path, contextLines...)
 }
 
 func (s SingleProjectBackend) GitCommit(_ string, message string) error {
@@ -203,9 +185,9 @@ func (s SingleProjectBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	return &protocol.DaemonInfo{
-		PID:         os.Getpid(),
-		StartTime:   time.Now(),
-		Goroutines:  runtime.NumGoroutine(),
+		Pid:         int32(os.Getpid()),
+		StartTime:   protocol.TimeToProto(time.Now()),
+		Goroutines:  int32(runtime.NumGoroutine()),
 		MemoryAlloc: mem.Alloc,
 		MemorySys:   mem.Sys,
 		GoVersion:   runtime.Version(),
@@ -223,13 +205,13 @@ func (s SingleProjectBackend) ProjectBackend(project string) (Backend, error) {
 	return s.Backend, nil
 }
 
-func (s SingleProjectBackend) SetOnStateChange(func(string, protocol.ServiceState)) {}
+func (s SingleProjectBackend) SetOnStateChange(func(string, *protocol.ServiceState)) {}
 
-func (s SingleProjectBackend) SetOnActionStateChange(func(string, protocol.ActionState)) {}
+func (s SingleProjectBackend) SetOnActionStateChange(func(string, *protocol.ActionState)) {}
 
 func (s SingleProjectBackend) SetOnGitChange(func(string)) {}
 
-func (s SingleProjectBackend) Ports(project string) ([]protocol.PortBinding, error) {
+func (s SingleProjectBackend) Ports(project string) ([]*protocol.PortBinding, error) {
 	if project != "" && project != s.Project {
 		return nil, fmt.Errorf("unknown project %q", project)
 	}

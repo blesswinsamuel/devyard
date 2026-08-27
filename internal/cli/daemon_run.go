@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
@@ -60,6 +61,7 @@ func runDaemonChild() error {
 
 	select {
 	case <-d.StopCh():
+		time.Sleep(100 * time.Millisecond)
 	case <-sigCh:
 		_ = d.StopDaemon()
 	}

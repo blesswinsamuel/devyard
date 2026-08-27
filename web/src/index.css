@@ -256,22 +256,6 @@
     background: transparent;
   }
 
-  /* Keyboard shortcut chips. */
-  kbd {
-    display: inline-block;
-    min-width: 1.4rem;
-    text-align: center;
-    padding: 1px 5px;
-    border: 1px solid var(--border-strong);
-    border-bottom-width: 2px;
-    border-radius: 5px;
-    background: var(--muted);
-    color: var(--foreground);
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    line-height: 1.3;
-  }
-
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

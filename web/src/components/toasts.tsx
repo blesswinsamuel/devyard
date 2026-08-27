@@ -1,6 +1,7 @@
 import { For } from "solid-js";
 import { AlertTriangle, CheckCircle2, Info, X } from "lucide-solid";
 import { dismissToast, toasts } from "~/stores/app";
+import { Button } from "~/components/ui/button";
 
 const ICONS = {
   error: AlertTriangle,
@@ -32,14 +33,15 @@ export function Toasts() {
                 }}
               />
               <span class="min-w-0 flex-1 break-words leading-snug">{t.message}</span>
-              <button
-                type="button"
-                class="-m-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="-m-1 size-6 shrink-0 text-muted-foreground"
                 onClick={() => dismissToast(t.id)}
                 aria-label="Dismiss"
               >
                 <X class="size-3.5" />
-              </button>
+              </Button>
             </div>
           );
         }}

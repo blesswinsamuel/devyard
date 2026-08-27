@@ -48,6 +48,7 @@ import { wsStatus } from "~/lib/ws";
 import { healthDot, statusDot, statusTone } from "~/lib/status";
 import { cn } from "~/lib/utils";
 import { Badge } from "~/components/ui/badge";
+import { Kbd } from "~/components/ui/kbd";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
@@ -536,7 +537,7 @@ export function Sidebar() {
           onClick={() => toggleHelp()}
           class="flex items-center gap-1.5 rounded px-1 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <kbd>?</kbd>
+          <Kbd>?</Kbd>
           <span>shortcuts</span>
         </button>
         <ThemeToggle />

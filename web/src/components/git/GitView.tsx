@@ -51,6 +51,8 @@ import { parseDiff, parseGitMeta } from "~/lib/diff";
 import { formatAuthorTime, formatRelativeTime } from "~/lib/format";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
 
 function statusBadge(status: string): { label: string; class: string } {
@@ -258,12 +260,12 @@ export function GitView() {
         </div>
 
         <div class="flex shrink-0 items-center gap-1">
-          <input
+          <Input
             type="text"
             placeholder="Search commits…"
             value={searchQuery()}
             onInput={(e) => setSearchQuery(e.currentTarget.value)}
-            class="h-6.5 w-44 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-56"
+            class="h-6.5 w-44 rounded-md bg-background px-2 text-xs md:text-xs sm:w-56"
           />
           <Button variant="ghost" size="xs" class="text-muted-foreground hover:text-foreground" onClick={() => project() && fetchGit(project()!)}>
             <CloudDownload class="!size-3.5" /> Fetch
@@ -586,7 +588,7 @@ export function GitView() {
                       </div>
                     </div>
                     <div class="flex gap-2">
-                      <textarea
+                      <Textarea
                         placeholder="Commit message… (⌘⏎ to commit)"
                         value={commitMessage()}
                         onInput={(e) => setCommitMessage(e.currentTarget.value)}
@@ -594,7 +596,7 @@ export function GitView() {
                           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleCommitSubmit(e);
                         }}
                         rows={2}
-                        class="min-h-0 flex-1 resize-none rounded-md border border-input bg-background p-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        class="min-h-0 flex-1 resize-none rounded-md bg-background p-2 text-xs md:text-xs"
                       />
                       <Button type="submit" size="sm" class="h-auto self-end" disabled={!commitMessage().trim() || isCommitting()}>
                         <Show when={isCommitting()} fallback={<Send class="!size-3.5" />}>
@@ -642,12 +644,12 @@ export function GitView() {
             <div class="border-b p-1.5">
               <div class="relative">
                 <Search class="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
-                <input
+                <Input
                   type="text"
                   placeholder="Filter…"
                   value={fileSearchQuery()}
                   onInput={(e) => setFileSearchQuery(e.currentTarget.value)}
-                  class="h-6 w-full rounded-md border border-input bg-background pl-6 pr-2 text-[11px] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  class="h-6 w-full rounded-md bg-background pl-6 pr-2 text-[11px] md:text-[11px]"
                 />
               </div>
             </div>

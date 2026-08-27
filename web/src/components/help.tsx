@@ -1,6 +1,7 @@
 import { For } from "solid-js";
 import { closeHelp, showHelp } from "~/stores/app";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Kbd } from "~/components/ui/kbd";
 
 const SECTIONS: { title: string; rows: { keys: string; label: string }[] }[] = [
   {
@@ -40,6 +41,7 @@ export function HelpOverlay() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
+          <DialogDescription class="sr-only">List of keyboard shortcuts for the sidebar, actions, and general navigation.</DialogDescription>
         </DialogHeader>
         <For each={SECTIONS}>
           {(section) => (
@@ -52,7 +54,7 @@ export function HelpOverlay() {
                   {(row) => (
                     <li class="flex items-center justify-between gap-4 text-[13px]">
                       <span class="text-muted-foreground">{row.label}</span>
-                      <kbd>{row.keys}</kbd>
+                      <Kbd>{row.keys}</Kbd>
                     </li>
                   )}
                 </For>

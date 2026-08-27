@@ -6,7 +6,9 @@ import { openPortsModal, portsScope, setShowPortsModal, showPortsModal } from "~
 import type { PortBinding } from "~/lib/types";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
 
 function makeUrl(binding: PortBinding): string {
@@ -77,36 +79,30 @@ export function PortsModal() {
       <DialogContent class="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Open Ports</DialogTitle>
+          <DialogDescription class="sr-only">Browse open TCP ports across services or projects.</DialogDescription>
         </DialogHeader>
         <div>
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             {/* Scope switch */}
-            <div class="flex items-center rounded-lg border bg-muted/60 p-0.5 text-xs">
-              <button
-                type="button"
-                class="rounded-md px-2.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                classList={{
-                  "bg-card font-medium text-foreground shadow-sm": scope() === "project",
-                  "text-muted-foreground hover:text-foreground": scope() !== "project",
-                }}
+            <ToggleGroup
+              variant="outline"
+              size="sm"
+              spacing={0}
+              value={scope()}
+              onChange={(v: string | null) => {
+                if (v) setScope(v as "project" | "all");
+              }}
+              class="text-xs"
+            >
+              <ToggleGroupItem
+                value="project"
                 disabled={!project()}
                 title={!project() ? "No project selected" : `Ports for ${project()}`}
-                onClick={() => setScope("project")}
               >
                 This project
-              </button>
-              <button
-                type="button"
-                class="rounded-md px-2.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                classList={{
-                  "bg-card font-medium text-foreground shadow-sm": scope() === "all",
-                  "text-muted-foreground hover:text-foreground": scope() !== "all",
-                }}
-                onClick={() => setScope("all")}
-              >
-                All projects
-              </button>
-            </div>
+              </ToggleGroupItem>
+              <ToggleGroupItem value="all">All projects</ToggleGroupItem>
+            </ToggleGroup>
 
             <div class="flex items-center gap-2 text-xs text-muted-foreground">
               <Badge variant="secondary" class="font-mono tabular">
@@ -121,12 +117,12 @@ export function PortsModal() {
           <Show when={activePorts().length > 0}>
             <div class="relative mb-3">
               <Search class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
+              <Input
                 type="text"
                 placeholder="Filter by service, project, port, or IP…"
                 value={filter()}
                 onInput={(e) => setFilter(e.currentTarget.value)}
-                class="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                class="h-8 rounded-md bg-background pl-8 pr-3 text-xs md:text-xs"
               />
             </div>
           </Show>

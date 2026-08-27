@@ -2,7 +2,9 @@ import { createSignal } from "solid-js";
 import { startProjectByPath } from "~/stores/data";
 import { setShowAddProject, showAddProject } from "~/stores/app";
 import { Button } from "~/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 
 export function AddProjectModal() {
   const [configPath, setConfigPath] = createSignal("");
@@ -27,13 +29,14 @@ export function AddProjectModal() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Project</DialogTitle>
+          <DialogDescription class="sr-only">Register a new local-compose project from a config path.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} class="space-y-4">
           <div class="space-y-1.5">
-            <label for="add-project-config" class="text-xs font-medium text-muted-foreground">
+            <Label for="add-project-config" class="text-xs text-muted-foreground">
               Config path
-            </label>
-            <input
+            </Label>
+            <Input
               id="add-project-config"
               type="text"
               required
@@ -41,20 +44,20 @@ export function AddProjectModal() {
               onInput={(e) => setConfigPath(e.currentTarget.value)}
               placeholder="/path/to/local-compose.yml"
               autofocus
-              class="h-8 w-full rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="rounded-md px-3 font-mono text-xs md:text-xs"
             />
           </div>
           <div class="space-y-1.5">
-            <label for="add-project-env" class="text-xs font-medium text-muted-foreground">
+            <Label for="add-project-env" class="text-xs text-muted-foreground">
               Env file <span class="opacity-60">(optional)</span>
-            </label>
-            <input
+            </Label>
+            <Input
               id="add-project-env"
               type="text"
               value={envFile()}
               onInput={(e) => setEnvFile(e.currentTarget.value)}
               placeholder="/path/to/.env"
-              class="h-8 w-full rounded-md border border-input bg-background px-3 font-mono text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="rounded-md px-3 font-mono text-xs md:text-xs"
             />
           </div>
           <div class="flex justify-end gap-2 pt-1">

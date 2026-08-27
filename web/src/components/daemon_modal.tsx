@@ -5,7 +5,7 @@ import { setShowDaemonModal, showDaemonModal } from "~/stores/app";
 import { wsStatus } from "~/lib/ws";
 import { createClock, formatBytes, formatUptime } from "~/lib/format";
 import { Button } from "~/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 
 function Row(props: { label: string; children: import("solid-js").JSX.Element }) {
   return (
@@ -33,6 +33,7 @@ export function DaemonStatusModal() {
       <DialogContent class="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Daemon Status</DialogTitle>
+          <DialogDescription class="sr-only">View and control the local-compose daemon process.</DialogDescription>
         </DialogHeader>
         <div class="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs">
           <Server class="size-4 text-primary" />

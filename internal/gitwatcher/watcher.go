@@ -1,10 +1,10 @@
 // Package gitwatcher provides efficient, debounced file system watching for
-// Git repositories. It watches .git state and source files while filtering out
-// heavy build and dependency directories.
+// Git repositories. It watches .git repository state (HEAD, index, refs, logs)
+// to detect commits, branch switches, stashes, and staging operations without
+// recursively watching worktree source files.
 package gitwatcher
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,22 +14,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 )
-
-var defaultIgnoredDirs = map[string]bool{
-	".git":         true,
-	"node_modules": true,
-	"vendor":       true,
-	".next":        true,
-	"dist":         true,
-	"build":        true,
-	"target":       true,
-	".cache":       true,
-	"bin":          true,
-	".venv":        true,
-	"__pycache__":  true,
-	".idea":        true,
-	".vscode":      true,
-}
 
 type RepoWatcher struct {
 	mu           sync.Mutex
@@ -86,6 +70,9 @@ func (w *RepoWatcher) AddProject(name, dir string) error {
 	}
 
 	if oldDir, exists := w.projects[name]; exists {
+		if oldDir == absDir {
+			return nil
+		}
 		w.removeProjectLocked(name, oldDir)
 	}
 
@@ -118,50 +105,48 @@ func (w *RepoWatcher) removeProjectLocked(name, dir string) {
 	}
 }
 
+func resolveGitDir(dir string) (string, bool) {
+	gitPath := filepath.Join(dir, ".git")
+	fi, err := os.Stat(gitPath)
+	if err != nil {
+		return "", false
+	}
+	if fi.IsDir() {
+		return gitPath, true
+	}
+	// If .git is a file (e.g. git worktree or submodule), read `gitdir: <path>`
+	data, err := os.ReadFile(gitPath)
+	if err != nil {
+		return "", false
+	}
+	content := strings.TrimSpace(string(data))
+	if strings.HasPrefix(content, "gitdir:") {
+		target := strings.TrimSpace(strings.TrimPrefix(content, "gitdir:"))
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(dir, target)
+		}
+		target = filepath.Clean(target)
+		if tfi, err := os.Stat(target); err == nil && tfi.IsDir() {
+			return target, true
+		}
+	}
+	return "", false
+}
+
 func (w *RepoWatcher) watchProjectLocked(name, dir string) {
-	gitDir := filepath.Join(dir, ".git")
+	gitDir, ok := resolveGitDir(dir)
+	if !ok {
+		return
+	}
+
 	w.addWatchPath(name, gitDir)
 	w.addWatchPath(name, filepath.Join(gitDir, "refs"))
 	w.addWatchPath(name, filepath.Join(gitDir, "refs", "heads"))
 	w.addWatchPath(name, filepath.Join(gitDir, "refs", "tags"))
+	w.addWatchPath(name, filepath.Join(gitDir, "refs", "remotes"))
 	w.addWatchPath(name, filepath.Join(gitDir, "logs"))
-
-	ignored := make(map[string]bool)
-	for k, v := range defaultIgnoredDirs {
-		ignored[k] = v
-	}
-	readGitIgnore(filepath.Join(dir, ".gitignore"), ignored)
-
-	const maxDepth = 6
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !d.IsDir() {
-			return nil
-		}
-
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return nil
-		}
-
-		if rel != "." {
-			if strings.Count(rel, string(os.PathSeparator)) >= maxDepth {
-				return filepath.SkipDir
-			}
-
-			base := d.Name()
-			if ignored[base] || strings.HasPrefix(base, ".") {
-				if path != gitDir {
-					return filepath.SkipDir
-				}
-			}
-		}
-
-		w.addWatchPath(name, path)
-		return nil
-	})
+	w.addWatchPath(name, filepath.Join(gitDir, "logs", "refs"))
+	w.addWatchPath(name, filepath.Join(gitDir, "logs", "refs", "heads"))
 }
 
 func (w *RepoWatcher) addWatchPath(name, path string) {
@@ -170,27 +155,6 @@ func (w *RepoWatcher) addWatchPath(name, path string) {
 	}
 	if err := w.watcher.Add(path); err == nil {
 		w.dirToProject[path] = name
-	}
-}
-
-func readGitIgnore(gitignorePath string, ignored map[string]bool) {
-	f, err := os.Open(gitignorePath)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		line = strings.TrimPrefix(line, "/")
-		line = strings.TrimSuffix(line, "/")
-		if !strings.Contains(line, "*") && !strings.Contains(line, "/") {
-			ignored[line] = true
-		}
 	}
 }
 
@@ -214,20 +178,24 @@ func (w *RepoWatcher) run() {
 
 func (w *RepoWatcher) handleEvent(event fsnotify.Event) {
 	base := filepath.Base(event.Name)
-	if strings.HasPrefix(base, ".DS_Store") || strings.HasSuffix(base, ".swp") || strings.HasSuffix(base, ".tmp") {
+	if strings.HasPrefix(base, ".DS_Store") || strings.HasSuffix(base, ".swp") || strings.HasSuffix(base, ".tmp") || strings.HasSuffix(base, ".lock") {
 		return
 	}
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	var matchedProject string
-	eventDir := filepath.Dir(event.Name)
-
-	for watchedPath, proj := range w.dirToProject {
-		if event.Name == watchedPath || eventDir == watchedPath || strings.HasPrefix(event.Name, watchedPath+string(os.PathSeparator)) {
-			matchedProject = proj
-			break
+	matchedProject, ok := w.dirToProject[event.Name]
+	if !ok {
+		eventDir := filepath.Dir(event.Name)
+		matchedProject, ok = w.dirToProject[eventDir]
+	}
+	if !ok {
+		for proj, dir := range w.projects {
+			if event.Name == dir || strings.HasPrefix(event.Name, dir+string(os.PathSeparator)) {
+				matchedProject = proj
+				break
+			}
 		}
 	}
 

@@ -19,7 +19,7 @@ import {
   selectAction,
 } from "~/stores/nav";
 import { theme } from "~/stores/app";
-import { subscribeActionLogs, subscribeLogs } from "~/lib/ws";
+import { subscribeActionLogs, subscribeLogs } from "~/stores/logs";
 import { formatLogLine } from "~/lib/ansi";
 import { cn } from "~/lib/utils";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";

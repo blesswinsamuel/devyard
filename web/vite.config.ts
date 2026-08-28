@@ -19,9 +19,6 @@ export default defineConfig({
     port: 19095,
     strictPort: true,
     proxy: {
-      "/localcompose.v1.DaemonService": {
-        target: "http://127.0.0.1:9090",
-      },
       "/ws": {
         target: "http://127.0.0.1:9090",
         ws: true,

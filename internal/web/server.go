@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -102,6 +103,7 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.Handle("/", s.spaHandler())
 	httpSrv := &http.Server{Handler: mux}
+	slog.Info("web server listening", "addr", s.Addr(), "socket", s.socketPath)
 	go func() { _ = httpSrv.Serve(ln) }()
 	return nil
 }

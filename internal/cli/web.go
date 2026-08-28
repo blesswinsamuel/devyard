@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,6 +23,8 @@ var webCmd = &cobra.Command{
 	Short: "Start the web UI",
 	Long:  "Start the web UI server, connecting to a running daemon over its control socket.",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
 		socket, err := dialDaemon()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")

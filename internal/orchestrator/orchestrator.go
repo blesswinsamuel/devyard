@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -986,7 +987,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = filepath.Join(cfg.BaseDir, dir)
 	}
-	fmt.Fprintf(os.Stderr, "local-compose: building %q: $ %s\n", name, spec.Command)
+	slog.Info("building service", "project", cfg.Name, "service", name, "command", spec.Command)
 	// Run the build command; output goes to the daemon's stderr (daemon log).
 	return runBuildCommand(shell, spec.Command, dir, config.BaseEnv(cfg.DotEnv), spec.Env)
 }
@@ -1122,7 +1123,7 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 		}
 
 		if err := d.startProject(configPath, false, "", true); err != nil {
-			fmt.Fprintf(os.Stderr, "local-compose: autostart: project %q: %v\n", name, err)
+			slog.Error("autostart failed for project", "project", name, "error", err)
 			skipped++
 			continue
 		}

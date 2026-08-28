@@ -6,6 +6,7 @@ package gitwatcher
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,9 +169,12 @@ func (w *RepoWatcher) run() {
 				return
 			}
 			w.handleEvent(event)
-		case _, ok := <-w.watcher.Errors:
+		case err, ok := <-w.watcher.Errors:
 			if !ok {
 				return
+			}
+			if err != nil {
+				slog.Error("git watcher error", "error", err)
 			}
 		}
 	}

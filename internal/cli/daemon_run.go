@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,6 +19,8 @@ import (
 // installs a signal handler, and blocks until StopDaemon is called or a
 // signal is received. The web UI is a separate process (`local-compose web`).
 func runDaemonChild() error {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
 	locs, err := project.ResolveDaemon()
 	if err != nil {
 		return fmt.Errorf("resolve daemon paths: %w", err)
@@ -35,9 +38,12 @@ func runDaemonChild() error {
 		_ = daemon.RemoveDaemonPidfile(locs)
 	}()
 
-	if err := daemon.WritePidfile(locs.Pidfile, os.Getpid()); err != nil {
+	pid := os.Getpid()
+	if err := daemon.WritePidfile(locs.Pidfile, pid); err != nil {
 		return fmt.Errorf("write pidfile: %w", err)
 	}
+
+	slog.Info("daemon starting", "pid", pid, "socket", locs.Socket)
 
 	d := orchestrator.New()
 
@@ -50,10 +56,10 @@ func runDaemonChild() error {
 	// marker exists (explicit down/stop).
 	started, skipped, err := d.Autostart()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "local-compose: autostart: %v\n", err)
+		slog.Error("autostart failed", "error", err)
 	}
 	if started > 0 || skipped > 0 {
-		fmt.Fprintf(os.Stderr, "local-compose: autostart: %d started, %d skipped\n", started, skipped)
+		slog.Info("autostart finished", "started", started, "skipped", skipped)
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -61,12 +67,15 @@ func runDaemonChild() error {
 
 	select {
 	case <-d.StopCh():
+		slog.Info("stop requested")
 		time.Sleep(100 * time.Millisecond)
-	case <-sigCh:
+	case sig := <-sigCh:
+		slog.Info("signal received, shutting down", "signal", sig.String())
 		_ = d.StopDaemon()
 	}
 
 	_ = srv.Close()
 	_ = daemon.RemoveDaemonPidfile(locs)
+	slog.Info("daemon exited")
 	return nil
 }

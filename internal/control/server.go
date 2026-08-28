@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -117,6 +118,8 @@ func (s *Server) ListenAndServe() error {
 	s.ln = ln
 	s.httpServer = httpServer
 	s.mu.Unlock()
+
+	slog.Info("control server listening", "socket", s.socket)
 
 	go func() {
 		_ = httpServer.Serve(ln)

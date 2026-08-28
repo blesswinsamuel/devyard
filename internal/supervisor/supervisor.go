@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -482,8 +483,8 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 	}
 
 	snap, err := LoadState(s.opts.Locations)
-	if err != nil && s.opts.Stdout != nil {
-		_, _ = fmt.Fprintf(s.opts.Stdout, "supervisor: load state: %v\n", err)
+	if err != nil {
+		slog.Warn("failed to load supervisor state", "project", s.opts.File.Name, "error", err)
 	}
 
 	if s.opts.InstallSignalHandler {

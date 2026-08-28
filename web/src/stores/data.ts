@@ -126,7 +126,11 @@ export function scheduleProjectStatusRefresh() {
   }, 300);
 }
 
-// --- refresh / fetch --------------------------------------------------------
+let onProjectsFetchedHook: ((projects: ProjectInfo[]) => void) | null = null;
+
+export function setOnProjectsFetched(hook: (projects: ProjectInfo[]) => void) {
+  onProjectsFetchedHook = hook;
+}
 
 export async function fetchProjects() {
   try {
@@ -134,6 +138,7 @@ export async function fetchProjects() {
     const next = res.projects;
     setProjects((prev) => (sameArray(prev, next, sameProject) ? prev : next));
     pruneData(new Set(next.map((p) => p.name)));
+    onProjectsFetchedHook?.(next);
   } catch (err: any) {
     pushToast(err.message || "Failed to fetch projects", "error");
   }

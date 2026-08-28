@@ -986,6 +986,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = filepath.Join(cfg.BaseDir, dir)
 	}
+	fmt.Fprintf(os.Stderr, "local-compose: building %q: $ %s\n", name, spec.Command)
 	// Run the build command; output goes to the daemon's stderr (daemon log).
 	return runBuildCommand(shell, spec.Command, dir, config.BaseEnv(cfg.DotEnv), spec.Env)
 }

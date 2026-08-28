@@ -356,6 +356,9 @@ func TestSupervisorRunExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := mustReadFile(t, path)
+	if !strings.Contains(string(data), "$ echo hello-echoer") {
+		t.Errorf("log = %q, want it to contain $ echo hello-echoer", string(data))
+	}
 	if !strings.Contains(string(data), "hello-echoer") {
 		t.Errorf("log = %q, want it to contain hello-echoer", string(data))
 	}
@@ -1018,14 +1021,17 @@ func TestSupervisorActionLogs(t *testing.T) {
 	if err != nil || code != 0 {
 		t.Fatalf("RunAction: code=%d err=%v", code, err)
 	}
+	if !strings.Contains(buf.String(), "$ echo action_first_run") {
+		t.Fatalf("RunAction buf = %q, want $ echo action_first_run", buf.String())
+	}
 
 	path, err := s.ActionLogPath("migrate")
 	if err != nil {
 		t.Fatalf("ActionLogPath: %v", err)
 	}
 	data, err := os.ReadFile(path)
-	if err != nil || !strings.Contains(string(data), "action_first_run") {
-		t.Fatalf("ActionLogPath content = %q, want action_first_run", string(data))
+	if err != nil || !strings.Contains(string(data), "$ echo action_first_run") || !strings.Contains(string(data), "action_first_run") {
+		t.Fatalf("ActionLogPath content = %q, want $ echo action_first_run", string(data))
 	}
 
 	// Run action a second time to test log rotation

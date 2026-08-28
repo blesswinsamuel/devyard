@@ -939,6 +939,7 @@ func (s *Supervisor) launch(rt *serviceRuntime) (*command, *sync.WaitGroup, erro
 	// so rotation never blocks a start; a spawn failure above leaves the
 	// previous run's log untouched.
 	rt.logger.rotate()
+	rt.logger.writeLine("$ " + svc.Command)
 
 	pgid := cmd.processPID() // Setpgid makes pgid == pid
 
@@ -972,6 +973,8 @@ func (s *Supervisor) launchPTY(cmd *command, rt *serviceRuntime) (*command, *syn
 
 	// Same rotation as launch(): the new run starts a fresh log file.
 	rt.logger.rotate()
+	svc := rt.getSpec()
+	rt.logger.writeLine("$ " + svc.Command)
 
 	pgid := cmd.processPID()
 
@@ -1699,6 +1702,10 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 
 	if logFile != nil {
 		_, _ = fmt.Fprintf(logFile, "%s %s %s\n", ui.Dim("local-compose:"), ui.StatusMessage("started"), ui.Dim("at "+now.UTC().Format(time.RFC3339)))
+		_, _ = fmt.Fprintf(logFile, "$ %s\n", fullCmd)
+	}
+	if out != nil {
+		_, _ = fmt.Fprintf(out, "$ %s\n", fullCmd)
 	}
 
 	var wg sync.WaitGroup

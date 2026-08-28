@@ -71,12 +71,14 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "local-compose: building %q\n", name)
+	stdout := prefixWriter(name, os.Stdout)
+	_, _ = fmt.Fprintf(stdout, "$ %s\n", spec.Command)
 	cmd := exec.Command(shell, "-c", spec.Command)
 	if dir != "" {
 		cmd.Dir = dir
 	}
 	cmd.Env = config.BuildEnvOver(config.BaseEnv(cfg.DotEnv), spec.Env)
-	cmd.Stdout = prefixWriter(name, os.Stdout)
+	cmd.Stdout = stdout
 	cmd.Stderr = prefixWriter(name, os.Stderr)
 	return cmd.Run()
 }

@@ -55,7 +55,7 @@ function HeaderButtons(props: { project: string }) {
           as={Button}
           variant="ghost"
           size="sm"
-          class="text-muted-foreground hover:text-foreground"
+          class="text-muted-foreground"
           onClick={() => {
             fetchPorts(props.project);
             openPortsModal("project");
@@ -76,7 +76,7 @@ function HeaderButtons(props: { project: string }) {
           as={Button}
           variant={panelOpen() ? "secondary" : "ghost"}
           size="sm"
-          class={panelOpen() ? "" : "text-muted-foreground hover:text-foreground"}
+          class={panelOpen() ? "" : "text-muted-foreground"}
           onClick={() => openTerminalPanel()}
         >
           <SquareTerminal class="!size-3.5" />
@@ -96,11 +96,7 @@ function PrevRunButton(props: { project: string; kind: "service" | "action"; nam
         as={Button}
         variant="ghost"
         size="sm"
-        class={
-          isPreviousLogs(key())
-            ? "text-warning hover:text-warning"
-            : "text-muted-foreground hover:text-foreground"
-        }
+        class={isPreviousLogs(key()) ? "text-warning" : "text-muted-foreground"}
         onClick={() => togglePreviousLogs(key())}
       >
         <History class="!size-3.5" />
@@ -118,14 +114,13 @@ function HeaderBreadcrumb(props: { parts: { label: string; strong?: boolean; mon
         <For each={props.parts}>
           {(part, i) => (
             <>
-              {i() > 0 && <BreadcrumbSeparator class="text-muted-foreground/50 text-[11px]">/</BreadcrumbSeparator>}
+              {i() > 0 && <BreadcrumbSeparator class="text-[11px]">/</BreadcrumbSeparator>}
               <BreadcrumbItem class="min-w-0">
                 <BreadcrumbPage
                   classList={{
                     truncate: true,
                     "font-semibold text-foreground": !!part.strong,
                     "font-mono": !!part.mono,
-                    "text-muted-foreground": !part.strong && !part.mono,
                   }}
                 >
                   {part.label}

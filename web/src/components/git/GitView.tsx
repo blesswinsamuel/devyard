@@ -234,7 +234,7 @@ export function GitView() {
       {/* Top bar */}
       <div class="flex h-9 shrink-0 items-center justify-between gap-2 border-b bg-card/50 px-2">
         <div class="flex min-w-0 items-center gap-1.5">
-          <Button variant="ghost" size="xs" class="gap-1 text-muted-foreground hover:text-foreground" onClick={() => closeGitView()}>
+          <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => closeGitView()}>
             <ArrowLeft class="!size-3.5" />
             Back
           </Button>
@@ -270,16 +270,16 @@ export function GitView() {
             onInput={(e) => setSearchQuery(e.currentTarget.value)}
             class="h-6.5 w-44 rounded-md bg-background px-2 text-xs md:text-xs sm:w-56"
           />
-          <Button variant="ghost" size="xs" class="text-muted-foreground hover:text-foreground" onClick={() => project() && fetchGit(project()!)}>
+          <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && fetchGit(project()!)}>
             <CloudDownload class="!size-3.5" /> Fetch
           </Button>
-          <Button variant="ghost" size="xs" class="text-muted-foreground hover:text-foreground" onClick={() => project() && pullGit(project()!)}>
+          <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && pullGit(project()!)}>
             <Download class="!size-3.5" /> Pull
           </Button>
-          <Button variant="ghost" size="xs" class="text-muted-foreground hover:text-foreground" onClick={() => project() && pushGit(project()!)}>
+          <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && pushGit(project()!)}>
             <Upload class="!size-3.5" /> Push
           </Button>
-          <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-foreground" onClick={() => project() && loadGitLog(project()!)} title="Refresh">
+          <Button variant="ghost" size="icon-sm" class="text-muted-foreground" onClick={() => project() && loadGitLog(project()!)} title="Refresh">
             <RefreshCw class="!size-3.5" />
           </Button>
         </div>
@@ -431,7 +431,7 @@ export function GitView() {
                 when={!error()}
                 fallback={
                   <div class="p-4 text-center">
-                    <Alert variant="destructive" class="mb-2 text-left">
+                    <Alert variant="destructive" class="mb-2">
                       <AlertDescription class="break-words text-xs">{error()}</AlertDescription>
                     </Alert>
                     <Button variant="outline" size="xs" onClick={() => project() && loadGitLog(project()!)}>
@@ -445,7 +445,7 @@ export function GitView() {
                   fallback={
                     <Empty class="p-6 border-0">
                       <EmptyHeader>
-                        <EmptyTitle class="text-xs font-normal text-muted-foreground">
+                        <EmptyTitle class="text-xs font-normal">
                           {commits().length === 0 ? "No commits in repository." : "No matching commits."}
                         </EmptyTitle>
                       </EmptyHeader>
@@ -562,8 +562,8 @@ export function GitView() {
                   <EmptyMedia>
                     <GitCommitHorizontal class="size-8 stroke-1 text-muted-foreground" />
                   </EmptyMedia>
-                  <EmptyTitle class="text-sm">No commit selected</EmptyTitle>
-                  <EmptyDescription class="text-xs">Select a commit to view its diff.</EmptyDescription>
+                  <EmptyTitle>No commit selected</EmptyTitle>
+                  <EmptyDescription>Select a commit to view its diff.</EmptyDescription>
                 </EmptyHeader>
               </Empty>
             }
@@ -614,7 +614,7 @@ export function GitView() {
                       />
                       <Button type="submit" size="sm" class="h-auto self-end" disabled={!commitMessage().trim() || isCommitting()}>
                         <Show when={isCommitting()} fallback={<Send class="!size-3.5" />}>
-                          <Spinner class="!size-3.5" />
+                          <Spinner class="size-3.5" />
                         </Show>
                         Commit
                       </Button>
@@ -635,7 +635,7 @@ export function GitView() {
                   fallback={
                     <Empty class="py-10 border-0">
                       <EmptyHeader>
-                        <EmptyTitle class="text-xs font-normal text-muted-foreground">No changes.</EmptyTitle>
+                        <EmptyTitle class="text-xs font-normal">No changes.</EmptyTitle>
                       </EmptyHeader>
                     </Empty>
                   }
@@ -892,7 +892,7 @@ function FileRow(props: { file: GitFileChange; selected: boolean; onSelect: () =
           <Button
             variant="ghost"
             size="icon-xs"
-            class="ml-0.5 size-4.5 rounded px-0 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
+            class="ml-0.5 size-4.5 rounded px-0 text-muted-foreground opacity-0 group-hover:opacity-100"
             title={`${props.actionLabel} ${props.file.path}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -946,7 +946,7 @@ function DiffBody(props: { project: string; hash: string; diff: string; selected
                     variant="ghost"
                     size="xs"
                     disabled={props.loading}
-                    class="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    class="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground"
                     onClick={() => expandTo(3)}
                   >
                     collapse context

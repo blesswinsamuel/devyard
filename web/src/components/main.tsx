@@ -26,8 +26,8 @@ function EmptyState() {
               <EmptyMedia>
                 <PackageOpen class="size-9 stroke-1 text-muted-foreground" />
               </EmptyMedia>
-              <EmptyTitle class="text-sm">No project selected</EmptyTitle>
-              <EmptyDescription class="text-xs">
+              <EmptyTitle>No project selected</EmptyTitle>
+              <EmptyDescription>
                 Select a project to get started.
               </EmptyDescription>
             </EmptyHeader>
@@ -40,7 +40,7 @@ function EmptyState() {
             <span class="font-semibold text-foreground">{project()}</span> to follow its logs.
           </p>
           <Show when={actionList().length > 0}>
-            <Card class="text-left shadow-sm">
+            <Card class="shadow-sm">
               <CardHeader class="pb-2">
                 <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Project actions
@@ -83,7 +83,7 @@ export function Main() {
         <Button
           variant="ghost"
           size="icon-sm"
-          class="shrink-0 text-muted-foreground hover:text-foreground md:hidden"
+          class="shrink-0 text-muted-foreground md:hidden"
           onClick={() => setSidebarOpen(true)}
           aria-label="Open menu"
         >
@@ -100,7 +100,7 @@ export function Main() {
               <Button
                 variant="ghost"
                 size="sm"
-                class="ml-auto mr-1 text-muted-foreground hover:text-foreground"
+                class="ml-auto mr-1 text-muted-foreground"
                 onClick={() => {
                   fetchPorts();
                   openPortsModal("all");

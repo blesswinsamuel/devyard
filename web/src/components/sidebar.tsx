@@ -485,7 +485,7 @@ export function Sidebar() {
               fetchDaemonStatus();
               setShowDaemonModal(true);
             }}
-            class="h-6 gap-1.5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+            class="text-muted-foreground"
             title="Daemon status"
           >
             <WsDot />
@@ -498,7 +498,7 @@ export function Sidebar() {
             variant="ghost"
             size="icon-xs"
             onClick={() => setSidebarOpen(false)}
-            class="text-muted-foreground hover:text-foreground md:hidden"
+            class="text-muted-foreground md:hidden"
             aria-label="Close menu"
           >
             <X class="size-3.5" />
@@ -516,7 +516,7 @@ export function Sidebar() {
             variant="ghost"
             size="xs"
             onClick={() => setShowAddProject(true)}
-            class="h-5 gap-1 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+            class="h-5 px-1.5 text-[11px] text-muted-foreground"
           >
             <Plus class="size-3" />
             Add
@@ -539,7 +539,7 @@ export function Sidebar() {
           variant="ghost"
           size="xs"
           onClick={() => toggleHelp()}
-          class="h-6 gap-1.5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+          class="text-muted-foreground"
         >
           <Kbd>?</Kbd>
           <span>shortcuts</span>

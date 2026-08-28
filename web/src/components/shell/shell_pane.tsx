@@ -147,10 +147,10 @@ export function ShellPane(props: {
         </div>
 
         <div class="flex items-center gap-0.5 opacity-50 transition-opacity group-hover:opacity-100">
-          <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-foreground" onClick={props.onSplitRight} title="Split right">
+          <Button variant="ghost" size="icon-sm" class="text-muted-foreground" onClick={props.onSplitRight} title="Split right">
             <Columns2 class="!size-3" />
           </Button>
-          <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-foreground" onClick={props.onSplitDown} title="Split down">
+          <Button variant="ghost" size="icon-sm" class="text-muted-foreground" onClick={props.onSplitDown} title="Split down">
             <Rows2 class="!size-3" />
           </Button>
           <Button variant="ghost" size="icon-sm" class="hover:text-destructive" onClick={props.onClose} title="Close pane">

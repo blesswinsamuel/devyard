@@ -150,7 +150,7 @@ function LogTerminal(props: {
           variant="outline"
           size="sm"
           onClick={jumpToBottom}
-          class="absolute bottom-4 right-5 rounded-full border-border-strong bg-popover/95 text-xs text-muted-foreground shadow-md backdrop-blur transition-colors hover:text-foreground"
+          class="absolute bottom-4 right-5 rounded-full border-border-strong bg-popover/95 text-muted-foreground shadow-md backdrop-blur"
         >
           <ArrowDownToLine class="!size-3.5" />
           Jump to latest
@@ -292,8 +292,8 @@ function LogEmptyState() {
         <EmptyMedia>
           <RadioTower class="size-8 stroke-1 text-muted-foreground" />
         </EmptyMedia>
-        <EmptyTitle class="text-sm">No log streams open</EmptyTitle>
-        <EmptyDescription class="max-w-xs text-xs leading-relaxed">
+        <EmptyTitle>No log streams open</EmptyTitle>
+        <EmptyDescription class="max-w-xs">
           Select a service in the sidebar to follow its logs. Tabs stay open across
           projects — close them with ×.
         </EmptyDescription>

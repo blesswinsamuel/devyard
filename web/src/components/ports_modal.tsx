@@ -157,14 +157,14 @@ export function PortsModal() {
                 </Empty>
               }
             >
-              <Table class="w-full text-left text-xs">
-                <TableHeader class="sticky top-0 bg-muted/70 text-muted-foreground backdrop-blur-sm">
+              <Table class="text-xs">
+                <TableHeader class="sticky top-0 bg-muted/70 backdrop-blur-sm">
                   <TableRow class="hover:bg-transparent">
-                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Service</TableHead>
-                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Bound IP</TableHead>
-                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Port</TableHead>
-                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Proto</TableHead>
-                    <TableHead class="h-8 px-3.5 py-2 text-right font-medium text-muted-foreground">Quick access</TableHead>
+                    <TableHead class="h-8 px-3.5 text-muted-foreground">Service</TableHead>
+                    <TableHead class="h-8 px-3.5 text-muted-foreground">Bound IP</TableHead>
+                    <TableHead class="h-8 px-3.5 text-muted-foreground">Port</TableHead>
+                    <TableHead class="h-8 px-3.5 text-muted-foreground">Proto</TableHead>
+                    <TableHead class="h-8 px-3.5 text-right text-muted-foreground">Quick access</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody class="divide-y divide-border/60">
@@ -173,7 +173,7 @@ export function PortsModal() {
                       const copyKey = `${item.project}:${item.service}:${item.port}`;
                       const isCopied = () => copiedPort() === copyKey;
                       return (
-                        <TableRow class="transition-colors hover:bg-muted/40">
+                        <TableRow class="hover:bg-muted/40">
                           <TableCell class="px-3.5 py-2.5 font-medium">
                             <span>{item.service || item.project}</span>
                             <Show when={scope() === "all" && item.project}>
@@ -198,7 +198,7 @@ export function PortsModal() {
                               <Button
                                 variant="ghost"
                                 size="xs"
-                                class="gap-1 text-muted-foreground hover:text-foreground"
+                                class="text-muted-foreground"
                                 onClick={() => handleCopy(item)}
                               >
                                 <Show when={isCopied()} fallback={<Copy class="size-3" />}>

@@ -54,12 +54,12 @@ export function BottomPanel() {
             <ShellTabBar />
           </div>
           <div class="flex shrink-0 items-center gap-0.5 pr-0.5">
-            <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-foreground" onClick={togglePanelMaximized} title={panelMaximized() ? "Restore" : "Maximize"}>
+            <Button variant="ghost" size="icon-sm" class="text-muted-foreground" onClick={togglePanelMaximized} title={panelMaximized() ? "Restore" : "Maximize"}>
               <Show when={panelMaximized()} fallback={<Maximize2 class="!size-3" />}>
                 <Minimize2 class="!size-3" />
               </Show>
             </Button>
-            <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-foreground" onClick={() => setPanelOpen(false)} title="Close panel (t)">
+            <Button variant="ghost" size="icon-sm" class="text-muted-foreground" onClick={() => setPanelOpen(false)} title="Close panel (t)">
               <X class="!size-3" />
             </Button>
           </div>

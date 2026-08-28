@@ -192,7 +192,7 @@ export function ShellTabBar() {
           <Button
             variant="ghost"
             size="icon-sm"
-            class="shrink-0 text-muted-foreground hover:text-foreground"
+            class="shrink-0 text-muted-foreground"
             onClick={() => addShellTab(selectedProject()!)}
             title="New terminal tab"
           >

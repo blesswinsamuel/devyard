@@ -23,6 +23,7 @@ import { activeView, selectedProject } from "~/stores/nav";
 // --- data signals -----------------------------------------------------------
 
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
+const [projectsLoaded, setProjectsLoaded] = createSignal(false);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
 const [actions, setActions] = createSignal<Record<string, ActionInfo[]>>({});
 const [actionStates, setActionStates] = createSignal<Record<string, ActionState[]>>({});
@@ -45,6 +46,7 @@ const [gitCommitError, setGitCommitError] = createSignal<Record<string, string>>
 
 export {
   projects,
+  projectsLoaded,
   services,
   actions,
   actionStates,
@@ -141,6 +143,8 @@ export async function fetchProjects() {
     onProjectsFetchedHook?.(next);
   } catch (err: any) {
     pushToast(err.message || "Failed to fetch projects", "error");
+  } finally {
+    setProjectsLoaded(true);
   }
 }
 

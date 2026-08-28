@@ -134,14 +134,15 @@ export function ShellPane(props: {
           <GripVertical class="size-3 cursor-grab active:cursor-grabbing" />
           <span class="font-mono">shell</span>
           <Show when={exited()}>
-            <button
-              type="button"
-              class="ml-1 flex h-4 items-center gap-0.5 rounded border border-border bg-background px-1 font-medium transition-colors hover:bg-muted"
+            <Button
+              variant="outline"
+              size="xs"
+              class="ml-1 h-4 gap-0.5 px-1 font-medium text-[10px]"
               onClick={handleRestart}
             >
               <RotateCcw class="size-2.5" />
               restart
-            </button>
+            </Button>
           </Show>
         </div>
 

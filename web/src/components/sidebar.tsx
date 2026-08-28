@@ -478,13 +478,14 @@ export function Sidebar() {
         </button>
 
         <div class="flex items-center gap-0.5">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => {
               fetchDaemonStatus();
               setShowDaemonModal(true);
             }}
-            class="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            class="h-6 gap-1.5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
             title="Daemon status"
           >
             <WsDot />
@@ -492,15 +493,16 @@ export function Sidebar() {
             <Show when={daemonInfo()?.pid}>
               <span class="font-mono tabular opacity-70">:{daemonInfo()?.pid}</span>
             </Show>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => setSidebarOpen(false)}
-            class="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+            class="text-muted-foreground hover:text-foreground md:hidden"
             aria-label="Close menu"
           >
-            <X class="size-4" />
-          </button>
+            <X class="size-3.5" />
+          </Button>
         </div>
       </header>
 
@@ -510,14 +512,15 @@ export function Sidebar() {
           <p class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
             Projects
           </p>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => setShowAddProject(true)}
-            class="flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            class="h-5 gap-1 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
           >
-            <Plus class="size-3.5" />
+            <Plus class="size-3" />
             Add
-          </button>
+          </Button>
         </div>
         <div class="flex flex-col px-1.5">
           <For each={projectNames()}>{(name) => <ProjectItem name={name} />}</For>
@@ -532,14 +535,15 @@ export function Sidebar() {
 
       {/* Footer */}
       <footer class="flex h-10 shrink-0 items-center justify-between border-t px-3">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => toggleHelp()}
-          class="flex items-center gap-1.5 rounded px-1 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="h-6 gap-1.5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
         >
           <Kbd>?</Kbd>
           <span>shortcuts</span>
-        </button>
+        </Button>
         <ThemeToggle />
       </footer>
       </aside>

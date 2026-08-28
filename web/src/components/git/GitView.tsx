@@ -11,8 +11,6 @@ import {
   FileCode,
   GitBranch,
   GitCommitHorizontal,
-  Loader2,
-  Maximize2,
   Minus,
   Plus,
   RefreshCw,
@@ -49,9 +47,14 @@ import type { GitBranch as GitBranchType, GitFileChange } from "~/lib/types";
 import { computeGitGraph, GRAPH_COLORS } from "~/lib/git_graph";
 import { parseDiff, parseGitMeta } from "~/lib/diff";
 import { formatAuthorTime, formatRelativeTime } from "~/lib/format";
+import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
+import { Separator } from "~/components/ui/separator";
+import { Spinner } from "~/components/ui/spinner";
 import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
 
@@ -235,7 +238,7 @@ export function GitView() {
             <ArrowLeft class="!size-3.5" />
             Back
           </Button>
-          <div class="mx-1 h-4 w-px bg-border" />
+          <Separator orientation="vertical" class="mx-1 h-4" />
           <GitBranch class="size-3.5 shrink-0 text-primary" />
           <span class="truncate text-[13px] font-semibold">{project()}</span>
           <Show when={activeBranch()}>
@@ -419,7 +422,7 @@ export function GitView() {
               when={!loading()}
               fallback={
                 <div class="flex h-full items-center justify-center gap-2 p-6 text-muted-foreground">
-                  <Loader2 class="size-4 animate-spin" />
+                  <Spinner />
                   <span class="text-xs">Loading commits…</span>
                 </div>
               }
@@ -428,7 +431,9 @@ export function GitView() {
                 when={!error()}
                 fallback={
                   <div class="p-4 text-center">
-                    <p class="mb-2 break-words text-xs text-destructive">{error()}</p>
+                    <Alert variant="destructive" class="mb-2 text-left">
+                      <AlertDescription class="break-words text-xs">{error()}</AlertDescription>
+                    </Alert>
                     <Button variant="outline" size="xs" onClick={() => project() && loadGitLog(project()!)}>
                       Retry
                     </Button>
@@ -438,9 +443,13 @@ export function GitView() {
                 <Show
                   when={filteredCommits().length > 0}
                   fallback={
-                    <div class="p-6 text-center text-xs text-muted-foreground">
-                      {commits().length === 0 ? "No commits in repository." : "No matching commits."}
-                    </div>
+                    <Empty class="p-6 border-0">
+                      <EmptyHeader>
+                        <EmptyTitle class="text-xs font-normal text-muted-foreground">
+                          {commits().length === 0 ? "No commits in repository." : "No matching commits."}
+                        </EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   }
                 >
                   <For each={filteredCommits()}>
@@ -548,15 +557,20 @@ export function GitView() {
           <Show
             when={currentCommitHash()}
             fallback={
-              <div class="flex h-full flex-col items-center justify-center gap-2 p-6 text-muted-foreground">
-                <GitCommitHorizontal class="size-8 stroke-1" />
-                <p class="text-sm">Select a commit to view its diff.</p>
-              </div>
+              <Empty class="h-full border-0">
+                <EmptyHeader>
+                  <EmptyMedia>
+                    <GitCommitHorizontal class="size-8 stroke-1 text-muted-foreground" />
+                  </EmptyMedia>
+                  <EmptyTitle class="text-sm">No commit selected</EmptyTitle>
+                  <EmptyDescription class="text-xs">Select a commit to view its diff.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             }
           >
             <Show when={!diffLoading() || !!diffResult()} fallback={
               <div class="flex h-full items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 class="size-4 animate-spin" /><span class="text-xs">Loading diff…</span>
+                <Spinner /><span class="text-xs">Loading diff…</span>
               </div>
             }>
               {/* Commit meta / worktree form */}
@@ -600,13 +614,15 @@ export function GitView() {
                       />
                       <Button type="submit" size="sm" class="h-auto self-end" disabled={!commitMessage().trim() || isCommitting()}>
                         <Show when={isCommitting()} fallback={<Send class="!size-3.5" />}>
-                          <Loader2 class="!size-3.5 animate-spin" />
+                          <Spinner class="!size-3.5" />
                         </Show>
                         Commit
                       </Button>
                     </div>
                     <Show when={commitErr()}>
-                      <p class="text-xs font-medium text-destructive">{commitErr()}</p>
+                      <Alert variant="destructive" class="py-1 px-2">
+                        <AlertDescription class="text-xs">{commitErr()}</AlertDescription>
+                      </Alert>
                     </Show>
                   </form>
                 </Show>
@@ -617,9 +633,11 @@ export function GitView() {
                 <Show
                   when={diffResult()?.diff}
                   fallback={
-                    <div class="py-10 text-center text-xs text-muted-foreground">
-                      No changes.
-                    </div>
+                    <Empty class="py-10 border-0">
+                      <EmptyHeader>
+                        <EmptyTitle class="text-xs font-normal text-muted-foreground">No changes.</EmptyTitle>
+                      </EmptyHeader>
+                    </Empty>
                   }
                 >
                   <DiffBody
@@ -816,9 +834,10 @@ function FileGroup(props: {
         )}
       >
         {props.label}
-        <button
-          type="button"
-          class="flex items-center gap-0.5 rounded px-1 font-mono text-[10px] transition-colors hover:bg-background/60"
+        <Button
+          variant="ghost"
+          size="xs"
+          class="h-4.5 gap-0.5 px-1 font-mono text-[10px] hover:bg-background/60"
           onClick={(e) => {
             e.stopPropagation();
             props.onAction();
@@ -826,7 +845,7 @@ function FileGroup(props: {
         >
           {props.tone === "staged" ? <Minus class="size-2.5" /> : <Plus class="size-2.5" />}
           {props.actionLabel}
-        </button>
+        </Button>
       </div>
       <For each={props.files}>
         {(file) => (
@@ -870,9 +889,10 @@ function FileRow(props: { file: GitFileChange; selected: boolean; onSelect: () =
           <span class="text-destructive">−{props.file.deletions}</span>
         </Show>
         <Show when={props.actionLabel && props.onAction}>
-          <button
-            type="button"
-            class="ml-0.5 rounded px-1 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            class="ml-0.5 size-4.5 rounded px-0 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
             title={`${props.actionLabel} ${props.file.path}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -880,7 +900,7 @@ function FileRow(props: { file: GitFileChange; selected: boolean; onSelect: () =
             }}
           >
             {props.actionLabel === "Unstage" ? <Minus class="size-2.5" /> : <Plus class="size-2.5" />}
-          </button>
+          </Button>
         </Show>
       </div>
     </div>
@@ -915,21 +935,22 @@ function DiffBody(props: { project: string; hash: string; diff: string; selected
         {(chunk) => {
           const meta = parseGitMeta(chunk.metaLines);
           return (
-            <div class="overflow-hidden rounded-lg border bg-card shadow-sm">
+            <Card class="overflow-hidden p-0 shadow-sm">
               <div class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-muted/60 px-3 py-1.5 backdrop-blur">
                 <span class="flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
                   <FileCode class="size-3.5 shrink-0 text-primary" />
                   <span class="truncate font-mono">{chunk.filePath}</span>
                 </span>
                 <Show when={contextLines() > 3}>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="xs"
                     disabled={props.loading}
-                    class="shrink-0 rounded px-1.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                    class="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
                     onClick={() => expandTo(3)}
                   >
                     collapse context
-                  </button>
+                  </Button>
                 </Show>
               </div>
 
@@ -964,22 +985,24 @@ function DiffBody(props: { project: string; hash: string; diff: string; selected
                               <div class="flex items-center justify-between gap-2">
                                 <span class="truncate font-medium text-primary/90">{line.text}</span>
                                 <span class="flex shrink-0 items-center gap-1">
-                                  <button
-                                    type="button"
+                                  <Button
+                                    variant="secondary"
+                                    size="xs"
                                     disabled={props.loading}
-                                    class="rounded bg-primary/12 px-1.5 py-px text-[10px] font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                                    class="h-5 bg-primary/12 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20"
                                     onClick={() => expandTo(contextLines() + CONTEXT_STEP)}
                                   >
                                     +{CONTEXT_STEP} ctx
-                                  </button>
-                                  <button
-                                    type="button"
+                                  </Button>
+                                  <Button
+                                    variant="secondary"
+                                    size="xs"
                                     disabled={props.loading}
-                                    class="rounded bg-primary/12 px-1.5 py-px text-[10px] font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                                    class="h-5 bg-primary/12 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20"
                                     onClick={() => expandTo(100000)}
                                   >
                                     full
-                                  </button>
+                                  </Button>
                                 </span>
                               </div>
                             </td>
@@ -1007,7 +1030,7 @@ function DiffBody(props: { project: string; hash: string; diff: string; selected
                   </For>
                 </tbody>
               </table>
-            </div>
+            </Card>
           );
         }}
       </For>

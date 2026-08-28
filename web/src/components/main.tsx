@@ -4,6 +4,8 @@ import { actions as actionsMap, fetchPorts, runAction } from "~/stores/data";
 import { activeView, selectedAction, selectedProject, selectedService } from "~/stores/nav";
 import { openPortsModal, setSidebarOpen } from "~/stores/app";
 import { Button } from "~/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { ActionHeader, ProjectHeader, ServiceHeader } from "~/components/header";
 import { LogView } from "~/components/logs";
 import { GitView } from "~/components/git/GitView";
@@ -15,14 +17,21 @@ function EmptyState() {
   const actionList = () => (project() ? actionsMap()[project()!] ?? [] : []);
 
   return (
-    <div class="flex h-full flex-col items-center justify-center gap-4 p-6 text-muted-foreground">
+    <div class="flex h-full flex-col items-center justify-center p-6 text-muted-foreground">
       <Show
         when={project()}
         fallback={
-          <>
-            <PackageOpen class="size-9 stroke-1" />
-            <p class="text-sm">Select a project to get started.</p>
-          </>
+          <Empty class="border-0">
+            <EmptyHeader>
+              <EmptyMedia>
+                <PackageOpen class="size-9 stroke-1 text-muted-foreground" />
+              </EmptyMedia>
+              <EmptyTitle class="text-sm">No project selected</EmptyTitle>
+              <EmptyDescription class="text-xs">
+                Select a project to get started.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         }
       >
         <div class="w-full max-w-md text-center">
@@ -31,11 +40,13 @@ function EmptyState() {
             <span class="font-semibold text-foreground">{project()}</span> to follow its logs.
           </p>
           <Show when={actionList().length > 0}>
-            <div class="rounded-xl border bg-card p-3 text-left shadow-sm">
-              <div class="mb-2 px-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Project actions
-              </div>
-              <div class="grid gap-1.5">
+            <Card class="text-left shadow-sm">
+              <CardHeader class="pb-2">
+                <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Project actions
+                </CardTitle>
+              </CardHeader>
+              <CardContent class="grid gap-1.5 pt-0">
                 {actionList().map((act) => (
                   <div class="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-2.5 py-2 transition-colors hover:bg-muted/60">
                     <div class="min-w-0 pr-2">
@@ -55,8 +66,8 @@ function EmptyState() {
                     </Button>
                   </div>
                 ))}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </Show>
         </div>
       </Show>

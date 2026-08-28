@@ -7,7 +7,16 @@ import type { PortBinding } from "~/lib/types";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
 
@@ -131,56 +140,60 @@ export function PortsModal() {
             <Show
               when={filteredPorts().length > 0}
               fallback={
-                <div class="flex flex-col items-center justify-center px-4 py-10 text-center text-muted-foreground">
-                  <Globe class="mb-2 size-8 stroke-[1.5] opacity-40" />
-                  <p class="text-[13px] font-medium">No open ports</p>
-                  <p class="mt-1 max-w-sm text-xs">
-                    {activePorts().length === 0
-                      ? scope() === "all"
-                        ? "None of the running services are listening on TCP/UDP ports."
-                        : `Services in '${project()}' have no listeners right now — try the All projects scope.`
-                      : "No ports match your filter."}
-                  </p>
-                </div>
+                <Empty class="py-10">
+                  <EmptyHeader>
+                    <EmptyMedia>
+                      <Globe class="size-8 stroke-[1.5] opacity-40 text-muted-foreground" />
+                    </EmptyMedia>
+                    <EmptyTitle class="text-[13px]">No open ports</EmptyTitle>
+                    <EmptyDescription class="text-xs max-w-sm">
+                      {activePorts().length === 0
+                        ? scope() === "all"
+                          ? "None of the running services are listening on TCP/UDP ports."
+                          : `Services in '${project()}' have no listeners right now — try the All projects scope.`
+                        : "No ports match your filter."}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               }
             >
-              <table class="w-full text-left text-xs">
-                <thead class="sticky top-0 border-b bg-muted/70 text-muted-foreground backdrop-blur-sm">
-                  <tr>
-                    <th class="px-3.5 py-2 font-medium">Service</th>
-                    <th class="px-3.5 py-2 font-medium">Bound IP</th>
-                    <th class="px-3.5 py-2 font-medium">Port</th>
-                    <th class="px-3.5 py-2 font-medium">Proto</th>
-                    <th class="px-3.5 py-2 text-right font-medium">Quick access</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-border/60">
+              <Table class="w-full text-left text-xs">
+                <TableHeader class="sticky top-0 bg-muted/70 text-muted-foreground backdrop-blur-sm">
+                  <TableRow class="hover:bg-transparent">
+                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Service</TableHead>
+                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Bound IP</TableHead>
+                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Port</TableHead>
+                    <TableHead class="h-8 px-3.5 py-2 font-medium text-muted-foreground">Proto</TableHead>
+                    <TableHead class="h-8 px-3.5 py-2 text-right font-medium text-muted-foreground">Quick access</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody class="divide-y divide-border/60">
                   <For each={filteredPorts()}>
                     {(item) => {
                       const copyKey = `${item.project}:${item.service}:${item.port}`;
                       const isCopied = () => copiedPort() === copyKey;
                       return (
-                        <tr class="transition-colors hover:bg-muted/40">
-                          <td class="px-3.5 py-2.5 font-medium">
+                        <TableRow class="transition-colors hover:bg-muted/40">
+                          <TableCell class="px-3.5 py-2.5 font-medium">
                             <span>{item.service || item.project}</span>
                             <Show when={scope() === "all" && item.project}>
                               <span class="ml-1.5 rounded bg-muted px-1 py-px font-mono text-[10px] text-muted-foreground">
                                 {item.project}
                               </span>
                             </Show>
-                          </td>
-                          <td data-tabular class="px-3.5 py-2.5 font-mono text-[11px] text-muted-foreground">
+                          </TableCell>
+                          <TableCell data-tabular class="px-3.5 py-2.5 font-mono text-[11px] text-muted-foreground">
                             {item.ip}
-                          </td>
-                          <td data-tabular class="px-3.5 py-2.5 font-mono font-semibold text-primary">
+                          </TableCell>
+                          <TableCell data-tabular class="px-3.5 py-2.5 font-mono font-semibold text-primary">
                             {item.port}
-                          </td>
-                          <td class="px-3.5 py-2.5">
+                          </TableCell>
+                          <TableCell class="px-3.5 py-2.5">
                             <Badge variant="outline" class="uppercase">
                               {item.protocol}
                             </Badge>
-                          </td>
-                          <td class="px-3.5 py-2.5">
+                          </TableCell>
+                          <TableCell class="px-3.5 py-2.5">
                             <div class="flex items-center justify-end gap-1.5">
                               <Button
                                 variant="ghost"
@@ -206,13 +219,13 @@ export function PortsModal() {
                                 <ExternalLink class="size-3" />
                               </a>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     }}
                   </For>
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </Show>
           </div>
 

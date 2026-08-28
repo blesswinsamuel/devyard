@@ -34,7 +34,15 @@ import {
 import { openPortsModal, openTerminalPanel, panelOpen } from "~/stores/app";
 import { healthTone, serviceMeta, statusLabel, statusTone } from "~/lib/status";
 import { Badge } from "~/components/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "~/components/ui/breadcrumb";
 import { Button } from "~/components/ui/button";
+import { Separator } from "~/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
 
 /** Buttons shared by every header variant. */
@@ -103,27 +111,31 @@ function PrevRunButton(props: { project: string; kind: "service" | "action"; nam
   );
 }
 
-function Breadcrumb(props: { parts: { label: string; strong?: boolean; mono?: boolean }[] }) {
+function HeaderBreadcrumb(props: { parts: { label: string; strong?: boolean; mono?: boolean }[] }) {
   return (
-    <div class="flex min-w-0 items-center gap-1.5 text-[13px]">
-      <For each={props.parts}>
-        {(part, i) => (
-          <>
-            {i() > 0 && <span class="text-muted-foreground/50">/</span>}
-            <span
-              classList={{
-                truncate: true,
-                "font-semibold": !!part.strong,
-                "font-mono": !!part.mono,
-                "text-muted-foreground": !part.strong && !part.mono,
-              }}
-            >
-              {part.label}
-            </span>
-          </>
-        )}
-      </For>
-    </div>
+    <Breadcrumb class="min-w-0">
+      <BreadcrumbList class="flex-nowrap gap-1.5 text-[13px]">
+        <For each={props.parts}>
+          {(part, i) => (
+            <>
+              {i() > 0 && <BreadcrumbSeparator class="text-muted-foreground/50 text-[11px]">/</BreadcrumbSeparator>}
+              <BreadcrumbItem class="min-w-0">
+                <BreadcrumbPage
+                  classList={{
+                    truncate: true,
+                    "font-semibold text-foreground": !!part.strong,
+                    "font-mono": !!part.mono,
+                    "text-muted-foreground": !part.strong && !part.mono,
+                  }}
+                >
+                  {part.label}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </>
+          )}
+        </For>
+      </BreadcrumbList>
+    </Breadcrumb>
   );
 }
 
@@ -136,7 +148,7 @@ export function ServiceHeader() {
 
   return (
     <>
-      <Breadcrumb
+      <HeaderBreadcrumb
         parts={[
           { label: project() },
           { label: service(), strong: true },
@@ -160,7 +172,7 @@ export function ServiceHeader() {
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <HeaderButtons project={project()} />
-        <div class="mx-1 h-4 w-px bg-border" />
+        <Separator orientation="vertical" class="mx-1 h-4" />
         <PrevRunButton project={project()} kind="service" name={service()} />
         <Show
           when={state()?.status !== "stopped" && state()?.status !== "exited"}
@@ -205,14 +217,14 @@ export function ProjectHeader() {
 
   return (
     <>
-      <Breadcrumb parts={[{ label: project(), strong: true }]} />
+      <HeaderBreadcrumb parts={[{ label: project(), strong: true }]} />
       <Show when={info()}>
         {(p) => <Badge variant={statusTone(p().status)}>{p().status}</Badge>}
       </Show>
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <HeaderButtons project={project()} />
-        <div class="mx-1 h-4 w-px bg-border" />
+        <Separator orientation="vertical" class="mx-1 h-4" />
         <Show
           when={!isStopped()}
           fallback={
@@ -247,7 +259,7 @@ export function ActionHeader() {
 
   return (
     <>
-      <Breadcrumb
+      <HeaderBreadcrumb
         parts={[
           { label: project() },
           { label: "actions" },
@@ -267,7 +279,7 @@ export function ActionHeader() {
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <HeaderButtons project={project()} />
-        <div class="mx-1 h-4 w-px bg-border" />
+        <Separator orientation="vertical" class="mx-1 h-4" />
         <PrevRunButton project={project()} kind="action" name={actionName()} />
         <Button size="sm" aria-label="Run action" onClick={() => runAction(project(), actionName())}>
           <Play class="!size-3.5" />

@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { ArrowDownToLine, History, Loader2, RadioTower, X } from "lucide-solid";
+import { ArrowDownToLine, History, RadioTower, X } from "lucide-solid";
 import {
   activeKey,
   closeLogTab,
@@ -23,6 +23,9 @@ import { subscribeActionLogs, subscribeLogs } from "~/lib/ws";
 import { formatLogLine } from "~/lib/ansi";
 import { cn } from "~/lib/utils";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
+import { Button } from "~/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
+import { Spinner } from "~/components/ui/spinner";
 
 /**
  * One log stream rendered into an xterm instance. Follow-tail behavior:
@@ -138,19 +141,20 @@ function LogTerminal(props: {
       <div ref={container} class="h-full w-full" />
       <Show when={!receivedAny()}>
         <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-          <Loader2 class="size-4 animate-spin opacity-60" />
+          <Spinner class="opacity-60" />
           <p class="text-xs">{isPreviousLogs(props.keyId) ? "Loading previous run…" : "Waiting for output…"}</p>
         </div>
       </Show>
       <Show when={receivedAny() && !following()}>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={jumpToBottom}
-          class="absolute bottom-4 right-5 flex items-center gap-1 rounded-full border border-border-strong bg-popover/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur transition-colors hover:text-foreground"
+          class="absolute bottom-4 right-5 rounded-full border-border-strong bg-popover/95 text-xs text-muted-foreground shadow-md backdrop-blur transition-colors hover:text-foreground"
         >
-          <ArrowDownToLine class="size-3.5" />
+          <ArrowDownToLine class="!size-3.5" />
           Jump to latest
-        </button>
+        </Button>
       </Show>
     </div>
   );
@@ -283,13 +287,17 @@ function focusTab(tab: { project: string; kind: "service" | "action"; name: stri
 
 function LogEmptyState() {
   return (
-    <div class="flex h-full flex-col items-center justify-center gap-3 p-6 text-muted-foreground">
-      <RadioTower class="size-8 stroke-1" />
-      <p class="text-sm">No log streams open.</p>
-      <p class="max-w-xs text-center text-xs leading-relaxed">
-        Select a service in the sidebar to follow its logs. Tabs stay open across
-        projects — close them with ×.
-      </p>
-    </div>
+    <Empty class="h-full border-0">
+      <EmptyHeader>
+        <EmptyMedia>
+          <RadioTower class="size-8 stroke-1 text-muted-foreground" />
+        </EmptyMedia>
+        <EmptyTitle class="text-sm">No log streams open</EmptyTitle>
+        <EmptyDescription class="max-w-xs text-xs leading-relaxed">
+          Select a service in the sidebar to follow its logs. Tabs stay open across
+          projects — close them with ×.
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }

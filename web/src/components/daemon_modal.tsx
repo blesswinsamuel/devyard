@@ -1,18 +1,24 @@
 import { Show, createEffect, onCleanup } from "solid-js";
-import { Loader2, RefreshCw, Server } from "lucide-solid";
+import { RefreshCw, Server } from "lucide-solid";
 import { daemonInfo, fetchDaemonStatus, restartDaemon } from "~/stores/data";
 import { setShowDaemonModal, showDaemonModal } from "~/stores/app";
 import { wsStatus } from "~/lib/ws";
 import { createClock, formatBytes, formatUptime } from "~/lib/format";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
+import { Separator } from "~/components/ui/separator";
 
-function Row(props: { label: string; children: import("solid-js").JSX.Element }) {
+function Row(props: { label: string; children: import("solid-js").JSX.Element; last?: boolean }) {
   return (
-    <div class="flex items-center justify-between border-b border-border/60 py-2 last:border-0">
-      <span class="text-muted-foreground">{props.label}</span>
-      <span class="font-mono text-xs">{props.children}</span>
-    </div>
+    <>
+      <div class="flex items-center justify-between py-2">
+        <span class="text-muted-foreground">{props.label}</span>
+        <span class="font-mono text-xs">{props.children}</span>
+      </div>
+      <Show when={!props.last}>
+        <Separator class="opacity-60" />
+      </Show>
+    </>
   );
 }
 
@@ -57,7 +63,7 @@ export function DaemonStatusModal() {
               <Row label="Memory (alloc / RSS)">
                 {formatBytes(info().memory_alloc)} / {formatBytes(info().memory_rss)}
               </Row>
-              <Row label="Go version">{info().go_version}</Row>
+              <Row label="Go version" last>{info().go_version}</Row>
             </div>
           )}
         </Show>

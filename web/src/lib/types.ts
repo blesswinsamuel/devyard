@@ -1,169 +1,21 @@
-export interface ProjectInfo {
-  name: string;
-  status: string;
-  config_path: string;
-  running_services?: number;
-  total_services?: number;
-}
-
-export interface ServiceState {
-  name: string;
-  status: string;
-  pid: number;
-  exit_code: number;
-  restarts: number;
-  started_at?: string;
-  finished_at?: string;
-  has_health: boolean;
-  health: string;
-}
-
-export interface PortBinding {
-  project: string;
-  service: string;
-  pid: number;
-  ip: string;
-  port: number;
-  protocol: string;
-}
-
-export interface ActionInfo {
-  name: string;
-  command: string;
-  working_dir?: string;
-  depends_on?: string[];
-}
-
-export interface ActionState {
-  name: string;
-  command: string;
-  status: string;
-  pid: number;
-  exit_code: number;
-  started_at?: string;
-  finished_at?: string;
-}
-
-export interface GitRef {
-  name: string;
-  type: "head" | "branch" | "remote" | "tag" | "stash";
-  is_active?: boolean;
-}
-
-export interface GitBranch {
-  name: string;
-  hash: string;
-  is_active?: boolean;
-  is_remote?: boolean;
-  upstream?: string;
-  ahead?: number;
-  behind?: number;
-}
-
-export interface GitTag {
-  name: string;
-  hash: string;
-}
-
-export interface GitStash {
-  index: string;
-  name: string;
-  hash: string;
-  time?: string;
-}
-
-export interface GitCommit {
-  hash: string;
-  short: string;
-  author: string;
-  email: string;
-  time: string;
-  parents?: string[];
-  subject: string;
-  head?: boolean;
-  refs?: GitRef[];
-}
-
-export interface GitLogPayload {
-  commits: GitCommit[];
-  branches: GitBranch[];
-  tags: GitTag[];
-  stashes: GitStash[];
-}
-
-export interface GitFileChange {
-  path: string;
-  old_path?: string;
-  status: string; // "M", "A", "D", "R", etc.
-  additions: number;
-  deletions: number;
-  staged?: boolean;
-  unstaged?: boolean;
-  untracked?: boolean;
-}
-
-export interface GitDiffResult {
-  commit: GitCommit;
-  files: GitFileChange[];
-  diff: string;
-}
-
-export interface WSRequest {
-  type: string;
-  project?: string;
-  service?: string;
-  action?: string;
-  args?: string[];
-  config_path?: string;
-  signal?: string;
-  env_file?: string;
-  prev?: boolean;
-  id?: string;
-  data?: string;
-  cols?: number;
-  rows?: number;
-  hash?: string;
-  path?: string;
-  message?: string;
-  unstage?: boolean;
-  stage_all?: boolean;
-  context_lines?: number;
-}
-
-export interface DaemonInfo {
-  pid: number;
-  start_time: string;
-  goroutines: number;
-  memory_alloc: number;
-  memory_sys: number;
-  memory_rss: number;
-  go_version: string;
-}
-
-export interface WSResponse {
-  type: string;
-  project?: string;
-  service?: string;
-  action?: string;
-  data?:
-    | ProjectInfo[]
-    | ServiceState[]
-    | ActionInfo[]
-    | ServiceState
-    | ActionState
-    | PortBinding[]
-    | GitCommit[]
-    | GitLogPayload
-    | GitDiffResult
-    | DaemonInfo;
-  line?: string;
-  ok?: boolean;
-  error?: string;
-  exit_code?: number;
-  prev?: boolean;
-  id?: string;
-  output?: string;
-}
+export type {
+  DaemonInfo,
+  ServiceState,
+  ActionInfo,
+  ActionState,
+  ProjectInfo,
+  ServiceStat,
+  PortBinding,
+  GitRef,
+  GitBranch,
+  GitTag,
+  GitStash,
+  GitCommit,
+  GitFileChange,
+  GitDiffResult,
+  LogChunk,
+  Event,
+} from "~/gen/localcompose/v1/control_pb";
 
 export type ViewMode = "logs" | "shell" | "git";
 

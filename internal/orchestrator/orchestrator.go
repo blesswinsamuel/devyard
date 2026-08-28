@@ -682,9 +682,6 @@ func (d *Daemon) GitLog(name string) ([]*protocol.GitCommit, []*protocol.GitBran
 	if !gitlog.IsRepo(p.BaseDir) {
 		return nil, nil, nil, nil, fmt.Errorf("project %q is not a git repository", name)
 	}
-	if d.watcher != nil && p.BaseDir != "" {
-		_ = d.watcher.AddProject(name, p.BaseDir)
-	}
 	commits, branches, tags, stashes, err := gitlog.Log(p.BaseDir)
 	if err != nil {
 		return nil, nil, nil, nil, err

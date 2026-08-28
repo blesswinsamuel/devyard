@@ -1,5 +1,6 @@
 import { untrack } from "solid-js";
 import { createSignal } from "solid-js";
+import { rpcClient } from "~/lib/rpc";
 
 export interface LogTab {
   /** Stable identity: `s:project/service` or `a:project/action`. */
@@ -78,4 +79,80 @@ export function pruneLogTabs(validKeys: Set<string>) {
     }
     return changed ? next : prev;
   });
+}
+
+export function subscribeLogs(
+  project: string,
+  service: string,
+  onLine: (line: string) => void,
+  onRotate?: () => void,
+  prev = false
+): () => void {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const stream = rpcClient.logs(
+        {
+          project,
+          service,
+          follow: !prev,
+          previous: prev,
+          tail: 500,
+        },
+        { signal: controller.signal }
+      );
+
+      for await (const chunk of stream) {
+        if (controller.signal.aborted) break;
+        if (chunk.rotated) {
+          onRotate?.();
+        }
+        for (const line of chunk.lines) {
+          onLine(line);
+        }
+      }
+    } catch {
+      // Abort or stream close
+    }
+  })();
+
+  return () => controller.abort();
+}
+
+export function subscribeActionLogs(
+  project: string,
+  action: string,
+  onLine: (line: string) => void,
+  onRotate?: () => void,
+  prev = false
+): () => void {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const stream = rpcClient.logs(
+        {
+          project,
+          action,
+          follow: !prev,
+          previous: prev,
+          tail: 500,
+        },
+        { signal: controller.signal }
+      );
+
+      for await (const chunk of stream) {
+        if (controller.signal.aborted) break;
+        if (chunk.rotated) {
+          onRotate?.();
+        }
+        for (const line of chunk.lines) {
+          onLine(line);
+        }
+      }
+    } catch {
+      // Abort or stream close
+    }
+  })();
+
+  return () => controller.abort();
 }

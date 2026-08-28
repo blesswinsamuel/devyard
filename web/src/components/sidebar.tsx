@@ -44,7 +44,7 @@ import {
 import { setShowAddProject, setShowDaemonModal, theme, setTheme } from "~/stores/app";
 import { toggleHelp, sidebarOpen, setSidebarOpen } from "~/stores/app";
 import { openGitView } from "~/stores/nav";
-import { wsStatus } from "~/lib/ws";
+import { eventStatus } from "~/lib/events";
 import { healthDot, statusDot, statusTone } from "~/lib/status";
 import { cn } from "~/lib/utils";
 import { Badge } from "~/components/ui/badge";
@@ -66,9 +66,9 @@ function WsDot() {
   return (
     <span
       class={cn("inline-block size-2 shrink-0 rounded-full", {
-        "bg-success shadow-[0_0_6px_var(--success)]": wsStatus() === "open",
-        "bg-warning animate-pulse": wsStatus() === "connecting",
-        "bg-destructive": wsStatus() === "closed",
+        "bg-success shadow-[0_0_6px_var(--success)]": eventStatus() === "open",
+        "bg-warning animate-pulse": eventStatus() === "connecting",
+        "bg-destructive": eventStatus() === "closed",
       })}
     />
   );
@@ -113,16 +113,16 @@ function ServiceRow(props: { project: string; name: string }) {
           >
             <span class={cn("size-1.5 shrink-0 rounded-full transition-shadow", statusDot(s().status))} />
             <span class="truncate">{props.name}</span>
-            <Show when={s().status === "exited" && s().exit_code !== 0}>
+            <Show when={s().status === "exited" && (s().exitCode ?? (s() as any).exit_code ?? 0) !== 0}>
               <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
-                {s().exit_code}
+                {s().exitCode ?? (s() as any).exit_code}
               </span>
             </Show>
             <div class="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Show when={s().has_health}>
+              <Show when={s().hasHealth ?? (s() as any).has_health}>
                 <Tooltip>
                   <TooltipTrigger class="flex items-center" as="span">
-                    <span class={cn("size-2 rounded-full", healthDot(s().has_health, s().health))} />
+                    <span class={cn("size-2 rounded-full", healthDot(s().hasHealth ?? (s() as any).has_health, s().health))} />
                   </TooltipTrigger>
                   <TooltipContent>health: {s().health}</TooltipContent>
                 </Tooltip>
@@ -230,9 +230,9 @@ function ActionRow(props: { project: string; name: string }) {
           )}
         />
         <span class="truncate">{props.name}</span>
-        <Show when={status() === "exited" && (state()?.exit_code ?? 0) !== 0}>
+        <Show when={status() === "exited" && (state()?.exitCode ?? (state() as any)?.exit_code ?? 0) !== 0}>
           <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
-            {state()?.exit_code}
+            {state()?.exitCode ?? (state() as any)?.exit_code}
           </span>
         </Show>
         <Show when={(state()?.pid ?? 0) > 0}>
@@ -277,7 +277,7 @@ function ProjectItem(props: { name: string }) {
   const cursor = () => sameNavItem(keyboardCursor(), { kind: "project", project: props.name });
 
   const aggregateHealth = createMemo(() => {
-    const withHealth = (serviceList() ?? []).filter((s) => s.has_health);
+    const withHealth = (serviceList() ?? []).filter((s) => s.hasHealth ?? (s as any).has_health);
     if (withHealth.length === 0) return "";
     if (withHealth.some((s) => s.health === "unhealthy")) return "unhealthy";
     if (withHealth.some((s) => s.health === "starting" || s.health === "starting_healthy")) return "starting";
@@ -489,7 +489,7 @@ export function Sidebar() {
             title="Daemon status"
           >
             <WsDot />
-            <span class="capitalize">{wsStatus()}</span>
+            <span class="capitalize">{eventStatus()}</span>
             <Show when={daemonInfo()?.pid}>
               <span class="font-mono tabular opacity-70">:{daemonInfo()?.pid}</span>
             </Show>

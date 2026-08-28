@@ -1,6 +1,6 @@
-// Package web serves the embedded SPA and a WebSocket endpoint (/ws) for the
-// browser frontend. It is a thin bridge between browser messages and the
-// daemon's control socket.
+// Package web serves the embedded SPA and provides access to the daemon
+// control socket (via ConnectRPC HTTP/2 reverse proxy and a WebSocket endpoint
+// for interactive terminal PTY sessions).
 package web
 
 import (
@@ -8,11 +8,13 @@ import (
 	"crypto/tls"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +23,6 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
 )
 
 //go:embed dist/*
@@ -36,8 +37,8 @@ const (
 )
 
 // Server is the HTTP + WebSocket server for the web UI. It serves the
-// embedded SPA at / and bridges /ws traffic and ConnectRPC calls to the daemon over its Unix
-// control socket.
+// embedded SPA at /, proxies ConnectRPC calls to the daemon over its Unix
+// control socket, and handles interactive terminal PTY sessions at /ws.
 type Server struct {
 	addr       string
 	socketPath string
@@ -46,7 +47,6 @@ type Server struct {
 	listener net.Listener
 	closed   bool
 	done     chan struct{}
-	events   *control.Client // live event-subscription connection, closed on shutdown
 
 	clientsMu sync.Mutex
 	clients   map[*client]struct{}
@@ -63,7 +63,7 @@ func NewServer(addr, socketPath string) *Server {
 	}
 }
 
-// ListenAndServe starts serving HTTP and the daemon event fan-out. It returns
+// ListenAndServe starts serving HTTP and ConnectRPC proxying. It returns
 // once the listener is ready. Call Close to stop.
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", s.addr)
@@ -78,8 +78,6 @@ func (s *Server) ListenAndServe() error {
 	}
 	s.listener = ln
 	s.mu.Unlock()
-
-	go s.runEvents()
 
 	mux := http.NewServeMux()
 
@@ -96,7 +94,8 @@ func (s *Server) ListenAndServe() error {
 			req.URL.Scheme = "http"
 			req.URL.Host = "localhost"
 		},
-		Transport: transport,
+		Transport:     transport,
+		FlushInterval: -1, // flush streaming RPCs immediately
 	}
 	mux.Handle("/localcompose.v1.DaemonService/", proxy)
 
@@ -117,8 +116,8 @@ func (s *Server) Addr() string {
 	return s.listener.Addr().String()
 }
 
-// Close stops accepting connections, tears down every active WS client, and
-// unblocks the event subscription. It is safe to call more than once.
+// Close stops accepting connections and tears down active terminal sessions.
+// It is safe to call more than once.
 func (s *Server) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -127,13 +126,9 @@ func (s *Server) Close() error {
 	}
 	s.closed = true
 	ln := s.listener
-	ev := s.events
 	close(s.done)
 	s.mu.Unlock()
 
-	if ev != nil {
-		_ = ev.Close()
-	}
 	var err error
 	if ln != nil {
 		err = ln.Close()
@@ -173,48 +168,22 @@ func (s *Server) spaHandler() http.Handler {
 	})
 }
 
-// --- WebSocket message types ---
+// --- Terminal WebSocket handling ---
 
 type wsRequest struct {
-	Type          string   `json:"type"`
-	Project       string   `json:"project,omitempty"`
-	Service       string   `json:"service,omitempty"`
-	Action        string   `json:"action,omitempty"`
-	Args          []string `json:"args,omitempty"`
-	Signal        string   `json:"signal,omitempty"`
-	ConfigPath    string   `json:"config_path,omitempty"`
-	EnvFile       string   `json:"env_file,omitempty"`
-	RemoveOrphans *bool    `json:"remove_orphans,omitempty"`
-	Previous      bool     `json:"prev,omitempty"`
-	Hash          string   `json:"hash,omitempty"`
-	Path          string   `json:"path,omitempty"`
-	Message       string   `json:"message,omitempty"`
-	Unstage       bool     `json:"unstage,omitempty"`
-	StageAll      bool     `json:"stage_all,omitempty"`
-	ContextLines  int      `json:"context_lines,omitempty"`
-
-	// Terminal/PTY fields
-	ID   string `json:"id,omitempty"`
-	Data string `json:"data,omitempty"`
-	Cols uint16 `json:"cols,omitempty"`
-	Rows uint16 `json:"rows,omitempty"`
+	Type    string `json:"type"`
+	Project string `json:"project,omitempty"`
+	ID      string `json:"id,omitempty"`
+	Data    string `json:"data,omitempty"`
+	Cols    uint16 `json:"cols,omitempty"`
+	Rows    uint16 `json:"rows,omitempty"`
 }
 
 type wsResponse struct {
-	Type     string          `json:"type"`
-	Project  string          `json:"project,omitempty"`
-	Service  string          `json:"service,omitempty"`
-	Action   string          `json:"action,omitempty"`
-	Data     json.RawMessage `json:"data,omitempty"`
-	Line     string          `json:"line,omitempty"`
-	Prev     bool            `json:"prev,omitempty"`
-	Ok       bool            `json:"ok"`
-	Error    string          `json:"error,omitempty"`
-	ExitCode *int            `json:"exit_code,omitempty"`
-
-	// Terminal/PTY fields
+	Type   string `json:"type"`
 	ID     string `json:"id,omitempty"`
 	Output string `json:"output,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 type client struct {
@@ -229,7 +198,6 @@ type client struct {
 	mu        sync.Mutex
 	dead      bool
 
-	subs *subTracker
 	ptys *ptyManager
 }
 
@@ -241,7 +209,6 @@ func (s *Server) addClient(conn *websocket.Conn) *client {
 		ctx:  ctx,
 		send: make(chan wsResponse, sendBufferSize),
 		done: make(chan struct{}),
-		subs: newSubTracker(),
 		ptys: newPTYManager(),
 	}
 	cl.cancelCtx = cancel
@@ -311,7 +278,6 @@ func (cl *client) close() {
 			cl.cancelCtx()
 		}
 		_ = cl.conn.CloseNow()
-		cl.subs.closeAll()
 		cl.ptys.closeAll()
 		cl.srv.removeClient(cl)
 	})
@@ -321,14 +287,6 @@ func (s *Server) removeClient(cl *client) {
 	s.clientsMu.Lock()
 	delete(s.clients, cl)
 	s.clientsMu.Unlock()
-}
-
-func (s *Server) broadcast(resp wsResponse) {
-	s.clientsMu.Lock()
-	defer s.clientsMu.Unlock()
-	for cl := range s.clients {
-		cl.enqueue(resp)
-	}
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -360,30 +318,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) dispatch(cl *client, req *wsRequest) {
 	switch req.Type {
-	case "list_projects":
-		s.handleListProjects(cl)
-	case "list_services":
-		s.handleListServices(cl, req)
-	case "start_project":
-		s.handleStartProject(cl, req)
-	case "stop_project":
-		s.handleStopProject(cl, req)
-	case "restart_service":
-		s.handleServiceOp(cl, req, "restart", "result")
-	case "stop_service":
-		s.handleServiceOp(cl, req, "stop", "result")
-	case "start_service":
-		s.handleServiceOp(cl, req, "start", "result")
-	case "kill_service":
-		s.handleKillService(cl, req)
-	case "subscribe_logs":
-		s.handleSubscribeLogs(cl, req)
-	case "unsubscribe_logs":
-		cl.subs.cancel(logSubKey(logTarget{project: req.Project, service: req.Service}))
-	case "subscribe_action_logs":
-		s.handleSubscribeActionLogs(cl, req)
-	case "unsubscribe_action_logs":
-		cl.subs.cancel(logSubKey(logTarget{project: req.Project, action: req.Action}))
 	case "spawn_terminal":
 		s.handleSpawnTerminal(cl, req)
 	case "terminal_input":
@@ -396,99 +330,49 @@ func (s *Server) dispatch(cl *client, req *wsRequest) {
 		}
 	case "close_terminal":
 		cl.ptys.closeSession(req.ID)
-	case "list_actions":
-		s.handleListActions(cl, req)
-	case "list_action_states":
-		s.handleListActionStates(cl, req)
-	case "run_action":
-		s.runAction(cl, req)
-	case "git_log":
-		s.handleGitLog(cl, req)
-	case "git_diff":
-		s.handleGitDiff(cl, req)
-	case "git_commit":
-		s.handleGitCommit(cl, req)
-	case "git_stage":
-		s.handleGitStage(cl, req)
-	case "git_push":
-		s.handleGitRemote(cl, req, "push")
-	case "git_pull":
-		s.handleGitRemote(cl, req, "pull")
-	case "git_fetch":
-		s.handleGitRemote(cl, req, "fetch")
-	case "daemon_status":
-		s.handleDaemonStatus(cl)
-	case "restart_daemon":
-		s.handleRestartDaemon(cl)
-	case "list_ports":
-		s.handleListPorts(cl, req)
 	default:
 		cl.enqueue(wsResponse{Type: "error", Error: "unknown message type: " + req.Type})
 	}
 }
 
-// --- daemon event fan-out ---
+func (s *Server) projectDir(project string) (string, error) {
+	if project == "" {
+		return "", errors.New("web: project is required to spawn a terminal")
+	}
+	c, err := control.Dial(s.socketPath)
+	if err != nil {
+		return "", fmt.Errorf("web: cannot reach daemon: %w", err)
+	}
+	defer func() { _ = c.Close() }()
 
-func (s *Server) runEvents() {
-	for {
-		if s.isClosed() {
-			return
-		}
-		c, err := control.Dial(s.socketPath)
-		if err == nil {
-			s.setEvents(c)
-			ctx, cancel := context.WithCancel(context.Background())
-			go func() {
-				select {
-				case <-s.done:
-					cancel()
-				case <-ctx.Done():
-				}
-			}()
-			_ = c.SubscribeEvents(ctx, func(ev *protocol.Event) {
-				if sc := ev.GetServiceStateChanged(); sc != nil {
-					data, _ := json.Marshal(sc.State)
-					s.broadcast(wsResponse{
-						Type:    "state_changed",
-						Project: sc.Project,
-						Service: sc.State.GetName(),
-						Data:    data,
-					})
-				} else if ac := ev.GetActionStateChanged(); ac != nil {
-					data, _ := json.Marshal(ac.State)
-					s.broadcast(wsResponse{
-						Type:    "action_state_changed",
-						Project: ac.Project,
-						Action:  ac.State.GetName(),
-						Data:    data,
-					})
-				} else if gc := ev.GetGitChanged(); gc != nil {
-					s.broadcast(wsResponse{Type: "git_changed", Project: gc.Project})
-				}
-			})
-			cancel()
-			s.setEvents(nil)
-			_ = c.Close()
-		}
-		if s.isClosed() {
-			return
-		}
-		select {
-		case <-s.done:
-			return
-		case <-time.After(time.Second):
+	projects, err := c.ListProjects()
+	if err != nil {
+		return "", err
+	}
+	for _, p := range projects {
+		if p.Name == project && p.ConfigPath != "" {
+			return filepath.Dir(p.ConfigPath), nil
 		}
 	}
+	return "", fmt.Errorf("web: unknown project %q", project)
 }
 
-func (s *Server) isClosed() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.closed
-}
-
-func (s *Server) setEvents(c *control.Client) {
-	s.mu.Lock()
-	s.events = c
-	s.mu.Unlock()
+func (s *Server) handleSpawnTerminal(cl *client, req *wsRequest) {
+	dir, err := s.projectDir(req.Project)
+	if err != nil {
+		cl.enqueue(wsResponse{Type: "error", Error: err.Error()})
+		return
+	}
+	id := req.ID
+	err = cl.ptys.spawn(dir, id, req.Cols, req.Rows,
+		func(output string) {
+			cl.enqueue(wsResponse{Type: "terminal_output", ID: id, Output: output})
+		},
+		func() {
+			cl.enqueue(wsResponse{Type: "terminal_exit", ID: id})
+		},
+	)
+	if err != nil {
+		cl.enqueue(wsResponse{Type: "error", Error: err.Error()})
+	}
 }

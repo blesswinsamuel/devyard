@@ -361,3 +361,37 @@ func TestParseAheadBehind(t *testing.T) {
 		}
 	}
 }
+
+func TestLogDoesNotModifyIndex(t *testing.T) {
+	dir := initRepo(t)
+
+	// Modify a working file so git status has work to do
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("modified\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	indexPath := filepath.Join(dir, ".git", "index")
+	fiBefore, err := os.Stat(indexPath)
+	if err != nil {
+		t.Fatalf("stat index before: %v", err)
+	}
+
+	// Run Log
+	if _, _, _, _, err := Log(dir); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+
+	// Run Diff for WORKDIR
+	if _, err := Diff(dir, "WORKDIR", ""); err != nil {
+		t.Fatalf("Diff WORKDIR: %v", err)
+	}
+
+	fiAfter, err := os.Stat(indexPath)
+	if err != nil {
+		t.Fatalf("stat index after: %v", err)
+	}
+
+	if !fiBefore.ModTime().Equal(fiAfter.ModTime()) {
+		t.Errorf("read-only git operations modified .git/index mtime: before %v, after %v", fiBefore.ModTime(), fiAfter.ModTime())
+	}
+}

@@ -419,7 +419,7 @@ export function GitView() {
             }}
           >
             <Show
-              when={!loading()}
+              when={!loading() || commits().length > 0}
               fallback={
                 <div class="flex h-full items-center justify-center gap-2 p-6 text-muted-foreground">
                   <Spinner />

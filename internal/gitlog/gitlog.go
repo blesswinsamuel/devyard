@@ -6,6 +6,7 @@ package gitlog
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,6 +17,16 @@ import (
 // CommitLimit caps how many commits are returned per request so a large
 // repository can't swamp the control socket in one frame.
 const CommitLimit = 100
+
+// gitCmd creates an exec.Cmd for a git operation with optional locking disabled
+// (GIT_OPTIONAL_LOCKS=0 and --no-optional-locks) so read-only operations do not
+// refresh the index or touch .git/index, preventing file watcher loops.
+func gitCmd(dir string, args ...string) *exec.Cmd {
+	fullArgs := append([]string{"--no-optional-locks", "-C", dir}, args...)
+	cmd := exec.Command("git", fullArgs...)
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	return cmd
+}
 
 // Log runs `git log` in dir and returns up to CommitLimit commits, newest
 // first, along with branches, tags, and stashes.
@@ -51,7 +62,7 @@ func Log(dir string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.
 	}
 
 	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%D"
-	cmd := exec.Command("git", "-C", dir, "log", "--all", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
+	cmd := gitCmd(dir, "log", "--all", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -181,7 +192,7 @@ func Log(dir string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.
 }
 
 func resolveActiveBranch(dir string) string {
-	cmd := exec.Command("git", "-C", dir, "symbolic-ref", "--short", "-q", "HEAD")
+	cmd := gitCmd(dir, "symbolic-ref", "--short", "-q", "HEAD")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -192,7 +203,7 @@ func resolveActiveBranch(dir string) string {
 
 // GetBranches returns all local and remote branches in dir.
 func GetBranches(dir string, activeBranch string) []*protocol.GitBranch {
-	cmd := exec.Command("git", "-C", dir, "branch", "-a", "--format=%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)")
+	cmd := gitCmd(dir, "branch", "-a", "--format=%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -258,7 +269,7 @@ func parseTracking(trackStr string) (int, int) {
 
 // GetTags returns all tags in dir.
 func GetTags(dir string) []*protocol.GitTag {
-	cmd := exec.Command("git", "-C", dir, "tag", "-l", "--format=%(refname:short)\x1f%(objectname)")
+	cmd := gitCmd(dir, "tag", "-l", "--format=%(refname:short)\x1f%(objectname)")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -285,7 +296,7 @@ func GetTags(dir string) []*protocol.GitTag {
 
 // GetStashes returns all stashes in dir.
 func GetStashes(dir string) []*protocol.GitStash {
-	cmd := exec.Command("git", "-C", dir, "stash", "list", "--format=%gd\x1f%gs\x1f%H\x1f%aI")
+	cmd := gitCmd(dir, "stash", "list", "--format=%gd\x1f%gs\x1f%H\x1f%aI")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -317,7 +328,7 @@ func GetStashes(dir string) []*protocol.GitStash {
 }
 
 func checkUncommitted(dir string) bool {
-	cmd := exec.Command("git", "-C", dir, "status", "--porcelain")
+	cmd := gitCmd(dir, "status", "--porcelain")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -329,7 +340,7 @@ func checkUncommitted(dir string) bool {
 // resolveHead returns the full hash of HEAD ("" if it cannot be determined,
 // e.g. an unborn branch in an empty repository).
 func resolveHead(dir string) string {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
+	cmd := gitCmd(dir, "rev-parse", "HEAD")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -340,14 +351,14 @@ func resolveHead(dir string) string {
 
 // IsRepo reports whether dir is inside a git work tree.
 func IsRepo(dir string) bool {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "--is-inside-work-tree")
+	cmd := gitCmd(dir, "rev-parse", "--is-inside-work-tree")
 	return cmd.Run() == nil
 }
 
 // RepoRoot returns the absolute path of the git work tree containing dir, or
 // dir itself when it is not a git repository.
 func RepoRoot(dir string) string {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+	cmd := gitCmd(dir, "rev-parse", "--show-toplevel")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if cmd.Run() != nil {
@@ -382,7 +393,7 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 	}
 
 	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s"
-	cmdMeta := exec.Command("git", "-C", dir, "show", "-s", fmt.Sprintf("--pretty=format:%s", format), hash)
+	cmdMeta := gitCmd(dir, "show", "-s", fmt.Sprintf("--pretty=format:%s", format), hash)
 	var outMeta, errMeta bytes.Buffer
 	cmdMeta.Stdout = &outMeta
 	cmdMeta.Stderr = &errMeta
@@ -414,12 +425,12 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 		commit.Parents = strings.Fields(parents)
 	}
 
-	cmdStatus := exec.Command("git", "-C", dir, "show", "--name-status", "--format=", hash)
+	cmdStatus := gitCmd(dir, "show", "--name-status", "--format=", hash)
 	var outStatus bytes.Buffer
 	cmdStatus.Stdout = &outStatus
 	_ = cmdStatus.Run()
 
-	cmdNumstat := exec.Command("git", "-C", dir, "show", "--numstat", "--format=", hash)
+	cmdNumstat := gitCmd(dir, "show", "--numstat", "--format=", hash)
 	var outNumstat bytes.Buffer
 	cmdNumstat.Stdout = &outNumstat
 	_ = cmdNumstat.Run()
@@ -478,7 +489,7 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 	if pathFilter != "" {
 		diffArgs = append(diffArgs, "--", pathFilter)
 	}
-	cmdDiff := exec.Command("git", append([]string{"-C", dir}, diffArgs...)...)
+	cmdDiff := gitCmd(dir, diffArgs...)
 	var outDiff bytes.Buffer
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
@@ -503,12 +514,12 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 		commit.Parents = []string{head}
 	}
 
-	cmdStatus := exec.Command("git", "-C", dir, "status", "--porcelain")
+	cmdStatus := gitCmd(dir, "status", "--porcelain")
 	var outStatus bytes.Buffer
 	cmdStatus.Stdout = &outStatus
 	_ = cmdStatus.Run()
 
-	cmdNumstat := exec.Command("git", "-C", dir, "diff", "HEAD", "--numstat")
+	cmdNumstat := gitCmd(dir, "diff", "HEAD", "--numstat")
 	var outNumstat bytes.Buffer
 	cmdNumstat.Stdout = &outNumstat
 	_ = cmdNumstat.Run()
@@ -594,7 +605,7 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 	if pathFilter != "" {
 		diffArgs = append(diffArgs, "--", pathFilter)
 	}
-	cmdDiff := exec.Command("git", append([]string{"-C", dir}, diffArgs...)...)
+	cmdDiff := gitCmd(dir, diffArgs...)
 	var outDiff bytes.Buffer
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
@@ -603,7 +614,7 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 
 	for _, f := range files {
 		if (f.Untracked || f.Status == "A") && !strings.Contains(diffText, f.Path) {
-			cmdUntracked := exec.Command("git", "-C", dir, "diff", "--no-index", "/dev/null", f.Path)
+			cmdUntracked := gitCmd(dir, "diff", "--no-index", "/dev/null", f.Path)
 			var outUntracked bytes.Buffer
 			cmdUntracked.Stdout = &outUntracked
 			_ = cmdUntracked.Run()

@@ -97,6 +97,42 @@ function sameActionState(a: ActionState, b: ActionState): boolean {
   );
 }
 
+function sameGitCommit(a: GitCommit, b: GitCommit): boolean {
+  return (
+    a.hash === b.hash &&
+    a.short === b.short &&
+    a.author === b.author &&
+    a.email === b.email &&
+    a.subject === b.subject &&
+    a.head === b.head &&
+    a.time?.seconds === b.time?.seconds &&
+    a.time?.nanos === b.time?.nanos &&
+    (a.parents?.join(",") ?? "") === (b.parents?.join(",") ?? "") &&
+    (a.refs?.map((r) => `${r.name}:${r.type}:${r.isActive}`).join(",") ?? "") ===
+      (b.refs?.map((r) => `${r.name}:${r.type}:${r.isActive}`).join(",") ?? "")
+  );
+}
+
+function sameGitBranch(a: GitBranch, b: GitBranch): boolean {
+  return (
+    a.name === b.name &&
+    a.hash === b.hash &&
+    a.isActive === b.isActive &&
+    a.isRemote === b.isRemote &&
+    a.upstream === b.upstream &&
+    a.ahead === b.ahead &&
+    a.behind === b.behind
+  );
+}
+
+function sameGitTag(a: GitTag, b: GitTag): boolean {
+  return a.name === b.name && a.hash === b.hash;
+}
+
+function sameGitStash(a: GitStash, b: GitStash): boolean {
+  return a.index === b.index && a.name === b.name && a.hash === b.hash;
+}
+
 /** Drops cache entries for projects that no longer exist. */
 export function pruneData(projectNames: Set<string>) {
   const keepMap = <T>(m: Record<string, T>): Record<string, T> | null => {
@@ -372,10 +408,14 @@ export async function loadGitLog(name: string) {
   setGitError((m) => ({ ...m, [name]: "" }));
   try {
     const res = await rpcClient.gitLog({ project: name });
-    setGitCommits((m) => ({ ...m, [name]: res.commits ?? [] }));
-    setGitBranches((m) => ({ ...m, [name]: res.branches ?? [] }));
-    setGitTags((m) => ({ ...m, [name]: res.tags ?? [] }));
-    setGitStashes((m) => ({ ...m, [name]: res.stashes ?? [] }));
+    const commits = res.commits ?? [];
+    const branches = res.branches ?? [];
+    const tags = res.tags ?? [];
+    const stashes = res.stashes ?? [];
+    setGitCommits((m) => (sameArray(m[name] ?? [], commits, sameGitCommit) ? m : { ...m, [name]: commits }));
+    setGitBranches((m) => (sameArray(m[name] ?? [], branches, sameGitBranch) ? m : { ...m, [name]: branches }));
+    setGitTags((m) => (sameArray(m[name] ?? [], tags, sameGitTag) ? m : { ...m, [name]: tags }));
+    setGitStashes((m) => (sameArray(m[name] ?? [], stashes, sameGitStash) ? m : { ...m, [name]: stashes }));
   } catch (err: any) {
     setGitError((m) => ({ ...m, [name]: err.message || "Failed to load git log" }));
   } finally {

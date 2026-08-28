@@ -1,4 +1,4 @@
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createEffect, createMemo } from "solid-js";
 import {
   Boxes,
   ChevronRight,

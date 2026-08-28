@@ -2,7 +2,7 @@ import { Show, createEffect, onCleanup } from "solid-js";
 import { RefreshCw, Server } from "lucide-solid";
 import { daemonInfo, fetchDaemonStatus, restartDaemon } from "~/stores/data";
 import { setShowDaemonModal, showDaemonModal } from "~/stores/app";
-import { eventStatus } from "~/lib/events";
+import { wsStatus } from "~/lib/ws";
 import { createClock, formatBytes, formatUptime } from "~/lib/format";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
@@ -43,13 +43,13 @@ export function DaemonStatusModal() {
         </DialogHeader>
         <div class="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs">
           <Server class="size-4 text-primary" />
-          <span class="capitalize">{eventStatus()}</span>
+          <span class="capitalize">{wsStatus()}</span>
           <span
             classList={{
               "ml-auto inline-block size-2 rounded-full": true,
-              "bg-success shadow-[0_0_6px_var(--success)]": eventStatus() === "open",
-              "bg-warning animate-pulse": eventStatus() === "connecting",
-              "bg-destructive": eventStatus() === "closed",
+              "bg-success shadow-[0_0_6px_var(--success)]": wsStatus() === "open",
+              "bg-warning animate-pulse": wsStatus() === "connecting",
+              "bg-destructive": wsStatus() === "closed",
             }}
           />
         </div>
@@ -58,12 +58,12 @@ export function DaemonStatusModal() {
           {(info) => (
             <div class="text-[13px]">
               <Row label="Process ID">{info().pid}</Row>
-              <Row label="Uptime">{formatUptime(info().startTime ?? (info() as any).start_time, clock.now())}</Row>
+              <Row label="Uptime" >{formatUptime(info().start_time, clock.now())}</Row>
               <Row label="Goroutines">{info().goroutines}</Row>
               <Row label="Memory (alloc / RSS)">
-                {formatBytes(info().memoryAlloc ?? (info() as any).memory_alloc)} / {formatBytes(info().memoryRss ?? (info() as any).memory_rss)}
+                {formatBytes(info().memory_alloc)} / {formatBytes(info().memory_rss)}
               </Row>
-              <Row label="Go version" last>{info().goVersion ?? (info() as any).go_version}</Row>
+              <Row label="Go version" last>{info().go_version}</Row>
             </div>
           )}
         </Show>

@@ -152,9 +152,9 @@ export function ServiceHeader() {
       <Show when={state()}>
         {(s) => (
           <>
-            <Badge variant={statusTone(s().status)}>{statusLabel(s().status, s().exitCode ?? (s() as any).exit_code ?? 0)}</Badge>
-            <Show when={s().hasHealth ?? (s() as any).has_health}>
-              <Badge variant={healthTone(s().hasHealth ?? (s() as any).has_health, s().health)} class="max-[420px]:hidden">
+            <Badge variant={statusTone(s().status)}>{statusLabel(s().status, s().exit_code)}</Badge>
+            <Show when={s().has_health}>
+              <Badge variant={healthTone(s().has_health, s().health)} class="max-[420px]:hidden">
                 health: {s().health}
               </Badge>
             </Show>
@@ -262,7 +262,7 @@ export function ActionHeader() {
         ]}
       />
       <Show when={status() !== "idle"}>
-        <Badge variant={statusTone(status())}>{statusLabel(status(), state()?.exitCode ?? (state() as any)?.exit_code ?? 0)}</Badge>
+        <Badge variant={statusTone(status())}>{statusLabel(status(), state()?.exit_code ?? 0)}</Badge>
       </Show>
       <Show when={act()}>
         {(a) => (

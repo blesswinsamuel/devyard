@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import type { WSRequest, WSResponse } from "~/lib/types";
 
 export type WSStatus = "connecting" | "open" | "closed";
 
@@ -8,12 +9,28 @@ export { wsStatus, reconnectAttempt };
 
 const MIN_BACKOFF = 500;
 const MAX_BACKOFF = 8000;
+/** Abort a half-open CONNECTING attempt (laptop sleep, dead NAT) after this long. */
 const CONNECT_WATCHDOG = 5000;
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
 let attempt = 0;
+let hasOpened = false;
+
+type ResponseHandler = (resp: WSResponse) => void;
+const handlers = new Map<string, Set<ResponseHandler>>();
+const openHandlers = new Set<() => void>();
+
+interface LogSub {
+  project: string;
+  service?: string;
+  action?: string;
+  prev: boolean;
+  onLine: (line: string) => void;
+  onRotate?: () => void;
+}
+const logHandlers = new Map<string, LogSub>();
 
 interface TerminalSub {
   project?: string;
@@ -24,25 +41,33 @@ interface TerminalSub {
 }
 const terminalHandlers = new Map<string, TerminalSub>();
 
-interface TerminalRequest {
-  type: string;
-  id?: string;
-  project?: string;
-  data?: string;
-  cols?: number;
-  rows?: number;
-}
+/**
+ * Outbound messages buffered while the socket is down. Every list/refresh
+ * intent is coalesced by (type, project) so an outage doesn't queue hundreds
+ * of polls. Log subscribes are NOT queued — they are re-issued exactly once
+ * by the resubscribe loop on open, so history can never be replayed twice.
+ */
+let pending: WSRequest[] = [];
+const COALESCED_TYPES = new Set([
+  "list_projects",
+  "list_services",
+  "list_actions",
+  "list_action_states",
+  "list_ports",
+  "daemon_status",
+]);
 
-interface TerminalResponse {
-  type: string;
-  id?: string;
-  output?: string;
-  error?: string;
+function enqueuePending(req: WSRequest) {
+  if (COALESCED_TYPES.has(req.type)) {
+    pending = pending.filter(
+      (p) => !(p.type === req.type && p.project === req.project)
+    );
+  }
+  pending.push(req);
 }
-
-let pending: TerminalRequest[] = [];
 
 function backoffMs(): number {
+  // Exponential with jitter, capped.
   const base = Math.min(MAX_BACKOFF, MIN_BACKOFF * 2 ** attempt);
   return base / 2 + Math.random() * (base / 2);
 }
@@ -66,6 +91,7 @@ export function connectWS() {
   if (ws) {
     const state = ws.readyState;
     if (state !== WebSocket.CLOSING) return;
+    // CLOSING: wait for onclose to clear and schedule reconnect.
     if (reconnectTimer == null) scheduleReconnect();
     return;
   }
@@ -95,6 +121,20 @@ export function connectWS() {
       socket.send(JSON.stringify(req));
     }
 
+    // Server-side subscriptions died with the old socket. Clear local views,
+    // then re-issue each subscription once (pending never holds them).
+    for (const entry of logHandlers.values()) {
+      entry.onRotate?.();
+      socket.send(
+        JSON.stringify({
+          type: entry.action ? "subscribe_action_logs" : "subscribe_logs",
+          project: entry.project,
+          service: entry.service,
+          action: entry.action,
+          prev: entry.prev,
+        })
+      );
+    }
     for (const [id, entry] of terminalHandlers.entries()) {
       if (entry.project && entry.cols && entry.rows) {
         socket.send(
@@ -108,8 +148,13 @@ export function connectWS() {
         );
       }
     }
+    // Reconnect only — first open is covered by the initial fetch already
+    // flushed from `pending` above.
+    if (hasOpened) {
+      for (const h of openHandlers) h();
+    }
+    hasOpened = true;
   };
-
   socket.onclose = () => {
     if (ws !== socket) return;
     ws = null;
@@ -119,33 +164,113 @@ export function connectWS() {
     setReconnectAttempt(attempt);
     scheduleReconnect();
   };
-
   socket.onerror = () => {
+    // onclose follows; avoid a duplicate status flip.
     if (ws === socket) setWsStatus("closed");
   };
 
   socket.onmessage = (e) => {
-    let resp: TerminalResponse;
+    let resp: WSResponse;
     try {
-      resp = JSON.parse(e.data) as TerminalResponse;
+      resp = JSON.parse(e.data) as WSResponse;
     } catch {
       return;
     }
-    if (resp.type === "terminal_output" && resp.id) {
-      terminalHandlers.get(resp.id)?.onOutput(resp.output ?? "");
-    } else if (resp.type === "terminal_exit" && resp.id) {
-      terminalHandlers.get(resp.id)?.onExit();
+    if (resp.type === "log_line") {
+      if (resp.action) {
+        logHandlers.get(logKey(resp.project!, undefined, resp.action, !!resp.prev))?.onLine(resp.line!);
+      } else {
+        logHandlers.get(logKey(resp.project!, resp.service!, undefined, !!resp.prev))?.onLine(resp.line!);
+      }
+    } else if (resp.type === "log_rotated") {
+      if (resp.action) {
+        logHandlers.get(logKey(resp.project!, undefined, resp.action, false))?.onRotate?.();
+      } else {
+        logHandlers.get(logKey(resp.project!, resp.service!, undefined, false))?.onRotate?.();
+      }
+    } else if (resp.type === "terminal_output") {
+      terminalHandlers.get(resp.id!)?.onOutput(resp.output!);
+    } else if (resp.type === "terminal_exit") {
+      terminalHandlers.get(resp.id!)?.onExit();
+    } else {
+      for (const h of handlers.get(resp.type) ?? []) h(resp);
     }
   };
 }
 
-function sendWS(req: TerminalRequest) {
+function logKey(project: string, service: string | undefined, action: string | undefined, prev: boolean): string {
+  const target = action ?? service ?? "";
+  return `${project}\0${target}\0${prev}`;
+}
+
+export function sendWS(req: WSRequest) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(req));
     return;
   }
-  pending.push(req);
+  enqueuePending(req);
   connectWS();
+}
+
+export function onWS(type: string, handler: ResponseHandler) {
+  let set = handlers.get(type);
+  if (!set) {
+    set = new Set();
+    handlers.set(type, set);
+  }
+  set.add(handler);
+  return () => set!.delete(handler);
+}
+
+/** Fires on reconnect opens (not the first successful open). */
+export function onWSOpen(handler: () => void) {
+  openHandlers.add(handler);
+  return () => openHandlers.delete(handler);
+}
+
+function subscribeLog(entry: LogSub): () => void {
+  const key = logKey(entry.project, entry.service, entry.action, entry.prev);
+  logHandlers.set(key, entry);
+  sendWS({
+    type: entry.action ? "subscribe_action_logs" : "subscribe_logs",
+    project: entry.project,
+    service: entry.service,
+    action: entry.action,
+    prev: entry.prev,
+  });
+  return () => {
+    // Only tear down if we still own the slot (a newer subscribe may have replaced us).
+    if (logHandlers.get(key)?.onLine === entry.onLine) {
+      logHandlers.delete(key);
+      sendWS({
+        type: entry.action ? "unsubscribe_action_logs" : "unsubscribe_logs",
+        project: entry.project,
+        service: entry.service,
+        action: entry.action,
+        prev: entry.prev,
+      });
+    }
+  };
+}
+
+export function subscribeLogs(
+  project: string,
+  service: string,
+  onLine: (line: string) => void,
+  onRotate?: () => void,
+  prev = false
+) {
+  return subscribeLog({ project, service, prev, onLine, onRotate });
+}
+
+export function subscribeActionLogs(
+  project: string,
+  action: string,
+  onLine: (line: string) => void,
+  onRotate?: () => void,
+  prev = false
+) {
+  return subscribeLog({ project, action, prev, onLine, onRotate });
 }
 
 export function subscribeTerminal(

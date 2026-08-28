@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { eventStatus, reconnectAttempt } from "~/lib/events";
+import { reconnectAttempt, wsStatus } from "~/lib/ws";
 import { Spinner } from "~/components/ui/spinner";
 
 /**
@@ -8,11 +8,11 @@ import { Spinner } from "~/components/ui/spinner";
  */
 export function ReconnectBanner() {
   return (
-    <Show when={eventStatus() !== "open"}>
+    <Show when={wsStatus() !== "open"}>
       <div class="pointer-events-none fixed left-1/2 top-3 z-[110] -translate-x-1/2">
         <div class="flex items-center gap-2 rounded-full border border-warning/50 bg-popover/95 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-md backdrop-blur">
           <Spinner class="!size-3.5 text-warning" />
-          <Show when={eventStatus() === "connecting"} fallback={<span>Daemon disconnected</span>}>
+          <Show when={wsStatus() === "connecting"} fallback={<span>Daemon disconnected</span>}>
             <span>
               Connecting to daemon
               <Show when={reconnectAttempt() > 0}>

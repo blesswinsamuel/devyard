@@ -1,12 +1,10 @@
 import { batch, untrack } from "solid-js";
 import { createSignal } from "solid-js";
-import { connectWS } from "~/lib/ws";
-import { onDaemonEvent, startEvents, stopEvents } from "~/lib/events";
+import { connectWS, onWS, onWSOpen, sendWS } from "~/lib/ws";
 import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } from "~/lib/router";
 import {
   actions as actionsData,
   clearSelectedCommit,
-  fetchProjects,
   initDataHandlers,
   loadGitLog,
   projects as projectsData,
@@ -309,16 +307,31 @@ function pruneSelection() {
   pruneCursor();
 }
 
+/** Fetch detail for expanded projects when the project list arrives. */
+function onProjectsArrived() {
+  const expandedNames = new Set<string>();
+  for (const p of untrack(projectsData)) {
+    if (!untrack(collapsed).has(p.name)) expandedNames.add(p.name);
+  }
+  const sel = untrack(selectedProject);
+  if (sel) expandedNames.add(sel);
+  for (const p of expandedNames) {
+    sendWS({ type: "list_services", project: p });
+    sendWS({ type: "list_actions", project: p });
+    sendWS({ type: "list_action_states", project: p });
+  }
+  pruneSelection();
+}
+
 // --- bootstrap --------------------------------------------------------------
 
 let started = false;
 
-/** Wires ConnectRPC event stream, route sync, and initial fetches. Call once. */
+/** Wires WS handlers, route sync, and the initial fetches. Call once. */
 export function start(): () => void {
   if (started) return () => {};
   started = true;
 
-  startEvents();
   connectWS();
 
   // Seed selection from the initial URL.
@@ -373,17 +386,22 @@ export function start(): () => void {
     }
   });
 
+  // Register the data handlers first so signals are updated before nav-side
+  // reactions (prune/fetch-on-arrival) observe them.
   initDataHandlers();
 
-  const stopDaemonEvent = onDaemonEvent(() => {
-    pruneSelection();
-  });
+  // nav-side reactions to data arrivals (data.ts owns its own handlers).
+  const stopProjectsHandler = onWS("projects", onProjectsArrived);
+  const stopServicesHandler = onWS("services", () => pruneSelection());
+
+  const stopOpen = onWSOpen(() => refreshAll());
 
   refreshAll();
 
   return () => {
-    stopDaemonEvent();
+    stopOpen();
     stopPopState();
-    stopEvents();
+    stopProjectsHandler();
+    stopServicesHandler();
   };
 }

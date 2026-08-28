@@ -8,7 +8,16 @@ export default defineConfig({
   resolve: {
     alias: {
       "~": fileURLToPath(new URL("./src", import.meta.url)),
+      "lucide-solid": fileURLToPath(
+        new URL(
+          "./node_modules/lucide-solid/dist/esm/lucide-solid.mjs",
+          import.meta.url,
+        ),
+      ),
     },
+  },
+  optimizeDeps: {
+    include: ["lucide-solid"],
   },
   build: {
     outDir: "../internal/web/dist",

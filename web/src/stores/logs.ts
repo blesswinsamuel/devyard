@@ -107,6 +107,15 @@ export function subscribeLogs(
         if (chunk.rotated) {
           onRotate?.();
         }
+        if (chunk.content) {
+          const contentLines = chunk.content.split("\n");
+          if (contentLines.length > 0 && contentLines[contentLines.length - 1] === "") {
+            contentLines.pop();
+          }
+          for (const line of contentLines) {
+            onLine(line);
+          }
+        }
         for (const line of chunk.lines) {
           onLine(line);
         }
@@ -144,6 +153,15 @@ export function subscribeActionLogs(
         if (controller.signal.aborted) break;
         if (chunk.rotated) {
           onRotate?.();
+        }
+        if (chunk.content) {
+          const contentLines = chunk.content.split("\n");
+          if (contentLines.length > 0 && contentLines[contentLines.length - 1] === "") {
+            contentLines.pop();
+          }
+          for (const line of contentLines) {
+            onLine(line);
+          }
         }
         for (const line of chunk.lines) {
           onLine(line);

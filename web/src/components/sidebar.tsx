@@ -33,6 +33,7 @@ import {
   killService,
   ports,
   projects as projectsList,
+  refreshProjectDetail,
   restartService,
   runAction,
   services as servicesMap,
@@ -285,6 +286,12 @@ function ProjectItem(props: { name: string }) {
     return "";
   });
   const actionList = createMemo(() => actionsMap()[props.name] ?? []);
+
+  createEffect(() => {
+    if (isProjectExpanded(props.name) && serviceList() === undefined) {
+      refreshProjectDetail(props.name);
+    }
+  });
 
   return (
     <Show when={project()}>

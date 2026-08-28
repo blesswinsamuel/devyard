@@ -16,6 +16,7 @@ import {
   selectCommit,
   services as servicesData,
   selectedCommitHash,
+  setOnProjectsFetched,
 } from "~/stores/data";
 import { ensureShellWorkspace } from "~/stores/shells";
 import { setSidebarOpen } from "~/stores/app";
@@ -374,6 +375,19 @@ export function start(): () => void {
   });
 
   initDataHandlers();
+
+  setOnProjectsFetched((projects) => {
+    const expandedNames = new Set<string>();
+    for (const p of projects) {
+      if (!untrack(collapsed).has(p.name)) expandedNames.add(p.name);
+    }
+    const sel = untrack(selectedProject);
+    if (sel) expandedNames.add(sel);
+    for (const p of expandedNames) {
+      refreshProjectDetail(p);
+    }
+    pruneSelection();
+  });
 
   const stopDaemonEvent = onDaemonEvent(() => {
     pruneSelection();

@@ -3,6 +3,7 @@
 /bin/
 /dist/
 /internal/web/dist/
+/web/src/assets/fonts/
 
 # Go
 *.exe

@@ -4,6 +4,14 @@
 @import "tw-animate-css";
 @import "./styles/utilities.css";
 
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("./assets/fonts/SymbolsNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* ---------------------------------------------------------------------------

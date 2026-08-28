@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "download-fonts": "bun run scripts/download-fonts.ts",
+    "predev": "bun run scripts/download-fonts.ts",
+    "prebuild": "bun run scripts/download-fonts.ts",
+    "postinstall": "bun run scripts/download-fonts.ts",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

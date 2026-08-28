@@ -33,6 +33,7 @@ import {
   killService,
   ports,
   projects as projectsList,
+  projectsLoaded,
   refreshProjectDetail,
   restartService,
   runAction,
@@ -532,11 +533,16 @@ export function Sidebar() {
         <div class="flex flex-col px-1.5">
           <For each={projectNames()}>{(name) => <ProjectItem name={name} />}</For>
         </div>
-        <Show when={projectNames().length === 0}>
-          <p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
-            No projects yet. Add one above or start with{" "}
-            <code class="rounded bg-muted px-1 font-mono text-foreground">local-compose up</code>.
-          </p>
+        <Show
+          when={projectsLoaded()}
+          fallback={<p class="px-4 py-4 text-xs text-muted-foreground">loading projects…</p>}
+        >
+          <Show when={projectNames().length === 0}>
+            <p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
+              No projects yet. Add one above or start with{" "}
+              <code class="rounded bg-muted px-1 font-mono text-foreground">local-compose up</code>.
+            </p>
+          </Show>
         </Show>
       </nav>
 

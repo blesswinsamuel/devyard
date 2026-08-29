@@ -10,7 +10,7 @@ import {
   tabKey,
   togglePreviousLogs,
 } from "~/stores/logs";
-import { actions as actionsMap, services as servicesMap } from "~/stores/data";
+import { actions as actionsMap, projects as projectsList, services as servicesMap } from "~/stores/data";
 import {
   selectedAction,
   selectedProject,
@@ -172,7 +172,28 @@ export function LogView() {
 
   // Prune tabs whose targets vanished.
   createEffect(() => {
-    pruneLogTabs(allValidKeys());
+    const projs = projectsList();
+    const svcs = servicesMap();
+    const acts = actionsMap();
+
+    pruneLogTabs((tab) => {
+      if (projs.length > 0 && !projs.some((p) => p.name === tab.project)) {
+        return false;
+      }
+      if (tab.kind === "service") {
+        const list = svcs[tab.project];
+        if (list !== undefined && !list.some((s) => s.name === tab.name)) {
+          return false;
+        }
+      }
+      if (tab.kind === "action") {
+        const list = acts[tab.project];
+        if (list !== undefined && !list.some((a) => a.name === tab.name)) {
+          return false;
+        }
+      }
+      return true;
+    });
   });
 
   return (
@@ -266,17 +287,6 @@ export function LogView() {
       </div>
     </div>
   );
-}
-
-function allValidKeys(): Set<string> {
-  const valid = new Set<string>();
-  for (const [project, list] of Object.entries(servicesMap())) {
-    for (const s of list) valid.add(tabKey(project, "service", s.name));
-  }
-  for (const [project, list] of Object.entries(actionsMap())) {
-    for (const a of list) valid.add(tabKey(project, "action", a.name));
-  }
-  return valid;
 }
 
 /** Clicking a tab re-selects that service/action everywhere (sidebar + route). */

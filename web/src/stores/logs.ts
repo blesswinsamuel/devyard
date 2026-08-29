@@ -61,9 +61,9 @@ export function closeLogTab(key: string) {
 }
 
 /** Drops tabs whose target no longer exists (project removed / service deleted). */
-export function pruneLogTabs(validKeys: Set<string>) {
+export function pruneLogTabs(predicate: (tab: LogTab) => boolean) {
   setTabs((prev) => {
-    const kept = prev.filter((t) => validKeys.has(t.key));
+    const kept = prev.filter(predicate);
     if (kept.length === prev.length) return prev;
     if (untrack(activeKey) && !kept.some((t) => t.key === untrack(activeKey))) {
       setActiveKey(null);
@@ -71,6 +71,8 @@ export function pruneLogTabs(validKeys: Set<string>) {
     return kept;
   });
   setPreviousKeys((prev) => {
+    const currentTabs = untrack(tabs);
+    const validKeys = new Set(currentTabs.map((t) => t.key));
     let changed = false;
     const next = new Set<string>();
     for (const k of prev) {

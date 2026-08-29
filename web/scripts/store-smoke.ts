@@ -27,6 +27,7 @@ const storage = new Map<string, string>();
   history: { pushState: () => {}, replaceState: () => {} },
   addEventListener: () => {},
   removeEventListener: () => {},
+  matchMedia: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }),
 };
 (globalThis as Record<string, unknown>).history = {
   pushState: () => {},

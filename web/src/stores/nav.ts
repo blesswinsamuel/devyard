@@ -1,5 +1,4 @@
-import { batch, untrack } from "solid-js";
-import { createSignal } from "solid-js";
+import { batch, createEffect, createSignal, untrack } from "solid-js";
 import { connectWS } from "~/lib/ws";
 import { onDaemonEvent, startEvents, stopEvents } from "~/lib/events";
 import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } from "~/lib/router";
@@ -295,14 +294,15 @@ function pruneSelection() {
   }
   if (sel) {
     const svc = untrack(selectedService);
-    if (svc && !(untrack(servicesData)[sel] ?? []).some((s) => s.name === svc)) {
+    const svcList = untrack(servicesData)[sel];
+    if (svc && svcList !== undefined && !svcList.some((s) => s.name === svc)) {
       applySelection(sel, null, null, untrack(activeView));
       replaceRoute({ project: sel, service: null, action: null });
     }
     const act = untrack(selectedAction);
     if (!act) return;
-    const list = untrack(actionsData)[sel];
-    if (list && !list.some((a) => a.name === act)) {
+    const actList = untrack(actionsData)[sel];
+    if (actList !== undefined && !actList.some((a) => a.name === act)) {
       applySelection(sel, null, null, untrack(activeView));
       replaceRoute({ project: sel, service: null, action: null });
     }
@@ -386,6 +386,13 @@ export function start(): () => void {
     for (const p of expandedNames) {
       refreshProjectDetail(p);
     }
+    pruneSelection();
+  });
+
+  createEffect(() => {
+    projectsData();
+    servicesData();
+    actionsData();
     pruneSelection();
   });
 

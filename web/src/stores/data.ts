@@ -391,10 +391,10 @@ export function runAction(project: string, actionName: string, args?: string[]) 
   return true;
 }
 
-export async function restartDaemon() {
+export async function restartDaemon(restartServices = false) {
   try {
-    await rpcClient.restartDaemon({});
-    pushToast("Daemon restarting...", "info");
+    await rpcClient.restartDaemon({ restartServices });
+    pushToast(restartServices ? "Daemon and services restarting..." : "Daemon restarting (services preserved)...", "info");
   } catch (err: any) {
     pushToast(err.message || "Failed to restart daemon", "error");
   }

@@ -257,7 +257,9 @@ message StopDaemonRequest {}
 
 message StopDaemonResponse {}
 
-message RestartDaemonRequest {}
+message RestartDaemonRequest {
+  bool restart_services = 1;
+}
 
 message RestartDaemonResponse {}
 

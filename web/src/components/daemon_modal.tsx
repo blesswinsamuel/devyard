@@ -1,4 +1,4 @@
-import { Show, createEffect, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup } from "solid-js";
 import { RefreshCw, Server } from "lucide-solid";
 import { daemonInfo, fetchDaemonStatus, restartDaemon } from "~/stores/data";
 import { setShowDaemonModal, showDaemonModal } from "~/stores/app";
@@ -24,6 +24,7 @@ function Row(props: { label: string; children: import("solid-js").JSX.Element; l
 
 export function DaemonStatusModal() {
   const clock = createClock();
+  const [restartServices, setRestartServices] = createSignal(false);
 
   createEffect(() => {
     if (showDaemonModal()) {
@@ -68,6 +69,19 @@ export function DaemonStatusModal() {
           )}
         </Show>
 
+        <div class="flex items-center justify-between rounded-md border p-2 text-xs">
+          <label for="restart-services-switch" class="cursor-pointer text-muted-foreground">
+            Restart services too
+          </label>
+          <input
+            id="restart-services-switch"
+            type="checkbox"
+            checked={restartServices()}
+            onChange={(e) => setRestartServices(e.currentTarget.checked)}
+            class="size-4 rounded border-input cursor-pointer accent-primary"
+          />
+        </div>
+
         <div class="flex items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={() => fetchDaemonStatus()}>
             <RefreshCw class="size-3.5" />
@@ -76,7 +90,7 @@ export function DaemonStatusModal() {
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => restartDaemon()}
+            onClick={() => restartDaemon(restartServices())}
           >
             Restart daemon
           </Button>

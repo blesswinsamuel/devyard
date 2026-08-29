@@ -758,3 +758,77 @@ func TestListProjectsStaleCleanup(t *testing.T) {
 		t.Fatalf("ListProjects = %+v, want 0 (auto-cleaned stale project)", projects)
 	}
 }
+
+func TestStopDaemonKeepServicesAndAdopt(t *testing.T) {
+	setupEnv(t)
+	d1 := orchestrator.New()
+	configPath := writeConfig(t, `version: "1"
+name: lc-adopt-test
+services:
+  svc:
+    command: sleep 30
+`)
+
+	if err := d1.StartProject(configPath, false, "", true); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+
+	b1, err := d1.ProjectBackend("lc-adopt-test")
+	if err != nil {
+		t.Fatalf("ProjectBackend: %v", err)
+	}
+
+	// Wait until service is running
+	var origPid int
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		states := b1.States()
+		if len(states) > 0 && states[0].Pid > 0 {
+			origPid = int(states[0].Pid)
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if origPid == 0 {
+		t.Fatal("service did not start in time")
+	}
+
+	// Stop daemon keeping services alive
+	if err := d1.StopDaemonKeepServices(); err != nil {
+		t.Fatalf("StopDaemonKeepServices: %v", err)
+	}
+	select {
+	case <-d1.StopCh():
+	case <-time.After(time.Second):
+		t.Fatal("StopCh not closed")
+	}
+
+	// Start a replacement daemon and autostart
+	d2 := orchestrator.New()
+	started, skipped, err := d2.Autostart()
+	if err != nil {
+		t.Fatalf("Autostart: %v", err)
+	}
+	if started != 1 || skipped != 0 {
+		t.Fatalf("Autostart started=%d, skipped=%d, want 1/0", started, skipped)
+	}
+
+	b2, err := d2.ProjectBackend("lc-adopt-test")
+	if err != nil {
+		t.Fatalf("ProjectBackend d2: %v", err)
+	}
+
+	states := b2.States()
+	if len(states) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(states))
+	}
+	if int(states[0].Pid) != origPid {
+		t.Fatalf("service PID changed after restart: got %d, want original %d (was not adopted)", states[0].Pid, origPid)
+	}
+	if states[0].Status != "running" {
+		t.Fatalf("adopted service status = %q, want 'running'", states[0].Status)
+	}
+
+	// Clean up by stopping the daemon (and terminating services)
+	_ = d2.StopDaemon()
+}

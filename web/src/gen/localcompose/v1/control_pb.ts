@@ -1658,6 +1658,11 @@ export class StopDaemonResponse extends Message<StopDaemonResponse> {
  * @generated from message localcompose.v1.RestartDaemonRequest
  */
 export class RestartDaemonRequest extends Message<RestartDaemonRequest> {
+  /**
+   * @generated from field: bool restart_services = 1;
+   */
+  restartServices = false;
+
   constructor(data?: PartialMessage<RestartDaemonRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1666,6 +1671,7 @@ export class RestartDaemonRequest extends Message<RestartDaemonRequest> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "localcompose.v1.RestartDaemonRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "restart_services", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RestartDaemonRequest {

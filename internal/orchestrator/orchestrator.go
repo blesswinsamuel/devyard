@@ -581,8 +581,38 @@ func (d *Daemon) DaemonStatus() (*protocol.DaemonInfo, error) {
 	}, nil
 }
 
+// StopDaemonKeepServices flushes state to disk and signals the daemon process to exit
+// without stopping the supervised project services, allowing a replacement daemon
+// to adopt them.
+func (d *Daemon) StopDaemonKeepServices() error {
+	defer d.stopOnce.Do(func() { close(d.stopCh) })
+
+	d.mu.Lock()
+	projects := make([]*Project, 0, len(d.projects))
+	for _, p := range d.projects {
+		projects = append(projects, p)
+	}
+	d.mu.Unlock()
+
+	for _, p := range projects {
+		d.mu.Lock()
+		if p.Sup != nil && p.Status() == "running" {
+			_ = p.Sup.SaveState()
+		}
+		d.mu.Unlock()
+	}
+
+	if d.watcher != nil {
+		_ = d.watcher.Close()
+	}
+
+	return nil
+}
+
 // RestartDaemon spawns a replacement daemon process and shuts down the running daemon.
-func (d *Daemon) RestartDaemon() error {
+// If restartServices is true, all running services are stopped and restarted.
+// If restartServices is false, services remain running and are adopted by the new daemon.
+func (d *Daemon) RestartDaemon(restartServices bool) error {
 	locs, err := project.ResolveDaemon()
 	if err != nil {
 		return fmt.Errorf("resolve daemon locations: %w", err)
@@ -592,7 +622,11 @@ func (d *Daemon) RestartDaemon() error {
 	}
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		_ = d.StopDaemon()
+		if restartServices {
+			_ = d.StopDaemon()
+		} else {
+			_ = d.StopDaemonKeepServices()
+		}
 	}()
 	return nil
 }

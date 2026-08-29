@@ -1187,3 +1187,60 @@ services:
 			pidFromPS(t, psOut, "gamma") != 0
 	}, "ps shows all three services running after daemon restart")
 }
+
+// TestE2E_DaemonRestartAdoptsServices verifies `daemon restart` adopts running
+// processes without killing them, while `daemon restart --restart-services` restarts them.
+func TestE2E_DaemonRestartAdoptsServices(t *testing.T) {
+	cfg := `version: "1"
+name: lc-daemon-restart
+services:
+  svc:
+    command: sleep 30
+`
+	e := newEnv(t, cfg)
+
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+
+	var origPid int
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		origPid = pidFromPS(t, psOut, "svc")
+		return origPid != 0
+	}, "service running before daemon restart")
+
+	// Restart daemon without restarting services (default adoption behavior)
+	_, errOut, code = e.run(t, context.Background(), "daemon", "restart")
+	if code != 0 {
+		t.Fatalf("daemon restart: exit %d, err=%q", code, errOut)
+	}
+
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		adoptedPid := pidFromPS(t, psOut, "svc")
+		return adoptedPid == origPid
+	}, "service PID unchanged after daemon restart (adopted)")
+
+	// Restart daemon WITH restarting services
+	_, errOut, code = e.run(t, context.Background(), "daemon", "restart", "--restart-services")
+	if code != 0 {
+		t.Fatalf("daemon restart --restart-services: exit %d, err=%q", code, errOut)
+	}
+
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		newPid := pidFromPS(t, psOut, "svc")
+		return newPid != 0 && newPid != origPid
+	}, "service restarted with new PID after daemon restart --restart-services")
+}

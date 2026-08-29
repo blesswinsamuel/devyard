@@ -229,7 +229,7 @@ func (s *Server) StopDaemon(ctx context.Context, req *connect.Request[localcompo
 }
 
 func (s *Server) RestartDaemon(ctx context.Context, req *connect.Request[localcomposev1.RestartDaemonRequest]) (*connect.Response[localcomposev1.RestartDaemonResponse], error) {
-	if err := s.backend.RestartDaemon(); err != nil {
+	if err := s.backend.RestartDaemon(req.Msg.RestartServices); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&localcomposev1.RestartDaemonResponse{}), nil

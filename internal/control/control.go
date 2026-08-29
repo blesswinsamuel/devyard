@@ -42,7 +42,7 @@ type MultiBackend interface {
 	RemoveProject(name string) error
 	StopDaemon() error
 	DaemonStatus() (*protocol.DaemonInfo, error)
-	RestartDaemon() error
+	RestartDaemon(restartServices bool) error
 	ProjectBackend(project string) (Backend, error)
 
 	GitLog(project string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error)
@@ -194,7 +194,7 @@ func (s SingleProjectBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
 	}, nil
 }
 
-func (s SingleProjectBackend) RestartDaemon() error {
+func (s SingleProjectBackend) RestartDaemon(restartServices bool) error {
 	return s.Stop(context.Background())
 }
 

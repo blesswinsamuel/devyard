@@ -657,7 +657,7 @@ func (m *fakeMultiBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
 	}, nil
 }
 
-func (m *fakeMultiBackend) RestartDaemon() error {
+func (m *fakeMultiBackend) RestartDaemon(restartServices bool) error {
 	return m.StopDaemon()
 }
 
@@ -867,7 +867,7 @@ func TestDaemonStatusAndRestart(t *testing.T) {
 	}
 	defer func() { _ = c2.Close() }()
 
-	if err := c2.RestartDaemon(); err != nil {
+	if err := c2.RestartDaemon(false); err != nil {
 		t.Fatalf("RestartDaemon: %v", err)
 	}
 	select {

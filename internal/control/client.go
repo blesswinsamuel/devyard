@@ -141,9 +141,12 @@ func (c *Client) StopDaemon() error {
 	return unwrapError(err)
 }
 
-// RestartDaemon restarts the daemon process.
-func (c *Client) RestartDaemon() error {
-	_, err := c.rpcClient.RestartDaemon(context.Background(), connect.NewRequest(&localcomposev1.RestartDaemonRequest{}))
+// RestartDaemon restarts the daemon process. If restartServices is true,
+// all managed project services are stopped and restarted as well.
+func (c *Client) RestartDaemon(restartServices bool) error {
+	_, err := c.rpcClient.RestartDaemon(context.Background(), connect.NewRequest(&localcomposev1.RestartDaemonRequest{
+		RestartServices: restartServices,
+	}))
 	return unwrapError(err)
 }
 

@@ -13,7 +13,6 @@ import {
   loadGitLog,
   projects as projectsData,
   refreshAll,
-  refreshProjectDetail,
   selectCommit,
   services as servicesData,
   selectedCommitHash,
@@ -215,9 +214,6 @@ export function setProjectExpanded(name: string, open: boolean) {
     }
     return prev;
   });
-  if (open) {
-    refreshProjectDetail(name);
-  }
 }
 
 function applySelection(

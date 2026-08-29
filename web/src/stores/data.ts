@@ -318,18 +318,6 @@ export function refreshServices(project: string) {
   fetchServices(project);
 }
 
-export function refreshProjectDetail(project: string) {
-  fetchServices(project);
-  fetchActions(project);
-  fetchPorts(project);
-}
-
-export function refreshExpandedProjects(expandedNames: Set<string>, selected: string | null) {
-  fetchServices();
-  fetchActions();
-  fetchPorts();
-}
-
 // --- lifecycle commands -----------------------------------------------------
 
 export async function startProject(project: string, configPath?: string) {

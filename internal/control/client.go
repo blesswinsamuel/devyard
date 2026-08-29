@@ -280,8 +280,8 @@ func (c *Client) streamLogs(ctx context.Context, req *localcomposev1.LogsRequest
 	return unwrapError(stream.Err())
 }
 
-// ListActions returns action definitions for a project.
-func (c *Client) ListActions(project string) ([]*protocol.ActionInfo, error) {
+// ListActions returns actions with metadata and runtime states for a project.
+func (c *Client) ListActions(project string) ([]*protocol.ActionState, error) {
 	resp, err := c.rpcClient.ListActions(context.Background(), connect.NewRequest(&localcomposev1.ListActionsRequest{
 		Project: project,
 	}))
@@ -289,17 +289,6 @@ func (c *Client) ListActions(project string) ([]*protocol.ActionInfo, error) {
 		return nil, unwrapError(err)
 	}
 	return resp.Msg.Actions, nil
-}
-
-// ListActionStates returns action runtime states for a project.
-func (c *Client) ListActionStates(project string) ([]*protocol.ActionState, error) {
-	resp, err := c.rpcClient.ListActionStates(context.Background(), connect.NewRequest(&localcomposev1.ListActionStatesRequest{
-		Project: project,
-	}))
-	if err != nil {
-		return nil, unwrapError(err)
-	}
-	return resp.Msg.States, nil
 }
 
 // RunAction executes an action and streams output lines.

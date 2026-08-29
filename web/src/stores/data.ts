@@ -1,7 +1,6 @@
 import { untrack } from "solid-js";
 import { createSignal } from "solid-js";
 import type {
-  ActionInfo,
   ActionState,
   DaemonInfo,
   GitBranch,
@@ -24,8 +23,7 @@ import { activeView, selectedProject } from "~/stores/nav";
 
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
-const [actions, setActions] = createSignal<Record<string, ActionInfo[]>>({});
-const [actionStates, setActionStates] = createSignal<Record<string, ActionState[]>>({});
+const [actions, setActions] = createSignal<Record<string, ActionState[]>>({});
 const [ports, setPorts] = createSignal<Record<string, PortBinding[]>>({});
 const [daemonInfo, setDaemonInfo] = createSignal<DaemonInfo | null>(null);
 
@@ -47,7 +45,6 @@ export {
   projects,
   services,
   actions,
-  actionStates,
   ports,
   daemonInfo,
   gitCommits,
@@ -91,6 +88,10 @@ function sameService(a: ServiceState, b: ServiceState): boolean {
 function sameActionState(a: ActionState, b: ActionState): boolean {
   return (
     a.name === b.name &&
+    a.command === b.command &&
+    a.workingDir === b.workingDir &&
+    a.tty === b.tty &&
+    (a.dependsOn?.join(",") ?? "") === (b.dependsOn?.join(",") ?? "") &&
     a.status === b.status &&
     a.pid === b.pid &&
     a.exitCode === b.exitCode
@@ -158,7 +159,6 @@ export function pruneData(projectNames: Set<string>) {
   };
   setServices((m) => keepMap(m) ?? m);
   setActions((m) => keepMap(m) ?? m);
-  setActionStates((m) => keepMap(m) ?? m);
 }
 
 /**
@@ -213,20 +213,6 @@ export async function fetchActions(project: string) {
     const res = await rpcClient.listActions({ project });
     const next = res.actions;
     setActions((m) => {
-      const prev = m[project];
-      if (prev && sameArray(prev, next, (a, b) => a.name === b.name && a.command === b.command)) return m;
-      return { ...m, [project]: next };
-    });
-  } catch (err: any) {
-    // ignore if project not running
-  }
-}
-
-export async function fetchActionStates(project: string) {
-  try {
-    const res = await rpcClient.listActionStates({ project });
-    const next = res.states;
-    setActionStates((m) => {
       const prev = m[project];
       if (prev && sameArray(prev, next, sameActionState)) return m;
       return { ...m, [project]: next };
@@ -283,7 +269,6 @@ export function refreshServices(project: string) {
 export function refreshProjectDetail(project: string) {
   fetchServices(project);
   fetchActions(project);
-  fetchActionStates(project);
   fetchPorts(project);
 }
 
@@ -374,7 +359,7 @@ export async function killService(project: string, service: string, signal = "SI
 }
 
 export function runAction(project: string, actionName: string, args?: string[]) {
-  const currentState = untrack(actionStates)[project]?.find((a) => a.name === actionName);
+  const currentState = untrack(actions)[project]?.find((a) => a.name === actionName);
   if (currentState?.status === "running" || currentState?.status === "starting") {
     pushToast(`Action '${actionName}' is already running`, "info");
     return false;
@@ -597,10 +582,11 @@ export function initDataHandlers() {
     } else if (event.event.case === "actionStateChanged") {
       const { project, state } = event.event.value;
       if (!project || !state) return;
-      setActionStates((m) => {
+      setActions((m) => {
         const list = m[project];
-        const updated = list ? list.map((a) => (a.name === state.name ? state : a)) : [state];
-        if (list && sameArray(list, updated, sameActionState)) return m;
+        if (!list) return m;
+        const updated = list.map((a) => (a.name === state.name ? { ...a, ...state } : a));
+        if (sameArray(list, updated, sameActionState)) return m;
         return { ...m, [project]: updated };
       });
     } else if (event.event.case === "gitChanged") {

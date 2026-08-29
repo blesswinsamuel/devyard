@@ -30,7 +30,6 @@ service DaemonService {
 
   // Actions
   rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
-  rpc ListActionStates(ListActionStatesRequest) returns (ListActionStatesResponse);
   rpc RunAction(RunActionRequest) returns (stream ActionOutputChunk);
 
   // Git Operations
@@ -72,22 +71,17 @@ message ServiceState {
   string health = 9;
 }
 
-message ActionInfo {
+message ActionState {
   string name = 1;
   string command = 2;
   string working_dir = 3;
   bool tty = 4;
   repeated string depends_on = 5;
-}
-
-message ActionState {
-  string name = 1;
-  string command = 2;
-  string status = 3;
-  int32 pid = 4;
-  int32 exit_code = 5;
-  google.protobuf.Timestamp started_at = 6;
-  google.protobuf.Timestamp finished_at = 7;
+  string status = 6;
+  int32 pid = 7;
+  int32 exit_code = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp finished_at = 10;
 }
 
 message ProjectInfo {
@@ -331,15 +325,7 @@ message ListActionsRequest {
 }
 
 message ListActionsResponse {
-  repeated ActionInfo actions = 1;
-}
-
-message ListActionStatesRequest {
-  string project = 1;
-}
-
-message ListActionStatesResponse {
-  repeated ActionState states = 1;
+  repeated ActionState actions = 1;
 }
 
 message RunActionRequest {

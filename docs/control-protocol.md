@@ -43,7 +43,6 @@ service DaemonService {
 
   // Actions
   rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
-  rpc ListActionStates(ListActionStatesRequest) returns (ListActionStatesResponse);
   rpc RunAction(RunActionRequest) returns (stream ActionOutputChunk);
 
   // Logs & Rotation

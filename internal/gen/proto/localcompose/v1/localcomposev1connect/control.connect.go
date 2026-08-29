@@ -77,9 +77,6 @@ const (
 	// DaemonServiceListActionsProcedure is the fully-qualified name of the DaemonService's ListActions
 	// RPC.
 	DaemonServiceListActionsProcedure = "/localcompose.v1.DaemonService/ListActions"
-	// DaemonServiceListActionStatesProcedure is the fully-qualified name of the DaemonService's
-	// ListActionStates RPC.
-	DaemonServiceListActionStatesProcedure = "/localcompose.v1.DaemonService/ListActionStates"
 	// DaemonServiceRunActionProcedure is the fully-qualified name of the DaemonService's RunAction RPC.
 	DaemonServiceRunActionProcedure = "/localcompose.v1.DaemonService/RunAction"
 	// DaemonServiceGitLogProcedure is the fully-qualified name of the DaemonService's GitLog RPC.
@@ -123,7 +120,6 @@ type DaemonServiceClient interface {
 	Ports(context.Context, *connect.Request[v1.PortsRequest]) (*connect.Response[v1.PortsResponse], error)
 	// Actions
 	ListActions(context.Context, *connect.Request[v1.ListActionsRequest]) (*connect.Response[v1.ListActionsResponse], error)
-	ListActionStates(context.Context, *connect.Request[v1.ListActionStatesRequest]) (*connect.Response[v1.ListActionStatesResponse], error)
 	RunAction(context.Context, *connect.Request[v1.RunActionRequest]) (*connect.ServerStreamForClient[v1.ActionOutputChunk], error)
 	// Git Operations
 	GitLog(context.Context, *connect.Request[v1.GitLogRequest]) (*connect.Response[v1.GitLogResponse], error)
@@ -244,12 +240,6 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("ListActions")),
 			connect.WithClientOptions(opts...),
 		),
-		listActionStates: connect.NewClient[v1.ListActionStatesRequest, v1.ListActionStatesResponse](
-			httpClient,
-			baseURL+DaemonServiceListActionStatesProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("ListActionStates")),
-			connect.WithClientOptions(opts...),
-		),
 		runAction: connect.NewClient[v1.RunActionRequest, v1.ActionOutputChunk](
 			httpClient,
 			baseURL+DaemonServiceRunActionProcedure,
@@ -309,32 +299,31 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 
 // daemonServiceClient implements DaemonServiceClient.
 type daemonServiceClient struct {
-	listProjects     *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
-	startProject     *connect.Client[v1.StartProjectRequest, v1.StartProjectResponse]
-	stopProject      *connect.Client[v1.StopProjectRequest, v1.StopProjectResponse]
-	removeProject    *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
-	daemonStatus     *connect.Client[v1.DaemonStatusRequest, v1.DaemonStatusResponse]
-	stopDaemon       *connect.Client[v1.StopDaemonRequest, v1.StopDaemonResponse]
-	restartDaemon    *connect.Client[v1.RestartDaemonRequest, v1.RestartDaemonResponse]
-	listServices     *connect.Client[v1.ListServicesRequest, v1.ListServicesResponse]
-	startService     *connect.Client[v1.StartServiceRequest, v1.StartServiceResponse]
-	stopService      *connect.Client[v1.StopServiceRequest, v1.StopServiceResponse]
-	killService      *connect.Client[v1.KillServiceRequest, v1.KillServiceResponse]
-	restart          *connect.Client[v1.RestartRequest, v1.RestartResponse]
-	top              *connect.Client[v1.TopRequest, v1.TopResponse]
-	logs             *connect.Client[v1.LogsRequest, v1.LogChunk]
-	ports            *connect.Client[v1.PortsRequest, v1.PortsResponse]
-	listActions      *connect.Client[v1.ListActionsRequest, v1.ListActionsResponse]
-	listActionStates *connect.Client[v1.ListActionStatesRequest, v1.ListActionStatesResponse]
-	runAction        *connect.Client[v1.RunActionRequest, v1.ActionOutputChunk]
-	gitLog           *connect.Client[v1.GitLogRequest, v1.GitLogResponse]
-	gitDiff          *connect.Client[v1.GitDiffRequest, v1.GitDiffResponse]
-	gitCommit        *connect.Client[v1.GitCommitRequest, v1.GitCommitResponse]
-	gitStage         *connect.Client[v1.GitStageRequest, v1.GitStageResponse]
-	gitPush          *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
-	gitPull          *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
-	gitFetch         *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
-	subscribeEvents  *connect.Client[v1.SubscribeEventsRequest, v1.Event]
+	listProjects    *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
+	startProject    *connect.Client[v1.StartProjectRequest, v1.StartProjectResponse]
+	stopProject     *connect.Client[v1.StopProjectRequest, v1.StopProjectResponse]
+	removeProject   *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
+	daemonStatus    *connect.Client[v1.DaemonStatusRequest, v1.DaemonStatusResponse]
+	stopDaemon      *connect.Client[v1.StopDaemonRequest, v1.StopDaemonResponse]
+	restartDaemon   *connect.Client[v1.RestartDaemonRequest, v1.RestartDaemonResponse]
+	listServices    *connect.Client[v1.ListServicesRequest, v1.ListServicesResponse]
+	startService    *connect.Client[v1.StartServiceRequest, v1.StartServiceResponse]
+	stopService     *connect.Client[v1.StopServiceRequest, v1.StopServiceResponse]
+	killService     *connect.Client[v1.KillServiceRequest, v1.KillServiceResponse]
+	restart         *connect.Client[v1.RestartRequest, v1.RestartResponse]
+	top             *connect.Client[v1.TopRequest, v1.TopResponse]
+	logs            *connect.Client[v1.LogsRequest, v1.LogChunk]
+	ports           *connect.Client[v1.PortsRequest, v1.PortsResponse]
+	listActions     *connect.Client[v1.ListActionsRequest, v1.ListActionsResponse]
+	runAction       *connect.Client[v1.RunActionRequest, v1.ActionOutputChunk]
+	gitLog          *connect.Client[v1.GitLogRequest, v1.GitLogResponse]
+	gitDiff         *connect.Client[v1.GitDiffRequest, v1.GitDiffResponse]
+	gitCommit       *connect.Client[v1.GitCommitRequest, v1.GitCommitResponse]
+	gitStage        *connect.Client[v1.GitStageRequest, v1.GitStageResponse]
+	gitPush         *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
+	gitPull         *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
+	gitFetch        *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
+	subscribeEvents *connect.Client[v1.SubscribeEventsRequest, v1.Event]
 }
 
 // ListProjects calls localcompose.v1.DaemonService.ListProjects.
@@ -417,11 +406,6 @@ func (c *daemonServiceClient) ListActions(ctx context.Context, req *connect.Requ
 	return c.listActions.CallUnary(ctx, req)
 }
 
-// ListActionStates calls localcompose.v1.DaemonService.ListActionStates.
-func (c *daemonServiceClient) ListActionStates(ctx context.Context, req *connect.Request[v1.ListActionStatesRequest]) (*connect.Response[v1.ListActionStatesResponse], error) {
-	return c.listActionStates.CallUnary(ctx, req)
-}
-
 // RunAction calls localcompose.v1.DaemonService.RunAction.
 func (c *daemonServiceClient) RunAction(ctx context.Context, req *connect.Request[v1.RunActionRequest]) (*connect.ServerStreamForClient[v1.ActionOutputChunk], error) {
 	return c.runAction.CallServerStream(ctx, req)
@@ -489,7 +473,6 @@ type DaemonServiceHandler interface {
 	Ports(context.Context, *connect.Request[v1.PortsRequest]) (*connect.Response[v1.PortsResponse], error)
 	// Actions
 	ListActions(context.Context, *connect.Request[v1.ListActionsRequest]) (*connect.Response[v1.ListActionsResponse], error)
-	ListActionStates(context.Context, *connect.Request[v1.ListActionStatesRequest]) (*connect.Response[v1.ListActionStatesResponse], error)
 	RunAction(context.Context, *connect.Request[v1.RunActionRequest], *connect.ServerStream[v1.ActionOutputChunk]) error
 	// Git Operations
 	GitLog(context.Context, *connect.Request[v1.GitLogRequest]) (*connect.Response[v1.GitLogResponse], error)
@@ -606,12 +589,6 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("ListActions")),
 		connect.WithHandlerOptions(opts...),
 	)
-	daemonServiceListActionStatesHandler := connect.NewUnaryHandler(
-		DaemonServiceListActionStatesProcedure,
-		svc.ListActionStates,
-		connect.WithSchema(daemonServiceMethods.ByName("ListActionStates")),
-		connect.WithHandlerOptions(opts...),
-	)
 	daemonServiceRunActionHandler := connect.NewServerStreamHandler(
 		DaemonServiceRunActionProcedure,
 		svc.RunAction,
@@ -700,8 +677,6 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServicePortsHandler.ServeHTTP(w, r)
 		case DaemonServiceListActionsProcedure:
 			daemonServiceListActionsHandler.ServeHTTP(w, r)
-		case DaemonServiceListActionStatesProcedure:
-			daemonServiceListActionStatesHandler.ServeHTTP(w, r)
 		case DaemonServiceRunActionProcedure:
 			daemonServiceRunActionHandler.ServeHTTP(w, r)
 		case DaemonServiceGitLogProcedure:
@@ -791,10 +766,6 @@ func (UnimplementedDaemonServiceHandler) Ports(context.Context, *connect.Request
 
 func (UnimplementedDaemonServiceHandler) ListActions(context.Context, *connect.Request[v1.ListActionsRequest]) (*connect.Response[v1.ListActionsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("localcompose.v1.DaemonService.ListActions is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) ListActionStates(context.Context, *connect.Request[v1.ListActionStatesRequest]) (*connect.Response[v1.ListActionStatesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("localcompose.v1.DaemonService.ListActionStates is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) RunAction(context.Context, *connect.Request[v1.RunActionRequest], *connect.ServerStream[v1.ActionOutputChunk]) error {

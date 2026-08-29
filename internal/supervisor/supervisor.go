@@ -149,6 +149,16 @@ func (s *Supervisor) notifyActionStateChange(rt *actionRuntime) {
 		FinishedAt: protocol.TimeToProto(rt.finishedAt),
 	}
 	rt.mu.Unlock()
+	if s.opts.File != nil {
+		if act, ok := s.opts.File.Actions[rt.name]; ok {
+			state.WorkingDir = act.Spec.WorkingDir
+			state.Tty = act.Spec.TTY
+			deps := make([]string, len(act.Spec.DependsOn.Order))
+			copy(deps, act.Spec.DependsOn.Order)
+			sort.Strings(deps)
+			state.DependsOn = deps
+		}
+	}
 	s.opts.OnActionStateChange(rt.name, state)
 }
 
@@ -1531,9 +1541,9 @@ func (s *Supervisor) Close() error {
 	return firstErr
 }
 
-// ListActionsFromFile returns action metadata directly from a config file
+// ListActionsFromFile returns action metadata and initial state directly from a config file
 // without requiring an active supervisor.
-func ListActionsFromFile(file *config.File) []*protocol.ActionInfo {
+func ListActionsFromFile(file *config.File) []*protocol.ActionState {
 	if file == nil {
 		return nil
 	}
@@ -1542,33 +1552,26 @@ func ListActionsFromFile(file *config.File) []*protocol.ActionInfo {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out := make([]*protocol.ActionInfo, len(names))
+	out := make([]*protocol.ActionState, len(names))
 	for i, name := range names {
 		act := file.Actions[name]
 		deps := make([]string, len(act.Spec.DependsOn.Order))
 		copy(deps, act.Spec.DependsOn.Order)
 		sort.Strings(deps)
-		out[i] = &protocol.ActionInfo{
+		out[i] = &protocol.ActionState{
 			Name:       name,
 			Command:    act.Spec.Command,
 			WorkingDir: act.Spec.WorkingDir,
 			Tty:        act.Spec.TTY,
 			DependsOn:  deps,
+			Status:     "idle",
 		}
 	}
 	return out
 }
 
-// ListActions returns a snapshot of defined actions for the project.
-func (s *Supervisor) ListActions() []*protocol.ActionInfo {
-	return ListActionsFromFile(s.opts.File)
-}
-
-// ActionStates returns a snapshot of every defined action's runtime state,
-// merged with the action's command from config. Actions with no runtime entry
-// (never run in this daemon lifetime or loaded from state.json as stopped)
-// show status "idle".
-func (s *Supervisor) ActionStates() []*protocol.ActionState {
+// ListActions returns a snapshot of defined actions and their runtime states for the project.
+func (s *Supervisor) ListActions() []*protocol.ActionState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.opts.File == nil {
@@ -1582,10 +1585,16 @@ func (s *Supervisor) ActionStates() []*protocol.ActionState {
 	out := make([]*protocol.ActionState, 0, len(names))
 	for _, name := range names {
 		act := s.opts.File.Actions[name]
+		deps := make([]string, len(act.Spec.DependsOn.Order))
+		copy(deps, act.Spec.DependsOn.Order)
+		sort.Strings(deps)
 		st := &protocol.ActionState{
-			Name:    name,
-			Command: act.Spec.Command,
-			Status:  "idle",
+			Name:       name,
+			Command:    act.Spec.Command,
+			WorkingDir: act.Spec.WorkingDir,
+			Tty:        act.Spec.TTY,
+			DependsOn:  deps,
+			Status:     "idle",
 		}
 		if rt, ok := s.actionRuntimes[name]; ok {
 			rt.mu.Lock()

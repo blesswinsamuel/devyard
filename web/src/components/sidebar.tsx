@@ -28,7 +28,6 @@ import {
 import {
   actions as actionsMap,
   fetchDaemonStatus,
-  actionStates as actionStatesMap,
   daemonInfo,
   killService,
   ports,
@@ -204,14 +203,14 @@ function ServiceRow(props: { project: string; name: string }) {
 }
 
 function ActionRow(props: { project: string; name: string }) {
-  const state = createMemo(() =>
-    (actionStatesMap()[props.project] ?? []).find((a) => a.name === props.name)
+  const act = createMemo(() =>
+    (actionsMap()[props.project] ?? []).find((a) => a.name === props.name)
   );
   const selected = () =>
     selectedAction() === props.name && selectedProject() === props.project;
   const cursor = () =>
     sameNavItem(keyboardCursor(), { kind: "action", project: props.project, action: props.name });
-  const status = () => state()?.status ?? "idle";
+  const status = () => act()?.status ?? "idle";
 
   return (
     <div class="group/act relative flex items-stretch" data-kbd-cursor={cursor() ? "" : undefined}>
@@ -231,14 +230,14 @@ function ActionRow(props: { project: string; name: string }) {
           )}
         />
         <span class="truncate">{props.name}</span>
-        <Show when={status() === "exited" && (state()?.exitCode ?? (state() as any)?.exit_code ?? 0) !== 0}>
+        <Show when={status() === "exited" && (act()?.exitCode ?? (act() as any)?.exit_code ?? 0) !== 0}>
           <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
-            {state()?.exitCode ?? (state() as any)?.exit_code}
+            {act()?.exitCode ?? (act() as any)?.exit_code}
           </span>
         </Show>
-        <Show when={(state()?.pid ?? 0) > 0}>
+        <Show when={(act()?.pid ?? 0) > 0}>
           <span class="ml-auto shrink-0 font-mono text-[11px] tabular text-muted-foreground opacity-70">
-            {state()?.pid}
+            {act()?.pid}
           </span>
         </Show>
       </button>

@@ -17,7 +17,6 @@ const DefaultLogTail = 5000
 type (
 	DaemonInfo        = localcomposev1.DaemonInfo
 	ServiceState      = localcomposev1.ServiceState
-	ActionInfo        = localcomposev1.ActionInfo
 	ActionState       = localcomposev1.ActionState
 	ProjectInfo       = localcomposev1.ProjectInfo
 	ServiceStat       = localcomposev1.ServiceStat

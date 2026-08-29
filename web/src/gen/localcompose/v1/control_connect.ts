@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ActionOutputChunk, DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, ListActionsRequest, ListActionsResponse, ListActionStatesRequest, ListActionStatesResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, LogChunk, LogsRequest, PortsRequest, PortsResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunActionRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, SubscribeEventsRequest, TopRequest, TopResponse } from "./control_pb.js";
+import { ActionOutputChunk, DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, ListActionsRequest, ListActionsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, LogChunk, LogsRequest, PortsRequest, PortsResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunActionRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, SubscribeEventsRequest, TopRequest, TopResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -162,15 +162,6 @@ export const DaemonService = {
       name: "ListActions",
       I: ListActionsRequest,
       O: ListActionsResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc localcompose.v1.DaemonService.ListActionStates
-     */
-    listActionStates: {
-      name: "ListActionStates",
-      I: ListActionStatesRequest,
-      O: ListActionStatesResponse,
       kind: MethodKind.Unary,
     },
     /**

@@ -343,16 +343,6 @@ func (s *Server) ListActions(ctx context.Context, req *connect.Request[localcomp
 	}), nil
 }
 
-func (s *Server) ListActionStates(ctx context.Context, req *connect.Request[localcomposev1.ListActionStatesRequest]) (*connect.Response[localcomposev1.ListActionStatesResponse], error) {
-	b, err := s.backend.ProjectBackend(req.Msg.Project)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
-	}
-	return connect.NewResponse(&localcomposev1.ListActionStatesResponse{
-		States: b.ActionStates(),
-	}), nil
-}
-
 func (s *Server) Logs(ctx context.Context, req *connect.Request[localcomposev1.LogsRequest], stream *connect.ServerStream[localcomposev1.LogChunk]) error {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {

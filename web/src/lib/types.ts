@@ -1,7 +1,6 @@
 export type {
   DaemonInfo,
   ServiceState,
-  ActionInfo,
   ActionState,
   ProjectInfo,
   ServiceStat,

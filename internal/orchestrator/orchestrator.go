@@ -842,21 +842,6 @@ func (b stoppedBackend) States() []*protocol.ServiceState {
 	return out
 }
 
-func (b stoppedBackend) ActionStates() []*protocol.ActionState {
-	if b.file == nil {
-		return nil
-	}
-	out := make([]*protocol.ActionState, 0, len(b.file.Actions))
-	for name, act := range b.file.Actions {
-		out = append(out, &protocol.ActionState{
-			Name:    name,
-			Command: act.Spec.Command,
-			Status:  "idle",
-		})
-	}
-	return out
-}
-
 func (b stoppedBackend) Stop(context.Context) error    { return b.err() }
 func (b stoppedBackend) StopService(string) error      { return b.err() }
 func (b stoppedBackend) StartService(string) error     { return b.err() }
@@ -868,7 +853,7 @@ func (b stoppedBackend) Top(string) ([]*protocol.ServiceStat, error) {
 func (b stoppedBackend) Ports() ([]*protocol.PortBinding, error) {
 	return nil, nil
 }
-func (b stoppedBackend) ListActions() []*protocol.ActionInfo {
+func (b stoppedBackend) ListActions() []*protocol.ActionState {
 	return supervisor.ListActionsFromFile(b.file)
 }
 func (b stoppedBackend) RunAction(context.Context, string, []string, io.Writer) (int, error) {

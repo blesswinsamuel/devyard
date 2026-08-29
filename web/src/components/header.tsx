@@ -12,7 +12,6 @@ import {
 import type { ServiceState } from "~/lib/types";
 import {
   actions as actionsMap,
-  actionStates as actionStatesMap,
   fetchPorts,
   killService,
   ports,
@@ -247,10 +246,7 @@ export function ActionHeader() {
   const project = () => selectedProject()!;
   const actionName = () => selectedAction()!;
   const act = createMemo(() => (actionsMap()[project()] ?? []).find((a) => a.name === actionName()));
-  const state = createMemo(() =>
-    (actionStatesMap()[project()] ?? []).find((a) => a.name === actionName())
-  );
-  const status = () => state()?.status ?? "idle";
+  const status = () => act()?.status ?? "idle";
 
   return (
     <>
@@ -262,7 +258,7 @@ export function ActionHeader() {
         ]}
       />
       <Show when={status() !== "idle"}>
-        <Badge variant={statusTone(status())}>{statusLabel(status(), state()?.exitCode ?? (state() as any)?.exit_code ?? 0)}</Badge>
+        <Badge variant={statusTone(status())}>{statusLabel(status(), act()?.exitCode ?? (act() as any)?.exit_code ?? 0)}</Badge>
       </Show>
       <Show when={act()}>
         {(a) => (

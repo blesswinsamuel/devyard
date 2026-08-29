@@ -29,7 +29,7 @@ type fakeBackend struct {
 	mu             sync.Mutex
 	states         []*protocol.ServiceState
 	logPaths       map[string]string
-	actions        []*protocol.ActionInfo
+	actions        []*protocol.ActionState
 	actionLogPaths map[string]string
 	restarts       []string
 	stopped        []string
@@ -107,10 +107,10 @@ func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
 	return "", fmt.Errorf("unknown service %q", name)
 }
 
-func (b *fakeBackend) ListActions() []*protocol.ActionInfo {
+func (b *fakeBackend) ListActions() []*protocol.ActionState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]*protocol.ActionInfo, len(b.actions))
+	out := make([]*protocol.ActionState, len(b.actions))
 	copy(out, b.actions)
 	return out
 }

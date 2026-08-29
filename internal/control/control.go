@@ -15,14 +15,13 @@ import (
 // Backend is the surface the control server needs from the supervisor.
 type Backend interface {
 	States() []*protocol.ServiceState
-	ActionStates() []*protocol.ActionState
 	Stop(ctx context.Context) error
 	StopService(name string) error
 	StartService(name string) error
 	KillService(name, signal string) error
 	Restart(name string) error
 	Top(name string) ([]*protocol.ServiceStat, error)
-	ListActions() []*protocol.ActionInfo
+	ListActions() []*protocol.ActionState
 	RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error)
 	LogPath(name string) (string, error)
 	PreviousLogPath(name string) (string, error)

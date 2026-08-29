@@ -165,9 +165,9 @@ export class ServiceState extends Message<ServiceState> {
 }
 
 /**
- * @generated from message localcompose.v1.ActionInfo
+ * @generated from message localcompose.v1.ActionState
  */
-export class ActionInfo extends Message<ActionInfo> {
+export class ActionState extends Message<ActionState> {
   /**
    * @generated from field: string name = 1;
    */
@@ -193,74 +193,28 @@ export class ActionInfo extends Message<ActionInfo> {
    */
   dependsOn: string[] = [];
 
-  constructor(data?: PartialMessage<ActionInfo>) {
-    super();
-    proto3.util.initPartial(data, this);
-  }
-
-  static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "localcompose.v1.ActionInfo";
-  static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "command", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "working_dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "tty", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
-    { no: 5, name: "depends_on", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
-  ]);
-
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ActionInfo {
-    return new ActionInfo().fromBinary(bytes, options);
-  }
-
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ActionInfo {
-    return new ActionInfo().fromJson(jsonValue, options);
-  }
-
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ActionInfo {
-    return new ActionInfo().fromJsonString(jsonString, options);
-  }
-
-  static equals(a: ActionInfo | PlainMessage<ActionInfo> | undefined, b: ActionInfo | PlainMessage<ActionInfo> | undefined): boolean {
-    return proto3.util.equals(ActionInfo, a, b);
-  }
-}
-
-/**
- * @generated from message localcompose.v1.ActionState
- */
-export class ActionState extends Message<ActionState> {
   /**
-   * @generated from field: string name = 1;
-   */
-  name = "";
-
-  /**
-   * @generated from field: string command = 2;
-   */
-  command = "";
-
-  /**
-   * @generated from field: string status = 3;
+   * @generated from field: string status = 6;
    */
   status = "";
 
   /**
-   * @generated from field: int32 pid = 4;
+   * @generated from field: int32 pid = 7;
    */
   pid = 0;
 
   /**
-   * @generated from field: int32 exit_code = 5;
+   * @generated from field: int32 exit_code = 8;
    */
   exitCode = 0;
 
   /**
-   * @generated from field: google.protobuf.Timestamp started_at = 6;
+   * @generated from field: google.protobuf.Timestamp started_at = 9;
    */
   startedAt?: Timestamp;
 
   /**
-   * @generated from field: google.protobuf.Timestamp finished_at = 7;
+   * @generated from field: google.protobuf.Timestamp finished_at = 10;
    */
   finishedAt?: Timestamp;
 
@@ -274,11 +228,14 @@ export class ActionState extends Message<ActionState> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "command", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "status", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "pid", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
-    { no: 5, name: "exit_code", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
-    { no: 6, name: "started_at", kind: "message", T: Timestamp },
-    { no: 7, name: "finished_at", kind: "message", T: Timestamp },
+    { no: 3, name: "working_dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "tty", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 5, name: "depends_on", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 6, name: "status", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "pid", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 8, name: "exit_code", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 9, name: "started_at", kind: "message", T: Timestamp },
+    { no: 10, name: "finished_at", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ActionState {
@@ -2361,9 +2318,9 @@ export class ListActionsRequest extends Message<ListActionsRequest> {
  */
 export class ListActionsResponse extends Message<ListActionsResponse> {
   /**
-   * @generated from field: repeated localcompose.v1.ActionInfo actions = 1;
+   * @generated from field: repeated localcompose.v1.ActionState actions = 1;
    */
-  actions: ActionInfo[] = [];
+  actions: ActionState[] = [];
 
   constructor(data?: PartialMessage<ListActionsResponse>) {
     super();
@@ -2373,7 +2330,7 @@ export class ListActionsResponse extends Message<ListActionsResponse> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "localcompose.v1.ListActionsResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "actions", kind: "message", T: ActionInfo, repeated: true },
+    { no: 1, name: "actions", kind: "message", T: ActionState, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListActionsResponse {
@@ -2390,80 +2347,6 @@ export class ListActionsResponse extends Message<ListActionsResponse> {
 
   static equals(a: ListActionsResponse | PlainMessage<ListActionsResponse> | undefined, b: ListActionsResponse | PlainMessage<ListActionsResponse> | undefined): boolean {
     return proto3.util.equals(ListActionsResponse, a, b);
-  }
-}
-
-/**
- * @generated from message localcompose.v1.ListActionStatesRequest
- */
-export class ListActionStatesRequest extends Message<ListActionStatesRequest> {
-  /**
-   * @generated from field: string project = 1;
-   */
-  project = "";
-
-  constructor(data?: PartialMessage<ListActionStatesRequest>) {
-    super();
-    proto3.util.initPartial(data, this);
-  }
-
-  static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "localcompose.v1.ListActionStatesRequest";
-  static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-  ]);
-
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListActionStatesRequest {
-    return new ListActionStatesRequest().fromBinary(bytes, options);
-  }
-
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListActionStatesRequest {
-    return new ListActionStatesRequest().fromJson(jsonValue, options);
-  }
-
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListActionStatesRequest {
-    return new ListActionStatesRequest().fromJsonString(jsonString, options);
-  }
-
-  static equals(a: ListActionStatesRequest | PlainMessage<ListActionStatesRequest> | undefined, b: ListActionStatesRequest | PlainMessage<ListActionStatesRequest> | undefined): boolean {
-    return proto3.util.equals(ListActionStatesRequest, a, b);
-  }
-}
-
-/**
- * @generated from message localcompose.v1.ListActionStatesResponse
- */
-export class ListActionStatesResponse extends Message<ListActionStatesResponse> {
-  /**
-   * @generated from field: repeated localcompose.v1.ActionState states = 1;
-   */
-  states: ActionState[] = [];
-
-  constructor(data?: PartialMessage<ListActionStatesResponse>) {
-    super();
-    proto3.util.initPartial(data, this);
-  }
-
-  static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "localcompose.v1.ListActionStatesResponse";
-  static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "states", kind: "message", T: ActionState, repeated: true },
-  ]);
-
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListActionStatesResponse {
-    return new ListActionStatesResponse().fromBinary(bytes, options);
-  }
-
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListActionStatesResponse {
-    return new ListActionStatesResponse().fromJson(jsonValue, options);
-  }
-
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListActionStatesResponse {
-    return new ListActionStatesResponse().fromJsonString(jsonString, options);
-  }
-
-  static equals(a: ListActionStatesResponse | PlainMessage<ListActionStatesResponse> | undefined, b: ListActionStatesResponse | PlainMessage<ListActionStatesResponse> | undefined): boolean {
-    return proto3.util.equals(ListActionStatesResponse, a, b);
   }
 }
 

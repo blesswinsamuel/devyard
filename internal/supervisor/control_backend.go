@@ -43,11 +43,6 @@ func (b *ControlBackend) States() []*protocol.ServiceState {
 	return out
 }
 
-// ActionStates returns a wire snapshot of every defined action's runtime state.
-func (b *ControlBackend) ActionStates() []*protocol.ActionState {
-	return b.s.ActionStates()
-}
-
 // Stop gracefully stops every service (used by `down`).
 func (b *ControlBackend) Stop(ctx context.Context) error {
 	return b.s.Stop(ctx)
@@ -113,8 +108,8 @@ func (b *ControlBackend) PreviousLogPath(name string) (string, error) {
 	return b.s.PreviousLogPath(name)
 }
 
-// ListActions returns a snapshot of defined actions for the project.
-func (b *ControlBackend) ListActions() []*protocol.ActionInfo {
+// ListActions returns a snapshot of defined actions and runtime states for the project.
+func (b *ControlBackend) ListActions() []*protocol.ActionState {
 	return b.s.ListActions()
 }
 

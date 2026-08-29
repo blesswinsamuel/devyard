@@ -31,19 +31,17 @@ type fakeBackend struct {
 	killedSigs  []string
 	stopSvcErr  error
 	startSvcErr error
-	actions     []*protocol.ActionInfo
+	actions     []*protocol.ActionState
 	runActionFn func(name string, args []string, out io.Writer) (int, error)
 }
 
-func (b *fakeBackend) ListActions() []*protocol.ActionInfo {
+func (b *fakeBackend) ListActions() []*protocol.ActionState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]*protocol.ActionInfo, len(b.actions))
+	out := make([]*protocol.ActionState, len(b.actions))
 	copy(out, b.actions)
 	return out
 }
-
-func (b *fakeBackend) ActionStates() []*protocol.ActionState { return nil }
 
 func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
 	b.mu.Lock()
@@ -248,8 +246,8 @@ func TestRoundtripList(t *testing.T) {
 
 func TestRoundtripActions(t *testing.T) {
 	b := &fakeBackend{
-		actions: []*protocol.ActionInfo{
-			{Name: "migrate", Command: "npx prisma db push"},
+		actions: []*protocol.ActionState{
+			{Name: "migrate", Command: "npx prisma db push", Status: "idle"},
 		},
 		runActionFn: func(name string, args []string, out io.Writer) (int, error) {
 			_, _ = fmt.Fprintln(out, "running migration...")

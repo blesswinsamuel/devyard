@@ -15,6 +15,9 @@ func Execute() error {
 	if isDaemonChild(os.Args) {
 		return runDaemonChild()
 	}
+	if isShimChild(os.Args) {
+		return runShimChild(os.Args)
+	}
 	return rootCmd.Execute()
 }
 

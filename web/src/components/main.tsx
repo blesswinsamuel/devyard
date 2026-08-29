@@ -79,47 +79,49 @@ export function Main() {
   return (
     <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Context header */}
-      <header class="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b bg-card/50 px-3 backdrop-blur">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          class="shrink-0 text-muted-foreground md:hidden"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="Open menu"
-        >
-          <Menu class="!size-4" />
-        </Button>
-        <Show
-          when={selectedProject()}
-          fallback={
-            <>
-              <span class="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
-                <SquareTerminal class="size-4 text-primary" />
-                local-compose
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="ml-auto mr-1 text-muted-foreground"
-                onClick={() => {
-                  fetchPorts();
-                  openPortsModal("all");
-                }}
-              >
-                <Globe class="!size-3.5" />
-                <span class="hidden sm:inline">Open ports</span>
-              </Button>
-            </>
-          }
-        >
-          <Show
-            when={selectedService()}
-            fallback={<Show when={selectedAction()} fallback={<ProjectHeader />}><ActionHeader /></Show>}
+      <Show when={activeView() !== "git"}>
+        <header class="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b bg-card/50 px-3 backdrop-blur">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            class="shrink-0 text-muted-foreground md:hidden"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
           >
-            <ServiceHeader />
+            <Menu class="!size-4" />
+          </Button>
+          <Show
+            when={selectedProject()}
+            fallback={
+              <>
+                <span class="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
+                  <SquareTerminal class="size-4 text-primary" />
+                  local-compose
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="ml-auto mr-1 text-muted-foreground"
+                  onClick={() => {
+                    fetchPorts();
+                    openPortsModal("all");
+                  }}
+                >
+                  <Globe class="!size-3.5" />
+                  <span class="hidden sm:inline">Open ports</span>
+                </Button>
+              </>
+            }
+          >
+            <Show
+              when={selectedService()}
+              fallback={<Show when={selectedAction()} fallback={<ProjectHeader />}><ActionHeader /></Show>}
+            >
+              <ServiceHeader />
+            </Show>
           </Show>
-        </Show>
-      </header>
+        </header>
+      </Show>
 
       {/* Content */}
       <div class="relative min-h-0 flex-1 overflow-hidden">

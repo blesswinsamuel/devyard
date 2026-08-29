@@ -5,10 +5,6 @@ import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } 
 import {
   actions as actionsData,
   clearSelectedCommit,
-  fetchActions,
-  fetchPorts,
-  fetchProjects,
-  fetchServices,
   initDataHandlers,
   loadGitLog,
   projects as projectsData,
@@ -16,7 +12,6 @@ import {
   selectCommit,
   services as servicesData,
   selectedCommitHash,
-  setOnProjectsFetched,
 } from "~/stores/data";
 import { ensureShellWorkspace } from "~/stores/shells";
 import { setSidebarOpen } from "~/stores/app";
@@ -373,13 +368,6 @@ export function start(): () => void {
   });
 
   initDataHandlers();
-
-  setOnProjectsFetched((_projects) => {
-    fetchServices();
-    fetchActions();
-    fetchPorts();
-    pruneSelection();
-  });
 
   createEffect(() => {
     projectsData();

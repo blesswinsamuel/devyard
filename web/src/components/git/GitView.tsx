@@ -15,6 +15,10 @@ import {
   Menu,
   Minus,
   MoreHorizontal,
+  PanelLeft,
+  PanelLeftClose,
+  PanelRight,
+  PanelRightClose,
   Plus,
   RefreshCw,
   Search,
@@ -60,6 +64,7 @@ import { Input } from "~/components/ui/input";
 import { Separator } from "~/components/ui/separator";
 import { Spinner } from "~/components/ui/spinner";
 import { Textarea } from "~/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -154,6 +159,21 @@ export function GitView() {
   const [tagsOpen, setTagsOpen] = createSignal(true);
   const [stashesOpen, setStashesOpen] = createSignal(true);
   const [openRemotes, setOpenRemotes] = createSignal<Record<string, boolean>>({});
+
+  // Pane visibility for desktop / laptop view
+  const storedBranchesPane = localStorage.getItem("lc-git-branches-pane");
+  const [showBranchesPane, setShowBranchesPane] = createSignal(storedBranchesPane === null ? true : storedBranchesPane === "true");
+
+  const storedFilesPane = localStorage.getItem("lc-git-files-pane");
+  const [showFilesPane, setShowFilesPane] = createSignal(storedFilesPane === null ? true : storedFilesPane === "true");
+
+  createEffect(() => {
+    localStorage.setItem("lc-git-branches-pane", String(showBranchesPane()));
+  });
+
+  createEffect(() => {
+    localStorage.setItem("lc-git-files-pane", String(showFilesPane()));
+  });
 
   const error = createMemo(() => (project() ? gitError()[project()!] ?? "" : ""));
   const loading = createMemo(() => (project() ? !!gitLoading()[project()!] : false));
@@ -262,6 +282,22 @@ export function GitView() {
 
   const renderRefsSidebar = () => (
     <div class="flex h-full select-none flex-col divide-y overflow-y-auto bg-card/40">
+      <div class="hidden lg:flex h-8 shrink-0 items-center justify-between border-b bg-muted/20 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span class="flex items-center gap-1.5">
+          <GitBranch class="size-3.5" />
+          Branches
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="size-5 rounded p-0 text-muted-foreground hover:text-foreground"
+          onClick={() => setShowBranchesPane(false)}
+          title="Hide branches pane"
+        >
+          <PanelLeftClose class="size-3.5" />
+        </Button>
+      </div>
+
       <RefSection
         icon={<GitBranch class="size-3 text-success" />}
         label={`Branches (${branches().length})`}
@@ -376,6 +412,17 @@ export function GitView() {
     <div class="flex h-full flex-col bg-background">
       <div class="flex h-8 shrink-0 items-center justify-between border-b bg-muted/20 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         <span class="flex items-center gap-1.5">
+          <Show when={!showBranchesPane()}>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              class="hidden lg:flex mr-0.5 size-5 rounded p-0 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowBranchesPane(true)}
+              title="Show branches pane"
+            >
+              <PanelLeft class="size-3.5" />
+            </Button>
+          </Show>
           <GitCommitHorizontal class="size-3.5" />
           Commits
         </span>
@@ -552,8 +599,17 @@ export function GitView() {
         <span class="flex items-center gap-1.5">
           <FileCode class="size-3.5" />
           Changed Files
+          <span class="tabular">{allFiles().length}</span>
         </span>
-        <span class="tabular">{allFiles().length}</span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="hidden lg:flex size-5 rounded p-0 text-muted-foreground hover:text-foreground"
+          onClick={() => setShowFilesPane(false)}
+          title="Hide changed files pane"
+        >
+          <PanelRightClose class="size-3.5" />
+        </Button>
       </div>
       <div class="border-b p-1.5">
         <div class="relative">
@@ -656,6 +712,18 @@ export function GitView() {
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
                     <CopyHash hash={diffResult()?.commit.hash ?? ""} />
+                    <Show when={!showFilesPane() && allFiles().length > 0}>
+                      <Button
+                        variant="secondary"
+                        size="xs"
+                        class="hidden lg:flex h-6 gap-1 px-2 text-[11px]"
+                        onClick={() => setShowFilesPane(true)}
+                        title="Show changed files pane"
+                      >
+                        <FileCode class="size-3" />
+                        Files ({allFiles().length})
+                      </Button>
+                    </Show>
                   </div>
                 </div>
               }
@@ -668,18 +736,33 @@ export function GitView() {
                       {stagedFiles().length} staged · {unstagedFiles().length + untrackedFiles().length} unstaged
                     </span>
                   </div>
-                  <Show when={allFiles().length > 0}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      class="lg:hidden text-xs text-muted-foreground"
-                      onClick={() => setMobileTab("files")}
-                    >
-                      <FileCode class="!size-3.5" />
-                      Manage files ({allFiles().length})
-                    </Button>
-                  </Show>
+                  <div class="flex items-center gap-1.5">
+                    <Show when={allFiles().length > 0}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        class="lg:hidden text-xs text-muted-foreground"
+                        onClick={() => setMobileTab("files")}
+                      >
+                        <FileCode class="!size-3.5" />
+                        Manage files ({allFiles().length})
+                      </Button>
+                    </Show>
+                    <Show when={!showFilesPane() && allFiles().length > 0}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="xs"
+                        class="hidden lg:flex h-6 gap-1 px-2 text-[11px]"
+                        onClick={() => setShowFilesPane(true)}
+                        title="Show changed files pane"
+                      >
+                        <FileCode class="size-3" />
+                        Files ({allFiles().length})
+                      </Button>
+                    </Show>
+                  </div>
                 </div>
                 <div class="flex flex-col gap-2 sm:flex-row">
                   <Textarea
@@ -712,9 +795,9 @@ export function GitView() {
               </form>
             </Show>
 
-            {/* Mobile active file indicator with switcher */}
-            <Show when={allFiles().length > 0}>
-              <div class="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1 text-xs lg:hidden">
+            {/* Mobile/Compact active file indicator with switcher */}
+            <Show when={allFiles().length > 0 && (currentFilePath() || !showFilesPane())}>
+              <div class="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1 text-xs">
                 <span class="truncate font-mono text-[11px] text-muted-foreground">
                   <Show when={currentFilePath()} fallback={<span class="font-sans">Showing all files ({allFiles().length})</span>}>
                     {(path) => (
@@ -739,7 +822,7 @@ export function GitView() {
                   <Button
                     variant="secondary"
                     size="xs"
-                    class="h-5 px-1.5 text-[10px]"
+                    class="h-5 px-1.5 text-[10px] lg:hidden"
                     onClick={() => setMobileTab("files")}
                   >
                     Files ({allFiles().length})
@@ -889,6 +972,37 @@ export function GitView() {
           >
             <RefreshCw class="!size-3.5" />
           </Button>
+
+          {/* Desktop Panel Toggles */}
+          <div class="hidden lg:flex items-center gap-0.5 pl-1 border-l ml-1">
+            <Tooltip>
+              <TooltipTrigger
+                as={Button}
+                variant={showBranchesPane() ? "secondary" : "ghost"}
+                size="icon-sm"
+                class={cn("text-muted-foreground size-7", showBranchesPane() && "text-foreground bg-accent")}
+                onClick={() => setShowBranchesPane(!showBranchesPane())}
+              >
+                <PanelLeft class="!size-3.5" />
+                <span class="sr-only">Toggle branches pane</span>
+              </TooltipTrigger>
+              <TooltipContent>{showBranchesPane() ? "Hide branches pane" : "Show branches pane"}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger
+                as={Button}
+                variant={showFilesPane() ? "secondary" : "ghost"}
+                size="icon-sm"
+                class={cn("text-muted-foreground size-7", showFilesPane() && "text-foreground bg-accent")}
+                onClick={() => setShowFilesPane(!showFilesPane())}
+              >
+                <PanelRight class="!size-3.5" />
+                <span class="sr-only">Toggle changed files pane</span>
+              </TooltipTrigger>
+              <TooltipContent>{showFilesPane() ? "Hide changed files pane" : "Show changed files pane"}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </div>
 
@@ -969,15 +1083,22 @@ export function GitView() {
 
       {/* Main Content Area */}
       <div class="relative min-h-0 flex-1">
-        {/* Desktop Split View (>= lg) */}
+        {/* Desktop / Laptop Split View (>= lg) */}
         <div class="hidden lg:flex h-full w-full divide-x">
           {/* Column 1: Refs sidebar */}
-          <div class="w-48 shrink-0 overflow-hidden">
-            {renderRefsSidebar()}
-          </div>
+          <Show when={showBranchesPane()}>
+            <div class="w-48 shrink-0 overflow-hidden">
+              {renderRefsSidebar()}
+            </div>
+          </Show>
 
           {/* Column 2: Commit log */}
-          <div class="w-1/3 min-w-[300px] max-w-[440px] shrink-0 overflow-hidden">
+          <div
+            class={cn(
+              "shrink-0 overflow-hidden",
+              showBranchesPane() ? "w-1/3 min-w-[280px] max-w-[400px]" : "w-1/3 min-w-[300px] max-w-[460px]"
+            )}
+          >
             {renderCommitList()}
           </div>
 
@@ -987,7 +1108,7 @@ export function GitView() {
           </div>
 
           {/* Column 4: Changed files */}
-          <Show when={currentCommitHash() && diffResult()}>
+          <Show when={showFilesPane() && currentCommitHash() && diffResult()}>
             <div class="w-60 min-w-[200px] shrink-0 overflow-hidden">
               {renderFilesList()}
             </div>

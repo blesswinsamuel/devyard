@@ -323,12 +323,12 @@ func (s *Server) Top(ctx context.Context, req *connect.Request[localcomposev1.To
 	}), nil
 }
 
-func (s *Server) Ports(ctx context.Context, req *connect.Request[localcomposev1.PortsRequest]) (*connect.Response[localcomposev1.PortsResponse], error) {
-	ports, err := s.backend.Ports(req.Msg.Project)
+func (s *Server) ListPorts(ctx context.Context, req *connect.Request[localcomposev1.ListPortsRequest]) (*connect.Response[localcomposev1.ListPortsResponse], error) {
+	ports, err := s.backend.ListPorts(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.PortsResponse{
+	return connect.NewResponse(&localcomposev1.ListPortsResponse{
 		Ports: ports,
 	}), nil
 }

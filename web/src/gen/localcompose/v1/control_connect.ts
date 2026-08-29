@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ActionOutputChunk, DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, ListActionsRequest, ListActionsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, LogChunk, LogsRequest, PortsRequest, PortsResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunActionRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, SubscribeEventsRequest, TopRequest, TopResponse } from "./control_pb.js";
+import { ActionOutputChunk, DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, ListActionsRequest, ListActionsResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunActionRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, SubscribeEventsRequest, TopRequest, TopResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -145,12 +145,12 @@ export const DaemonService = {
       kind: MethodKind.ServerStreaming,
     },
     /**
-     * @generated from rpc localcompose.v1.DaemonService.Ports
+     * @generated from rpc localcompose.v1.DaemonService.ListPorts
      */
-    ports: {
-      name: "Ports",
-      I: PortsRequest,
-      O: PortsResponse,
+    listPorts: {
+      name: "ListPorts",
+      I: ListPortsRequest,
+      O: ListPortsResponse,
       kind: MethodKind.Unary,
     },
     /**

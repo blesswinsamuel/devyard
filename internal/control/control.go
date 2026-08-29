@@ -27,7 +27,7 @@ type Backend interface {
 	PreviousLogPath(name string) (string, error)
 	ActionLogPath(name string) (string, error)
 	ActionPreviousLogPath(name string) (string, error)
-	Ports() ([]*protocol.PortBinding, error)
+	ListPorts() ([]*protocol.PortBinding, error)
 }
 
 // MultiBackend is the surface the control server needs from the daemon. It
@@ -53,7 +53,7 @@ type MultiBackend interface {
 	GitPush(project string) (string, error)
 	GitPull(project string) (string, error)
 	GitFetch(project string) (string, error)
-	Ports(project string) ([]*protocol.PortBinding, error)
+	ListPorts(project string) ([]*protocol.PortBinding, error)
 
 	SetOnStateChange(fn func(project string, state *protocol.ServiceState))
 	SetOnActionStateChange(fn func(project string, state *protocol.ActionState))
@@ -234,9 +234,16 @@ func (s SingleProjectBackend) ListActions(project string) ([]*protocol.ActionSta
 	return actions, nil
 }
 
-func (s SingleProjectBackend) Ports(project string) ([]*protocol.PortBinding, error) {
+func (s SingleProjectBackend) ListPorts(project string) ([]*protocol.PortBinding, error) {
 	if project != "" && project != s.Project {
 		return nil, fmt.Errorf("unknown project %q", project)
 	}
-	return s.Backend.Ports()
+	ports, err := s.Backend.ListPorts()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range ports {
+		p.Project = s.Project
+	}
+	return ports, nil
 }

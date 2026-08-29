@@ -72,8 +72,8 @@ const (
 	DaemonServiceTopProcedure = "/localcompose.v1.DaemonService/Top"
 	// DaemonServiceLogsProcedure is the fully-qualified name of the DaemonService's Logs RPC.
 	DaemonServiceLogsProcedure = "/localcompose.v1.DaemonService/Logs"
-	// DaemonServicePortsProcedure is the fully-qualified name of the DaemonService's Ports RPC.
-	DaemonServicePortsProcedure = "/localcompose.v1.DaemonService/Ports"
+	// DaemonServiceListPortsProcedure is the fully-qualified name of the DaemonService's ListPorts RPC.
+	DaemonServiceListPortsProcedure = "/localcompose.v1.DaemonService/ListPorts"
 	// DaemonServiceListActionsProcedure is the fully-qualified name of the DaemonService's ListActions
 	// RPC.
 	DaemonServiceListActionsProcedure = "/localcompose.v1.DaemonService/ListActions"
@@ -117,7 +117,7 @@ type DaemonServiceClient interface {
 	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
 	Top(context.Context, *connect.Request[v1.TopRequest]) (*connect.Response[v1.TopResponse], error)
 	Logs(context.Context, *connect.Request[v1.LogsRequest]) (*connect.ServerStreamForClient[v1.LogChunk], error)
-	Ports(context.Context, *connect.Request[v1.PortsRequest]) (*connect.Response[v1.PortsResponse], error)
+	ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error)
 	// Actions
 	ListActions(context.Context, *connect.Request[v1.ListActionsRequest]) (*connect.Response[v1.ListActionsResponse], error)
 	RunAction(context.Context, *connect.Request[v1.RunActionRequest]) (*connect.ServerStreamForClient[v1.ActionOutputChunk], error)
@@ -228,10 +228,10 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("Logs")),
 			connect.WithClientOptions(opts...),
 		),
-		ports: connect.NewClient[v1.PortsRequest, v1.PortsResponse](
+		listPorts: connect.NewClient[v1.ListPortsRequest, v1.ListPortsResponse](
 			httpClient,
-			baseURL+DaemonServicePortsProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("Ports")),
+			baseURL+DaemonServiceListPortsProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("ListPorts")),
 			connect.WithClientOptions(opts...),
 		),
 		listActions: connect.NewClient[v1.ListActionsRequest, v1.ListActionsResponse](
@@ -313,7 +313,7 @@ type daemonServiceClient struct {
 	restart         *connect.Client[v1.RestartRequest, v1.RestartResponse]
 	top             *connect.Client[v1.TopRequest, v1.TopResponse]
 	logs            *connect.Client[v1.LogsRequest, v1.LogChunk]
-	ports           *connect.Client[v1.PortsRequest, v1.PortsResponse]
+	listPorts       *connect.Client[v1.ListPortsRequest, v1.ListPortsResponse]
 	listActions     *connect.Client[v1.ListActionsRequest, v1.ListActionsResponse]
 	runAction       *connect.Client[v1.RunActionRequest, v1.ActionOutputChunk]
 	gitLog          *connect.Client[v1.GitLogRequest, v1.GitLogResponse]
@@ -396,9 +396,9 @@ func (c *daemonServiceClient) Logs(ctx context.Context, req *connect.Request[v1.
 	return c.logs.CallServerStream(ctx, req)
 }
 
-// Ports calls localcompose.v1.DaemonService.Ports.
-func (c *daemonServiceClient) Ports(ctx context.Context, req *connect.Request[v1.PortsRequest]) (*connect.Response[v1.PortsResponse], error) {
-	return c.ports.CallUnary(ctx, req)
+// ListPorts calls localcompose.v1.DaemonService.ListPorts.
+func (c *daemonServiceClient) ListPorts(ctx context.Context, req *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error) {
+	return c.listPorts.CallUnary(ctx, req)
 }
 
 // ListActions calls localcompose.v1.DaemonService.ListActions.
@@ -470,7 +470,7 @@ type DaemonServiceHandler interface {
 	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
 	Top(context.Context, *connect.Request[v1.TopRequest]) (*connect.Response[v1.TopResponse], error)
 	Logs(context.Context, *connect.Request[v1.LogsRequest], *connect.ServerStream[v1.LogChunk]) error
-	Ports(context.Context, *connect.Request[v1.PortsRequest]) (*connect.Response[v1.PortsResponse], error)
+	ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error)
 	// Actions
 	ListActions(context.Context, *connect.Request[v1.ListActionsRequest]) (*connect.Response[v1.ListActionsResponse], error)
 	RunAction(context.Context, *connect.Request[v1.RunActionRequest], *connect.ServerStream[v1.ActionOutputChunk]) error
@@ -577,10 +577,10 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("Logs")),
 		connect.WithHandlerOptions(opts...),
 	)
-	daemonServicePortsHandler := connect.NewUnaryHandler(
-		DaemonServicePortsProcedure,
-		svc.Ports,
-		connect.WithSchema(daemonServiceMethods.ByName("Ports")),
+	daemonServiceListPortsHandler := connect.NewUnaryHandler(
+		DaemonServiceListPortsProcedure,
+		svc.ListPorts,
+		connect.WithSchema(daemonServiceMethods.ByName("ListPorts")),
 		connect.WithHandlerOptions(opts...),
 	)
 	daemonServiceListActionsHandler := connect.NewUnaryHandler(
@@ -673,8 +673,8 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceTopHandler.ServeHTTP(w, r)
 		case DaemonServiceLogsProcedure:
 			daemonServiceLogsHandler.ServeHTTP(w, r)
-		case DaemonServicePortsProcedure:
-			daemonServicePortsHandler.ServeHTTP(w, r)
+		case DaemonServiceListPortsProcedure:
+			daemonServiceListPortsHandler.ServeHTTP(w, r)
 		case DaemonServiceListActionsProcedure:
 			daemonServiceListActionsHandler.ServeHTTP(w, r)
 		case DaemonServiceRunActionProcedure:
@@ -760,8 +760,8 @@ func (UnimplementedDaemonServiceHandler) Logs(context.Context, *connect.Request[
 	return connect.NewError(connect.CodeUnimplemented, errors.New("localcompose.v1.DaemonService.Logs is not implemented"))
 }
 
-func (UnimplementedDaemonServiceHandler) Ports(context.Context, *connect.Request[v1.PortsRequest]) (*connect.Response[v1.PortsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("localcompose.v1.DaemonService.Ports is not implemented"))
+func (UnimplementedDaemonServiceHandler) ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("localcompose.v1.DaemonService.ListPorts is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) ListActions(context.Context, *connect.Request[v1.ListActionsRequest]) (*connect.Response[v1.ListActionsResponse], error) {

@@ -267,7 +267,7 @@ export async function fetchActions(project?: string) {
 
 export async function fetchPorts(project?: string) {
   try {
-    const res = await rpcClient.ports({ project: project || "" });
+    const res = await rpcClient.listPorts({ project: project || "" });
     const list = res.ports;
     if (!project) {
       setPorts(() => {

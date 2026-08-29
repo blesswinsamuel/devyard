@@ -852,7 +852,7 @@ func (b stoppedBackend) Restart(string) error          { return b.err() }
 func (b stoppedBackend) Top(string) ([]*protocol.ServiceStat, error) {
 	return nil, b.err()
 }
-func (b stoppedBackend) Ports() ([]*protocol.PortBinding, error) {
+func (b stoppedBackend) ListPorts() ([]*protocol.PortBinding, error) {
 	return nil, nil
 }
 func (b stoppedBackend) ListActions() []*protocol.ActionState {
@@ -1246,14 +1246,14 @@ func (d *Daemon) ListActions(project string) ([]*protocol.ActionState, error) {
 	return all, nil
 }
 
-// Ports returns open listening sockets for a project (or all projects when project is empty).
-func (d *Daemon) Ports(project string) ([]*protocol.PortBinding, error) {
+// ListPorts returns open listening sockets for a project (or all projects when project is empty).
+func (d *Daemon) ListPorts(project string) ([]*protocol.PortBinding, error) {
 	if project != "" {
 		b, err := d.ProjectBackend(project)
 		if err != nil {
 			return nil, err
 		}
-		ports, err := b.Ports()
+		ports, err := b.ListPorts()
 		if err != nil {
 			return nil, err
 		}
@@ -1277,7 +1277,7 @@ func (d *Daemon) Ports(project string) ([]*protocol.PortBinding, error) {
 		if err != nil {
 			continue
 		}
-		p, err := b.Ports()
+		p, err := b.ListPorts()
 		if err == nil {
 			for _, port := range p {
 				port.Project = name

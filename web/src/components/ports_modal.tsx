@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { Check, Copy, ExternalLink, Globe, RefreshCw, Search } from "lucide-solid";
+import { Check, Copy, ExternalLink, Folder, Globe, RefreshCw, Search } from "lucide-solid";
 import { fetchPorts, ports as portsMap } from "~/stores/data";
 import { selectedProject } from "~/stores/nav";
 import { openPortsModal, portsScope, setShowPortsModal, showPortsModal } from "~/stores/app";
@@ -27,6 +27,11 @@ function makeUrl(binding: PortBinding): string {
       : binding.ip;
   return `http://${host}:${binding.port}`;
 }
+
+type ProjectPortGroup = {
+  project: string;
+  ports: PortBinding[];
+};
 
 export function PortsModal() {
   const [filter, setFilter] = createSignal("");
@@ -72,6 +77,27 @@ export function PortsModal() {
         String(p.port).includes(q) ||
         p.ip.toLowerCase().includes(q)
     );
+  });
+
+  const groupedPorts = createMemo<ProjectPortGroup[]>(() => {
+    const list = filteredPorts();
+    if (scope() !== "all") {
+      return [{ project: project() ?? "", ports: list }];
+    }
+    const map = new Map<string, PortBinding[]>();
+    for (const p of list) {
+      const proj = p.project || "default";
+      let arr = map.get(proj);
+      if (!arr) {
+        arr = [];
+        map.set(proj, arr);
+      }
+      arr.push(p);
+    }
+    return Array.from(map.entries()).map(([proj, ports]) => ({
+      project: proj,
+      ports,
+    }));
   });
 
   const handleCopy = (binding: PortBinding) => {
@@ -158,7 +184,7 @@ export function PortsModal() {
               }
             >
               <Table class="text-xs">
-                <TableHeader class="sticky top-0 bg-muted/70 backdrop-blur-sm">
+                <TableHeader class="sticky top-0 z-10 bg-muted/70 backdrop-blur-sm">
                   <TableRow class="hover:bg-transparent">
                     <TableHead class="h-8 px-3.5 text-muted-foreground">Service</TableHead>
                     <TableHead class="h-8 px-3.5 text-muted-foreground">Bound IP</TableHead>
@@ -168,61 +194,75 @@ export function PortsModal() {
                   </TableRow>
                 </TableHeader>
                 <TableBody class="divide-y divide-border/60">
-                  <For each={filteredPorts()}>
-                    {(item) => {
-                      const copyKey = `${item.project}:${item.service}:${item.port}`;
-                      const isCopied = () => copiedPort() === copyKey;
-                      return (
-                        <TableRow class="hover:bg-muted/40">
-                          <TableCell class="px-3.5 py-2.5 font-medium">
-                            <span>{item.service || item.project}</span>
-                            <Show when={scope() === "all" && item.project}>
-                              <span class="ml-1.5 rounded bg-muted px-1 py-px font-mono text-[10px] text-muted-foreground">
-                                {item.project}
-                              </span>
-                            </Show>
-                          </TableCell>
-                          <TableCell data-tabular class="px-3.5 py-2.5 font-mono text-[11px] text-muted-foreground">
-                            {item.ip}
-                          </TableCell>
-                          <TableCell data-tabular class="px-3.5 py-2.5 font-mono font-semibold text-primary">
-                            {item.port}
-                          </TableCell>
-                          <TableCell class="px-3.5 py-2.5">
-                            <Badge variant="outline" class="uppercase">
-                              {item.protocol}
-                            </Badge>
-                          </TableCell>
-                          <TableCell class="px-3.5 py-2.5">
-                            <div class="flex items-center justify-end gap-1.5">
-                              <Button
-                                variant="ghost"
-                                size="xs"
-                                class="text-muted-foreground"
-                                onClick={() => handleCopy(item)}
-                              >
-                                <Show when={isCopied()} fallback={<Copy class="size-3" />}>
-                                  <Check class="size-3 text-success" />
-                                </Show>
-                                {isCopied() ? "Copied" : "Copy"}
-                              </Button>
-                              <a
-                                href={makeUrl(item)}
-                                target="_blank"
-                                rel="noreferrer"
-                                class={cn(
-                                  "inline-flex h-6 items-center gap-1 rounded-md bg-primary/12 px-2",
-                                  "text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-                                )}
-                              >
-                                Open
-                                <ExternalLink class="size-3" />
-                              </a>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    }}
+                  <For each={groupedPorts()}>
+                    {(group) => (
+                      <>
+                        <Show when={scope() === "all"}>
+                          <TableRow class="bg-muted/40 hover:bg-muted/40 font-medium">
+                            <TableCell colspan={5} class="px-3.5 py-1.5 text-[11px] text-foreground">
+                              <div class="flex items-center gap-1.5">
+                                <Folder class="size-3 text-muted-foreground" />
+                                <span class="font-semibold">{group.project}</span>
+                                <span class="text-muted-foreground font-mono text-[10px]">
+                                  ({group.ports.length})
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        </Show>
+                        <For each={group.ports}>
+                          {(item) => {
+                            const copyKey = `${item.project}:${item.service}:${item.port}`;
+                            const isCopied = () => copiedPort() === copyKey;
+                            return (
+                              <TableRow class="hover:bg-muted/40">
+                                <TableCell class="px-3.5 py-2 font-medium">
+                                  <span>{item.service || item.project}</span>
+                                </TableCell>
+                                <TableCell data-tabular class="px-3.5 py-2 font-mono text-[11px] text-muted-foreground">
+                                  {item.ip}
+                                </TableCell>
+                                <TableCell data-tabular class="px-3.5 py-2 font-mono font-semibold text-primary">
+                                  {item.port}
+                                </TableCell>
+                                <TableCell class="px-3.5 py-2">
+                                  <Badge variant="outline" class="uppercase">
+                                    {item.protocol}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell class="px-3.5 py-2">
+                                  <div class="flex items-center justify-end gap-1.5">
+                                    <Button
+                                      variant="ghost"
+                                      size="xs"
+                                      class="text-muted-foreground"
+                                      onClick={() => handleCopy(item)}
+                                    >
+                                      <Show when={isCopied()} fallback={<Copy class="size-3" />}>
+                                        <Check class="size-3 text-success" />
+                                      </Show>
+                                      {isCopied() ? "Copied" : "Copy"}
+                                    </Button>
+                                    <a
+                                      href={makeUrl(item)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      class={cn(
+                                        "inline-flex h-6 items-center gap-1 rounded-md bg-primary/12 px-2",
+                                        "text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                                      )}
+                                    >
+                                      Open
+                                      <ExternalLink class="size-3" />
+                                    </a>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          }}
+                        </For>
+                      </>
+                    )}
                   </For>
                 </TableBody>
               </Table>

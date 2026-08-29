@@ -87,7 +87,7 @@ func (b *fakeBackend) Restart(name string) error {
 
 func (b *fakeBackend) Top(string) ([]*protocol.ServiceStat, error) { return nil, nil }
 
-func (b *fakeBackend) Ports() ([]*protocol.PortBinding, error) { return nil, nil }
+func (b *fakeBackend) ListPorts() ([]*protocol.PortBinding, error) { return nil, nil }
 
 func (b *fakeBackend) LogPath(name string) (string, error) {
 	b.mu.Lock()
@@ -362,7 +362,7 @@ func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return n
 func (m *fakeMultiBackend) GitPush(string) (string, error)            { return "pushed", nil }
 func (m *fakeMultiBackend) GitPull(string) (string, error)            { return "pulled", nil }
 func (m *fakeMultiBackend) GitFetch(string) (string, error)           { return "fetched", nil }
-func (m *fakeMultiBackend) Ports(project string) ([]*protocol.PortBinding, error) {
+func (m *fakeMultiBackend) ListPorts(project string) ([]*protocol.PortBinding, error) {
 	m.mu.Lock()
 	_, ok := m.projects[project]
 	m.mu.Unlock()

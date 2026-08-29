@@ -1366,8 +1366,8 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 	return targets, nil
 }
 
-// Ports returns a list of open listening sockets for all running services in the project.
-func (s *Supervisor) Ports() ([]*protocol.PortBinding, error) {
+// ListPorts returns a list of open listening sockets for all running services in the project.
+func (s *Supervisor) ListPorts() ([]*protocol.PortBinding, error) {
 	s.mu.Lock()
 	pgidToSvc := make(map[int]string)
 	var pgids []int

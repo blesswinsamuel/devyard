@@ -154,7 +154,7 @@ func (b *fakeBackend) Top(name string) ([]*protocol.ServiceStat, error) {
 	return out, nil
 }
 
-func (b *fakeBackend) Ports() ([]*protocol.PortBinding, error) {
+func (b *fakeBackend) ListPorts() ([]*protocol.PortBinding, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return []*protocol.PortBinding{
@@ -418,9 +418,9 @@ func TestRoundtripListPorts(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	ports, err := c.Ports("")
+	ports, err := c.ListPorts("")
 	if err != nil {
-		t.Fatalf("Ports: %v", err)
+		t.Fatalf("ListPorts: %v", err)
 	}
 	if len(ports) != 1 {
 		t.Fatalf("got %d ports, want 1", len(ports))
@@ -734,7 +734,7 @@ func (m *fakeMultiBackend) ListActions(project string) ([]*protocol.ActionState,
 	return all, nil
 }
 
-func (m *fakeMultiBackend) Ports(string) ([]*protocol.PortBinding, error) { return nil, nil }
+func (m *fakeMultiBackend) ListPorts(string) ([]*protocol.PortBinding, error) { return nil, nil }
 
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {
 	t.Helper()

@@ -2215,76 +2215,76 @@ export class LogsRequest extends Message<LogsRequest> {
 }
 
 /**
- * @generated from message localcompose.v1.PortsRequest
+ * @generated from message localcompose.v1.ListPortsRequest
  */
-export class PortsRequest extends Message<PortsRequest> {
+export class ListPortsRequest extends Message<ListPortsRequest> {
   /**
    * @generated from field: string project = 1;
    */
   project = "";
 
-  constructor(data?: PartialMessage<PortsRequest>) {
+  constructor(data?: PartialMessage<ListPortsRequest>) {
     super();
     proto3.util.initPartial(data, this);
   }
 
   static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "localcompose.v1.PortsRequest";
+  static readonly typeName = "localcompose.v1.ListPortsRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PortsRequest {
-    return new PortsRequest().fromBinary(bytes, options);
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListPortsRequest {
+    return new ListPortsRequest().fromBinary(bytes, options);
   }
 
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PortsRequest {
-    return new PortsRequest().fromJson(jsonValue, options);
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListPortsRequest {
+    return new ListPortsRequest().fromJson(jsonValue, options);
   }
 
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PortsRequest {
-    return new PortsRequest().fromJsonString(jsonString, options);
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListPortsRequest {
+    return new ListPortsRequest().fromJsonString(jsonString, options);
   }
 
-  static equals(a: PortsRequest | PlainMessage<PortsRequest> | undefined, b: PortsRequest | PlainMessage<PortsRequest> | undefined): boolean {
-    return proto3.util.equals(PortsRequest, a, b);
+  static equals(a: ListPortsRequest | PlainMessage<ListPortsRequest> | undefined, b: ListPortsRequest | PlainMessage<ListPortsRequest> | undefined): boolean {
+    return proto3.util.equals(ListPortsRequest, a, b);
   }
 }
 
 /**
- * @generated from message localcompose.v1.PortsResponse
+ * @generated from message localcompose.v1.ListPortsResponse
  */
-export class PortsResponse extends Message<PortsResponse> {
+export class ListPortsResponse extends Message<ListPortsResponse> {
   /**
    * @generated from field: repeated localcompose.v1.PortBinding ports = 1;
    */
   ports: PortBinding[] = [];
 
-  constructor(data?: PartialMessage<PortsResponse>) {
+  constructor(data?: PartialMessage<ListPortsResponse>) {
     super();
     proto3.util.initPartial(data, this);
   }
 
   static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "localcompose.v1.PortsResponse";
+  static readonly typeName = "localcompose.v1.ListPortsResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "ports", kind: "message", T: PortBinding, repeated: true },
   ]);
 
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PortsResponse {
-    return new PortsResponse().fromBinary(bytes, options);
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListPortsResponse {
+    return new ListPortsResponse().fromBinary(bytes, options);
   }
 
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PortsResponse {
-    return new PortsResponse().fromJson(jsonValue, options);
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListPortsResponse {
+    return new ListPortsResponse().fromJson(jsonValue, options);
   }
 
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PortsResponse {
-    return new PortsResponse().fromJsonString(jsonString, options);
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListPortsResponse {
+    return new ListPortsResponse().fromJsonString(jsonString, options);
   }
 
-  static equals(a: PortsResponse | PlainMessage<PortsResponse> | undefined, b: PortsResponse | PlainMessage<PortsResponse> | undefined): boolean {
-    return proto3.util.equals(PortsResponse, a, b);
+  static equals(a: ListPortsResponse | PlainMessage<ListPortsResponse> | undefined, b: ListPortsResponse | PlainMessage<ListPortsResponse> | undefined): boolean {
+    return proto3.util.equals(ListPortsResponse, a, b);
   }
 }
 

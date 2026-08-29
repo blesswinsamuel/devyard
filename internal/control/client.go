@@ -208,9 +208,9 @@ func (c *Client) Top(project, service string) ([]*protocol.ServiceStat, error) {
 	return resp.Msg.Stats, nil
 }
 
-// Ports returns listening sockets for a project (or all projects).
-func (c *Client) Ports(project string) ([]*protocol.PortBinding, error) {
-	resp, err := c.rpcClient.Ports(context.Background(), connect.NewRequest(&localcomposev1.PortsRequest{
+// ListPorts returns listening sockets for a project (or all projects).
+func (c *Client) ListPorts(project string) ([]*protocol.PortBinding, error) {
+	resp, err := c.rpcClient.ListPorts(context.Background(), connect.NewRequest(&localcomposev1.ListPortsRequest{
 		Project: project,
 	}))
 	if err != nil {

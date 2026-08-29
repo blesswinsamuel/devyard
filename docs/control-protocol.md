@@ -39,7 +39,7 @@ service DaemonService {
   rpc KillService(KillServiceRequest) returns (KillServiceResponse);
   rpc Restart(RestartRequest) returns (RestartResponse);
   rpc Top(TopRequest) returns (TopResponse);
-  rpc Ports(PortsRequest) returns (PortsResponse);
+  rpc ListPorts(ListPortsRequest) returns (ListPortsResponse);
 
   // Actions
   rpc ListActions(ListActionsRequest) returns (ListActionsResponse);

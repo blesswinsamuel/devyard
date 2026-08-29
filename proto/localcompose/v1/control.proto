@@ -26,7 +26,7 @@ service DaemonService {
   rpc Restart(RestartRequest) returns (RestartResponse);
   rpc Top(TopRequest) returns (TopResponse);
   rpc Logs(LogsRequest) returns (stream LogChunk);
-  rpc Ports(PortsRequest) returns (PortsResponse);
+  rpc ListPorts(ListPortsRequest) returns (ListPortsResponse);
 
   // Actions
   rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
@@ -314,11 +314,11 @@ message LogsRequest {
   int32 tail = 6;
 }
 
-message PortsRequest {
+message ListPortsRequest {
   string project = 1;
 }
 
-message PortsResponse {
+message ListPortsResponse {
   repeated PortBinding ports = 1;
 }
 

@@ -15,7 +15,7 @@ import (
 var daemonCmd = &cobra.Command{
 	Use:   "daemon",
 	Short: "Manage the global local-compose daemon process",
-	Long:  "Subcommands to start, stop, restart, reload, or inspect status of the global daemon.",
+	Long:  "Subcommands to start, stop, restart, or inspect status of the global daemon.",
 }
 
 var daemonStartCmd = &cobra.Command{
@@ -34,14 +34,7 @@ var daemonRestartCmd = &cobra.Command{
 	Use:   "restart",
 	Short: "Restart the global daemon with process adoption",
 	Long:  "Stops the daemon and starts a new daemon instance. Running process groups are adopted cleanly without killing services.",
-	RunE:  runDaemonReload,
-}
-
-var daemonReloadCmd = &cobra.Command{
-	Use:   "reload",
-	Short: "Reload the global daemon with fresh code (alias for daemon restart)",
-	Long:  "Alias for `daemon restart`. Restarts the daemon binary and re-attaches/adopts running projects.",
-	RunE:  runDaemonReload,
+	RunE:  runDaemonRestart,
 }
 
 var daemonStatusCmd = &cobra.Command{
@@ -143,7 +136,7 @@ func runDaemonStop(cmd *cobra.Command, args []string) error {
 
 var flagRestartServices bool
 
-func runDaemonReload(cmd *cobra.Command, args []string) error {
+func runDaemonRestart(cmd *cobra.Command, args []string) error {
 	locs, err := project.ResolveDaemon()
 	if err != nil {
 		return err
@@ -201,11 +194,9 @@ func waitForDaemonExit(locs *project.DaemonLocations, timeout time.Duration) {
 
 func init() {
 	daemonRestartCmd.Flags().BoolVarP(&flagRestartServices, "restart-services", "r", false, "Restart all managed services in addition to the daemon")
-	daemonReloadCmd.Flags().BoolVarP(&flagRestartServices, "restart-services", "r", false, "Restart all managed services in addition to the daemon")
 
 	daemonCmd.AddCommand(daemonStartCmd)
 	daemonCmd.AddCommand(daemonStopCmd)
 	daemonCmd.AddCommand(daemonRestartCmd)
-	daemonCmd.AddCommand(daemonReloadCmd)
 	daemonCmd.AddCommand(daemonStatusCmd)
 }

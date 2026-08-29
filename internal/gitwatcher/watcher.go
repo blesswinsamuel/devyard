@@ -181,6 +181,11 @@ func (w *RepoWatcher) run() {
 }
 
 func (w *RepoWatcher) handleEvent(event fsnotify.Event) {
+	// Ignore permission/attribute-only events (e.g. atime updates from reading .git/index).
+	if event.Op == fsnotify.Chmod || (event.Op&^fsnotify.Chmod == 0) {
+		return
+	}
+
 	base := filepath.Base(event.Name)
 	if strings.HasPrefix(base, ".DS_Store") || strings.HasSuffix(base, ".swp") || strings.HasSuffix(base, ".tmp") || strings.HasSuffix(base, ".lock") {
 		return

@@ -2,9 +2,12 @@ package gitwatcher
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/blesswinsamuel/local-compose/internal/gitlog"
 )
 
 func TestRepoWatcher(t *testing.T) {
@@ -97,6 +100,75 @@ func TestRepoWatcher(t *testing.T) {
 		t.Fatalf("unexpected event after RemoveProject: %s", got)
 	case <-time.After(150 * time.Millisecond):
 		// Expected timeout
+	}
+}
+
+func TestRepoWatcherWithGitLogAndDiff(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gitwatcher-realrepo-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	cmd := exec.Command("git", "init", tmpDir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
+	_ = exec.Command("git", "-C", tmpDir, "config", "user.name", "Test").Run()
+	_ = exec.Command("git", "-C", tmpDir, "config", "user.email", "test@example.com").Run()
+
+	file1 := filepath.Join(tmpDir, "file.txt")
+	_ = os.WriteFile(file1, []byte("hello\n"), 0644)
+	_ = exec.Command("git", "-C", tmpDir, "add", "file.txt").Run()
+	_ = exec.Command("git", "-C", tmpDir, "commit", "-m", "initial commit").Run()
+
+	events := make(chan string, 100)
+	w, err := New(func(project string) {
+		events <- project
+	})
+	if err != nil {
+		t.Fatalf("failed to create watcher: %v", err)
+	}
+	defer func() { _ = w.Close() }()
+	w.SetDebounce(50 * time.Millisecond)
+
+	if err := w.AddProject("myrepo", tmpDir); err != nil {
+		t.Fatalf("AddProject failed: %v", err)
+	}
+
+	// Drain any initial events
+	time.Sleep(100 * time.Millisecond)
+	for len(events) > 0 {
+		<-events
+	}
+
+	// Read-only operations like git log and git diff should not trigger watcher events
+	_, _, _, _, err = gitlog.Log(tmpDir)
+	if err != nil {
+		t.Fatalf("gitlog.Log failed: %v", err)
+	}
+	_, err = gitlog.Diff(tmpDir, "WORKDIR", "")
+	if err != nil {
+		t.Fatalf("gitlog.Diff failed: %v", err)
+	}
+
+	select {
+	case evt := <-events:
+		t.Fatalf("unexpected git change event triggered by read-only operations: %v", evt)
+	case <-time.After(300 * time.Millisecond):
+		// Success: no events
+	}
+
+	// Verify mutating operations DO trigger events
+	_ = os.WriteFile(file1, []byte("hello world 2\n"), 0644)
+	_ = exec.Command("git", "-C", tmpDir, "add", "file.txt").Run()
+	select {
+	case got := <-events:
+		if got != "myrepo" {
+			t.Errorf("got %q, want myrepo", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for staging event")
 	}
 }
 

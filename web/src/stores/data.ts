@@ -98,6 +98,18 @@ function sameActionState(a: ActionState, b: ActionState): boolean {
 }
 
 function sameGitCommit(a: GitCommit, b: GitCommit): boolean {
+  if (a.hash === "WORKDIR" && b.hash === "WORKDIR") {
+    return (
+      a.short === b.short &&
+      a.author === b.author &&
+      a.email === b.email &&
+      a.subject === b.subject &&
+      a.head === b.head &&
+      (a.parents?.join(",") ?? "") === (b.parents?.join(",") ?? "") &&
+      (a.refs?.map((r) => `${r.name}:${r.type}:${r.isActive}`).join(",") ?? "") ===
+        (b.refs?.map((r) => `${r.name}:${r.type}:${r.isActive}`).join(",") ?? "")
+    );
+  }
   return (
     a.hash === b.hash &&
     a.short === b.short &&

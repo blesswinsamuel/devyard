@@ -280,6 +280,56 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 	return e.backend, nil
 }
 
+func (m *fakeMultiBackend) ListServices(project string) ([]*protocol.ServiceState, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if project != "" {
+		e, ok := m.projects[project]
+		if !ok {
+			return nil, fmt.Errorf("project %q is not running", project)
+		}
+		states := e.backend.States()
+		for _, st := range states {
+			st.Project = project
+		}
+		return states, nil
+	}
+	var all []*protocol.ServiceState
+	for name, e := range m.projects {
+		states := e.backend.States()
+		for _, st := range states {
+			st.Project = name
+		}
+		all = append(all, states...)
+	}
+	return all, nil
+}
+
+func (m *fakeMultiBackend) ListActions(project string) ([]*protocol.ActionState, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if project != "" {
+		e, ok := m.projects[project]
+		if !ok {
+			return nil, fmt.Errorf("project %q is not running", project)
+		}
+		actions := e.backend.ListActions()
+		for _, act := range actions {
+			act.Project = project
+		}
+		return actions, nil
+	}
+	var all []*protocol.ActionState
+	for name, e := range m.projects {
+		actions := e.backend.ListActions()
+		for _, act := range actions {
+			act.Project = name
+		}
+		all = append(all, actions...)
+	}
+	return all, nil
+}
+
 func (m *fakeMultiBackend) SetOnStateChange(fn func(string, *protocol.ServiceState)) {
 	m.mu.Lock()
 	m.onState = fn

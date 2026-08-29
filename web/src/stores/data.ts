@@ -192,30 +192,80 @@ export async function fetchProjects() {
   }
 }
 
-export async function fetchServices(project: string) {
+export async function fetchServices(project?: string) {
   try {
-    const res = await rpcClient.listServices({ project });
-    const next = res.states;
+    const res = await rpcClient.listServices({ project: project || "" });
+    const list = res.states;
+    if (!project) {
+      setServices((prev) => {
+        const next: Record<string, ServiceState[]> = {};
+        for (const s of list) {
+          const p = s.project || "";
+          if (!next[p]) next[p] = [];
+          next[p].push(s);
+        }
+        let changed = false;
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(next);
+        if (prevKeys.length !== nextKeys.length) {
+          changed = true;
+        } else {
+          for (const k of nextKeys) {
+            if (!prev[k] || !sameArray(prev[k], next[k], sameService)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        return changed ? next : prev;
+      });
+      return;
+    }
     setServices((m) => {
       const prev = m[project];
-      if (prev && sameArray(prev, next, sameService)) return m;
-      return { ...m, [project]: next };
+      if (prev && sameArray(prev, list, sameService)) return m;
+      return { ...m, [project]: list };
     });
   } catch (err: any) {
     if (!/not running/i.test(err.message)) {
-      pushToast(err.message || `Failed to fetch services for ${project}`, "error");
+      pushToast(err.message || (project ? `Failed to fetch services for ${project}` : "Failed to fetch services"), "error");
     }
   }
 }
 
-export async function fetchActions(project: string) {
+export async function fetchActions(project?: string) {
   try {
-    const res = await rpcClient.listActions({ project });
-    const next = res.actions;
+    const res = await rpcClient.listActions({ project: project || "" });
+    const list = res.actions;
+    if (!project) {
+      setActions((prev) => {
+        const next: Record<string, ActionState[]> = {};
+        for (const a of list) {
+          const p = a.project || "";
+          if (!next[p]) next[p] = [];
+          next[p].push(a);
+        }
+        let changed = false;
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(next);
+        if (prevKeys.length !== nextKeys.length) {
+          changed = true;
+        } else {
+          for (const k of nextKeys) {
+            if (!prev[k] || !sameArray(prev[k], next[k], sameActionState)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        return changed ? next : prev;
+      });
+      return;
+    }
     setActions((m) => {
       const prev = m[project];
-      if (prev && sameArray(prev, next, sameActionState)) return m;
-      return { ...m, [project]: next };
+      if (prev && sameArray(prev, list, sameActionState)) return m;
+      return { ...m, [project]: list };
     });
   } catch (err: any) {
     // ignore if project not running
@@ -259,6 +309,8 @@ export async function fetchDaemonStatus() {
 export function refreshAll() {
   fetchProjects();
   fetchDaemonStatus();
+  fetchServices();
+  fetchActions();
   fetchPorts();
 }
 
@@ -273,11 +325,9 @@ export function refreshProjectDetail(project: string) {
 }
 
 export function refreshExpandedProjects(expandedNames: Set<string>, selected: string | null) {
-  const needed = new Set(expandedNames);
-  if (selected) needed.add(selected);
-  for (const p of needed) {
-    refreshProjectDetail(p);
-  }
+  fetchServices();
+  fetchActions();
+  fetchPorts();
 }
 
 // --- lifecycle commands -----------------------------------------------------

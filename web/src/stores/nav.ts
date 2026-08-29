@@ -5,12 +5,14 @@ import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } 
 import {
   actions as actionsData,
   clearSelectedCommit,
+  fetchActions,
+  fetchPorts,
   fetchProjects,
+  fetchServices,
   initDataHandlers,
   loadGitLog,
   projects as projectsData,
   refreshAll,
-  refreshExpandedProjects,
   refreshProjectDetail,
   selectCommit,
   services as servicesData,
@@ -376,16 +378,10 @@ export function start(): () => void {
 
   initDataHandlers();
 
-  setOnProjectsFetched((projects) => {
-    const expandedNames = new Set<string>();
-    for (const p of projects) {
-      if (!untrack(collapsed).has(p.name)) expandedNames.add(p.name);
-    }
-    const sel = untrack(selectedProject);
-    if (sel) expandedNames.add(sel);
-    for (const p of expandedNames) {
-      refreshProjectDetail(p);
-    }
+  setOnProjectsFetched((_projects) => {
+    fetchServices();
+    fetchActions();
+    fetchPorts();
     pruneSelection();
   });
 

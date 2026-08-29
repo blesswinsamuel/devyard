@@ -236,12 +236,12 @@ func (s *Server) RestartDaemon(ctx context.Context, req *connect.Request[localco
 }
 
 func (s *Server) ListServices(ctx context.Context, req *connect.Request[localcomposev1.ListServicesRequest]) (*connect.Response[localcomposev1.ListServicesResponse], error) {
-	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	states, err := s.backend.ListServices(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return connect.NewResponse(&localcomposev1.ListServicesResponse{
-		States: b.States(),
+		States: states,
 	}), nil
 }
 
@@ -334,12 +334,12 @@ func (s *Server) Ports(ctx context.Context, req *connect.Request[localcomposev1.
 }
 
 func (s *Server) ListActions(ctx context.Context, req *connect.Request[localcomposev1.ListActionsRequest]) (*connect.Response[localcomposev1.ListActionsResponse], error) {
-	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	actions, err := s.backend.ListActions(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	return connect.NewResponse(&localcomposev1.ListActionsResponse{
-		Actions: b.ListActions(),
+		Actions: actions,
 	}), nil
 }
 

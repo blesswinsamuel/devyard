@@ -128,6 +128,11 @@ export class ServiceState extends Message<ServiceState> {
    */
   health = "";
 
+  /**
+   * @generated from field: string project = 10;
+   */
+  project = "";
+
   constructor(data?: PartialMessage<ServiceState>) {
     super();
     proto3.util.initPartial(data, this);
@@ -145,6 +150,7 @@ export class ServiceState extends Message<ServiceState> {
     { no: 7, name: "finished_at", kind: "message", T: Timestamp },
     { no: 8, name: "has_health", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 9, name: "health", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 10, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ServiceState {
@@ -218,6 +224,11 @@ export class ActionState extends Message<ActionState> {
    */
   finishedAt?: Timestamp;
 
+  /**
+   * @generated from field: string project = 11;
+   */
+  project = "";
+
   constructor(data?: PartialMessage<ActionState>) {
     super();
     proto3.util.initPartial(data, this);
@@ -236,6 +247,7 @@ export class ActionState extends Message<ActionState> {
     { no: 8, name: "exit_code", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 9, name: "started_at", kind: "message", T: Timestamp },
     { no: 10, name: "finished_at", kind: "message", T: Timestamp },
+    { no: 11, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ActionState {

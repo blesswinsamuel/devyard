@@ -43,6 +43,8 @@ type MultiBackend interface {
 	DaemonStatus() (*protocol.DaemonInfo, error)
 	RestartDaemon(restartServices bool) error
 	ProjectBackend(project string) (Backend, error)
+	ListServices(project string) ([]*protocol.ServiceState, error)
+	ListActions(project string) ([]*protocol.ActionState, error)
 
 	GitLog(project string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error)
 	GitDiff(project string, hash string, path string, contextLines ...int) (*protocol.GitDiffResult, error)
@@ -209,6 +211,28 @@ func (s SingleProjectBackend) SetOnStateChange(func(string, *protocol.ServiceSta
 func (s SingleProjectBackend) SetOnActionStateChange(func(string, *protocol.ActionState)) {}
 
 func (s SingleProjectBackend) SetOnGitChange(func(string)) {}
+
+func (s SingleProjectBackend) ListServices(project string) ([]*protocol.ServiceState, error) {
+	if project != "" && project != s.Project {
+		return nil, fmt.Errorf("unknown project %q", project)
+	}
+	states := s.States()
+	for _, st := range states {
+		st.Project = s.Project
+	}
+	return states, nil
+}
+
+func (s SingleProjectBackend) ListActions(project string) ([]*protocol.ActionState, error) {
+	if project != "" && project != s.Project {
+		return nil, fmt.Errorf("unknown project %q", project)
+	}
+	actions := s.Backend.ListActions()
+	for _, act := range actions {
+		act.Project = s.Project
+	}
+	return actions, nil
+}
 
 func (s SingleProjectBackend) Ports(project string) ([]*protocol.PortBinding, error) {
 	if project != "" && project != s.Project {

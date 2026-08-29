@@ -317,6 +317,7 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		Env:        config.BaseEnv(cfg.DotEnv),
 		Selected:   selectedNames,
 		OnStateChange: func(svc string, state *protocol.ServiceState) {
+			state.Project = name
 			d.mu.Lock()
 			fn := d.onStateChange
 			d.mu.Unlock()
@@ -325,6 +326,7 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 			}
 		},
 		OnActionStateChange: func(action string, state *protocol.ActionState) {
+			state.Project = name
 			d.mu.Lock()
 			fn := d.onActionStateChange
 			d.mu.Unlock()
@@ -1170,14 +1172,18 @@ func closedChan() chan struct{} {
 	return ch
 }
 
-// Ports returns open listening sockets for a project (or all projects when project is empty).
-func (d *Daemon) Ports(project string) ([]*protocol.PortBinding, error) {
+// ListServices returns service states for a project (or all projects when project is empty).
+func (d *Daemon) ListServices(project string) ([]*protocol.ServiceState, error) {
 	if project != "" {
 		b, err := d.ProjectBackend(project)
 		if err != nil {
 			return nil, err
 		}
-		return b.Ports()
+		states := b.States()
+		for _, st := range states {
+			st.Project = project
+		}
+		return states, nil
 	}
 
 	d.mu.Lock()
@@ -1186,6 +1192,84 @@ func (d *Daemon) Ports(project string) ([]*protocol.PortBinding, error) {
 		projects = append(projects, name)
 	}
 	d.mu.Unlock()
+	sort.Strings(projects)
+
+	var all []*protocol.ServiceState
+	for _, name := range projects {
+		b, err := d.ProjectBackend(name)
+		if err != nil {
+			continue
+		}
+		states := b.States()
+		for _, st := range states {
+			st.Project = name
+		}
+		all = append(all, states...)
+	}
+	return all, nil
+}
+
+// ListActions returns defined actions and runtime states for a project (or all projects when project is empty).
+func (d *Daemon) ListActions(project string) ([]*protocol.ActionState, error) {
+	if project != "" {
+		b, err := d.ProjectBackend(project)
+		if err != nil {
+			return nil, err
+		}
+		actions := b.ListActions()
+		for _, act := range actions {
+			act.Project = project
+		}
+		return actions, nil
+	}
+
+	d.mu.Lock()
+	projects := make([]string, 0, len(d.projects))
+	for name := range d.projects {
+		projects = append(projects, name)
+	}
+	d.mu.Unlock()
+	sort.Strings(projects)
+
+	var all []*protocol.ActionState
+	for _, name := range projects {
+		b, err := d.ProjectBackend(name)
+		if err != nil {
+			continue
+		}
+		actions := b.ListActions()
+		for _, act := range actions {
+			act.Project = name
+		}
+		all = append(all, actions...)
+	}
+	return all, nil
+}
+
+// Ports returns open listening sockets for a project (or all projects when project is empty).
+func (d *Daemon) Ports(project string) ([]*protocol.PortBinding, error) {
+	if project != "" {
+		b, err := d.ProjectBackend(project)
+		if err != nil {
+			return nil, err
+		}
+		ports, err := b.Ports()
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range ports {
+			p.Project = project
+		}
+		return ports, nil
+	}
+
+	d.mu.Lock()
+	projects := make([]string, 0, len(d.projects))
+	for name := range d.projects {
+		projects = append(projects, name)
+	}
+	d.mu.Unlock()
+	sort.Strings(projects)
 
 	var all []*protocol.PortBinding
 	for _, name := range projects {
@@ -1195,6 +1279,9 @@ func (d *Daemon) Ports(project string) ([]*protocol.PortBinding, error) {
 		}
 		p, err := b.Ports()
 		if err == nil {
+			for _, port := range p {
+				port.Project = name
+			}
 			all = append(all, p...)
 		}
 	}

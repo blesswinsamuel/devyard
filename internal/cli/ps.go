@@ -48,24 +48,11 @@ var psCmd = &cobra.Command{
 		}
 
 		if showAll {
-			projects, err := client.ListProjects()
+			states, err := client.List("")
 			if err != nil {
 				return err
 			}
-			var allStates []projState
-			for _, p := range projects {
-				states, err := client.List(p.Name)
-				if err != nil {
-					continue
-				}
-				for _, st := range states {
-					allStates = append(allStates, projState{
-						Project: p.Name,
-						State:   st,
-					})
-				}
-			}
-			printAllStates(allStates)
+			printAllStates(states)
 			return nil
 		}
 
@@ -105,22 +92,16 @@ func printStates(states []*protocol.ServiceState) {
 	_ = w.Flush()
 }
 
-type projState struct {
-	Project string
-	State   *protocol.ServiceState
-}
-
 // printAllStates renders the service snapshot across all projects with a PROJECT column.
-func printAllStates(allStates []projState) {
+func printAllStates(states []*protocol.ServiceState) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "PROJECT\tNAME\tSTATUS\tPID\tRESTARTS\tHEALTH")
-	if len(allStates) == 0 {
+	if len(states) == 0 {
 		_, _ = fmt.Fprintln(w, "(no services)")
 		_ = w.Flush()
 		return
 	}
-	for _, ps := range allStates {
-		st := ps.State
+	for _, st := range states {
 		pid := "-"
 		if st.Pid > 0 {
 			pid = fmt.Sprintf("%d", st.Pid)
@@ -133,7 +114,7 @@ func printAllStates(allStates []projState) {
 		if st.Status == "exited" {
 			status = fmt.Sprintf("exited (%d)", st.ExitCode)
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", ps.Project, st.Name, status, pid, st.Restarts, health)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", st.Project, st.Name, status, pid, st.Restarts, health)
 	}
 	_ = w.Flush()
 }

@@ -679,11 +679,61 @@ func (m *fakeMultiBackend) GitLog(string) ([]*protocol.GitCommit, []*protocol.Gi
 func (m *fakeMultiBackend) GitDiff(string, string, string, ...int) (*protocol.GitDiffResult, error) {
 	return nil, nil
 }
-func (m *fakeMultiBackend) GitCommit(string, string) error                { return nil }
-func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error     { return nil }
-func (m *fakeMultiBackend) GitPush(string) (string, error)                { return "pushed", nil }
-func (m *fakeMultiBackend) GitPull(string) (string, error)                { return "pulled", nil }
-func (m *fakeMultiBackend) GitFetch(string) (string, error)               { return "fetched", nil }
+func (m *fakeMultiBackend) GitCommit(string, string) error            { return nil }
+func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return nil }
+func (m *fakeMultiBackend) GitPush(string) (string, error)            { return "pushed", nil }
+func (m *fakeMultiBackend) GitPull(string) (string, error)            { return "pulled", nil }
+func (m *fakeMultiBackend) GitFetch(string) (string, error)           { return "fetched", nil }
+func (m *fakeMultiBackend) ListServices(project string) ([]*protocol.ServiceState, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if project != "" {
+		b, ok := m.projects[project]
+		if !ok {
+			return nil, fmt.Errorf("project %q not running", project)
+		}
+		states := b.States()
+		for _, st := range states {
+			st.Project = project
+		}
+		return states, nil
+	}
+	var all []*protocol.ServiceState
+	for name, b := range m.projects {
+		states := b.States()
+		for _, st := range states {
+			st.Project = name
+		}
+		all = append(all, states...)
+	}
+	return all, nil
+}
+
+func (m *fakeMultiBackend) ListActions(project string) ([]*protocol.ActionState, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if project != "" {
+		b, ok := m.projects[project]
+		if !ok {
+			return nil, fmt.Errorf("project %q not running", project)
+		}
+		actions := b.ListActions()
+		for _, act := range actions {
+			act.Project = project
+		}
+		return actions, nil
+	}
+	var all []*protocol.ActionState
+	for name, b := range m.projects {
+		actions := b.ListActions()
+		for _, act := range actions {
+			act.Project = name
+		}
+		all = append(all, actions...)
+	}
+	return all, nil
+}
+
 func (m *fakeMultiBackend) Ports(string) ([]*protocol.PortBinding, error) { return nil, nil }
 
 func newMultiServer(t *testing.T, m control.MultiBackend) *control.Server {

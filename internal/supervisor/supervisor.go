@@ -706,20 +706,15 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 		})
 		if err != nil {
 			if rt.logger != nil {
-				rt.logger.writeLine(fmt.Sprintf("local-compose: invalid healthcheck: %v", err))
+				rt.logger.writeLine(fmt.Sprintf("local-compose: warning: invalid healthcheck: %v", err))
 			}
-			rt.mu.Lock()
-			rt.status = StatusStopped
-			rt.mu.Unlock()
-			s.notifyStateChange(rt)
-			s.failed.Store(true)
-			return
+		} else {
+			rt.setChecker(chk)
+			defer func() {
+				chk.Stop()
+				rt.setChecker(nil)
+			}()
 		}
-		rt.setChecker(chk)
-		defer func() {
-			chk.Stop()
-			rt.setChecker(nil)
-		}()
 	}
 
 	// Block until dependencies satisfy their conditions before launching.

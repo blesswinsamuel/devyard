@@ -315,3 +315,47 @@ func TestSupervisorHealthcheckLogsUnhealthy(t *testing.T) {
 		t.Errorf("log missing unhealthy line: %q", data)
 	}
 }
+
+// TestSupervisorUnhealthyServiceNotKilled verifies that when a service's healthcheck
+// is bad (fails or times out), the underlying service process remains running and is not killed.
+func TestSupervisorUnhealthyServiceNotKilled(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {
+			Command: "sleep 30", Shell: "sh", Restart: config.RestartNo,
+			Healthcheck: &config.Healthcheck{
+				Test:     []string{"CMD-SHELL", "sleep 2"},
+				Interval: 50 * time.Millisecond,
+				Retries:  1,
+				Timeout:  30 * time.Millisecond,
+			},
+		},
+	})
+	s := newSupervisor(t, file, []string{"svc"})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+		_ = s.Close()
+	})
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if !waitFor(t, 2*time.Second, func() bool {
+		st := s.States()[0]
+		return st.Health == string(health.StateUnhealthy) && st.Status == supervisor.StatusRunning
+	}) {
+		t.Fatalf("svc never reached unhealthy while running: %+v", s.States())
+	}
+	// Verify service is still running after a moment
+	time.Sleep(150 * time.Millisecond)
+	st := s.States()[0]
+	if st.Status != supervisor.StatusRunning {
+		t.Fatalf("svc status = %s, want running (service process was killed or stopped)", st.Status)
+	}
+	if st.PID <= 0 {
+		t.Fatalf("svc PID = %d, want > 0", st.PID)
+	}
+}

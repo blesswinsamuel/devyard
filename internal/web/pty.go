@@ -180,7 +180,7 @@ func (m *ptyManager) closeAll() {
 func closeSession(sess *ptySession) {
 	sess.closeOnce.Do(func() {
 		_ = sess.ptmx.Close()
-		if sess.cmd.Process != nil {
+		if sess.cmd.Process != nil && sess.cmd.Process.Pid > 0 {
 			// The child leads its own process group via setsid; signal the
 			// group, not just the shell pid.
 			_ = syscall.Kill(-sess.cmd.Process.Pid, syscall.SIGKILL)

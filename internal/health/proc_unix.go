@@ -22,7 +22,7 @@ func applyProcessGroup(cmd *exec.Cmd) error {
 // Setpgid set, the probe's PGID equals its PID. A negative pid targets the
 // whole group.
 func killProcessGroup(cmd *exec.Cmd) error {
-	if cmd == nil || cmd.Process == nil {
+	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {
 		return nil
 	}
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)

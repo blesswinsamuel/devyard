@@ -199,11 +199,15 @@ func Run(cfg *Config) error {
 	select {
 	case sig := <-sigCh:
 		// Forward signal to child process group
-		_ = syscall.Kill(-pgid, sig.(syscall.Signal))
+		if pgid > 0 {
+			_ = syscall.Kill(-pgid, sig.(syscall.Signal))
+		}
 		select {
 		case waitErr = <-doneCh:
 		case <-time.After(10 * time.Second):
-			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			if pgid > 0 {
+				_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			}
 			waitErr = <-doneCh
 		}
 	case waitErr = <-doneCh:

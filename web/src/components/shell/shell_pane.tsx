@@ -9,6 +9,7 @@ import {
   spawnTerminal,
   subscribeTerminal,
 } from "~/lib/ws";
+import { moveShellPane } from "~/stores/shells";
 import { Button } from "~/components/ui/button";
 
 export function ShellPane(props: {
@@ -98,9 +99,7 @@ export function ShellPane(props: {
     if (!sourceId || !zone || sourceId === props.id) return;
     e.preventDefault();
     e.stopPropagation();
-    void import("~/stores/shells").then(({ moveShellPane }) =>
-      moveShellPane(props.project, sourceId, props.id, zone)
-    );
+    moveShellPane(props.project, sourceId, props.id, zone);
   };
 
   return (

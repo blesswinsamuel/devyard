@@ -31,6 +31,7 @@ function SplitNodeContainer(props: { node: SplitPaneNode; project: string; activ
     const isVertical = props.node.direction === "vertical";
     const rect = containerRef.getBoundingClientRect();
     const totalPx = isVertical ? rect.width : rect.height;
+    if (totalPx <= 0) return;
     const startPos = isVertical ? e.clientX : e.clientY;
     const initialSizes = [...sizes()];
 
@@ -83,16 +84,16 @@ function SplitNodeContainer(props: { node: SplitPaneNode; project: string; activ
             </div>
             <Show when={idx() < children().length - 1}>
               <div
-                class="relative z-10 flex shrink-0 select-none touch-none items-center justify-center transition-colors hover:bg-primary/60"
+                class="group relative z-10 flex shrink-0 select-none touch-none items-center justify-center transition-colors"
                 classList={{
-                  "w-px cursor-col-resize hover:w-1": isVertical(),
-                  "h-px cursor-row-resize hover:h-1": !isVertical(),
+                  "w-3 -mx-1.5 cursor-col-resize": isVertical(),
+                  "h-3 -my-1.5 cursor-row-resize": !isVertical(),
                 }}
                 onPointerDown={(e) => startResize(idx(), e)}
               >
                 <div
-                  class="rounded-full bg-border-strong/70 group-hover:bg-primary"
-                  classList={{ "h-8 w-[3px]": isVertical(), "w-8 h-[3px]": !isVertical() }}
+                  class="rounded-full bg-border-strong/70 transition-colors group-hover:bg-primary"
+                  classList={{ "h-8 w-1": isVertical(), "w-8 h-1": !isVertical() }}
                 />
               </div>
             </Show>

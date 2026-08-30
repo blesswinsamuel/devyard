@@ -9,8 +9,7 @@ import {
   previousTarget,
 } from "~/stores/nav";
 import { killService, restartService, startProject, stopProject, stopService } from "~/stores/data";
-import { anyOverlayOpen, closeHelp, pushToast, showHelp, toggleHelp } from "~/stores/app";
-import { openTerminalPanel } from "~/stores/app";
+import { anyOverlayOpen, closeHelp, pushToast, showHelp, toggleHelp, togglePanel } from "~/stores/app";
 import { tabKey, togglePreviousLogs } from "~/stores/logs";
 
 /**
@@ -144,7 +143,7 @@ async function handleKeyDown(e: KeyboardEvent): Promise<void> {
     case "t":
     case "T":
       e.preventDefault();
-      openTerminalPanel();
+      togglePanel();
       break;
     case "r":
     case "R": {

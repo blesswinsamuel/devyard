@@ -27,6 +27,7 @@ type ptySession struct {
 	closeOnce sync.Once
 
 	onOutput func(output string)
+	onExit   func()
 }
 
 type ptyManager struct {
@@ -47,13 +48,29 @@ func (m *ptyManager) get(id string) (*ptySession, bool) {
 }
 
 // spawn starts a shell in a new PTY rooted at dir and streams its output to
-// onOutput until it exits or is closed. Sessions are torn down with the
-// owning connection, so respawning an id always creates a fresh shell.
+// onOutput until it exits or is closed. If a session with id already exists,
+// it updates the output/exit callbacks, resizes if requested, and replays
+// buffered session history.
 func (m *ptyManager) spawn(dir, id string, cols, rows uint16, onOutput func(output string), onExit func()) error {
-	if _, exists := m.get(id); exists {
-		return fmt.Errorf("terminal %q already exists", id)
-	}
 	m.mu.Lock()
+	if sess, ok := m.sessions[id]; ok {
+		m.mu.Unlock()
+		if cols > 0 && rows > 0 {
+			_ = pty.Setsize(sess.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
+		}
+		sess.mu.Lock()
+		sess.onOutput = onOutput
+		sess.onExit = onExit
+		var hist string
+		if len(sess.history) > 0 {
+			hist = string(sess.history)
+		}
+		sess.mu.Unlock()
+		if hist != "" && onOutput != nil {
+			onOutput(hist)
+		}
+		return nil
+	}
 	if len(m.sessions) >= maxSessions {
 		m.mu.Unlock()
 		return fmt.Errorf("web: too many terminals (max %d)", maxSessions)
@@ -85,13 +102,28 @@ func (m *ptyManager) spawn(dir, id string, cols, rows uint16, onOutput func(outp
 		_ = pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols})
 	}
 
-	sess := &ptySession{id: id, cmd: cmd, ptmx: ptmx, onOutput: onOutput}
+	sess := &ptySession{id: id, cmd: cmd, ptmx: ptmx, onOutput: onOutput, onExit: onExit}
 
 	m.mu.Lock()
-	if _, dup := m.sessions[id]; dup {
+	if existing, dup := m.sessions[id]; dup {
 		m.mu.Unlock()
 		closeSession(sess)
-		return fmt.Errorf("terminal %q already exists", id)
+		// Another concurrent spawn succeeded; attach to existing.
+		if cols > 0 && rows > 0 {
+			_ = pty.Setsize(existing.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
+		}
+		existing.mu.Lock()
+		existing.onOutput = onOutput
+		existing.onExit = onExit
+		var hist string
+		if len(existing.history) > 0 {
+			hist = string(existing.history)
+		}
+		existing.mu.Unlock()
+		if hist != "" && onOutput != nil {
+			onOutput(hist)
+		}
+		return nil
 	}
 	m.sessions[id] = sess
 	m.mu.Unlock()
@@ -100,22 +132,26 @@ func (m *ptyManager) spawn(dir, id string, cols, rows uint16, onOutput func(outp
 		defer func() {
 			m.remove(id)
 			closeSession(sess)
-			onExit()
+			sess.mu.Lock()
+			exitCb := sess.onExit
+			sess.mu.Unlock()
+			if exitCb != nil {
+				exitCb()
+			}
 		}()
 		buf := make([]byte, 4096)
 		for {
 			n, err := ptmx.Read(buf) // unblocked by closeSession closing ptmx
 			if n > 0 {
-				chunk := string(buf[:n])
 				sess.mu.Lock()
-				sess.history = append(sess.history, chunk...)
+				sess.history = append(sess.history, buf[:n]...)
 				if len(sess.history) > maxHistorySize {
 					sess.history = sess.history[len(sess.history)-maxHistorySize:]
 				}
 				cb := sess.onOutput
 				sess.mu.Unlock()
 				if cb != nil {
-					cb(chunk)
+					cb(string(buf[:n]))
 				}
 			}
 			if err != nil {

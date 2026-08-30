@@ -1,4 +1,4 @@
-import { Terminal, type ITheme } from "@xterm/xterm";
+import { Terminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
@@ -64,15 +64,20 @@ export interface AppTerminal extends Terminal {
   fit: () => void;
 }
 
-export function createTerminal(container: HTMLElement, initialTheme: Theme): AppTerminal {
+export function createTerminal(
+  container: HTMLElement,
+  initialTheme: Theme,
+  options?: Partial<ITerminalOptions>
+): AppTerminal {
   const term = new Terminal({
     fontFamily:
       '"JetBrainsMono Nerd Font", "JetBrainsMono NF", "JetBrains Mono Nerd Font", "JetBrainsMonoNL Nerd Font", "JetBrainsMonoNL NF", "Hack Nerd Font", "Hack NF", "FiraCode Nerd Font", "FiraCode NF", "CaskaydiaCove Nerd Font", "CaskaydiaCove NF", "CascadiaCode Nerd Font", "MesloLGS NF", "MesloLGM Nerd Font", "JetBrains Mono Variable", "JetBrains Mono", "Symbols Nerd Font Mono", "Symbols Nerd Font", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     fontSize: 12.5,
     lineHeight: 1.25,
     scrollback: 5000,
-    convertEol: true,
+    cursorBlink: true,
     theme: themes[initialTheme],
+    ...options,
   });
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
@@ -81,12 +86,14 @@ export function createTerminal(container: HTMLElement, initialTheme: Theme): App
 
   const safeFit = () => {
     if (container.offsetWidth > 0 && container.offsetHeight > 0) {
-      fitAddon.fit();
+      try {
+        fitAddon.fit();
+      } catch {
+        // Ignore unmeasured layout exceptions during transitions
+      }
     }
   };
-  if (container.offsetWidth > 0 && container.offsetHeight > 0) {
-    fitAddon.fit();
-  }
+  safeFit();
 
   const resizeObserver = new ResizeObserver(safeFit);
   resizeObserver.observe(container);

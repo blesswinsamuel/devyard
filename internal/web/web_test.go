@@ -626,3 +626,53 @@ func TestWSTerminalInputUnknownSessionErrors(t *testing.T) {
 		t.Fatalf("resp = %+v", resp)
 	}
 }
+
+func TestWSSpawnTerminalReattachAndHistory(t *testing.T) {
+	dir := t.TempDir()
+	m := newFakeMulti()
+	m.addProject(t, "api", filepath.Join(dir, "local-compose.yml"), newFakeBackend())
+	srv := startStack(t, m)
+
+	c := dialWS(t, srv.Addr())
+	sendWSMsg(t, c, map[string]any{"type": "spawn_terminal", "id": "t1", "project": "api", "cols": 80, "rows": 24})
+	sendWSMsg(t, c, map[string]any{"type": "terminal_input", "id": "t1", "data": "echo unique_history_token\n"})
+
+	// Wait for output on first connection
+	var blob strings.Builder
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		msg, ok := recvWSMsgTimeout(t, c, time.Until(deadline))
+		if !ok {
+			break
+		}
+		if msg["type"] == "terminal_output" {
+			fmt.Fprintf(&blob, "%v", msg["output"])
+			if strings.Contains(blob.String(), "unique_history_token") {
+				break
+			}
+		}
+	}
+	if !strings.Contains(blob.String(), "unique_history_token") {
+		t.Fatalf("did not see unique_history_token on first spawn: %q", blob.String())
+	}
+
+	// Now simulate client remount / tab switch: re-spawn the same ID without closing it
+	sendWSMsg(t, c, map[string]any{"type": "spawn_terminal", "id": "t1", "project": "api", "cols": 100, "rows": 30})
+
+	var reattachBlob strings.Builder
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		msg, ok := recvWSMsgTimeout(t, c, time.Until(deadline))
+		if !ok {
+			break
+		}
+		if msg["type"] == "terminal_output" {
+			fmt.Fprintf(&reattachBlob, "%v", msg["output"])
+			if strings.Contains(reattachBlob.String(), "unique_history_token") {
+				sendWSMsg(t, c, map[string]any{"type": "close_terminal", "id": "t1"})
+				return
+			}
+		}
+	}
+	t.Fatalf("reattach did not replay history; got %q", reattachBlob.String())
+}

@@ -46,7 +46,12 @@ function LogTerminal(props: {
   const [following, setFollowing] = createSignal(true);
 
   onMount(() => {
-    const t = createTerminal(container, theme());
+    const t = createTerminal(container, theme(), {
+      convertEol: true,
+      disableStdin: true,
+      cursorBlink: false,
+      cursorStyle: "bar",
+    });
     term = t;
 
     let buffer: string[] = [];

@@ -91,12 +91,16 @@ export function connectWS() {
 
     const queued = pending;
     pending = [];
+    const spawnedIds = new Set<string>();
     for (const req of queued) {
+      if (req.type === "spawn_terminal" && req.id) {
+        spawnedIds.add(req.id);
+      }
       socket.send(JSON.stringify(req));
     }
 
     for (const [id, entry] of terminalHandlers.entries()) {
-      if (entry.project && entry.cols && entry.rows) {
+      if (!spawnedIds.has(id) && entry.project && entry.cols && entry.rows) {
         socket.send(
           JSON.stringify({
             type: "spawn_terminal",
@@ -166,6 +170,8 @@ export function spawnTerminal(id: string, project: string, cols: number, rows: n
     existing.project = project;
     existing.cols = cols;
     existing.rows = rows;
+  } else {
+    terminalHandlers.set(id, { project, cols, rows, onOutput: () => {}, onExit: () => {} });
   }
   sendWS({ type: "spawn_terminal", id, project, cols, rows });
 }

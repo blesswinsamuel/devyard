@@ -21,7 +21,7 @@ export default defineConfig({
   },
   build: {
     outDir: "../internal/web/dist",
-    emptyOutDir: true,
+    emptyOutDir: false,
   },
   server: {
     host: "0.0.0.0",

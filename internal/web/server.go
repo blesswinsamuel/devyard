@@ -26,7 +26,7 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/control"
 )
 
-//go:embed dist/*
+//go:embed all:dist
 var distFS embed.FS
 
 const (

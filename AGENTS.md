@@ -32,8 +32,9 @@ golangci-lint run                   # lint; config in .golangci-lint.yml (v2)
 
 **Web UI build (embedded SPA).** The frontend source lives in `web/` (SolidJS +
 Vite, built with `bun`). It is embedded into the Go binary via
-`//go:embed dist/*` in `internal/web/server.go`. `internal/web/dist/` is
-gitignored **and not committed** — CI builds it in the "build & test" job
+`//go:embed all:dist` in `internal/web/server.go`. Built frontend assets
+in `internal/web/dist/` are gitignored (except `.gitkeep` so Go builds and
+linters work on clean checkouts) — CI builds it in the "build & test" job
 (`bun install && bun run build`, which outputs to `../internal/web/dist`)
 before `go build ./...`. For local development, `local-compose up` (see
 `local-compose.yml`) runs `bun run dev` (a Vite server on :5173 proxying to the

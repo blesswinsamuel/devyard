@@ -89,6 +89,12 @@ func TestLog(t *testing.T) {
 	if len(commits[1].Parents) != 0 {
 		t.Fatalf("expected root commit to have no parents, got %+v", commits[1])
 	}
+	if commits[0].Additions != 1 || commits[0].Deletions != 0 || commits[0].FilesChanged != 1 {
+		t.Fatalf("expected commit[0] 1 add, 0 del, 1 file; got %+v", commits[0])
+	}
+	if commits[1].Additions != 1 || commits[1].Deletions != 0 || commits[1].FilesChanged != 1 {
+		t.Fatalf("expected commit[1] 1 add, 0 del, 1 file; got %+v", commits[1])
+	}
 }
 
 func TestLogNotARepo(t *testing.T) {
@@ -140,6 +146,9 @@ func TestDiff(t *testing.T) {
 	}
 	if !strings.Contains(res.Diff, "b.txt") || !strings.Contains(res.Diff, "+two") {
 		t.Fatalf("unexpected diff content: %s", res.Diff)
+	}
+	if res.Commit.Additions != 1 || res.Commit.Deletions != 0 || res.Commit.FilesChanged != 1 {
+		t.Fatalf("expected Diff commit 1 add, 0 del, 1 file; got %+v", res.Commit)
 	}
 }
 
@@ -393,5 +402,59 @@ func TestLogDoesNotModifyIndex(t *testing.T) {
 
 	if !fiBefore.ModTime().Equal(fiAfter.ModTime()) {
 		t.Errorf("read-only git operations modified .git/index mtime: before %v, after %v", fiBefore.ModTime(), fiAfter.ModTime())
+	}
+}
+
+func TestParseShortstat(t *testing.T) {
+	tests := []struct {
+		input     string
+		wantFiles int32
+		wantAdd   int32
+		wantDel   int32
+	}{
+		{
+			input:     " 8 files changed, 135 insertions(+), 32 deletions(-)",
+			wantFiles: 8,
+			wantAdd:   135,
+			wantDel:   32,
+		},
+		{
+			input:     " 1 file changed, 7 insertions(+), 12 deletions(-)",
+			wantFiles: 1,
+			wantAdd:   7,
+			wantDel:   12,
+		},
+		{
+			input:     " 1 file changed, 89 insertions(+)",
+			wantFiles: 1,
+			wantAdd:   89,
+			wantDel:   0,
+		},
+		{
+			input:     " 2 files changed, 19 deletions(-)",
+			wantFiles: 2,
+			wantAdd:   0,
+			wantDel:   19,
+		},
+		{
+			input:     " 3 files changed",
+			wantFiles: 3,
+			wantAdd:   0,
+			wantDel:   0,
+		},
+		{
+			input:     "",
+			wantFiles: 0,
+			wantAdd:   0,
+			wantDel:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		fc, add, del := parseShortstat(tt.input)
+		if fc != tt.wantFiles || add != tt.wantAdd || del != tt.wantDel {
+			t.Errorf("parseShortstat(%q) = (%d, %d, %d); want (%d, %d, %d)",
+				tt.input, fc, add, del, tt.wantFiles, tt.wantAdd, tt.wantDel)
+		}
 	}
 }

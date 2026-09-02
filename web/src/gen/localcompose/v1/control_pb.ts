@@ -737,6 +737,21 @@ export class GitCommit extends Message<GitCommit> {
    */
   refs: GitRef[] = [];
 
+  /**
+   * @generated from field: int32 additions = 10;
+   */
+  additions = 0;
+
+  /**
+   * @generated from field: int32 deletions = 11;
+   */
+  deletions = 0;
+
+  /**
+   * @generated from field: int32 files_changed = 12;
+   */
+  filesChanged = 0;
+
   constructor(data?: PartialMessage<GitCommit>) {
     super();
     proto3.util.initPartial(data, this);
@@ -754,6 +769,9 @@ export class GitCommit extends Message<GitCommit> {
     { no: 7, name: "subject", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "head", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 9, name: "refs", kind: "message", T: GitRef, repeated: true },
+    { no: 10, name: "additions", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 11, name: "deletions", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 12, name: "files_changed", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitCommit {

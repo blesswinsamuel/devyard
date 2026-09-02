@@ -233,6 +233,18 @@ export function GitView() {
   const stagedFiles = createMemo(() => allFiles().filter((f) => f.staged && matchFilter(f)));
   const unstagedFiles = createMemo(() => allFiles().filter((f) => f.unstaged && matchFilter(f)));
   const untrackedFiles = createMemo(() => allFiles().filter((f) => f.untracked && matchFilter(f)));
+  const totalAdditions = createMemo(() => {
+    const diff = diffResult();
+    if (!diff) return 0;
+    if (diff.commit?.additions) return diff.commit.additions;
+    return (diff.files ?? []).reduce((acc, f) => acc + (f.additions || 0), 0);
+  });
+  const totalDeletions = createMemo(() => {
+    const diff = diffResult();
+    if (!diff) return 0;
+    if (diff.commit?.deletions) return diff.commit.deletions;
+    return (diff.files ?? []).reduce((acc, f) => acc + (f.deletions || 0), 0);
+  });
 
   const handleCommitSubmit = (e: Event) => {
     e.preventDefault();
@@ -577,9 +589,21 @@ export function GitView() {
                           <span class="truncate">{commit.author}</span>
                           <span class="shrink-0 opacity-50">·</span>
                           <span class="shrink-0">{formatRelativeTime(commit.time)}</span>
-                          <Show when={!isWorkdirRow}>
-                            <span class="ml-auto shrink-0 font-mono text-[10px] opacity-60">{commit.short}</span>
-                          </Show>
+                          <div class="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[10px] tabular">
+                            <Show when={commit.additions > 0 || commit.deletions > 0}>
+                              <span class="flex items-center gap-1">
+                                <Show when={commit.additions > 0}>
+                                  <span class="text-success">+{commit.additions}</span>
+                                </Show>
+                                <Show when={commit.deletions > 0}>
+                                  <span class="text-destructive">−{commit.deletions}</span>
+                                </Show>
+                              </span>
+                            </Show>
+                            <Show when={!isWorkdirRow}>
+                              <span class="opacity-60">{commit.short}</span>
+                            </Show>
+                          </div>
                         </div>
                       </div>
                     </button>
@@ -626,6 +650,8 @@ export function GitView() {
       <div data-kbd-ignore tabIndex={0} class="min-h-0 flex-1 overflow-y-auto outline-none">
         <FileRowAll
           count={allFiles().length}
+          additions={totalAdditions()}
+          deletions={totalDeletions()}
           selected={currentFilePath() === null}
           onSelect={() => onFileClicked(null)}
         />
@@ -708,6 +734,17 @@ export function GitView() {
                       <span class="truncate">&lt;{diffResult()?.commit.email}&gt;</span>
                       <span>·</span>
                       <span>{diffResult()?.commit.time ? formatAuthorTime(diffResult()!.commit.time) : ""}</span>
+                      <Show when={totalAdditions() > 0 || totalDeletions() > 0}>
+                        <span>·</span>
+                        <span class="flex items-center gap-1 font-mono text-[11px] tabular">
+                          <Show when={totalAdditions() > 0}>
+                            <span class="text-success font-medium">+{totalAdditions()}</span>
+                          </Show>
+                          <Show when={totalDeletions() > 0}>
+                            <span class="text-destructive font-medium">−{totalDeletions()}</span>
+                          </Show>
+                        </span>
+                      </Show>
                     </div>
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
@@ -848,6 +885,7 @@ export function GitView() {
                 project={project()!}
                 hash={currentCommitHash()!}
                 diff={diffResult()!.diff}
+                files={allFiles()}
                 selectedFile={currentFilePath()}
                 loading={diffLoading()}
               />
@@ -1211,18 +1249,30 @@ function CopyHash(props: { hash: string }) {
   );
 }
 
-function FileRowAll(props: { count: number; selected: boolean; onSelect: () => void }) {
+function FileRowAll(props: { count: number; additions?: number; deletions?: number; selected: boolean; onSelect: () => void }) {
   return (
     <button
       type="button"
       onClick={props.onSelect}
       class={cn(
-        "flex w-full items-center gap-1.5 px-3 py-2 text-left text-[11px]",
+        "flex w-full items-center justify-between px-3 py-2 text-left text-[11px]",
         props.selected ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:bg-muted/60"
       )}
     >
-      <FileCode class="size-3.5" />
-      All files ({props.count})
+      <span class="flex items-center gap-1.5">
+        <FileCode class="size-3.5" />
+        All files ({props.count})
+      </span>
+      <Show when={(props.additions ?? 0) > 0 || (props.deletions ?? 0) > 0}>
+        <span class="flex shrink-0 items-center gap-1 font-mono text-[10px] tabular">
+          <Show when={(props.additions ?? 0) > 0}>
+            <span class="text-success">+{(props.additions ?? 0)}</span>
+          </Show>
+          <Show when={(props.deletions ?? 0) > 0}>
+            <span class="text-destructive">−{(props.deletions ?? 0)}</span>
+          </Show>
+        </span>
+      </Show>
     </button>
   );
 }
@@ -1324,12 +1374,20 @@ function FileRow(props: { file: GitFileChange; selected: boolean; onSelect: () =
 
 const CONTEXT_STEP = 20;
 
-function DiffBody(props: { project: string; hash: string; diff: string; selectedFile: string | null; loading?: boolean }) {
+function DiffBody(props: { project: string; hash: string; diff: string; files?: GitFileChange[]; selectedFile: string | null; loading?: boolean }) {
   const [contextLines, setContextLines] = createSignal(3);
 
   createEffect(() => {
     props.hash;
     setContextLines(3);
+  });
+
+  const fileStatsMap = createMemo(() => {
+    const map = new Map<string, GitFileChange>();
+    for (const f of props.files ?? []) {
+      map.set(f.path, f);
+    }
+    return map;
   });
 
   const chunks = createMemo(() => parseDiff(props.diff));
@@ -1347,13 +1405,30 @@ function DiffBody(props: { project: string; hash: string; diff: string; selected
       <For each={visibleChunks()}>
         {(chunk) => {
           const meta = parseGitMeta(chunk.metaLines);
+          const fileStat = () => fileStatsMap().get(chunk.filePath);
           return (
             <Card class="overflow-hidden p-0 shadow-sm max-w-full">
               <div class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-muted/70 px-2.5 sm:px-3 py-1.5 backdrop-blur">
-                <span class="flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
-                  <FileCode class="size-3.5 shrink-0 text-primary" />
-                  <span class="truncate font-mono">{chunk.filePath}</span>
-                </span>
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
+                    <FileCode class="size-3.5 shrink-0 text-primary" />
+                    <span class="truncate font-mono">{chunk.filePath}</span>
+                  </span>
+                  <Show when={fileStat()}>
+                    {(stat) => (
+                      <Show when={stat().additions > 0 || stat().deletions > 0}>
+                        <span class="flex shrink-0 items-center gap-1 font-mono text-[10px] tabular">
+                          <Show when={stat().additions > 0}>
+                            <span class="text-success">+{stat().additions}</span>
+                          </Show>
+                          <Show when={stat().deletions > 0}>
+                            <span class="text-destructive">−{stat().deletions}</span>
+                          </Show>
+                        </span>
+                      </Show>
+                    )}
+                  </Show>
+                </div>
                 <Show when={contextLines() > 3}>
                   <Button
                     variant="ghost"

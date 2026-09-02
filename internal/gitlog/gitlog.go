@@ -61,8 +61,8 @@ func Log(dir string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.
 		return nil, branches, tags, stashes, nil
 	}
 
-	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%D"
-	cmd := gitCmd(dir, "log", "--all", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
+	format := "\x1e%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%D"
+	cmd := gitCmd(dir, "log", "--all", "--shortstat", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -77,9 +77,15 @@ func Log(dir string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.
 	raw := out.String()
 	commits := make([]*protocol.GitCommit, 0)
 	if raw != "" {
-		lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
-		for _, line := range lines {
-			fields := strings.Split(line, "\x1f")
+		chunks := strings.Split(raw, "\x1e")
+		for _, chunk := range chunks {
+			chunk = strings.TrimSpace(chunk)
+			if chunk == "" {
+				continue
+			}
+			lines := strings.Split(chunk, "\n")
+			headerLine := strings.TrimSpace(lines[0])
+			fields := strings.Split(headerLine, "\x1f")
 			if len(fields) < 7 {
 				continue
 			}
@@ -96,6 +102,17 @@ func Log(dir string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.
 				c.Parents = strings.Fields(parents)
 			}
 			c.Head = c.Hash == head
+
+			for _, l := range lines[1:] {
+				l = strings.TrimSpace(l)
+				if strings.Contains(l, "changed") {
+					fc, add, del := parseShortstat(l)
+					c.FilesChanged = fc
+					c.Additions = add
+					c.Deletions = del
+					break
+				}
+			}
 
 			if len(fields) >= 8 && fields[7] != "" {
 				var refs []*protocol.GitRef
@@ -185,10 +202,42 @@ func Log(dir string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.
 		if head != "" {
 			workdirCommit.Parents = []string{head}
 		}
+		cmdWorkdirStat := gitCmd(dir, "diff", "HEAD", "--shortstat")
+		var outWorkdirStat bytes.Buffer
+		cmdWorkdirStat.Stdout = &outWorkdirStat
+		if cmdWorkdirStat.Run() == nil {
+			fc, add, del := parseShortstat(outWorkdirStat.String())
+			workdirCommit.FilesChanged = fc
+			workdirCommit.Additions = add
+			workdirCommit.Deletions = del
+		}
 		commits = append([]*protocol.GitCommit{workdirCommit}, commits...)
 	}
 
 	return commits, branches, tags, stashes, nil
+}
+
+func parseShortstat(s string) (filesChanged, additions, deletions int32) {
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if strings.Contains(part, "file changed") || strings.Contains(part, "files changed") {
+			var n int32
+			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
+				filesChanged = n
+			}
+		} else if strings.Contains(part, "insertion") {
+			var n int32
+			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
+				additions = n
+			}
+		} else if strings.Contains(part, "deletion") {
+			var n int32
+			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
+				deletions = n
+			}
+		}
+	}
+	return filesChanged, additions, deletions
 }
 
 func resolveActiveBranch(dir string) string {
@@ -494,6 +543,15 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
 
+	var totalAdd, totalDel int32
+	for _, f := range files {
+		totalAdd += f.Additions
+		totalDel += f.Deletions
+	}
+	commit.Additions = totalAdd
+	commit.Deletions = totalDel
+	commit.FilesChanged = int32(len(files))
+
 	return &protocol.GitDiffResult{
 		Commit: commit,
 		Files:  files,
@@ -626,6 +684,15 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 			}
 		}
 	}
+
+	var totalAdd, totalDel int32
+	for _, f := range files {
+		totalAdd += f.Additions
+		totalDel += f.Deletions
+	}
+	commit.Additions = totalAdd
+	commit.Deletions = totalDel
+	commit.FilesChanged = int32(len(files))
 
 	return &protocol.GitDiffResult{
 		Commit: commit,

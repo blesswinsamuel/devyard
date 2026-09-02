@@ -151,6 +151,9 @@ message GitCommit {
   string subject = 7;
   bool head = 8;
   repeated GitRef refs = 9;
+  int32 additions = 10;
+  int32 deletions = 11;
+  int32 files_changed = 12;
 }
 
 message GitFileChange {

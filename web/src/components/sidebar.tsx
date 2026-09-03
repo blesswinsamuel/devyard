@@ -2,7 +2,12 @@ import { For, Show, createEffect, createMemo } from "solid-js";
 import {
   Boxes,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Copy,
+  ExternalLink,
   GitBranch,
+  History,
   MoreVertical,
   Play,
   Plus,
@@ -10,6 +15,7 @@ import {
   RefreshCw,
   RotateCcw,
   Skull,
+  Terminal,
   X,
 } from "lucide-solid";
 import {
@@ -32,6 +38,7 @@ import {
   killService,
   ports,
   projects as projectsList,
+  refreshAll,
   restartService,
   runAction,
   services as servicesMap,
@@ -40,7 +47,8 @@ import {
   stopProject,
   stopService,
 } from "~/stores/data";
-import { setShowAddProject, setShowDaemonModal, theme, setTheme } from "~/stores/app";
+import { isPreviousLogs, tabKey, togglePreviousLogs } from "~/stores/logs";
+import { pushToast, setShowAddProject, setShowDaemonModal, theme, setTheme } from "~/stores/app";
 import { toggleHelp, sidebarOpen, setSidebarOpen } from "~/stores/app";
 import { openGitView } from "~/stores/nav";
 import { eventStatus } from "~/lib/events";
@@ -60,6 +68,21 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "~/components/ui/context-menu";
+
+function copyToClipboard(text: string, label: string) {
+  navigator.clipboard.writeText(text).then(
+    () => pushToast(`Copied ${label} to clipboard`, "info"),
+    () => pushToast(`Failed to copy to clipboard`, "error")
+  );
+}
 
 function WsDot() {
   return (
@@ -93,109 +116,184 @@ function ServiceRow(props: { project: string; name: string }) {
   const portBinding = createMemo(() =>
     (ports()[props.project] ?? []).find((p) => p.service === props.name)
   );
+  const showingPrevLogs = () =>
+    isPreviousLogs(tabKey(props.project, "service", props.name));
 
   return (
     <Show when={service()}>
       {(s) => (
-        <div
-          class="group/svc relative flex items-stretch"
-          data-kbd-cursor={cursor() ? "" : undefined}
-        >
-          <button
-            type="button"
-            onClick={() => selectService(props.project, props.name)}
-            class={cn(
-              "flex h-[30px] min-w-0 flex-1 items-center gap-2 py-0 pl-8 pr-2.5 text-left text-[13px]",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
-              rowClasses(selected(), cursor())
-            )}
+        <ContextMenu>
+          <ContextMenuTrigger
+            as="div"
+            class="group/svc relative flex items-stretch"
+            data-kbd-cursor={cursor() ? "" : undefined}
+            onContextMenu={() => selectService(props.project, props.name)}
           >
-            <span class={cn("size-1.5 shrink-0 rounded-full transition-shadow", statusDot(s().status))} />
-            <span class="truncate">{props.name}</span>
-            <Show when={s().status === "exited" && (s().exitCode ?? (s() as any).exit_code ?? 0) !== 0}>
-              <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
-                {s().exitCode ?? (s() as any).exit_code}
-              </span>
-            </Show>
-            <div class="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Show when={s().hasHealth ?? (s() as any).has_health}>
-                <Tooltip>
-                  <TooltipTrigger class="flex items-center" as="span">
-                    <span class={cn("size-2 rounded-full", healthDot(s().hasHealth ?? (s() as any).has_health, s().health))} />
-                  </TooltipTrigger>
-                  <TooltipContent>health: {s().health}</TooltipContent>
-                </Tooltip>
+            <button
+              type="button"
+              onClick={() => selectService(props.project, props.name)}
+              class={cn(
+                "flex h-[30px] min-w-0 flex-1 items-center gap-2 py-0 pl-8 pr-2.5 text-left text-[13px]",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+                rowClasses(selected(), cursor())
+              )}
+            >
+              <span class={cn("size-1.5 shrink-0 rounded-full transition-shadow", statusDot(s().status))} />
+              <span class="truncate">{props.name}</span>
+              <Show when={s().status === "exited" && (s().exitCode ?? (s() as any).exit_code ?? 0) !== 0}>
+                <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
+                  {s().exitCode ?? (s() as any).exit_code}
+                </span>
               </Show>
-              <Show when={portBinding()}>
-                {(p) => (
-                  <span
-                    class="rounded bg-primary/10 px-1 font-mono text-[10.5px] font-medium tabular text-primary"
-                    title={`${p().ip}:${p().port}`}
-                  >
-                    :{p().port}
-                  </span>
-                )}
-              </Show>
-              <Show when={s().pid > 0}>
-                <span class="font-mono tabular opacity-70">{s().pid}</span>
-              </Show>
-            </div>
-          </button>
-
-          <div
-            class={cn(
-              "absolute right-1 top-1/2 flex -translate-y-1/2 items-center transition-opacity duration-100",
-              selected()
-                ? "opacity-100"
-                : "pointer-events-none opacity-0 group-hover/svc:pointer-events-auto group-hover/svc:opacity-100"
-            )}
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                as={Button}
-                variant="secondary"
-                size="icon-sm"
-                class="border border-border shadow-sm"
-              >
-                <MoreVertical />
-                <span class="sr-only">Actions</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <Show
-                  when={s().status === "stopped" || s().status === "exited"}
-                  fallback={
-                    <>
-                      <DropdownMenuItem onSelect={() => restartService(props.project, props.name)}>
-                        <RotateCcw />
-                        Restart
-                        <DropdownMenuShortcut>r</DropdownMenuShortcut>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => stopService(props.project, props.name)}>
-                        <Power />
-                        Stop
-                        <DropdownMenuShortcut>s</DropdownMenuShortcut>
-                      </DropdownMenuItem>
-                    </>
-                  }
-                >
-                  <DropdownMenuItem onSelect={() => startService(props.project, props.name)}>
-                    <Play />
-                    Start
-                  </DropdownMenuItem>
+              <div class="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Show when={s().hasHealth ?? (s() as any).has_health}>
+                  <Tooltip>
+                    <TooltipTrigger class="flex items-center" as="span">
+                      <span class={cn("size-2 rounded-full", healthDot(s().hasHealth ?? (s() as any).has_health, s().health))} />
+                    </TooltipTrigger>
+                    <TooltipContent>health: {s().health}</TooltipContent>
+                  </Tooltip>
                 </Show>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  class="text-destructive focus:text-destructive [&>svg]:text-destructive"
-                  onSelect={() => killService(props.project, props.name)}
+                <Show when={portBinding()}>
+                  {(p) => (
+                    <span
+                      class="rounded bg-primary/10 px-1 font-mono text-[10.5px] font-medium tabular text-primary"
+                      title={`${p().ip}:${p().port}`}
+                    >
+                      :{p().port}
+                    </span>
+                  )}
+                </Show>
+                <Show when={s().pid > 0}>
+                  <span class="font-mono tabular opacity-70">{s().pid}</span>
+                </Show>
+              </div>
+            </button>
+
+            <div
+              class={cn(
+                "absolute right-1 top-1/2 flex -translate-y-1/2 items-center transition-opacity duration-100",
+                selected()
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0 group-hover/svc:pointer-events-auto group-hover/svc:opacity-100"
+              )}
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  as={Button}
+                  variant="secondary"
+                  size="icon-sm"
+                  class="border border-border shadow-sm"
                 >
-                  <Skull />
-                  Kill
-                  <DropdownMenuShortcut>k k</DropdownMenuShortcut>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
+                  <MoreVertical />
+                  <span class="sr-only">Actions</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <Show
+                    when={s().status === "stopped" || s().status === "exited"}
+                    fallback={
+                      <>
+                        <DropdownMenuItem onSelect={() => restartService(props.project, props.name)}>
+                          <RotateCcw />
+                          Restart
+                          <DropdownMenuShortcut>r</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => stopService(props.project, props.name)}>
+                          <Power />
+                          Stop
+                          <DropdownMenuShortcut>s</DropdownMenuShortcut>
+                        </DropdownMenuItem>
+                      </>
+                    }
+                  >
+                    <DropdownMenuItem onSelect={() => startService(props.project, props.name)}>
+                      <Play />
+                      Start
+                    </DropdownMenuItem>
+                  </Show>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    class="text-destructive focus:text-destructive [&>svg]:text-destructive"
+                    onSelect={() => killService(props.project, props.name)}
+                  >
+                    <Skull />
+                    Kill
+                    <DropdownMenuShortcut>k k</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem onSelect={() => selectService(props.project, props.name)}>
+              <Terminal />
+              View Logs
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <Show
+              when={s().status === "stopped" || s().status === "exited"}
+              fallback={
+                <>
+                  <ContextMenuItem onSelect={() => restartService(props.project, props.name)}>
+                    <RotateCcw />
+                    Restart
+                    <ContextMenuShortcut>r</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem onSelect={() => stopService(props.project, props.name)}>
+                    <Power />
+                    Stop
+                    <ContextMenuShortcut>s</ContextMenuShortcut>
+                  </ContextMenuItem>
+                </>
+              }
+            >
+              <ContextMenuItem onSelect={() => startService(props.project, props.name)}>
+                <Play />
+                Start
+              </ContextMenuItem>
+            </Show>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              variant="destructive"
+              onSelect={() => killService(props.project, props.name)}
+            >
+              <Skull />
+              Kill
+              <ContextMenuShortcut>k k</ContextMenuShortcut>
+            </ContextMenuItem>
+            <Show when={portBinding()}>
+              {(p) => {
+                const url = () =>
+                  `http://${p().ip === "0.0.0.0" || p().ip === "" ? "localhost" : p().ip}:${p().port}`;
+                return (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem onSelect={() => window.open(url(), "_blank")}>
+                      <ExternalLink />
+                      Open :{p().port} in Browser
+                    </ContextMenuItem>
+                    <ContextMenuItem onSelect={() => copyToClipboard(url(), "port URL")}>
+                      <Copy />
+                      Copy URL (:{p().port})
+                    </ContextMenuItem>
+                  </>
+                );
+              }}
+            </Show>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() => togglePreviousLogs(tabKey(props.project, "service", props.name))}
+            >
+              <History />
+              {showingPrevLogs() ? "Show Live Logs" : "Show Previous Run"}
+              <ContextMenuShortcut>p</ContextMenuShortcut>
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => copyToClipboard(props.name, "service name")}>
+              <Copy />
+              Copy Name
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       )}
     </Show>
   );
@@ -210,61 +308,98 @@ function ActionRow(props: { project: string; name: string }) {
   const cursor = () =>
     sameNavItem(keyboardCursor(), { kind: "action", project: props.project, action: props.name });
   const status = () => act()?.status ?? "idle";
+  const showingPrevLogs = () =>
+    isPreviousLogs(tabKey(props.project, "action", props.name));
 
   return (
-    <div class="group/act relative flex items-stretch" data-kbd-cursor={cursor() ? "" : undefined}>
-      <button
-        type="button"
-        onClick={() => selectAction(props.project, props.name)}
-        class={cn(
-          "flex h-[30px] min-w-0 flex-1 items-center gap-2 py-0 pl-8 pr-2.5 text-left text-[13px]",
-          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
-          rowClasses(selected(), cursor())
-        )}
+    <ContextMenu>
+      <ContextMenuTrigger
+        as="div"
+        class="group/act relative flex items-stretch"
+        data-kbd-cursor={cursor() ? "" : undefined}
+        onContextMenu={() => selectAction(props.project, props.name)}
       >
-        <span
+        <button
+          type="button"
+          onClick={() => selectAction(props.project, props.name)}
           class={cn(
-            "size-1.5 shrink-0 rounded-full",
-            status() === "idle" ? "bg-muted-foreground/50" : statusDot(status())
+            "flex h-[30px] min-w-0 flex-1 items-center gap-2 py-0 pl-8 pr-2.5 text-left text-[13px]",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+            rowClasses(selected(), cursor())
           )}
-        />
-        <span class="truncate">{props.name}</span>
-        <Show when={status() === "exited" && (act()?.exitCode ?? (act() as any)?.exit_code ?? 0) !== 0}>
-          <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
-            {act()?.exitCode ?? (act() as any)?.exit_code}
-          </span>
-        </Show>
-        <Show when={(act()?.pid ?? 0) > 0}>
-          <span class="ml-auto shrink-0 font-mono text-[11px] tabular text-muted-foreground opacity-70">
-            {act()?.pid}
-          </span>
-        </Show>
-      </button>
+        >
+          <span
+            class={cn(
+              "size-1.5 shrink-0 rounded-full",
+              status() === "idle" ? "bg-muted-foreground/50" : statusDot(status())
+            )}
+          />
+          <span class="truncate">{props.name}</span>
+          <Show when={status() === "exited" && (act()?.exitCode ?? (act() as any)?.exit_code ?? 0) !== 0}>
+            <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
+              {act()?.exitCode ?? (act() as any)?.exit_code}
+            </span>
+          </Show>
+          <Show when={(act()?.pid ?? 0) > 0}>
+            <span class="ml-auto shrink-0 font-mono text-[11px] tabular text-muted-foreground opacity-70">
+              {act()?.pid}
+            </span>
+          </Show>
+        </button>
 
-      <div
-        class={cn(
-          "absolute right-1 top-1/2 flex -translate-y-1/2 items-center transition-opacity duration-100",
-          selected()
-            ? "opacity-100"
-            : "pointer-events-none opacity-0 group-hover/act:pointer-events-auto group-hover/act:opacity-100"
-        )}
-      >
-        <Button
-          variant="secondary"
-          size="icon-sm"
-          class="border border-border shadow-sm"
-          title={`Run ${props.name}`}
-          onClick={(e: MouseEvent) => {
-            e.stopPropagation();
+        <div
+          class={cn(
+            "absolute right-1 top-1/2 flex -translate-y-1/2 items-center transition-opacity duration-100",
+            selected()
+              ? "opacity-100"
+              : "pointer-events-none opacity-0 group-hover/act:pointer-events-auto group-hover/act:opacity-100"
+          )}
+        >
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            class="border border-border shadow-sm"
+            title={`Run ${props.name}`}
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              selectAction(props.project, props.name);
+              runAction(props.project, props.name);
+            }}
+          >
+            <Play class="!size-3 text-primary" />
+            <span class="sr-only">Run</span>
+          </Button>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          onSelect={() => {
             selectAction(props.project, props.name);
             runAction(props.project, props.name);
           }}
         >
-          <Play class="!size-3 text-primary" />
-          <span class="sr-only">Run</span>
-        </Button>
-      </div>
-    </div>
+          <Play />
+          Run Action
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => selectAction(props.project, props.name)}>
+          <Terminal />
+          View Logs
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onSelect={() => togglePreviousLogs(tabKey(props.project, "action", props.name))}
+        >
+          <History />
+          {showingPrevLogs() ? "Show Live Logs" : "Show Previous Run"}
+          <ContextMenuShortcut>p</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => copyToClipboard(props.name, "action name")}>
+          <Copy />
+          Copy Name
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -292,122 +427,179 @@ function ProjectItem(props: { name: string }) {
           open={isProjectExpanded(props.name)}
           onOpenChange={(open) => setProjectExpanded(props.name, open)}
         >
-          <div
-            data-kbd-cursor={cursor() ? "" : undefined}
-            class={cn(
-              "group/proj relative flex items-center border-l-2",
-              active() ? "border-primary" : "border-transparent",
-              selected()
-                ? "bg-accent text-accent-foreground"
-                : "hover:bg-muted/70",
-              !selected() && cursor() && "bg-muted"
-            )}
-          >
-            <CollapsibleTrigger class="flex h-8 w-6 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring [&[data-expanded]_svg]:rotate-90">
-              <ChevronRight class="size-3.5 transition-transform duration-100" />
-              <span class="sr-only">Toggle</span>
-            </CollapsibleTrigger>
-            <button
-              type="button"
-              onClick={() => selectProject(props.name)}
-              class="flex h-8 min-w-0 flex-1 items-center gap-2 pr-1 text-left text-[13px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-            >
-              <Boxes class="size-3.5 shrink-0 text-muted-foreground" />
-              <span class="truncate font-medium">{props.name}</span>
-              <div class="ml-auto flex shrink-0 items-center gap-1.5 pr-1">
-                <Show when={aggregateHealth()}>
-                  <Tooltip>
-                    <TooltipTrigger as="span" class="flex items-center">
-                      <span class={cn("size-2 rounded-full", healthDot(true, aggregateHealth()))} />
-                    </TooltipTrigger>
-                    <TooltipContent>health: {aggregateHealth()}</TooltipContent>
-                  </Tooltip>
-                </Show>
-                <Badge variant={statusTone(p().status)}>{p().status}</Badge>
-              </div>
-            </button>
-
-            {/* Hover actions */}
-            <div
+          <ContextMenu>
+            <ContextMenuTrigger
+              as="div"
+              data-kbd-cursor={cursor() ? "" : undefined}
               class={cn(
-                "absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-card/95 p-0.5 shadow-sm ring-1 ring-border backdrop-blur transition-opacity duration-100",
-                "opacity-0 pointer-events-none group-hover/proj:pointer-events-auto group-hover/proj:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
+                "group/proj relative flex items-center border-l-2",
+                active() ? "border-primary" : "border-transparent",
+                selected()
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-muted/70",
+                !selected() && cursor() && "bg-muted"
               )}
+              onContextMenu={() => selectProject(props.name)}
             >
-              <Tooltip>
-                <TooltipTrigger
-                  as={Button}
-                  variant="ghost"
-                  size="icon-sm"
-                  class="text-muted-foreground hover:text-foreground"
-                  onClick={(e: MouseEvent) => {
-                    e.stopPropagation();
-                    openGitView(props.name);
-                  }}
+              <CollapsibleTrigger class="flex h-8 w-6 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring [&[data-expanded]_svg]:rotate-90">
+                <ChevronRight class="size-3.5 transition-transform duration-100" />
+                <span class="sr-only">Toggle</span>
+              </CollapsibleTrigger>
+              <button
+                type="button"
+                onClick={() => selectProject(props.name)}
+                class="flex h-8 min-w-0 flex-1 items-center gap-2 pr-1 text-left text-[13px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <Boxes class="size-3.5 shrink-0 text-muted-foreground" />
+                <span class="truncate font-medium">{props.name}</span>
+                <div class="ml-auto flex shrink-0 items-center gap-1.5 pr-1">
+                  <Show when={aggregateHealth()}>
+                    <Tooltip>
+                      <TooltipTrigger as="span" class="flex items-center">
+                        <span class={cn("size-2 rounded-full", healthDot(true, aggregateHealth()))} />
+                      </TooltipTrigger>
+                      <TooltipContent>health: {aggregateHealth()}</TooltipContent>
+                    </Tooltip>
+                  </Show>
+                  <Badge variant={statusTone(p().status)}>{p().status}</Badge>
+                </div>
+              </button>
+
+              {/* Hover actions */}
+              <div
+                class={cn(
+                  "absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-card/95 p-0.5 shadow-sm ring-1 ring-border backdrop-blur transition-opacity duration-100",
+                  "opacity-0 pointer-events-none group-hover/proj:pointer-events-auto group-hover/proj:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
+                )}
+              >
+                <Tooltip>
+                  <TooltipTrigger
+                    as={Button}
+                    variant="ghost"
+                    size="icon-sm"
+                    class="text-muted-foreground hover:text-foreground"
+                    onClick={(e: MouseEvent) => {
+                      e.stopPropagation();
+                      openGitView(props.name);
+                    }}
+                  >
+                    <GitBranch />
+                    <span class="sr-only">Git log</span>
+                  </TooltipTrigger>
+                  <TooltipContent>Git history (g)</TooltipContent>
+                </Tooltip>
+                <Show
+                  when={p().status !== "stopped"}
+                  fallback={
+                    <Tooltip>
+                      <TooltipTrigger
+                        as={Button}
+                        variant="ghost"
+                        size="icon-sm"
+                        class="text-success hover:text-success"
+                        onClick={(e: MouseEvent) => {
+                          e.stopPropagation();
+                          startProject(props.name);
+                        }}
+                      >
+                        <Play />
+                        <span class="sr-only">Start project</span>
+                      </TooltipTrigger>
+                      <TooltipContent>Start project (u)</TooltipContent>
+                    </Tooltip>
+                  }
                 >
-                  <GitBranch />
-                  <span class="sr-only">Git log</span>
-                </TooltipTrigger>
-                <TooltipContent>Git history (g)</TooltipContent>
-              </Tooltip>
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger
+                        as={Button}
+                        variant="ghost"
+                        size="icon-sm"
+                        class="text-muted-foreground hover:text-foreground"
+                        onClick={(e: MouseEvent) => {
+                          e.stopPropagation();
+                          startProject(props.name);
+                        }}
+                      >
+                        <RefreshCw />
+                        <span class="sr-only">Reload config</span>
+                      </TooltipTrigger>
+                      <TooltipContent>Reload config & prune orphans</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger
+                        as={Button}
+                        variant="ghost"
+                        size="icon-sm"
+                        class="text-muted-foreground hover:text-destructive"
+                        onClick={(e: MouseEvent) => {
+                          e.stopPropagation();
+                          stopProject(props.name);
+                        }}
+                      >
+                        <Power />
+                        <span class="sr-only">Stop project</span>
+                      </TooltipTrigger>
+                      <TooltipContent>Stop project (d d)</TooltipContent>
+                    </Tooltip>
+                  </>
+                </Show>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onSelect={() => selectProject(props.name)}>
+                <Boxes />
+                View Logs
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={() => openGitView(props.name)}>
+                <GitBranch />
+                Git History
+                <ContextMenuShortcut>g</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuSeparator />
               <Show
                 when={p().status !== "stopped"}
                 fallback={
-                  <Tooltip>
-                    <TooltipTrigger
-                      as={Button}
-                      variant="ghost"
-                      size="icon-sm"
-                      class="text-success hover:text-success"
-                      onClick={(e: MouseEvent) => {
-                        e.stopPropagation();
-                        startProject(props.name);
-                      }}
-                    >
-                      <Play />
-                      <span class="sr-only">Start project</span>
-                    </TooltipTrigger>
-                    <TooltipContent>Start project (u)</TooltipContent>
-                  </Tooltip>
+                  <ContextMenuItem onSelect={() => startProject(props.name)}>
+                    <Play />
+                    Start Project
+                    <ContextMenuShortcut>u</ContextMenuShortcut>
+                  </ContextMenuItem>
                 }
               >
-                <>
-                  <Tooltip>
-                    <TooltipTrigger
-                      as={Button}
-                      variant="ghost"
-                      size="icon-sm"
-                      class="text-muted-foreground hover:text-foreground"
-                      onClick={(e: MouseEvent) => {
-                        e.stopPropagation();
-                        startProject(props.name);
-                      }}
-                    >
-                      <RefreshCw />
-                      <span class="sr-only">Reload config</span>
-                    </TooltipTrigger>
-                    <TooltipContent>Reload config & prune orphans</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger
-                      as={Button}
-                      variant="ghost"
-                      size="icon-sm"
-                      class="text-muted-foreground hover:text-destructive"
-                      onClick={(e: MouseEvent) => {
-                        e.stopPropagation();
-                        stopProject(props.name);
-                      }}
-                    >
-                      <Power />
-                      <span class="sr-only">Stop project</span>
-                    </TooltipTrigger>
-                    <TooltipContent>Stop project (d d)</TooltipContent>
-                  </Tooltip>
-                </>
+                <ContextMenuItem onSelect={() => startProject(props.name)}>
+                  <RefreshCw />
+                  Reload Config
+                </ContextMenuItem>
+                <ContextMenuItem
+                  variant="destructive"
+                  onSelect={() => stopProject(props.name)}
+                >
+                  <Power />
+                  Stop Project
+                  <ContextMenuShortcut>d d</ContextMenuShortcut>
+                </ContextMenuItem>
               </Show>
-            </div>
-          </div>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onSelect={() => setProjectExpanded(props.name, !isProjectExpanded(props.name))}
+              >
+                <ChevronRight />
+                {isProjectExpanded(props.name) ? "Collapse Project" : "Expand Project"}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={() => copyToClipboard(props.name, "project name")}>
+                <Copy />
+                Copy Name
+              </ContextMenuItem>
+              <Show when={p().configPath}>
+                <ContextMenuItem onSelect={() => copyToClipboard(p().configPath, "config path")}>
+                  <Copy />
+                  Copy Config Path
+                </ContextMenuItem>
+              </Show>
+            </ContextMenuContent>
+          </ContextMenu>
           <CollapsibleContent>
             <div class="ml-3 border-l py-0.5 pl-1">
               <Show
@@ -506,31 +698,79 @@ export function Sidebar() {
       </header>
 
       {/* Project list */}
-      <nav class="flex-1 overflow-y-auto overflow-x-hidden py-2 outline-none" data-sidebar-nav tabindex="-1">
-        <div class="flex items-center justify-between px-3 pb-1.5 pt-1">
-          <p class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Projects
-          </p>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => setShowAddProject(true)}
-            class="h-5 px-1.5 text-[11px] text-muted-foreground"
+      <ContextMenu>
+        <ContextMenuTrigger
+          as="nav"
+          class="flex-1 overflow-y-auto overflow-x-hidden py-2 outline-none"
+          data-sidebar-nav
+          tabindex="-1"
+        >
+          <div class="flex items-center justify-between px-3 pb-1.5 pt-1">
+            <p class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Projects
+            </p>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setShowAddProject(true)}
+              class="h-5 px-1.5 text-[11px] text-muted-foreground"
+            >
+              <Plus class="size-3" />
+              Add
+            </Button>
+          </div>
+          <div class="flex flex-col px-1.5">
+            <For each={projectNames()}>{(name) => <ProjectItem name={name} />}</For>
+          </div>
+          <Show when={projectNames().length === 0}>
+            <p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
+              No projects yet. Add one above or start with{" "}
+              <code class="rounded bg-muted px-1 font-mono text-foreground">local-compose up</code>.
+            </p>
+          </Show>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => setShowAddProject(true)}>
+            <Plus />
+            Add Project…
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => refreshAll()}>
+            <RefreshCw />
+            Refresh All
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            onSelect={() => {
+              for (const name of projectNames()) {
+                setProjectExpanded(name, true);
+              }
+            }}
           >
-            <Plus class="size-3" />
-            Add
-          </Button>
-        </div>
-        <div class="flex flex-col px-1.5">
-          <For each={projectNames()}>{(name) => <ProjectItem name={name} />}</For>
-        </div>
-        <Show when={projectNames().length === 0}>
-          <p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
-            No projects yet. Add one above or start with{" "}
-            <code class="rounded bg-muted px-1 font-mono text-foreground">local-compose up</code>.
-          </p>
-        </Show>
-      </nav>
+            <ChevronsUpDown />
+            Expand All Projects
+          </ContextMenuItem>
+          <ContextMenuItem
+            onSelect={() => {
+              for (const name of projectNames()) {
+                setProjectExpanded(name, false);
+              }
+            }}
+          >
+            <ChevronsDownUp />
+            Collapse All Projects
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            onSelect={() => {
+              fetchDaemonStatus();
+              setShowDaemonModal(true);
+            }}
+          >
+            <Boxes />
+            Daemon Status…
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       {/* Footer */}
       <footer class="flex h-10 shrink-0 items-center justify-between border-t px-3">

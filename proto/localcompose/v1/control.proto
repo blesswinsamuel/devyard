@@ -207,11 +207,17 @@ message GitChangedEvent {
   string project = 1;
 }
 
+message ProjectsChangedEvent {}
+
+message HeartbeatEvent {}
+
 message Event {
   oneof event {
     ServiceStateChangedEvent service_state_changed = 1;
     ActionStateChangedEvent action_state_changed = 2;
     GitChangedEvent git_changed = 3;
+    ProjectsChangedEvent projects_changed = 4;
+    HeartbeatEvent heartbeat = 5;
   }
 }
 

@@ -152,6 +152,7 @@ type fakeMultiBackend struct {
 	onState    func(project string, state *protocol.ServiceState)
 	onAction   func(project string, state *protocol.ActionState)
 	onGit      func(project string)
+	onProjects func()
 	daemonStop chan struct{}
 }
 
@@ -345,6 +346,12 @@ func (m *fakeMultiBackend) SetOnActionStateChange(fn func(string, *protocol.Acti
 func (m *fakeMultiBackend) SetOnGitChange(fn func(string)) {
 	m.mu.Lock()
 	m.onGit = fn
+	m.mu.Unlock()
+}
+
+func (m *fakeMultiBackend) SetOnProjectsChange(fn func()) {
+	m.mu.Lock()
+	m.onProjects = fn
 	m.mu.Unlock()
 }
 
@@ -554,6 +561,15 @@ func TestConnectRPCProxy(t *testing.T) {
 		t.Fatalf("SubscribeEvents: %v", err)
 	}
 
+	// First event is the immediate heartbeat (flushes response headers).
+	if !stream.Receive() {
+		t.Fatalf("expected initial heartbeat, got error: %v", stream.Err())
+	}
+	if stream.Msg().GetHeartbeat() == nil {
+		t.Fatalf("expected heartbeat event first, got: %+v", stream.Msg())
+	}
+
+	// Second event is the service state change.
 	if stream.Receive() {
 		ev := stream.Msg()
 		sc := ev.GetServiceStateChanged()

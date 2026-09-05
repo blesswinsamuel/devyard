@@ -17,6 +17,14 @@ export function onDaemonEvent(handler: EventHandler): () => void {
   return () => eventHandlers.delete(handler);
 }
 
+type OpenHandler = () => void;
+const openHandlers = new Set<OpenHandler>();
+
+export function onConnectionOpen(handler: OpenHandler): () => void {
+  openHandlers.add(handler);
+  return () => openHandlers.delete(handler);
+}
+
 let activeController: AbortController | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let attempt = 0;
@@ -43,12 +51,23 @@ async function subscribeLoop() {
 
   try {
     const stream = rpcClient.subscribeEvents({}, { signal });
-    setEventStatus("open");
     attempt = 0;
     setReconnectAttempt(0);
 
+    let isFirst = true;
     for await (const event of stream) {
       if (signal.aborted) break;
+      if (isFirst) {
+        isFirst = false;
+        setEventStatus("open");
+        for (const handler of openHandlers) {
+          try {
+            handler();
+          } catch (e) {
+            console.error("Connection open handler error:", e);
+          }
+        }
+      }
       for (const handler of eventHandlers) {
         try {
           handler(event);

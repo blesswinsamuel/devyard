@@ -58,6 +58,7 @@ type MultiBackend interface {
 	SetOnStateChange(fn func(project string, state *protocol.ServiceState))
 	SetOnActionStateChange(fn func(project string, state *protocol.ActionState))
 	SetOnGitChange(fn func(project string))
+	SetOnProjectsChange(fn func())
 }
 
 // SingleProjectBackend adapts a single Backend to the MultiBackend interface.
@@ -211,6 +212,8 @@ func (s SingleProjectBackend) SetOnStateChange(func(string, *protocol.ServiceSta
 func (s SingleProjectBackend) SetOnActionStateChange(func(string, *protocol.ActionState)) {}
 
 func (s SingleProjectBackend) SetOnGitChange(func(string)) {}
+
+func (s SingleProjectBackend) SetOnProjectsChange(func()) {}
 
 func (s SingleProjectBackend) ListServices(project string) ([]*protocol.ServiceState, error) {
 	if project != "" && project != s.Project {

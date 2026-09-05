@@ -77,6 +77,13 @@ func NewServer(socket string, backend MultiBackend) *Server {
 				},
 			})
 		})
+		backend.SetOnProjectsChange(func() {
+			srv.broadcastEvent(&localcomposev1.Event{
+				Event: &localcomposev1.Event_ProjectsChanged{
+					ProjectsChanged: &localcomposev1.ProjectsChangedEvent{},
+				},
+			})
+		})
 	}
 	return srv
 }
@@ -680,6 +687,15 @@ func (s *Server) GitFetch(ctx context.Context, req *connect.Request[localcompose
 }
 
 func (s *Server) SubscribeEvents(ctx context.Context, req *connect.Request[localcomposev1.SubscribeEventsRequest], stream *connect.ServerStream[localcomposev1.Event]) error {
+	// Immediately send a heartbeat event to flush HTTP response headers to the client.
+	if err := stream.Send(&localcomposev1.Event{
+		Event: &localcomposev1.Event_Heartbeat{
+			Heartbeat: &localcomposev1.HeartbeatEvent{},
+		},
+	}); err != nil {
+		return err
+	}
+
 	ch := make(chan *localcomposev1.Event, 64)
 	s.mu.Lock()
 	s.subscribers[ch] = struct{}{}
@@ -691,12 +707,23 @@ func (s *Server) SubscribeEvents(ctx context.Context, req *connect.Request[local
 		s.mu.Unlock()
 	}()
 
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-s.stopCh:
 			return nil
+		case <-ticker.C:
+			if err := stream.Send(&localcomposev1.Event{
+				Event: &localcomposev1.Event_Heartbeat{
+					Heartbeat: &localcomposev1.HeartbeatEvent{},
+				},
+			}); err != nil {
+				return err
+			}
 		case ev, ok := <-ch:
 			if !ok {
 				return nil

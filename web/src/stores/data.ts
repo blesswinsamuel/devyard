@@ -13,7 +13,7 @@ import type {
   ServiceState,
 } from "~/lib/types";
 import { rpcClient } from "~/lib/rpc";
-import { onDaemonEvent } from "~/lib/events";
+import { onConnectionOpen, onDaemonEvent } from "~/lib/events";
 import { pushRoute } from "~/lib/router";
 import { sameArray } from "~/lib/utils";
 import { pushToast, setShowAddProject } from "~/stores/app";
@@ -171,6 +171,7 @@ export function scheduleProjectStatusRefresh() {
   statusRefreshTimer = setTimeout(() => {
     statusRefreshTimer = null;
     fetchProjects();
+    fetchServices();
   }, 300);
 }
 
@@ -594,15 +595,19 @@ export function bindNavHooks(hooks: Partial<typeof navHooks>) {
 
 /** Registers real-time daemon event handlers. Called once from start(). */
 export function initDataHandlers() {
+  onConnectionOpen(() => {
+    refreshAll();
+  });
+
   onDaemonEvent((event) => {
     if (event.event.case === "serviceStateChanged") {
       const { project, state } = event.event.value;
       if (!project || !state) return;
       let changed = false;
       setServices((m) => {
-        const list = m[project];
-        if (!list) return m;
-        const updated = list.map((s) => (s.name === state.name ? state : s));
+        const list = m[project] ?? [];
+        const idx = list.findIndex((s) => s.name === state.name);
+        const updated = idx >= 0 ? list.map((s, i) => (i === idx ? state : s)) : [...list, state];
         if (sameArray(list, updated, sameService)) return m;
         changed = true;
         return { ...m, [project]: updated };
@@ -614,12 +619,14 @@ export function initDataHandlers() {
       const { project, state } = event.event.value;
       if (!project || !state) return;
       setActions((m) => {
-        const list = m[project];
-        if (!list) return m;
-        const updated = list.map((a) => (a.name === state.name ? { ...a, ...state } : a));
+        const list = m[project] ?? [];
+        const idx = list.findIndex((a) => a.name === state.name);
+        const updated = idx >= 0 ? list.map((a, i) => (i === idx ? { ...a, ...state } : a)) : [...list, state];
         if (sameArray(list, updated, sameActionState)) return m;
         return { ...m, [project]: updated };
       });
+    } else if (event.event.case === "projectsChanged") {
+      scheduleProjectStatusRefresh();
     } else if (event.event.case === "gitChanged") {
       const { project } = event.event.value;
       if (!project) return;

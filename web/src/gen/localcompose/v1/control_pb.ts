@@ -1165,6 +1165,68 @@ export class GitChangedEvent extends Message<GitChangedEvent> {
 }
 
 /**
+ * @generated from message localcompose.v1.ProjectsChangedEvent
+ */
+export class ProjectsChangedEvent extends Message<ProjectsChangedEvent> {
+  constructor(data?: PartialMessage<ProjectsChangedEvent>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "localcompose.v1.ProjectsChangedEvent";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectsChangedEvent {
+    return new ProjectsChangedEvent().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ProjectsChangedEvent {
+    return new ProjectsChangedEvent().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ProjectsChangedEvent {
+    return new ProjectsChangedEvent().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ProjectsChangedEvent | PlainMessage<ProjectsChangedEvent> | undefined, b: ProjectsChangedEvent | PlainMessage<ProjectsChangedEvent> | undefined): boolean {
+    return proto3.util.equals(ProjectsChangedEvent, a, b);
+  }
+}
+
+/**
+ * @generated from message localcompose.v1.HeartbeatEvent
+ */
+export class HeartbeatEvent extends Message<HeartbeatEvent> {
+  constructor(data?: PartialMessage<HeartbeatEvent>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "localcompose.v1.HeartbeatEvent";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): HeartbeatEvent {
+    return new HeartbeatEvent().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): HeartbeatEvent {
+    return new HeartbeatEvent().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): HeartbeatEvent {
+    return new HeartbeatEvent().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: HeartbeatEvent | PlainMessage<HeartbeatEvent> | undefined, b: HeartbeatEvent | PlainMessage<HeartbeatEvent> | undefined): boolean {
+    return proto3.util.equals(HeartbeatEvent, a, b);
+  }
+}
+
+/**
  * @generated from message localcompose.v1.Event
  */
 export class Event extends Message<Event> {
@@ -1189,6 +1251,18 @@ export class Event extends Message<Event> {
      */
     value: GitChangedEvent;
     case: "gitChanged";
+  } | {
+    /**
+     * @generated from field: localcompose.v1.ProjectsChangedEvent projects_changed = 4;
+     */
+    value: ProjectsChangedEvent;
+    case: "projectsChanged";
+  } | {
+    /**
+     * @generated from field: localcompose.v1.HeartbeatEvent heartbeat = 5;
+     */
+    value: HeartbeatEvent;
+    case: "heartbeat";
   } | { case: undefined; value?: undefined } = { case: undefined };
 
   constructor(data?: PartialMessage<Event>) {
@@ -1202,6 +1276,8 @@ export class Event extends Message<Event> {
     { no: 1, name: "service_state_changed", kind: "message", T: ServiceStateChangedEvent, oneof: "event" },
     { no: 2, name: "action_state_changed", kind: "message", T: ActionStateChangedEvent, oneof: "event" },
     { no: 3, name: "git_changed", kind: "message", T: GitChangedEvent, oneof: "event" },
+    { no: 4, name: "projects_changed", kind: "message", T: ProjectsChangedEvent, oneof: "event" },
+    { no: 5, name: "heartbeat", kind: "message", T: HeartbeatEvent, oneof: "event" },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Event {

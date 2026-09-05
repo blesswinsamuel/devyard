@@ -84,6 +84,7 @@ type Daemon struct {
 	onStateChange       func(project string, state *protocol.ServiceState)
 	onActionStateChange func(project string, state *protocol.ActionState)
 	onGitChange         func(project string)
+	onProjectsChange    func()
 
 	watcher *gitwatcher.RepoWatcher
 }
@@ -136,6 +137,14 @@ func (d *Daemon) SetOnActionStateChange(fn func(project string, state *protocol.
 func (d *Daemon) SetOnGitChange(fn func(project string)) {
 	d.mu.Lock()
 	d.onGitChange = fn
+	d.mu.Unlock()
+}
+
+// SetOnProjectsChange registers a callback that fires whenever the set of
+// running/registered projects changes (started, stopped, removed).
+func (d *Daemon) SetOnProjectsChange(fn func()) {
+	d.mu.Lock()
+	d.onProjectsChange = fn
 	d.mu.Unlock()
 }
 
@@ -370,7 +379,11 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 	if d.watcher != nil && p.BaseDir != "" {
 		_ = d.watcher.AddProject(name, p.BaseDir)
 	}
+	pFn := d.onProjectsChange
 	d.mu.Unlock()
+	if pFn != nil {
+		pFn()
+	}
 
 	// Write config path for autostart discovery.
 	_ = writeConfigPath(locs, configPath)
@@ -435,7 +448,11 @@ func (d *Daemon) StopProject(name string) error {
 
 	d.mu.Lock()
 	p.stopping = false
+	pFn := d.onProjectsChange
 	d.mu.Unlock()
+	if pFn != nil {
+		pFn()
+	}
 
 	return nil
 }
@@ -490,7 +507,11 @@ func (d *Daemon) RemoveProject(name string) error {
 		if d.watcher != nil {
 			d.watcher.RemoveProject(name)
 		}
+		pFn := d.onProjectsChange
 		d.mu.Unlock()
+		if pFn != nil {
+			pFn()
+		}
 	}
 
 	locs, err := project.Resolve(name)

@@ -565,6 +565,7 @@ type fakeMultiBackend struct {
 	envFiles     []string
 	stopped      []string
 	startedSvc   []string
+	onProjects   func()
 	daemonStopCh chan struct{}
 }
 
@@ -672,6 +673,11 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 func (m *fakeMultiBackend) SetOnStateChange(func(string, *protocol.ServiceState))      {}
 func (m *fakeMultiBackend) SetOnActionStateChange(func(string, *protocol.ActionState)) {}
 func (m *fakeMultiBackend) SetOnGitChange(func(string))                                {}
+func (m *fakeMultiBackend) SetOnProjectsChange(fn func()) {
+	m.mu.Lock()
+	m.onProjects = fn
+	m.mu.Unlock()
+}
 
 func (m *fakeMultiBackend) GitLog(string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error) {
 	return nil, nil, nil, nil, nil
@@ -943,5 +949,54 @@ func recvLine(t *testing.T, ch <-chan string, timeout time.Duration) string {
 	case <-time.After(timeout):
 		t.Fatalf("timed out waiting for a log line")
 		return ""
+	}
+}
+
+func TestSubscribeEventsHeartbeatAndProjectsChanged(t *testing.T) {
+	m := newFakeMultiBackend()
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	events := make(chan *protocol.Event, 10)
+	go func() {
+		_ = c.SubscribeEvents(ctx, func(ev *protocol.Event) {
+			events <- ev
+		})
+	}()
+
+	// First event must be the immediate heartbeat (flushes HTTP headers)
+	select {
+	case ev := <-events:
+		if ev.GetHeartbeat() == nil {
+			t.Fatalf("expected initial HeartbeatEvent, got %+v", ev)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for initial heartbeat")
+	}
+
+	// Trigger projects change callback
+	m.mu.Lock()
+	fn := m.onProjects
+	m.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
+
+	// Second event must be ProjectsChanged
+	select {
+	case ev := <-events:
+		if ev.GetProjectsChanged() == nil {
+			t.Fatalf("expected ProjectsChangedEvent, got %+v", ev)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for projects_changed event")
 	}
 }

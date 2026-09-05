@@ -152,7 +152,7 @@ export function ServiceHeader() {
         {(s) => (
           <>
             <Badge variant={statusTone(s().status)}>{statusLabel(s().status, s().exitCode ?? (s() as any).exit_code ?? 0)}</Badge>
-            <Show when={s().hasHealth ?? (s() as any).has_health}>
+            <Show when={(s().hasHealth ?? (s() as any).has_health) && (s().status === "running" || s().status === "starting")}>
               <Badge variant={healthTone(s().hasHealth ?? (s() as any).has_health, s().health)} class="max-[420px]:hidden">
                 health: {s().health}
               </Badge>

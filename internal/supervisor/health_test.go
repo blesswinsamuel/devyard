@@ -5,11 +5,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/health"
+	"github.com/blesswinsamuel/local-compose/internal/protocol"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
 )
 
@@ -49,6 +51,69 @@ func TestSupervisorHealthcheckBecomesHealthy(t *testing.T) {
 	}) {
 		st := s.States()[0]
 		t.Fatalf("svc never reached running+healthy: %+v", st)
+	}
+}
+
+// TestSupervisorHealthcheckNotifiesOnStateChange verifies that transitions in
+// healthcheck status (starting -> healthy) trigger OnStateChange callbacks.
+func TestSupervisorHealthcheckNotifiesOnStateChange(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {
+			Command: "sleep 30",
+			Shell:   "sh",
+			Restart: config.RestartNo,
+			Healthcheck: &config.Healthcheck{
+				Test:     []string{"CMD", "true"},
+				Interval: 20 * time.Millisecond,
+				Retries:  3,
+				Timeout:  time.Second,
+			},
+		},
+	})
+	var mu sync.Mutex
+	var transitions []*protocol.ServiceState
+	s, err := supervisor.New(supervisor.Options{
+		Locations: testLocations(t),
+		File:      file,
+		Order:     []string{"svc"},
+		BaseDir:   t.TempDir(),
+		Backoff:   testBackoff(),
+		OnStateChange: func(_ string, state *protocol.ServiceState) {
+			mu.Lock()
+			transitions = append(transitions, state)
+			mu.Unlock()
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+		_ = s.Close()
+	})
+
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	if !waitFor(t, 2*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, tr := range transitions {
+			if tr.Health == string(health.StateHealthy) {
+				return true
+			}
+		}
+		return false
+	}) {
+		mu.Lock()
+		defer mu.Unlock()
+		t.Fatalf("never received OnStateChange with Health=healthy; saw transitions: %v", transitions)
 	}
 }
 

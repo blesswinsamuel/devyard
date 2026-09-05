@@ -593,6 +593,9 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 			}
 		})
 		if err == nil {
+			chk.SetOnStateChange(func(_ health.State) {
+				s.notifyStateChange(rt)
+			})
 			rt.setChecker(chk)
 			chk.EnsureStarted(ctx)
 			defer func() {
@@ -709,6 +712,9 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 				rt.logger.writeLine(fmt.Sprintf("local-compose: warning: invalid healthcheck: %v", err))
 			}
 		} else {
+			chk.SetOnStateChange(func(_ health.State) {
+				s.notifyStateChange(rt)
+			})
 			rt.setChecker(chk)
 			defer func() {
 				chk.Stop()

@@ -66,9 +66,10 @@ type Checker struct {
 	cfg  Config
 	log  func(string)
 
-	mu          sync.Mutex
-	state       State
-	consecutive int
+	mu            sync.Mutex
+	state         State
+	consecutive   int
+	onStateChange func(State)
 
 	started  atomic.Bool
 	stop     chan struct{}
@@ -124,6 +125,14 @@ func (c *Checker) State() State {
 	return c.state
 }
 
+// SetOnStateChange registers a callback invoked whenever the health state
+// transitions. Safe for concurrent use.
+func (c *Checker) SetOnStateChange(fn func(State)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onStateChange = fn
+}
+
 // EnsureStarted begins probing on an interval. The first call launches the
 // probe goroutine; subsequent calls are no-ops. It is safe to call after Stop
 // returns (the call is a no-op once Stop has run).
@@ -167,29 +176,39 @@ func (c *Checker) loop(ctx context.Context) {
 // consecutive-failure counter and marks the service healthy. A failure
 // increments the counter and, once it reaches Retries, marks the service
 // unhealthy. State transitions are logged so the supervisor's per-service log
-// file records why health flipped.
+// file records why health flipped, and onStateChange is invoked on transitions.
 func (c *Checker) probeOnce(ctx context.Context) {
 	err := c.runProbe(ctx)
 	c.mu.Lock()
+	prevState := c.state
+	var logMsg string
 	if err == nil {
 		recovered := c.state == StateUnhealthy
 		c.consecutive = 0
 		c.state = StateHealthy
-		c.mu.Unlock()
 		if recovered {
-			c.log("local-compose: healthcheck recovered: healthy")
+			logMsg = "local-compose: healthcheck recovered: healthy"
 		}
-		return
+	} else {
+		c.consecutive++
+		failed := c.consecutive >= c.cfg.Retries
+		wasUnhealthy := c.state == StateUnhealthy
+		if failed {
+			c.state = StateUnhealthy
+			if !wasUnhealthy {
+				logMsg = fmt.Sprintf("local-compose: healthcheck unhealthy after %d consecutive failures: %v", c.consecutive, err)
+			}
+		}
 	}
-	c.consecutive++
-	failed := c.consecutive >= c.cfg.Retries
-	wasUnhealthy := c.state == StateUnhealthy
-	if failed {
-		c.state = StateUnhealthy
-	}
+	newState := c.state
+	fn := c.onStateChange
 	c.mu.Unlock()
-	if failed && !wasUnhealthy {
-		c.log(fmt.Sprintf("local-compose: healthcheck unhealthy after %d consecutive failures: %v", c.consecutive, err))
+
+	if logMsg != "" {
+		c.log(logMsg)
+	}
+	if newState != prevState && fn != nil {
+		fn(newState)
 	}
 }
 

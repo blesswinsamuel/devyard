@@ -270,3 +270,70 @@ func TestLogsTransitionToUnhealthy(t *testing.T) {
 	defer mu.Unlock()
 	t.Fatalf("no unhealthy log line emitted: %v", logs)
 }
+
+func TestSetOnStateChange(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	dir := t.TempDir()
+	probeFile := filepath.Join(dir, "probe_pass")
+
+	var (
+		mu     sync.Mutex
+		states []health.State
+	)
+	c, err := health.New("svc", health.Config{
+		Test:     []string{"CMD-SHELL", "test -f " + probeFile},
+		Interval: 20 * time.Millisecond,
+		Retries:  1,
+		Timeout:  time.Second,
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(c.Stop)
+
+	c.SetOnStateChange(func(st health.State) {
+		mu.Lock()
+		states = append(states, st)
+		mu.Unlock()
+	})
+
+	c.EnsureStarted(context.Background())
+
+	// Initially probe fails (probeFile does not exist) -> state becomes unhealthy
+	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+		t.Fatalf("state = %s, want unhealthy", c.State())
+	}
+
+	// Now create probeFile -> state becomes healthy
+	if err := os.WriteFile(probeFile, []byte("ok"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if !waitForState(t, c, 2*time.Second, health.StateHealthy) {
+		t.Fatalf("state = %s, want healthy", c.State())
+	}
+
+	// Remove probeFile -> state returns to unhealthy
+	if err := os.Remove(probeFile); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+		t.Fatalf("state = %s, want unhealthy", c.State())
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(states) < 3 {
+		t.Fatalf("expected at least 3 state transitions, got %d: %v", len(states), states)
+	}
+	if states[0] != health.StateUnhealthy {
+		t.Errorf("expected transition 0 to be unhealthy, got %v", states[0])
+	}
+	if states[1] != health.StateHealthy {
+		t.Errorf("expected transition 1 to be healthy, got %v", states[1])
+	}
+	if states[2] != health.StateUnhealthy {
+		t.Errorf("expected transition 2 to be unhealthy, got %v", states[2])
+	}
+}

@@ -172,6 +172,7 @@ export function scheduleProjectStatusRefresh() {
     statusRefreshTimer = null;
     fetchProjects();
     fetchServices();
+    fetchPorts();
   }, 300);
 }
 

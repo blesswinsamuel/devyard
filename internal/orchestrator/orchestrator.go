@@ -148,6 +148,15 @@ func (d *Daemon) SetOnProjectsChange(fn func()) {
 	d.mu.Unlock()
 }
 
+func (d *Daemon) notifyProjectsChanged() {
+	d.mu.Lock()
+	fn := d.onProjectsChange
+	d.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
 // StartProject loads the config at configPath, creates a Supervisor for it,
 // starts it, and adds it to the daemon's map. If build is true, pre-start
 // builds are run before starting services. envFile is the absolute path to an
@@ -200,7 +209,9 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, rem
 				_ = removeProjectStoppedMarker(locs)
 			}
 			p.TotalServices = len(cfg.File.Services)
-			return sup.StartStopped()
+			err := sup.StartStopped()
+			d.notifyProjectsChanged()
+			return err
 		default: // stopped
 			old := p
 			d.mu.Unlock()
@@ -379,11 +390,8 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 	if d.watcher != nil && p.BaseDir != "" {
 		_ = d.watcher.AddProject(name, p.BaseDir)
 	}
-	pFn := d.onProjectsChange
 	d.mu.Unlock()
-	if pFn != nil {
-		pFn()
-	}
+	d.notifyProjectsChanged()
 
 	// Write config path for autostart discovery.
 	_ = writeConfigPath(locs, configPath)
@@ -448,11 +456,8 @@ func (d *Daemon) StopProject(name string) error {
 
 	d.mu.Lock()
 	p.stopping = false
-	pFn := d.onProjectsChange
 	d.mu.Unlock()
-	if pFn != nil {
-		pFn()
-	}
+	d.notifyProjectsChanged()
 
 	return nil
 }
@@ -507,11 +512,8 @@ func (d *Daemon) RemoveProject(name string) error {
 		if d.watcher != nil {
 			d.watcher.RemoveProject(name)
 		}
-		pFn := d.onProjectsChange
 		d.mu.Unlock()
-		if pFn != nil {
-			pFn()
-		}
+		d.notifyProjectsChanged()
 	}
 
 	locs, err := project.Resolve(name)

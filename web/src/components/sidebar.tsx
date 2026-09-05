@@ -146,7 +146,7 @@ function ServiceRow(props: { project: string; name: string }) {
                 </span>
               </Show>
               <div class="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Show when={s().hasHealth ?? (s() as any).has_health}>
+                <Show when={(s().hasHealth ?? (s() as any).has_health) && (s().status === "running" || s().status === "starting")}>
                   <Tooltip>
                     <TooltipTrigger class="flex items-center" as="span">
                       <span class={cn("size-2 rounded-full", healthDot(s().hasHealth ?? (s() as any).has_health, s().health))} />
@@ -411,11 +411,13 @@ function ProjectItem(props: { name: string }) {
   const cursor = () => sameNavItem(keyboardCursor(), { kind: "project", project: props.name });
 
   const aggregateHealth = createMemo(() => {
-    const withHealth = (serviceList() ?? []).filter((s) => s.hasHealth ?? (s as any).has_health);
-    if (withHealth.length === 0) return "";
-    if (withHealth.some((s) => s.health === "unhealthy")) return "unhealthy";
-    if (withHealth.some((s) => s.health === "starting" || s.health === "starting_healthy")) return "starting";
-    if (withHealth.every((s) => s.health === "healthy")) return "healthy";
+    const runningWithHealth = (serviceList() ?? []).filter(
+      (s) => (s.hasHealth ?? (s as any).has_health) && (s.status === "running" || s.status === "starting")
+    );
+    if (runningWithHealth.length === 0) return "";
+    if (runningWithHealth.some((s) => s.health === "unhealthy")) return "unhealthy";
+    if (runningWithHealth.some((s) => s.health === "starting" || s.health === "starting_healthy")) return "starting";
+    if (runningWithHealth.every((s) => s.health === "healthy")) return "healthy";
     return "";
   });
   const actionList = createMemo(() => actionsMap()[props.name] ?? []);

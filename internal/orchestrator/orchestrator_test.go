@@ -829,6 +829,19 @@ services:
 		t.Fatalf("adopted service status = %q, want 'running'", states[0].Status)
 	}
 
-	// Clean up by stopping the daemon (and terminating services)
+	// Clean up: stopping d2 kills the adopted process. d1's adoption monitor
+	// (still alive in this process) observes the exit up to one poll interval
+	// later and writes its final state — wait for that by stopping d1's
+	// supervisor too, which blocks until its run loops exit, so nothing
+	// writes into the TempDir after the test returns.
 	_ = d2.StopDaemon()
+	stopDeadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(stopDeadline) {
+		d1States := b1.States()
+		if len(d1States) == 0 || d1States[0].Status != "running" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	_ = d1.StopDaemon()
 }

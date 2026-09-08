@@ -266,7 +266,12 @@ message RestartDaemonRequest {
   bool restart_services = 1;
 }
 
-message RestartDaemonResponse {}
+message RestartDaemonResponse {
+  // Pid is the process id of the replacement daemon spawned by the old
+  // daemon. Callers use it to wait for the new daemon to take over the
+  // control socket before assuming the restart succeeded.
+  int32 pid = 1;
+}
 
 message ListServicesRequest {
   string project = 1;

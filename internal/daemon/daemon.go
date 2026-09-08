@@ -36,6 +36,12 @@ func LockFilePath(locs *project.DaemonLocations) string {
 	return filepath.Join(locs.Runtime, "daemon.lock")
 }
 
+// lockAcquireTimeout bounds how long LockDaemon waits for the previous daemon
+// to release its lock. It must comfortably exceed DefaultGracefulStopTimeout
+// (20s) so a replacement daemon never gives up while the old one is still
+// gracefully stopping services.
+const lockAcquireTimeout = 30 * time.Second
+
 // LockDaemon attempts to acquire an exclusive non-blocking flock on the daemon lock file.
 // It returns the open *os.File holding the lock, which must remain open for the duration
 // of the daemon process.
@@ -52,7 +58,7 @@ func LockDaemon(locs *project.DaemonLocations) (*os.File, error) {
 		return nil, fmt.Errorf("daemon: open lock file: %w", err)
 	}
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(lockAcquireTimeout)
 	for {
 		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
@@ -178,4 +184,22 @@ func RemoveDaemonPidfile(locs *project.DaemonLocations) error {
 		return nil
 	}
 	return err
+}
+
+// RemovePidfileIfOurs removes the pidfile only when it still contains our own
+// pid. During a daemon restart the replacement daemon may have already
+// written its own pid to the pidfile by the time the old daemon exits; the
+// old daemon must not delete it.
+func RemovePidfileIfOurs(locs *project.DaemonLocations, pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	stored, err := ReadPidfile(locs.Pidfile)
+	if err != nil {
+		return nil
+	}
+	if stored != pid {
+		return nil
+	}
+	return os.Remove(locs.Pidfile)
 }

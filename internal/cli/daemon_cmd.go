@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -160,11 +161,12 @@ func runDaemonRestart(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	if err := client.RestartDaemon(flagRestartServices); err != nil {
+	newPid, err := client.RestartDaemon(flagRestartServices)
+	if err != nil {
 		return fmt.Errorf("restart daemon: %w", err)
 	}
 
-	if err := control.WaitForSocket(locs.Socket, 15*time.Second); err != nil {
+	if err := waitForDaemonHandover(locs, newPid, 30*time.Second); err != nil {
 		return fmt.Errorf("wait for daemon restart: %w", err)
 	}
 
@@ -174,6 +176,30 @@ func runDaemonRestart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "local-compose: daemon restarted (running services adopted)")
 	}
 	return nil
+}
+
+// waitForDaemonHandover waits until the replacement daemon is serving the
+// control socket. It verifies the *serving* daemon's pid matches the pid the
+// old daemon reported spawning — the socket file alone is not enough, because
+// the old daemon's socket lingers until it exits. Fails fast if the
+// replacement daemon process died (e.g. it could not acquire the daemon lock).
+func waitForDaemonHandover(locs *project.DaemonLocations, newPid int32, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if newPid > 0 && !daemon.IsAlive(int(newPid)) {
+			return fmt.Errorf("replacement daemon (pid %d) exited during restart", newPid)
+		}
+		client, err := control.Dial(locs.Socket)
+		if err == nil {
+			info, statusErr := client.DaemonStatus()
+			_ = client.Close()
+			if statusErr == nil && info != nil && (newPid <= 0 || info.Pid == newPid) {
+				return nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("timed out waiting for the replacement daemon to take over")
 }
 
 // waitForDaemonExit polls the pidfile until the daemon process is gone or the

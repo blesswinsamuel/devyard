@@ -637,13 +637,15 @@ func (d *Daemon) StopDaemonKeepServices() error {
 // RestartDaemon spawns a replacement daemon process and shuts down the running daemon.
 // If restartServices is true, all running services are stopped and restarted.
 // If restartServices is false, services remain running and are adopted by the new daemon.
-func (d *Daemon) RestartDaemon(restartServices bool) error {
+// It returns the replacement daemon's pid so callers can wait for it to take over.
+func (d *Daemon) RestartDaemon(restartServices bool) (int32, error) {
 	locs, err := project.ResolveDaemon()
 	if err != nil {
-		return fmt.Errorf("resolve daemon locations: %w", err)
+		return 0, fmt.Errorf("resolve daemon locations: %w", err)
 	}
-	if _, err := daemon.SpawnDaemon(locs); err != nil {
-		return fmt.Errorf("spawn replacement daemon: %w", err)
+	pid, err := daemon.SpawnDaemon(locs)
+	if err != nil {
+		return 0, fmt.Errorf("spawn replacement daemon: %w", err)
 	}
 	go func() {
 		time.Sleep(50 * time.Millisecond)
@@ -653,7 +655,7 @@ func (d *Daemon) RestartDaemon(restartServices bool) error {
 			_ = d.StopDaemonKeepServices()
 		}
 	}()
-	return nil
+	return int32(pid), nil
 }
 
 // ListProjects returns a snapshot of all known projects (both running and stopped)
@@ -1173,6 +1175,12 @@ func (d *Daemon) Autostart() (started, skipped int, err error) {
 		}
 		started++
 	}
+
+	// Tell clients (web UI, CLI event subscribers) that the project set is
+	// final — adopted projects included — so connected clients re-fetch
+	// instead of relying on state-change events fired before they subscribed.
+	d.notifyProjectsChanged()
+
 	return started, skipped, nil
 }
 

@@ -41,7 +41,10 @@ type MultiBackend interface {
 	RemoveProject(name string) error
 	StopDaemon() error
 	DaemonStatus() (*protocol.DaemonInfo, error)
-	RestartDaemon(restartServices bool) error
+	// RestartDaemon replaces the daemon process. It returns the pid of the
+	// replacement daemon it spawned (0 when unknown) so callers can wait for
+	// the new daemon to take over before assuming success.
+	RestartDaemon(restartServices bool) (int32, error)
 	ProjectBackend(project string) (Backend, error)
 	ListServices(project string) ([]*protocol.ServiceState, error)
 	ListActions(project string) ([]*protocol.ActionState, error)
@@ -196,8 +199,8 @@ func (s SingleProjectBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
 	}, nil
 }
 
-func (s SingleProjectBackend) RestartDaemon(restartServices bool) error {
-	return s.Stop(context.Background())
+func (s SingleProjectBackend) RestartDaemon(restartServices bool) (int32, error) {
+	return 0, s.Stop(context.Background())
 }
 
 func (s SingleProjectBackend) ProjectBackend(project string) (Backend, error) {

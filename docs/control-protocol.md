@@ -64,6 +64,15 @@ service DaemonService {
 
 ## Streaming Behavior
 
+### Daemon Restart Handshake
+
+`RestartDaemon` spawns a replacement daemon and returns its pid in
+`RestartDaemonResponse.pid`. The old daemon then exits (stopping services too
+when `restart_services` is set; otherwise they keep running and are adopted by
+the new daemon). Clients should wait until the *serving* daemon reports that
+pid via `DaemonStatus` before assuming the restart succeeded — the socket file
+alone is ambiguous while the old daemon is still exiting.
+
 ### Logs & Action Logs
 
 The `Logs` RPC streams `LogChunk` messages:

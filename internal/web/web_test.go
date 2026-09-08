@@ -269,7 +269,9 @@ func (m *fakeMultiBackend) DaemonStatus() (*protocol.DaemonInfo, error) {
 	}, nil
 }
 
-func (m *fakeMultiBackend) RestartDaemon(restartServices bool) error { return m.StopDaemon() }
+func (m *fakeMultiBackend) RestartDaemon(restartServices bool) (int32, error) {
+	return 0, m.StopDaemon()
+}
 
 func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, error) {
 	m.mu.Lock()

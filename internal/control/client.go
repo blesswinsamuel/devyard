@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -46,15 +45,26 @@ func Dial(socket string) (*Client, error) {
 	}, nil
 }
 
-// WaitForSocket polls until a Unix socket exists at path or the timeout
-// elapses, giving the daemonized child a moment to bind before we dial.
+// WaitForSocket polls until a live daemon is serving the Unix socket at path
+// or the timeout elapses, giving the daemonized child a moment to bind before
+// we dial. It dials the socket rather than stat'ing the file: a socket file
+// can outlive its daemon (a crash leaves the file behind, and during a
+// restart the old daemon's socket lingers until it exits).
 func WaitForSocket(path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if fi, err := os.Stat(path); err == nil && fi.Mode()&os.ModeSocket != 0 {
-			return nil
+	for {
+		client, err := Dial(path)
+		if err == nil {
+			_, err := client.DaemonStatus()
+			_ = client.Close()
+			if err == nil {
+				return nil
+			}
 		}
-		time.Sleep(20 * time.Millisecond)
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("control: timeout waiting for socket %s", path)
 }
@@ -142,12 +152,16 @@ func (c *Client) StopDaemon() error {
 }
 
 // RestartDaemon restarts the daemon process. If restartServices is true,
-// all managed project services are stopped and restarted as well.
-func (c *Client) RestartDaemon(restartServices bool) error {
-	_, err := c.rpcClient.RestartDaemon(context.Background(), connect.NewRequest(&localcomposev1.RestartDaemonRequest{
+// all managed project services are stopped and restarted as well. Returns the
+// replacement daemon's pid (0 when unknown).
+func (c *Client) RestartDaemon(restartServices bool) (int32, error) {
+	resp, err := c.rpcClient.RestartDaemon(context.Background(), connect.NewRequest(&localcomposev1.RestartDaemonRequest{
 		RestartServices: restartServices,
 	}))
-	return unwrapError(err)
+	if err != nil {
+		return 0, unwrapError(err)
+	}
+	return resp.Msg.Pid, nil
 }
 
 // DaemonStatus returns daemon metrics and status.

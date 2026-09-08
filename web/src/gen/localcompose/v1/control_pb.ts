@@ -1758,6 +1758,15 @@ export class RestartDaemonRequest extends Message<RestartDaemonRequest> {
  * @generated from message localcompose.v1.RestartDaemonResponse
  */
 export class RestartDaemonResponse extends Message<RestartDaemonResponse> {
+  /**
+   * Pid is the process id of the replacement daemon spawned by the old
+   * daemon. Callers use it to wait for the new daemon to take over the
+   * control socket before assuming the restart succeeded.
+   *
+   * @generated from field: int32 pid = 1;
+   */
+  pid = 0;
+
   constructor(data?: PartialMessage<RestartDaemonResponse>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1766,6 +1775,7 @@ export class RestartDaemonResponse extends Message<RestartDaemonResponse> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "localcompose.v1.RestartDaemonResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "pid", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RestartDaemonResponse {

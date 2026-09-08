@@ -33,12 +33,15 @@ func runDaemonChild() error {
 	if err != nil {
 		return fmt.Errorf("local-compose daemon: %w", err)
 	}
+	pid := os.Getpid()
 	defer func() {
 		_ = lockFile.Close()
-		_ = daemon.RemoveDaemonPidfile(locs)
+		// Remove our pidfile only while it still names this process — a
+		// replacement daemon spawned during a restart may have already
+		// written its own pid by the time we exit.
+		_ = daemon.RemovePidfileIfOurs(locs, pid)
 	}()
 
-	pid := os.Getpid()
 	if err := daemon.WritePidfile(locs.Pidfile, pid); err != nil {
 		return fmt.Errorf("write pidfile: %w", err)
 	}

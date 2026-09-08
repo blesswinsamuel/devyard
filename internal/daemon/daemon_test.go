@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
+	"github.com/blesswinsamuel/local-compose/internal/project"
 )
 
 // TestReadPidfileMalformed exercises the parser edge cases.
@@ -57,5 +58,40 @@ func TestIsAliveStaleProcess(t *testing.T) {
 	}
 	if daemon.IsAlive(0) || daemon.IsAlive(-1) {
 		t.Errorf("IsAlive(0/-1) should be false")
+	}
+}
+
+// TestRemovePidfileIfOurs verifies the restart-safe pidfile removal: the old
+// daemon must delete the pidfile only while it still names its own pid, never
+// the replacement daemon's pid.
+func TestRemovePidfileIfOurs(t *testing.T) {
+	dir := t.TempDir()
+	locs := &project.DaemonLocations{Pidfile: filepath.Join(dir, "daemon.pid")}
+
+	// A pidfile naming a different process (the replacement daemon) survives.
+	if err := os.WriteFile(locs.Pidfile, []byte("9999\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := daemon.RemovePidfileIfOurs(locs, 1234); err != nil {
+		t.Fatalf("RemovePidfileIfOurs (other pid): %v", err)
+	}
+	if _, err := os.Stat(locs.Pidfile); err != nil {
+		t.Errorf("pidfile was removed even though it names a different daemon")
+	}
+
+	// A pidfile naming this process is removed.
+	if err := daemon.WritePidfile(locs.Pidfile, os.Getpid()); err != nil {
+		t.Fatal(err)
+	}
+	if err := daemon.RemovePidfileIfOurs(locs, os.Getpid()); err != nil {
+		t.Fatalf("RemovePidfileIfOurs (own pid): %v", err)
+	}
+	if _, err := os.Stat(locs.Pidfile); !os.IsNotExist(err) {
+		t.Errorf("pidfile still exists after RemovePidfileIfOurs")
+	}
+
+	// Degenerate inputs are no-ops, not errors.
+	if err := daemon.RemovePidfileIfOurs(locs, 0); err != nil {
+		t.Errorf("RemovePidfileIfOurs(pid=0) = %v, want nil", err)
 	}
 }

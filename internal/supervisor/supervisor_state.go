@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
+	"github.com/blesswinsamuel/local-compose/internal/procstat"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 )
 
@@ -43,7 +45,12 @@ type ActionStateSnapshot struct {
 type SupervisorStateSnapshot struct {
 	Services map[string]ServiceStateSnapshot `json:"services"`
 	Actions  map[string]ActionStateSnapshot  `json:"actions,omitempty"`
-	SavedAt  time.Time                       `json:"saved_at"`
+	// Selected is the lazy-start selection (see Options.Selected) persisted
+	// so a project materialized via `start <service>` is not expanded to
+	// every service by autostart after a daemon restart. Empty means all
+	// services were selected.
+	Selected []string  `json:"selected,omitempty"`
+	SavedAt  time.Time `json:"saved_at"`
 }
 
 // StateFilePath returns the path to state.json for a project.
@@ -52,7 +59,13 @@ func StateFilePath(locs *project.Locations) string {
 }
 
 // SaveState serializes the current supervisor state to state.json in the project state directory.
+// It is safe to call concurrently from run-loop goroutines and from the
+// daemon's state flush; writes are serialized so concurrent transitions never
+// interleave in the temporary file.
 func (s *Supervisor) SaveState() error {
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -87,9 +100,16 @@ func (s *Supervisor) SaveState() error {
 		rt.mu.Unlock()
 	}
 
+	selected := make([]string, 0, len(s.selected))
+	for name := range s.selected {
+		selected = append(selected, name)
+	}
+	sort.Strings(selected)
+
 	snap := SupervisorStateSnapshot{
 		Services: services,
 		Actions:  actions,
+		Selected: selected,
 		SavedAt:  time.Now(),
 	}
 
@@ -145,4 +165,44 @@ func IsProcessGroupAlive(pgid int) bool {
 	// kill(-pgid, 0) checks if any process in process group pgid exists and can be signaled
 	err := syscall.Kill(-pgid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// adoptPollInterval is how often adoptService re-checks the adopted leader's
+// liveness.
+const adoptPollInterval = 500 * time.Millisecond
+
+// adoptableSnapshot reports whether a persisted snapshot describes a process
+// group this supervisor can safely re-attach to: a plausible status, a live
+// group leader whose current process group still matches the recorded one,
+// and a leader that is not a zombie. This guards against stale snapshots that
+// claim running for a process which has since exited and whose pgid was
+// recycled by an unrelated process — the "ghost adoption" that would leave a
+// service showing running while nothing actually runs.
+func adoptableSnapshot(snap ServiceStateSnapshot) bool {
+	if snap.PID <= 0 || snap.PGID <= 0 {
+		return false
+	}
+	switch snap.Status {
+	case StatusStarting, StatusRunning, StatusBackoff:
+	default:
+		return false
+	}
+	info, ok := procstat.InspectProcess(snap.PID)
+	if !ok || info.Zombie {
+		return false
+	}
+	return info.PGID == snap.PGID
+}
+
+// adoptedLeaderAlive reports whether the adopted service's original group
+// leader is still alive, still leads the recorded process group, and is not a
+// zombie. A leader that has exited (even with lingering group children) or
+// whose pid was recycled means the adopted run is over — the same semantics a
+// fresh launch gets from cmd.Wait().
+func adoptedLeaderAlive(snap ServiceStateSnapshot) bool {
+	if snap.PID <= 0 || snap.PGID <= 0 {
+		return false
+	}
+	info, ok := procstat.InspectProcess(snap.PID)
+	return ok && !info.Zombie && info.PGID == snap.PGID
 }

@@ -88,3 +88,52 @@ func TestSampleGroupZeroOrNegative(t *testing.T) {
 		t.Errorf("SampleGroup(-1) reported ok")
 	}
 }
+
+func TestInspectProcessLive(t *testing.T) {
+	pid, cmd := startGrouped(t)
+	defer func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}()
+
+	// The child may take a moment to appear in the process table.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		info, ok := procstat.InspectProcess(pid)
+		if ok {
+			if info.Zombie {
+				t.Fatalf("leader %d reported zombie while alive", pid)
+			}
+			if info.PGID != pid {
+				t.Fatalf("pgid = %d, want %d (Setpgid makes pgid == pid)", info.PGID, pid)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("process %d never became inspectable", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestInspectProcessDead(t *testing.T) {
+	pid, cmd := startGrouped(t)
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatalf("kill child: %v", err)
+	}
+	if _, err := cmd.Process.Wait(); err != nil {
+		t.Fatalf("wait child: %v", err)
+	}
+	if _, ok := procstat.InspectProcess(pid); ok {
+		t.Errorf("InspectProcess(reaped pid %d) reported ok", pid)
+	}
+}
+
+func TestInspectProcessZeroOrNegative(t *testing.T) {
+	if _, ok := procstat.InspectProcess(0); ok {
+		t.Errorf("InspectProcess(0) reported ok")
+	}
+	if _, ok := procstat.InspectProcess(-1); ok {
+		t.Errorf("InspectProcess(-1) reported ok")
+	}
+}

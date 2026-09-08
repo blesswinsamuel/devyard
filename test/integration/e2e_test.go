@@ -1244,3 +1244,126 @@ services:
 		return newPid != 0 && newPid != origPid
 	}, "service restarted with new PID after daemon restart --restart-services")
 }
+
+// TestE2E_AdoptedServiceExitRestartsDaemonSurvives verifies the full adoption
+// lifecycle: after `daemon restart` adopts a running service, that service
+// exiting must be relaunched by the new daemon's restart policy (with a fresh
+// PID), and the daemon must survive the whole cycle — it used to panic with
+// "close of closed channel" when an adopted service's run loop ended.
+func TestE2E_AdoptedServiceExitRestarts(t *testing.T) {
+	cfg := `version: "1"
+name: lc-adopt-restart
+services:
+  svc:
+    command: sleep 30
+    restart: always
+`
+	e := newEnv(t, cfg)
+
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+
+	var origPid int
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		origPid = pidFromPS(t, psOut, "svc")
+		return origPid != 0
+	}, "service running before daemon restart")
+
+	_, errOut, code = e.run(t, context.Background(), "daemon", "restart")
+	if code != 0 {
+		t.Fatalf("daemon restart: exit %d, err=%q", code, errOut)
+	}
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		return rc == 0 && pidFromPS(t, psOut, "svc") == origPid
+	}, "service adopted by replacement daemon")
+
+	// Kill the adopted process behind the daemon's back. The new daemon's
+	// adoption monitor must notice, apply the restart policy, and relaunch
+	// with a fresh pid — without crashing the daemon.
+	if err := syscall.Kill(-origPid, syscall.SIGKILL); err != nil {
+		t.Fatalf("kill adopted service group %d: %v", origPid, err)
+	}
+
+	var relaunchedPid int
+	waitForCond(t, 10*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		relaunchedPid = pidFromPS(t, psOut, "svc")
+		return relaunchedPid != 0 && relaunchedPid != origPid
+	}, "service relaunched with a new PID after adopted process exited")
+
+	// The daemon must still be serving after the adopted service cycled.
+	_, _, code = e.run(t, context.Background(), "ps")
+	if code != 0 {
+		t.Fatalf("daemon crashed after adopted service exit/restart (ps exit %d)", code)
+	}
+
+	_, _, code = e.run(t, context.Background(), "down")
+	if code != 0 {
+		t.Fatalf("down: exit %d", code)
+	}
+}
+
+// TestE2E_DaemonRestartKeepsLazySelection verifies that a project started via
+// `start <service>` (lazy materialization) is not silently expanded to every
+// service by autostart after a daemon restart: the unselected service stays
+// stopped and the selected ones are adopted.
+func TestE2E_DaemonRestartKeepsLazySelection(t *testing.T) {
+	cfg := `version: "1"
+name: lc-lazy-adopt
+services:
+  alpha:
+    command: sleep 30
+  beta:
+    command: sleep 30
+`
+	e := newEnv(t, cfg)
+
+	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	if code != 0 {
+		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+	}
+	_, _, code = e.run(t, context.Background(), "down")
+	if code != 0 {
+		t.Fatalf("down: exit %d", code)
+	}
+
+	// Lazy start: only alpha runs, beta stays stopped.
+	_, startErr, rc := e.run(t, context.Background(), "start", "alpha")
+	if rc != 0 {
+		t.Fatalf("start alpha: exit %d, err=%q", rc, startErr)
+	}
+	var alphaPid int
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		alphaPid = pidFromPS(t, psOut, "alpha")
+		return alphaPid != 0 && pidFromPS(t, psOut, "beta") == 0
+	}, "alpha running and beta stopped after lazy start")
+
+	_, errOut, code = e.run(t, context.Background(), "daemon", "restart")
+	if code != 0 {
+		t.Fatalf("daemon restart: exit %d, err=%q", code, errOut)
+	}
+
+	// alpha keeps its pid (adopted); beta stays stopped because the lazy
+	// selection is persisted in the state snapshot.
+	waitForCond(t, 5*time.Second, func() bool {
+		psOut, _, rc := e.run(t, context.Background(), "ps")
+		if rc != 0 {
+			return false
+		}
+		return pidFromPS(t, psOut, "alpha") == alphaPid && pidFromPS(t, psOut, "beta") == 0
+	}, "alpha adopted (PID unchanged) and beta still stopped after daemon restart")
+}

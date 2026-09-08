@@ -32,3 +32,20 @@ type Sample struct {
 func SampleGroup(pgid int) (Sample, bool) {
 	return sampleGroup(pgid)
 }
+
+// ProcessInfo describes the liveness of a single process.
+type ProcessInfo struct {
+	// PGID is the process group id the process currently belongs to.
+	PGID int
+	// Zombie is true when the process has exited but has not been reaped.
+	Zombie bool
+}
+
+// InspectProcess inspects a single process by pid, returning its current
+// process group id and zombie state. It reports false when pid does not exist
+// or cannot be inspected. Used by the supervisor to verify adoption
+// candidates: a live process group is only re-attachable when the recorded
+// leader still exists and still leads the recorded group.
+func InspectProcess(pid int) (ProcessInfo, bool) {
+	return processInfo(pid)
+}

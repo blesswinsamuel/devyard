@@ -41,6 +41,39 @@ func sampleGroup(pgid int) (Sample, bool) {
 	return s, s.Procs > 0
 }
 
+// processInfo reads /proc/<pid>/stat and returns the process's current
+// process group id and zombie state.
+func processInfo(pid int) (ProcessInfo, bool) {
+	if pid <= 0 {
+		return ProcessInfo{}, false
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return ProcessInfo{}, false
+	}
+	// Field 2 (comm) may contain spaces and parentheses, so skip past the
+	// last ')' and treat the remainder as whitespace-separated fields 3+.
+	close := bytes.LastIndexByte(data, ')')
+	if close < 0 || close+2 > len(data) {
+		return ProcessInfo{}, false
+	}
+	fields := strings.Fields(string(data[close+2:]))
+	// After stripping "pid (comm) ", index i is stat field i+3:
+	//   fields[0] -> field 3 state (Z = zombie)
+	//   fields[2] -> field 5 pgrp
+	if len(fields) < 3 {
+		return ProcessInfo{}, false
+	}
+	pgid, err := strconv.Atoi(fields[2])
+	if err != nil {
+		return ProcessInfo{}, false
+	}
+	return ProcessInfo{
+		PGID:   pgid,
+		Zombie: fields[0] == "Z",
+	}, true
+}
+
 // sampleProc reads /proc/<pid>/stat and, if the process belongs to pgid,
 // returns its cumulative CPU time and RSS in pages converted to bytes.
 func sampleProc(pid, pgid int) (Sample, bool) {

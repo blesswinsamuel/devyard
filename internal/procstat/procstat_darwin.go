@@ -4,6 +4,7 @@ package procstat
 
 /*
 #include <libproc.h>
+#include <sys/proc.h>
 #include <sys/proc_info.h>
 #include <stdint.h>
 */
@@ -13,6 +14,22 @@ import (
 	"time"
 	"unsafe"
 )
+
+// processInfo inspects a single process via libproc, returning its process
+// group id and zombie state.
+func processInfo(pid int) (ProcessInfo, bool) {
+	if pid <= 0 {
+		return ProcessInfo{}, false
+	}
+	var bsd C.struct_proc_bsdinfo
+	if C.proc_pidinfo(C.int(pid), C.PROC_PIDTBSDINFO, 0, unsafe.Pointer(&bsd), C.int(C.sizeof_struct_proc_bsdinfo)) <= 0 {
+		return ProcessInfo{}, false
+	}
+	return ProcessInfo{
+		PGID:   int(bsd.pbi_pgid),
+		Zombie: bsd.pbi_status == C.SZOMB,
+	}, true
+}
 
 // sampleGroup enumerates every process via libproc, sums the CPU time (from
 // the task's total user/system nanoseconds) and resident size (bytes) of every

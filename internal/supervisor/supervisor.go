@@ -319,6 +319,10 @@ type Supervisor struct {
 	stopOnce sync.Once
 	wg       sync.WaitGroup
 
+	// persistMu serializes SaveState writers so concurrent state
+	// transitions never interleave writes to the state file's temp file.
+	persistMu sync.Mutex
+
 	started atomic.Bool
 	stopped atomic.Bool
 
@@ -497,6 +501,22 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 		slog.Warn("failed to load supervisor state", "project", s.opts.File.Name, "error", err)
 	}
 
+	// Restore a lazy-start selection persisted by a previous daemon so a
+	// project materialized via `start <service>` is not silently expanded to
+	// every service by autostart after a daemon restart. An explicit
+	// Options.Selected (fresh lazy start) always wins over the snapshot.
+	if s.selected == nil && snap != nil && len(snap.Selected) > 0 {
+		selected := make(map[string]bool, len(snap.Selected))
+		for _, name := range snap.Selected {
+			if _, ok := s.services[name]; ok {
+				selected[name] = true
+			}
+		}
+		if len(selected) > 0 {
+			s.selected = selected
+		}
+	}
+
 	if s.opts.InstallSignalHandler {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -547,11 +567,9 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 
 		var adoptedSnap *ServiceStateSnapshot
 		if snap != nil {
-			if sSnap, ok := snap.Services[name]; ok {
-				if IsProcessGroupAlive(sSnap.PGID) {
-					sSnapCopy := sSnap
-					adoptedSnap = &sSnapCopy
-				}
+			if sSnap, ok := snap.Services[name]; ok && adoptableSnapshot(sSnap) {
+				sSnapCopy := sSnap
+				adoptedSnap = &sSnapCopy
 			}
 		}
 
@@ -565,7 +583,14 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 	return nil
 }
 
-// adoptService attaches to an existing running process group recorded in snapshot and monitors it.
+// adoptService attaches to an existing running process group recorded in
+// snapshot and monitors it. The monitor watches the recorded group *leader*
+// (not just group liveness) so the adopted run is considered over when the
+// leader exits — matching what cmd.Wait would have reported for a fresh
+// launch. If the restart policy calls for a relaunch after the adopted
+// process exits, supervise is invoked inline: this goroutine keeps owning
+// rt.done (closed exactly once when the service's loop finally ends), so no
+// double-close panic can take the daemon down.
 func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap ServiceStateSnapshot) {
 	defer s.wg.Done()
 	defer close(rt.done)
@@ -579,6 +604,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 	rt.mu.Unlock()
 	rt.startedOnce.Store(true)
 	s.notifyStateChange(rt)
+	_ = s.SaveState()
 
 	if rt.logger != nil {
 		rt.logger.writeLine(fmt.Sprintf("local-compose: adopted existing process group (PGID %d)", snap.PGID))
@@ -605,8 +631,8 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 		}
 	}
 
-	// Poll process group liveness until exit
-	ticker := time.NewTicker(500 * time.Millisecond)
+	// Poll the adopted leader's liveness until exit
+	ticker := time.NewTicker(adoptPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -615,11 +641,14 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 			rt.status = StatusStopped
 			rt.mu.Unlock()
 			s.notifyStateChange(rt)
+			_ = s.SaveState()
 			return
 		}
 
-		if !IsProcessGroupAlive(snap.PGID) {
-			rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("adopted process exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+		if !adoptedLeaderAlive(snap) {
+			if rt.logger != nil {
+				rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("adopted process exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+			}
 			rt.mu.Lock()
 			rt.pid = 0
 			rt.pgid = 0
@@ -627,6 +656,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 			rt.status = StatusExited
 			rt.mu.Unlock()
 			s.notifyStateChange(rt)
+			_ = s.SaveState()
 
 			if s.isStopping() || rt.stopped.Load() {
 				return
@@ -635,15 +665,25 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 				return
 			}
 			if !s.shouldRetry(rt) {
-				rt.logger.writeLine("local-compose: giving up after max restart attempts")
+				if rt.logger != nil {
+					rt.logger.writeLine("local-compose: giving up after max restart attempts")
+				}
 				return
 			}
 			if !s.sleepBackoff(ctx, rt) {
 				return
 			}
-			// Switch to standard run loop after adoption exit
-			s.wg.Add(1)
-			s.runService(ctx, rt)
+			// Stop the adopted process's checker before the handoff — the
+			// supervise loop installs a fresh checker for the relaunched
+			// process. Double-Stop is safe for the other return paths.
+			if chk != nil {
+				chk.Stop()
+				rt.setChecker(nil)
+			}
+			// Switch to the standard supervise loop after adoption exit.
+			// Inline (not via runService) so this goroutine keeps owning
+			// rt.done and closes it exactly once when the loop ends.
+			s.supervise(ctx, rt)
 			return
 		}
 
@@ -687,14 +727,25 @@ func (s *Supervisor) Wait() {
 	s.wg.Wait()
 }
 
-// runService is the per-service supervise loop: launch, wait, apply restart
-// policy with backoff, repeat until stopped or the policy gives up. It first
-// waits for the service's depends_on conditions (service_started /
-// service_healthy) to be satisfied, and starts a health checker for services
-// that declare a healthcheck so dependents and `ps` see real health state.
+// runService is the per-service entry goroutine: it owns the service's
+// done-channel lifecycle (closed exactly once, when the supervise loop
+// finally ends) and delegates to supervise. Use this for a fresh run loop;
+// adoptService calls supervise directly when handing off after an adopted
+// process exits so rt.done is never closed twice.
 func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 	defer s.wg.Done()
 	defer close(rt.done)
+	s.supervise(ctx, rt)
+}
+
+// supervise is the per-service launch/restart loop shared by runService and
+// the adoption handoff: launch, wait, apply restart policy with backoff,
+// repeat until stopped or the policy gives up. It first waits for the
+// service's depends_on conditions (service_started / service_healthy) to be
+// satisfied, and starts a health checker for services that declare a
+// healthcheck so dependents and `ps` see real health state. It does NOT own
+// rt.done or the WaitGroup — the caller's wrapper does.
+func (s *Supervisor) supervise(ctx context.Context, rt *serviceRuntime) {
 
 	// Build the health checker up front (without probing) so dependents
 	// waiting on service_healthy observe a real checker in StateStarting
@@ -733,6 +784,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 		rt.status = StatusStopped
 		rt.mu.Unlock()
 		s.notifyStateChange(rt)
+		_ = s.SaveState()
 		// A genuine dependency failure (it exited or went unhealthy before
 		// satisfying the condition) is recorded as a failure; a
 		// user-initiated shutdown (errSupervisorStopping) is not.
@@ -748,6 +800,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			rt.status = StatusStopped
 			rt.mu.Unlock()
 			s.notifyStateChange(rt)
+			_ = s.SaveState()
 			return
 		}
 
@@ -758,6 +811,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 			rt.status = StatusBackoff
 			rt.mu.Unlock()
 			s.notifyStateChange(rt)
+			_ = s.SaveState()
 			if !s.shouldRetry(rt) {
 				return
 			}
@@ -800,6 +854,7 @@ func (s *Supervisor) runService(ctx context.Context, rt *serviceRuntime) {
 		}
 		rt.mu.Unlock()
 		s.notifyStateChange(rt)
+		_ = s.SaveState()
 
 		if stopping {
 			return
@@ -1441,6 +1496,7 @@ func (s *Supervisor) sleepBackoff(ctx context.Context, rt *serviceRuntime) bool 
 	delay := s.opts.Backoff.delay(rt.restarts)
 	rt.mu.Unlock()
 	s.notifyStateChange(rt)
+	_ = s.SaveState()
 
 	if delay < 0 {
 		delay = 0

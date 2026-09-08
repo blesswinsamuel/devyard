@@ -15,6 +15,7 @@ import {
   RefreshCw,
   RotateCcw,
   Skull,
+  Square,
   Terminal,
   X,
 } from "lucide-solid";
@@ -44,6 +45,7 @@ import {
   services as servicesMap,
   startProject,
   startService,
+  stopAction,
   stopProject,
   stopService,
 } from "~/stores/data";
@@ -355,32 +357,61 @@ function ActionRow(props: { project: string; name: string }) {
               : "pointer-events-none opacity-0 group-hover/act:pointer-events-auto group-hover/act:opacity-100"
           )}
         >
-          <Button
-            variant="secondary"
-            size="icon-sm"
-            class="border border-border shadow-sm"
-            title={`Run ${props.name}`}
-            onClick={(e: MouseEvent) => {
-              e.stopPropagation();
-              selectAction(props.project, props.name);
-              runAction(props.project, props.name);
-            }}
+          <Show
+            when={status() === "running" || status() === "starting"}
+            fallback={
+              <Button
+                variant="secondary"
+                size="icon-sm"
+                class="border border-border shadow-sm"
+                title={`Run ${props.name}`}
+                onClick={(e: MouseEvent) => {
+                  e.stopPropagation();
+                  selectAction(props.project, props.name);
+                  runAction(props.project, props.name);
+                }}
+              >
+                <Play class="!size-3 text-primary" />
+                <span class="sr-only">Run</span>
+              </Button>
+            }
           >
-            <Play class="!size-3 text-primary" />
-            <span class="sr-only">Run</span>
-          </Button>
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              class="border border-border shadow-sm"
+              title={`Stop ${props.name}`}
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                stopAction(props.project, props.name);
+              }}
+            >
+              <Square class="!size-3 text-destructive" />
+              <span class="sr-only">Stop</span>
+            </Button>
+          </Show>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem
-          onSelect={() => {
-            selectAction(props.project, props.name);
-            runAction(props.project, props.name);
-          }}
+        <Show
+          when={status() === "running" || status() === "starting"}
+          fallback={
+            <ContextMenuItem
+              onSelect={() => {
+                selectAction(props.project, props.name);
+                runAction(props.project, props.name);
+              }}
+            >
+              <Play />
+              Run Action
+            </ContextMenuItem>
+          }
         >
-          <Play />
-          Run Action
-        </ContextMenuItem>
+          <ContextMenuItem onSelect={() => stopAction(props.project, props.name)}>
+            <Square />
+            Stop Action
+          </ContextMenuItem>
+        </Show>
         <ContextMenuItem onSelect={() => selectAction(props.project, props.name)}>
           <Terminal />
           View Logs

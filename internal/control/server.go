@@ -620,6 +620,20 @@ func (s *Server) RunAction(ctx context.Context, req *connect.Request[localcompos
 	})
 }
 
+func (s *Server) StopAction(ctx context.Context, req *connect.Request[localcomposev1.StopActionRequest]) (*connect.Response[localcomposev1.StopActionResponse], error) {
+	b, err := s.backend.ProjectBackend(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	if req.Msg.Action == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("action is required"))
+	}
+	if err := b.StopAction(req.Msg.Action); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.StopActionResponse{}), nil
+}
+
 func (s *Server) GitLog(ctx context.Context, req *connect.Request[localcomposev1.GitLogRequest]) (*connect.Response[localcomposev1.GitLogResponse], error) {
 	commits, branches, tags, stashes, err := s.backend.GitLog(req.Msg.Project)
 	if err != nil {

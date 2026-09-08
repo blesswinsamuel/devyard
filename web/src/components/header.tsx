@@ -7,6 +7,7 @@ import {
   RefreshCw,
   RotateCcw,
   Skull,
+  Square,
   SquareTerminal,
 } from "lucide-solid";
 import type { ServiceState } from "~/lib/types";
@@ -21,6 +22,7 @@ import {
   services as servicesMap,
   startProject,
   startService,
+  stopAction,
   stopProject,
   stopService,
 } from "~/stores/data";
@@ -272,10 +274,20 @@ export function ActionHeader() {
         <HeaderButtons project={project()} />
         <Separator orientation="vertical" class="mx-1 h-4" />
         <PrevRunButton project={project()} kind="action" name={actionName()} />
-        <Button size="sm" aria-label="Run action" onClick={() => runAction(project(), actionName())}>
-          <Play class="!size-3.5" />
-          <span class="hidden md:inline">Run action</span>
-        </Button>
+        <Show
+          when={status() === "running" || status() === "starting"}
+          fallback={
+            <Button size="sm" aria-label="Run action" onClick={() => runAction(project(), actionName())}>
+              <Play class="!size-3.5" />
+              <span class="hidden md:inline">Run action</span>
+            </Button>
+          }
+        >
+          <Button size="sm" variant="outline" aria-label="Stop action" onClick={() => stopAction(project(), actionName())}>
+            <Square class="!size-3.5 text-destructive" />
+            <span class="hidden md:inline">Stop action</span>
+          </Button>
+        </Show>
       </div>
     </>
   );

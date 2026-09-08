@@ -33,6 +33,8 @@ type fakeBackend struct {
 	startSvcErr error
 	actions     []*protocol.ActionState
 	runActionFn func(name string, args []string, out io.Writer) (int, error)
+	stoppedActs []string
+	stopActErr  error
 }
 
 func (b *fakeBackend) ListActions() []*protocol.ActionState {
@@ -51,6 +53,13 @@ func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string,
 		return fn(name, args, out)
 	}
 	return 0, nil
+}
+
+func (b *fakeBackend) StopAction(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stoppedActs = append(b.stoppedActs, name)
+	return b.stopActErr
 }
 
 func (b *fakeBackend) States() []*protocol.ServiceState {
@@ -319,6 +328,35 @@ func TestRoundtripStopService(t *testing.T) {
 	}
 	if b.stoppedCount("api") != 1 {
 		t.Errorf("api stops = %d, want 1", b.stoppedCount("api"))
+	}
+}
+
+func TestRoundtripStopAction(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.StopAction("", "migrate"); err != nil {
+		t.Fatalf("StopAction: %v", err)
+	}
+	if len(b.stoppedActs) != 1 || b.stoppedActs[0] != "migrate" {
+		t.Errorf("stopped actions = %+v, want [migrate]", b.stoppedActs)
+	}
+}
+
+func TestStopActionRequiresName(t *testing.T) {
+	b := &fakeBackend{}
+	srv := newServer(t, b)
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+	if err := c.StopAction("", ""); err == nil {
+		t.Fatalf("StopAction with empty action name: expected error, got nil")
 	}
 }
 

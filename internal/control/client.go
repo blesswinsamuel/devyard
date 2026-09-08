@@ -333,6 +333,15 @@ func (c *Client) RunAction(ctx context.Context, project, action string, args []s
 	return exitCode, nil
 }
 
+// StopAction stops a running action in a project.
+func (c *Client) StopAction(project, action string) error {
+	_, err := c.rpcClient.StopAction(context.Background(), connect.NewRequest(&localcomposev1.StopActionRequest{
+		Project: project,
+		Action:  action,
+	}))
+	return unwrapError(err)
+}
+
 // GitLog returns the commit log, branches, tags, and stashes for a project.
 func (c *Client) GitLog(project string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error) {
 	resp, err := c.rpcClient.GitLog(context.Background(), connect.NewRequest(&localcomposev1.GitLogRequest{

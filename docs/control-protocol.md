@@ -44,6 +44,7 @@ service DaemonService {
   // Actions
   rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
   rpc RunAction(RunActionRequest) returns (stream ActionOutputChunk);
+  rpc StopAction(StopActionRequest) returns (StopActionResponse);
 
   // Logs & Rotation
   rpc Logs(LogsRequest) returns (stream LogChunk);
@@ -72,6 +73,17 @@ when `restart_services` is set; otherwise they keep running and are adopted by
 the new daemon). Clients should wait until the *serving* daemon reports that
 pid via `DaemonStatus` before assuming the restart succeeded — the socket file
 alone is ambiguous while the old daemon is still exiting.
+
+### Action Runs
+
+`RunAction` streams `ActionOutputChunk` messages (output lines plus a final
+chunk with `exit_code`). A run is owned by its RPC call: if the client
+disconnects (cancelled context), the daemon sends SIGTERM to the action's
+process group so no orphaned process is left behind. `StopAction` stops a
+running action the same way on demand — SIGTERM to the process group, then
+SIGKILL after the supervisor's graceful-stop grace period. Stopping an
+in-flight `RunAction` stream ends it with the signal's exit code; an action
+that is not running yields an error.
 
 ### Logs & Action Logs
 

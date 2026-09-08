@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -64,6 +65,38 @@ var actionRunCmd = &cobra.Command{
 	RunE:  runCmd.RunE,
 }
 
+var actionStopCmd = &cobra.Command{
+	Use:   "stop <action>",
+	Short: "Stop a running action",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		actionName := args[0]
+		cfg, err := loadConfig(flagConfigPath, flagProject)
+		if err != nil {
+			return err
+		}
+
+		sock, err := dialDaemon()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "local-compose: no daemon running\n")
+			return nil
+		}
+
+		client, err := control.Dial(sock)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "local-compose: no daemon running\n")
+			return nil
+		}
+		defer func() { _ = client.Close() }()
+
+		if err := client.StopAction(cfg.Project, actionName); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "local-compose: stopped action %q\n", actionName)
+		return nil
+	},
+}
+
 func init() {
-	actionCmd.AddCommand(actionListCmd, actionRunCmd)
+	actionCmd.AddCommand(actionListCmd, actionRunCmd, actionStopCmd)
 }

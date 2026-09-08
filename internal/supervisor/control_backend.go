@@ -118,6 +118,11 @@ func (b *ControlBackend) RunAction(ctx context.Context, name string, args []stri
 	return b.s.RunAction(ctx, name, args, out)
 }
 
+// StopAction stops a running action by name.
+func (b *ControlBackend) StopAction(name string) error {
+	return b.s.StopAction(name)
+}
+
 // ActionLogPath returns the absolute path of an action's log file.
 func (b *ControlBackend) ActionLogPath(name string) (string, error) {
 	return b.s.ActionLogPath(name)

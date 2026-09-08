@@ -31,6 +31,7 @@ service DaemonService {
   // Actions
   rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
   rpc RunAction(RunActionRequest) returns (stream ActionOutputChunk);
+  rpc StopAction(StopActionRequest) returns (StopActionResponse);
 
   // Git Operations
   rpc GitLog(GitLogRequest) returns (GitLogResponse);
@@ -349,6 +350,13 @@ message RunActionRequest {
   string action = 2;
   repeated string args = 3;
 }
+
+message StopActionRequest {
+  string project = 1;
+  string action = 2;
+}
+
+message StopActionResponse {}
 
 message GitLogRequest {
   string project = 1;

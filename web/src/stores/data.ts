@@ -425,6 +425,15 @@ export function runAction(project: string, actionName: string, args?: string[]) 
   return true;
 }
 
+export async function stopAction(project: string, actionName: string) {
+  try {
+    await rpcClient.stopAction({ project, action: actionName });
+    pushToast(`Stopped action '${actionName}'`, "info");
+  } catch (err: any) {
+    pushToast(err.message || `Failed to stop action ${actionName}`, "error");
+  }
+}
+
 export async function restartDaemon(restartServices = false) {
   try {
     await rpcClient.restartDaemon({ restartServices });

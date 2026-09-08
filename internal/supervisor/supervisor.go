@@ -126,10 +126,29 @@ type actionRuntime struct {
 
 	mu         sync.Mutex
 	pid        int
+	pgid       int
 	status     Status
 	exitCode   int
 	startedAt  time.Time
 	finishedAt time.Time
+	// done is closed when the current run's RunAction call finishes. A live
+	// run holds an open channel; restored snapshots and completed runs hold a
+	// closed one (or nil before the first run).
+	done chan struct{}
+}
+
+// actionRuntimeBusy reports whether the runtime belongs to an in-flight
+// RunAction call. The caller must hold rt.mu.
+func actionRuntimeBusy(rt *actionRuntime) bool {
+	if rt.done == nil {
+		return false
+	}
+	select {
+	case <-rt.done:
+		return false
+	default:
+		return true
+	}
 }
 
 // notifyActionStateChange builds a single-action protocol snapshot and fires
@@ -535,6 +554,8 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 	// show the last run's PID, exit code, and timestamps. Actions are
 	// one-shot, so we never re-run them — we only restore metadata.
 	if snap != nil && snap.Actions != nil {
+		closed := make(chan struct{})
+		close(closed)
 		s.mu.Lock()
 		for name, as := range snap.Actions {
 			s.actionRuntimes[name] = &actionRuntime{
@@ -544,6 +565,7 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 				exitCode:   as.ExitCode,
 				startedAt:  as.StartedAt,
 				finishedAt: as.FinishedAt,
+				done:       closed,
 			}
 		}
 		s.mu.Unlock()
@@ -1680,6 +1702,18 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 		return 1, fmt.Errorf("action %q not found", name)
 	}
 
+	s.mu.Lock()
+	if rt, ok := s.actionRuntimes[name]; ok {
+		rt.mu.Lock()
+		busy := actionRuntimeBusy(rt)
+		rt.mu.Unlock()
+		if busy {
+			s.mu.Unlock()
+			return 1, fmt.Errorf("supervisor: action %q is already running", name)
+		}
+	}
+	s.mu.Unlock()
+
 	for _, depName := range act.Spec.DependsOn.Order {
 		entry := act.Spec.DependsOn.Entries[depName]
 		if rt, ok := s.services[depName]; ok {
@@ -1758,10 +1792,12 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	}
 	rt.mu.Lock()
 	rt.pid = pid
+	rt.pgid = pid
 	rt.status = StatusRunning
 	rt.exitCode = 0
 	rt.startedAt = now
 	rt.finishedAt = time.Time{}
+	rt.done = make(chan struct{})
 	rt.mu.Unlock()
 	s.mu.Unlock()
 	s.notifyActionStateChange(rt)
@@ -1797,6 +1833,24 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	go readLineStream(stdoutPipe)
 	go readLineStream(stderrPipe)
 
+	// Kill the action when the requesting client goes away (cancelled
+	// context) so a disconnected CLI/web client doesn't leave an orphaned
+	// process running in the daemon.
+	watchDone := make(chan struct{})
+	defer close(watchDone)
+	go func() {
+		select {
+		case <-ctx.Done():
+			rt.mu.Lock()
+			pgid := rt.pgid
+			rt.mu.Unlock()
+			if pgid > 0 {
+				_ = killGroup(pgid, syscall.SIGTERM)
+			}
+		case <-watchDone:
+		}
+	}()
+
 	wg.Wait()
 	waitErr := actionCmd.Wait()
 	code := exitCodeFrom(waitErr)
@@ -1804,18 +1858,62 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	finishTime := time.Now()
 	rt.mu.Lock()
 	rt.pid = 0
+	rt.pgid = 0
 	rt.exitCode = code
 	rt.finishedAt = finishTime
 	rt.status = StatusExited
+	doneCh := rt.done
 	rt.mu.Unlock()
 	s.notifyActionStateChange(rt)
 	_ = s.SaveState()
+	if doneCh != nil {
+		close(doneCh)
+	}
 
 	if logFile != nil {
 		_, _ = fmt.Fprintf(logFile, "%s %s %s with exit code %d\n", ui.Dim("local-compose:"), ui.StatusMessage("exited"), ui.Dim("at "+finishTime.UTC().Format(time.RFC3339)), code)
 	}
 
 	return code, nil
+}
+
+// StopAction stops a running action by sending SIGTERM to its process group,
+// escalating to SIGKILL after the supervisor's graceful-stop grace period. It
+// blocks until the run's RunAction call has finished (or the escalation wait
+// elapses) and returns an error when the action is unknown or not running.
+func (s *Supervisor) StopAction(name string) error {
+	s.mu.Lock()
+	rt, ok := s.actionRuntimes[name]
+	s.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("supervisor: unknown action %q", name)
+	}
+
+	rt.mu.Lock()
+	pgid := rt.pgid
+	busy := actionRuntimeBusy(rt)
+	doneCh := rt.done
+	rt.mu.Unlock()
+	if pgid <= 0 || !busy {
+		return fmt.Errorf("supervisor: action %q is not running", name)
+	}
+
+	_ = killGroup(pgid, syscall.SIGTERM)
+	grace := s.opts.GracefulStopTimeout
+	if grace <= 0 {
+		grace = DefaultGracefulStopTimeout
+	}
+	select {
+	case <-doneCh:
+		return nil
+	case <-time.After(grace):
+	}
+	_ = killGroup(pgid, syscall.SIGKILL)
+	select {
+	case <-doneCh:
+	case <-time.After(5 * time.Second):
+	}
+	return nil
 }
 
 // ActionLogPath returns the absolute path of an action's log file.

@@ -886,6 +886,7 @@ func (b stoppedBackend) ListActions() []*protocol.ActionState {
 func (b stoppedBackend) RunAction(context.Context, string, []string, io.Writer) (int, error) {
 	return 1, b.err()
 }
+func (b stoppedBackend) StopAction(string) error { return b.err() }
 
 func (b stoppedBackend) knownService(name string) error {
 	if b.file != nil {

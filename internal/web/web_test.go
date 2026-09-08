@@ -35,6 +35,7 @@ type fakeBackend struct {
 	stopped        []string
 	started        []string
 	killed         []string
+	stoppedActs    []string
 	runActionFn    func(name string, args []string, out io.Writer) (int, error)
 }
 
@@ -123,6 +124,13 @@ func (b *fakeBackend) RunAction(_ context.Context, name string, args []string, o
 		return fn(name, args, out)
 	}
 	return 0, nil
+}
+
+func (b *fakeBackend) StopAction(name string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stoppedActs = append(b.stoppedActs, name)
+	return nil
 }
 
 func (b *fakeBackend) ActionLogPath(name string) (string, error) {

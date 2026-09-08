@@ -1,6 +1,6 @@
 import { Show } from "solid-js";
-import { Globe, Menu, PackageOpen, Play, SquareTerminal } from "lucide-solid";
-import { actions as actionsMap, fetchPorts, runAction } from "~/stores/data";
+import { Globe, Menu, PackageOpen, Play, Square, SquareTerminal } from "lucide-solid";
+import { actions as actionsMap, fetchPorts, runAction, stopAction } from "~/stores/data";
 import { activeView, selectedAction, selectedProject, selectedService } from "~/stores/nav";
 import { openPortsModal, setSidebarOpen } from "~/stores/app";
 import { Button } from "~/components/ui/button";
@@ -55,15 +55,30 @@ function EmptyState() {
                         {act.command}
                       </div>
                     </div>
-                    <Button
-                      size="xs"
-                      variant="secondary"
-                      class="shrink-0"
-                      onClick={() => runAction(project()!, act.name)}
+                    <Show
+                      when={act.status === "running" || act.status === "starting"}
+                      fallback={
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          class="shrink-0"
+                          onClick={() => runAction(project()!, act.name)}
+                        >
+                          <Play class="!size-3 text-primary" />
+                          Run
+                        </Button>
+                      }
                     >
-                      <Play class="!size-3 text-primary" />
-                      Run
-                    </Button>
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        class="shrink-0"
+                        onClick={() => stopAction(project()!, act.name)}
+                      >
+                        <Square class="!size-3 text-destructive" />
+                        Stop
+                      </Button>
+                    </Show>
                   </div>
                 ))}
               </CardContent>

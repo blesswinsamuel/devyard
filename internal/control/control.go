@@ -23,6 +23,7 @@ type Backend interface {
 	Top(name string) ([]*protocol.ServiceStat, error)
 	ListActions() []*protocol.ActionState
 	RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error)
+	StopAction(name string) error
 	LogPath(name string) (string, error)
 	PreviousLogPath(name string) (string, error)
 	ActionLogPath(name string) (string, error)

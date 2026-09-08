@@ -930,6 +930,174 @@ func TestSupervisorRunAction(t *testing.T) {
 	}
 }
 
+func TestSupervisorStopAction(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "echo service-running", Shell: "sh"},
+	})
+	file.Actions = map[string]config.Action{
+		"sleeper": {
+			Spec: config.ActionSpec{
+				Command: "echo started; sleep 30",
+				Shell:   "sh",
+			},
+		},
+		"echo-test": {
+			Spec: config.ActionSpec{
+				Command: "echo hello action",
+				Shell:   "sh",
+			},
+		},
+	}
+	s := newSupervisor(t, file, []string{"svc"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	type runResult struct {
+		code int
+		err  error
+	}
+	runDone := make(chan runResult, 1)
+	var buf bytes.Buffer
+	go func() {
+		code, err := s.RunAction(context.Background(), "sleeper", nil, &buf)
+		runDone <- runResult{code, err}
+	}()
+
+	if !waitForActionStatus(t, s, "sleeper", "running", 5*time.Second) {
+		t.Fatalf("action never reached running state")
+	}
+
+	// A second concurrent run must be rejected while the first is running.
+	if _, err := s.RunAction(context.Background(), "sleeper", nil, nil); err == nil {
+		t.Errorf("RunAction while running: expected error, got nil")
+	}
+
+	if err := s.StopAction("sleeper"); err != nil {
+		t.Fatalf("StopAction: %v", err)
+	}
+
+	select {
+	case res := <-runDone:
+		if res.err != nil {
+			t.Fatalf("RunAction: %v", res.err)
+		}
+		if res.code == 0 {
+			t.Errorf("exit code = %d, want non-zero after stop", res.code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("RunAction did not return after StopAction")
+	}
+
+	if !waitForActionStatus(t, s, "sleeper", "exited", 5*time.Second) {
+		t.Fatalf("action never reached exited state")
+	}
+
+	// Stopping again after the run finished is an error.
+	if err := s.StopAction("sleeper"); err == nil {
+		t.Errorf("StopAction on finished action: expected error, got nil")
+	}
+
+	// The runtime accepts a fresh run after a stop.
+	var buf2 bytes.Buffer
+	code, err := s.RunAction(context.Background(), "echo-test", nil, &buf2)
+	if err != nil {
+		t.Fatalf("RunAction after stop: %v", err)
+	}
+	if code != 0 || !strings.Contains(buf2.String(), "hello action") {
+		t.Errorf("RunAction after stop: code=%d buf=%q", code, buf2.String())
+	}
+}
+
+func TestSupervisorStopActionNotRunning(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "echo service-running", Shell: "sh"},
+	})
+	file.Actions = map[string]config.Action{
+		"echo-test": {
+			Spec: config.ActionSpec{Command: "echo hello action", Shell: "sh"},
+		},
+	}
+	s := newSupervisor(t, file, []string{"svc"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.StopAction("nope"); err == nil {
+		t.Errorf("StopAction for unknown action: expected error, got nil")
+	}
+	if err := s.StopAction("echo-test"); err == nil {
+		t.Errorf("StopAction for never-run action: expected error, got nil")
+	}
+}
+
+func TestRunActionContextCancel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix-only")
+	}
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "echo service-running", Shell: "sh"},
+	})
+	file.Actions = map[string]config.Action{
+		"sleeper": {
+			Spec: config.ActionSpec{
+				Command: "echo started; sleep 30",
+				Shell:   "sh",
+			},
+		},
+	}
+	s := newSupervisor(t, file, []string{"svc"})
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type runResult struct {
+		code int
+		err  error
+	}
+	runDone := make(chan runResult, 1)
+	var buf bytes.Buffer
+	go func() {
+		code, err := s.RunAction(ctx, "sleeper", nil, &buf)
+		runDone <- runResult{code, err}
+	}()
+
+	if !waitForActionStatus(t, s, "sleeper", "running", 5*time.Second) {
+		t.Fatalf("action never reached running state")
+	}
+	cancel()
+
+	select {
+	case res := <-runDone:
+		if res.err != nil {
+			t.Fatalf("RunAction: %v", res.err)
+		}
+		if res.code == 0 {
+			t.Errorf("exit code = %d, want non-zero after context cancel", res.code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("RunAction did not return after context cancellation")
+	}
+}
+
+func waitForActionStatus(t *testing.T, s *supervisor.Supervisor, name, status string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		for _, act := range s.ListActions() {
+			if act.Name == name && act.Status == status {
+				return true
+			}
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func fileExists(path string) bool {
 	_, err := exec.Command("test", "-e", path).Output()
 	return err == nil

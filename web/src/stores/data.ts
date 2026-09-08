@@ -263,7 +263,9 @@ export async function fetchActions(project?: string) {
       return { ...m, [project]: list };
     });
   } catch (err: any) {
-    // ignore if project not running
+    if (!/not running/i.test(err.message)) {
+      pushToast(err.message || (project ? `Failed to fetch actions for ${project}` : "Failed to fetch actions"), "error");
+    }
   }
 }
 
@@ -288,7 +290,9 @@ export async function fetchPorts(project?: string) {
     }
     setPorts((m) => ({ ...m, [project]: list }));
   } catch (err: any) {
-    // ignore
+    if (!/not running/i.test(err.message)) {
+      pushToast(err.message || (project ? `Failed to fetch ports for ${project}` : "Failed to fetch ports"), "error");
+    }
   }
 }
 

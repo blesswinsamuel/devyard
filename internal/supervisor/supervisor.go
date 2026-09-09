@@ -552,21 +552,44 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 
 	// Restore action runtime state from the persisted snapshot so ps/web
 	// show the last run's PID, exit code, and timestamps. Actions are
-	// one-shot, so we never re-run them — we only restore metadata.
+	// one-shot, so we never re-run them — we only restore metadata. A
+	// snapshot that still says running/starting describes a run owned by a
+	// previous daemon: adopt it when its process group is genuinely alive
+	// (it survived the daemon exit), otherwise normalize it to a terminal
+	// state so a dead run doesn't haunt ps/web (and resist StopAction)
+	// forever.
 	if snap != nil && snap.Actions != nil {
 		closed := make(chan struct{})
 		close(closed)
 		s.mu.Lock()
 		for name, as := range snap.Actions {
-			s.actionRuntimes[name] = &actionRuntime{
+			rt := &actionRuntime{
 				name:       name,
+				command:    as.Command,
 				status:     as.Status,
 				pid:        as.PID,
+				pgid:       as.PGID,
 				exitCode:   as.ExitCode,
 				startedAt:  as.StartedAt,
 				finishedAt: as.FinishedAt,
 				done:       closed,
 			}
+			switch as.Status {
+			case StatusStarting, StatusRunning:
+				if adoptableActionSnapshot(as) {
+					// The orphaned group is still alive — keep it stoppable.
+					// pid is the group leader (actions run with Setpgid), so
+					// pgid falls back to the recorded pid for older snapshots
+					// that predate persisting pgid.
+					rt.pgid = as.PID
+				} else {
+					rt.status = StatusExited
+					rt.pid = 0
+					rt.pgid = 0
+					rt.exitCode = -1
+				}
+			}
+			s.actionRuntimes[name] = rt
 		}
 		s.mu.Unlock()
 	}
@@ -1879,8 +1902,10 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 
 // StopAction stops a running action by sending SIGTERM to its process group,
 // escalating to SIGKILL after the supervisor's graceful-stop grace period. It
-// blocks until the run's RunAction call has finished (or the escalation wait
-// elapses) and returns an error when the action is unknown or not running.
+// blocks until the run has finished and returns an error when the action is
+// unknown or not running. It also handles an action group adopted at startup
+// from a previous daemon's snapshot (no in-flight RunAction): the group is
+// terminated and the recorded state is finalized here.
 func (s *Supervisor) StopAction(name string) error {
 	s.mu.Lock()
 	rt, ok := s.actionRuntimes[name]
@@ -1894,26 +1919,71 @@ func (s *Supervisor) StopAction(name string) error {
 	busy := actionRuntimeBusy(rt)
 	doneCh := rt.done
 	rt.mu.Unlock()
-	if pgid <= 0 || !busy {
+	if pgid <= 0 {
 		return fmt.Errorf("supervisor: action %q is not running", name)
 	}
 
-	_ = killGroup(pgid, syscall.SIGTERM)
-	grace := s.opts.GracefulStopTimeout
-	if grace <= 0 {
-		grace = DefaultGracefulStopTimeout
-	}
-	select {
-	case <-doneCh:
+	if busy {
+		_ = killGroup(pgid, syscall.SIGTERM)
+		grace := s.opts.GracefulStopTimeout
+		if grace <= 0 {
+			grace = DefaultGracefulStopTimeout
+		}
+		select {
+		case <-doneCh:
+			return nil
+		case <-time.After(grace):
+		}
+		_ = killGroup(pgid, syscall.SIGKILL)
+		select {
+		case <-doneCh:
+		case <-time.After(5 * time.Second):
+		}
 		return nil
-	case <-time.After(grace):
 	}
-	_ = killGroup(pgid, syscall.SIGKILL)
-	select {
-	case <-doneCh:
-	case <-time.After(5 * time.Second):
+
+	// Adopted orphan from a previous daemon's snapshot: no RunAction call is
+	// waiting on it, so terminate the group and record the terminal state.
+	if !IsProcessGroupAlive(pgid) {
+		s.finishAdoptedAction(rt)
+		return fmt.Errorf("supervisor: action %q is not running", name)
 	}
+	_ = killGroup(pgid, syscall.SIGTERM)
+	if !waitForGroupDeath(pgid, 3*time.Second) {
+		_ = killGroup(pgid, syscall.SIGKILL)
+		waitForGroupDeath(pgid, 2*time.Second)
+	}
+	s.finishAdoptedAction(rt)
 	return nil
+}
+
+// finishAdoptedAction records the terminal state of an adopted action run
+// (one without an in-flight RunAction call to do it) and saves it.
+func (s *Supervisor) finishAdoptedAction(rt *actionRuntime) {
+	rt.mu.Lock()
+	rt.pid = 0
+	rt.pgid = 0
+	rt.status = StatusExited
+	rt.exitCode = -1
+	rt.finishedAt = time.Now()
+	rt.mu.Unlock()
+	s.notifyActionStateChange(rt)
+	_ = s.SaveState()
+}
+
+// waitForGroupDeath polls until the process group is gone (or the timeout
+// elapses) and reports whether it died.
+func waitForGroupDeath(pgid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		if !IsProcessGroupAlive(pgid) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // ActionLogPath returns the absolute path of an action's log file.

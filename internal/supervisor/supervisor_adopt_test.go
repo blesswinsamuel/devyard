@@ -11,6 +11,7 @@ import (
 
 	"github.com/blesswinsamuel/local-compose/internal/config"
 	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/local-compose/internal/protocol"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
 )
 
@@ -311,4 +312,139 @@ func stateByName(states []supervisor.ServiceState, name string) *supervisor.Serv
 		}
 	}
 	return nil
+}
+
+// waitForActionState polls the supervisor until the named action appears in
+// ListActions and returns its state.
+func waitForActionState(t *testing.T, s *supervisor.Supervisor, name string) *protocol.ActionState {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, act := range s.ListActions() {
+			if act.Name == name {
+				return act
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("action %s never appeared in ListActions", name)
+	return nil
+}
+
+// TestAdoptOrStartNormalizesDeadAction verifies that a snapshot recording an
+// action as running whose process is long gone (the daemon that ran it
+// exited) is restored as exited — so ps/web stop showing a ghost run and
+// StopAction reports "not running" instead of signalling a recycled pid.
+func TestAdoptOrStartNormalizesDeadAction(t *testing.T) {
+	t.Parallel()
+	locs := testLocations(t)
+
+	dead := exec.Command("true")
+	if err := dead.Run(); err != nil {
+		t.Fatalf("run true: %v", err)
+	}
+
+	writeState(t, locs, &supervisor.SupervisorStateSnapshot{
+		Actions: map[string]supervisor.ActionStateSnapshot{
+			"logs": {Name: "logs", Status: supervisor.StatusRunning, PID: dead.Process.Pid, StartedAt: time.Now().Add(-time.Hour)},
+		},
+		SavedAt: time.Now(),
+	})
+
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "echo service-running", Shell: "sh"},
+	})
+	file.Actions = map[string]config.Action{
+		"logs": {Spec: config.ActionSpec{Command: "sleep 60", Shell: "sh"}},
+	}
+	s, err := supervisor.New(supervisor.Options{
+		Locations: locs,
+		File:      file,
+		Order:     []string{"svc"},
+		BaseDir:   t.TempDir(),
+		Backoff:   testBackoff(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	st := waitForActionState(t, s, "logs")
+	if st.Status != string(supervisor.StatusExited) {
+		t.Errorf("dead action restored with status %q, want exited", st.Status)
+	}
+	if st.Pid != 0 {
+		t.Errorf("dead action restored with pid %d, want 0", st.Pid)
+	}
+	if err := s.StopAction("logs"); err == nil {
+		t.Errorf("StopAction on normalized action: expected error, got nil")
+	}
+}
+
+// TestAdoptOrStartAdoptsAliveAction verifies that a snapshot recording an
+// action as running whose process group genuinely survived the daemon exit
+// is adopted (still shown running) and remains stoppable.
+func TestAdoptOrStartAdoptsAliveAction(t *testing.T) {
+	t.Parallel()
+	locs := testLocations(t)
+
+	leader, _ := startOrphanGroup(t)
+
+	writeState(t, locs, &supervisor.SupervisorStateSnapshot{
+		Actions: map[string]supervisor.ActionStateSnapshot{
+			"logs": {Name: "logs", Status: supervisor.StatusRunning, PID: leader, PGID: leader, StartedAt: time.Now().Add(-time.Hour)},
+		},
+		SavedAt: time.Now(),
+	})
+
+	file := fileWith(map[string]config.Service{
+		"svc": {Command: "echo service-running", Shell: "sh"},
+	})
+	file.Actions = map[string]config.Action{
+		"logs": {Spec: config.ActionSpec{Command: "sleep 60", Shell: "sh"}},
+	}
+	s, err := supervisor.New(supervisor.Options{
+		Locations: locs,
+		File:      file,
+		Order:     []string{"svc"},
+		BaseDir:   t.TempDir(),
+		Backoff:   testBackoff(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	st := waitForActionState(t, s, "logs")
+	if st.Status != string(supervisor.StatusRunning) || st.Pid != int32(leader) {
+		t.Fatalf("alive action not adopted: status=%q pid=%d, want running/%d", st.Status, st.Pid, leader)
+	}
+
+	if err := s.StopAction("logs"); err != nil {
+		t.Fatalf("StopAction on adopted action: %v", err)
+	}
+
+	st = waitForActionState(t, s, "logs")
+	if st.Status != string(supervisor.StatusExited) {
+		t.Errorf("stopped adopted action status = %q, want exited", st.Status)
+	}
+
+	// The terminal state must be persisted so a restart doesn't resurrect it.
+	snap, err := supervisor.LoadState(locs)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if act := snap.Actions["logs"]; act.Status != supervisor.StatusExited || act.PID != 0 {
+		t.Errorf("persisted adopted action = %+v, want exited/pid 0", act)
+	}
 }

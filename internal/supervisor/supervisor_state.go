@@ -36,6 +36,7 @@ type ActionStateSnapshot struct {
 	Command    string    `json:"command,omitempty"`
 	Status     Status    `json:"status"`
 	PID        int       `json:"pid"`
+	PGID       int       `json:"pgid,omitempty"`
 	ExitCode   int       `json:"exit_code"`
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at"`
@@ -93,6 +94,7 @@ func (s *Supervisor) SaveState() error {
 			Command:    rt.command,
 			Status:     rt.status,
 			PID:        rt.pid,
+			PGID:       rt.pgid,
 			ExitCode:   rt.exitCode,
 			StartedAt:  rt.startedAt,
 			FinishedAt: rt.finishedAt,
@@ -205,4 +207,17 @@ func adoptedLeaderAlive(snap ServiceStateSnapshot) bool {
 	}
 	info, ok := procstat.InspectProcess(snap.PID)
 	return ok && !info.Zombie && info.PGID == snap.PGID
+}
+
+// adoptableActionSnapshot reports whether a persisted action snapshot
+// describes a process group this supervisor can still treat as a live run:
+// the recorded group leader must be alive, not a zombie, and still lead its
+// own process group (actions run with Setpgid, so the leader's pgid equals
+// its pid). Anything else is a stale record of a run whose daemon is gone.
+func adoptableActionSnapshot(snap ActionStateSnapshot) bool {
+	if snap.PID <= 0 {
+		return false
+	}
+	info, ok := procstat.InspectProcess(snap.PID)
+	return ok && !info.Zombie && info.PGID == snap.PID
 }

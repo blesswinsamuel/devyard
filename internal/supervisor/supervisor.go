@@ -576,13 +576,10 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 			}
 			switch as.Status {
 			case StatusStarting, StatusRunning:
-				if adoptableActionSnapshot(as) {
-					// The orphaned group is still alive — keep it stoppable.
-					// pid is the group leader (actions run with Setpgid), so
-					// pgid falls back to the recorded pid for older snapshots
-					// that predate persisting pgid.
-					rt.pgid = as.PID
-				} else {
+				if !adoptableActionSnapshot(as) {
+					// The run's process group is gone — record a terminal
+					// state instead of haunting ps/web (and resisting
+					// StopAction) forever.
 					rt.status = StatusExited
 					rt.pid = 0
 					rt.pgid = 0

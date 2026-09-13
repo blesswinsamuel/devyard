@@ -162,7 +162,7 @@ func dialDaemon() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(sock); err != nil {
+	if !daemon.IsSocketResponsive(sock, 200*time.Millisecond) {
 		return "", fmt.Errorf("no daemon running; use `local-compose up` to start")
 	}
 	return sock, nil

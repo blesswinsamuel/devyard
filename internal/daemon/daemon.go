@@ -5,6 +5,7 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -161,9 +162,25 @@ func SpawnDaemon(locs *project.DaemonLocations) (int, error) {
 	return pid, nil
 }
 
+// IsSocketResponsive checks if a Unix domain socket at path is actively accepting connections.
+func IsSocketResponsive(path string, timeout time.Duration) bool {
+	if path == "" {
+		return false
+	}
+	conn, err := net.DialTimeout("unix", path, timeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
 // DaemonRunning returns the pid of an existing global daemon, or 0 if none is
-// running. A stale pidfile (dead pid) is treated as "not running".
+// running. A stale pidfile (dead pid or unreachable socket) is treated as "not running".
 func DaemonRunning(locs *project.DaemonLocations) (int, error) {
+	if locs == nil {
+		return 0, nil
+	}
 	pid, err := ReadPidfile(locs.Pidfile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -172,6 +189,9 @@ func DaemonRunning(locs *project.DaemonLocations) (int, error) {
 		return 0, err
 	}
 	if !IsAlive(pid) {
+		return 0, nil
+	}
+	if locs.Socket != "" && !IsSocketResponsive(locs.Socket, 200*time.Millisecond) {
 		return 0, nil
 	}
 	return pid, nil

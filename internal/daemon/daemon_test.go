@@ -3,9 +3,11 @@
 package daemon_test
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
 	"github.com/blesswinsamuel/local-compose/internal/project"
@@ -93,5 +95,81 @@ func TestRemovePidfileIfOurs(t *testing.T) {
 	// Degenerate inputs are no-ops, not errors.
 	if err := daemon.RemovePidfileIfOurs(locs, 0); err != nil {
 		t.Errorf("RemovePidfileIfOurs(pid=0) = %v, want nil", err)
+	}
+}
+
+func TestIsSocketResponsive(t *testing.T) {
+	if daemon.IsSocketResponsive("", 100*time.Millisecond) {
+		t.Error("expected false for empty socket path")
+	}
+
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "test.sock")
+	if daemon.IsSocketResponsive(sock, 100*time.Millisecond) {
+		t.Error("expected false for missing socket")
+	}
+
+	// Active listener accepts connections.
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	if !daemon.IsSocketResponsive(sock, 200*time.Millisecond) {
+		t.Error("expected true for listening socket")
+	}
+
+	_ = ln.Close()
+	if daemon.IsSocketResponsive(sock, 100*time.Millisecond) {
+		t.Error("expected false for closed socket file")
+	}
+}
+
+func TestDaemonRunning(t *testing.T) {
+	if pid, err := daemon.DaemonRunning(nil); pid != 0 || err != nil {
+		t.Errorf("DaemonRunning(nil) = (%d, %v), want (0, nil)", pid, err)
+	}
+
+	dir := t.TempDir()
+	locs := &project.DaemonLocations{
+		Pidfile: filepath.Join(dir, "daemon.pid"),
+		Socket:  filepath.Join(dir, "daemon.sock"),
+	}
+
+	// 1. Missing pidfile
+	if pid, err := daemon.DaemonRunning(locs); pid != 0 || err != nil {
+		t.Errorf("DaemonRunning(missing) = (%d, %v), want (0, nil)", pid, err)
+	}
+
+	// 2. Dead PID
+	if err := daemon.WritePidfile(locs.Pidfile, 2_000_000); err != nil {
+		t.Fatal(err)
+	}
+	if pid, err := daemon.DaemonRunning(locs); pid != 0 || err != nil {
+		t.Errorf("DaemonRunning(dead pid) = (%d, %v), want (0, nil)", pid, err)
+	}
+
+	// 3. Alive PID (our own PID), but socket not listening
+	if err := daemon.WritePidfile(locs.Pidfile, os.Getpid()); err != nil {
+		t.Fatal(err)
+	}
+	if pid, err := daemon.DaemonRunning(locs); pid != 0 || err != nil {
+		t.Errorf("DaemonRunning(alive pid, no socket) = (%d, %v), want (0, nil)", pid, err)
+	}
+
+	// 4. Alive PID + listening socket
+	ln, err := net.Listen("unix", locs.Socket)
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	pid, err := daemon.DaemonRunning(locs)
+	if err != nil {
+		t.Fatalf("DaemonRunning(alive + listening): %v", err)
+	}
+	if pid != os.Getpid() {
+		t.Errorf("DaemonRunning = %d, want %d", pid, os.Getpid())
 	}
 }

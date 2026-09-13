@@ -21,16 +21,45 @@ func TestResolveDefaults(t *testing.T) {
 	if loc.Name != "myapp" {
 		t.Fatalf("name: %q", loc.Name)
 	}
-	wantRuntime := filepath.Join("/tmp/local-compose", "myapp")
-	if loc.Runtime != wantRuntime {
-		t.Fatalf("runtime: got %q want %q", loc.Runtime, wantRuntime)
-	}
 	wantState := filepath.Join(home, ".local", "state", "local-compose", "myapp")
 	if loc.State != wantState {
 		t.Fatalf("state: got %q want %q", loc.State, wantState)
 	}
+	wantRuntime := filepath.Join(wantState, "run")
+	if loc.Runtime != wantRuntime {
+		t.Fatalf("runtime: got %q want %q", loc.Runtime, wantRuntime)
+	}
 	if loc.LogsDir != filepath.Join(loc.State, "logs") {
 		t.Fatalf("logs dir: %q", loc.LogsDir)
+	}
+}
+
+func TestResolveDaemonDefaults(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	loc, err := project.ResolveDaemon()
+	if err != nil {
+		t.Fatalf("ResolveDaemon: %v", err)
+	}
+	wantState := filepath.Join(home, ".local", "state", "local-compose")
+	if loc.State != wantState {
+		t.Fatalf("state: got %q want %q", loc.State, wantState)
+	}
+	wantRuntime := filepath.Join(wantState, "run")
+	if loc.Runtime != wantRuntime {
+		t.Fatalf("runtime: got %q want %q", loc.Runtime, wantRuntime)
+	}
+	if loc.Socket != filepath.Join(wantRuntime, "daemon.sock") {
+		t.Fatalf("socket: got %q want %q", loc.Socket, filepath.Join(wantRuntime, "daemon.sock"))
+	}
+	if loc.Pidfile != filepath.Join(wantRuntime, "daemon.pid") {
+		t.Fatalf("pidfile: got %q want %q", loc.Pidfile, filepath.Join(wantRuntime, "daemon.pid"))
+	}
+	if loc.LogFile != filepath.Join(wantState, "daemon.log") {
+		t.Fatalf("log file: got %q want %q", loc.LogFile, filepath.Join(wantState, "daemon.log"))
 	}
 }
 

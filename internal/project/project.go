@@ -7,11 +7,6 @@ import (
 	"strings"
 )
 
-// DefaultRuntimeBase is used when XDG_RUNTIME_DIR is unset. Compose-style
-// tools normally live under $XDG_RUNTIME_DIR, but that var is not set on
-// macOS by default, so we fall back to /tmp/local-compose.
-const DefaultRuntimeBase = "/tmp/local-compose"
-
 // DefaultStateBase is used when XDG_STATE_HOME is unset. Per the XDG spec
 // the default is ~/.local/state.
 const DefaultStateBase = ".local/state"
@@ -21,8 +16,10 @@ const AppDir = "local-compose"
 
 // Locations holds the resolved runtime and state paths for one project.
 //
-//   - Runtime dir holds transient files (cleared on reboot). Never persisted
-//     across reboots.
+//   - Runtime dir holds transient files (cleared on reboot). When
+//     XDG_RUNTIME_DIR is unset (e.g. on macOS), it falls back to a "run"
+//     subdirectory within the user's state dir so it is immune to OS /tmp
+//     periodic sweeps.
 //   - State dir holds per-service log files and the project-level ".stopped"
 //     marker used to opt a project out of daemon autostart. Persisted across
 //     reboots.
@@ -58,18 +55,18 @@ func homeDir() (string, error) {
 type envGetter func(string) string
 
 func resolve(name string, getenv envGetter, home func() (string, error)) (*Locations, error) {
-	runtime := runtimeDir(getenv)
-	if runtime == "" {
-		runtime = filepath.Join(DefaultRuntimeBase, name)
-	} else {
-		runtime = filepath.Join(runtime, AppDir, name)
-	}
-
 	state, err := stateDir(getenv, home)
 	if err != nil {
 		return nil, err
 	}
 	state = filepath.Join(state, AppDir, name)
+
+	runtime := runtimeDir(getenv)
+	if runtime == "" {
+		runtime = filepath.Join(state, "run")
+	} else {
+		runtime = filepath.Join(runtime, AppDir, name)
+	}
 
 	return &Locations{
 		Name:    name,
@@ -144,18 +141,18 @@ func ResolveDaemon() (*DaemonLocations, error) {
 }
 
 func resolveDaemon(getenv envGetter, home func() (string, error)) (*DaemonLocations, error) {
-	rt := runtimeDir(getenv)
-	if rt == "" {
-		rt = DefaultRuntimeBase
-	} else {
-		rt = filepath.Join(rt, AppDir)
-	}
-
 	st, err := stateDir(getenv, home)
 	if err != nil {
 		return nil, err
 	}
 	st = filepath.Join(st, AppDir)
+
+	rt := runtimeDir(getenv)
+	if rt == "" {
+		rt = filepath.Join(st, "run")
+	} else {
+		rt = filepath.Join(rt, AppDir)
+	}
 
 	return &DaemonLocations{
 		Runtime: rt,

@@ -281,7 +281,7 @@ Per the XDG base directory spec:
 
 | Path | Holds |
 | --- | --- |
-| `$XDG_RUNTIME_DIR/local-compose/` (or `/tmp/local-compose/`) | Daemon control socket + pidfile. Transient — cleared on reboot. |
+| `$XDG_RUNTIME_DIR/local-compose/` (or `~/.local/state/local-compose/run/`) | Daemon control socket + pidfile. Transient — cleared on reboot. |
 | `$XDG_STATE_HOME/local-compose/<project>/` (or `~/.local/state/local-compose/<project>/`) | Per-service log files, config-path, and the project `.stopped` marker. Persisted. |
 | `$XDG_CONFIG_HOME/local-compose/config.yml` (or `~/.config/local-compose/config.yml`) | Global config (web UI settings). |
 

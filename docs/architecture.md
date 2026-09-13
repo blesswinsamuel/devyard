@@ -225,9 +225,9 @@ always go through `project.Resolve` / `Locations` (per-project) or
 | `$XDG_STATE_HOME/local-compose/<project>/.stopped` | project-level stopped marker (suppresses daemon autostart) | yes |
 | `$XDG_STATE_HOME/local-compose/<project>/logs/<svc>.log` | per-service logs | yes |
 
-Fallbacks: `$XDG_RUNTIME_DIR` -> `/tmp/local-compose`; `$XDG_STATE_HOME` ->
-`~/.local/state`. Runtime dirs are `0o700` (they grant control over supervised
-processes); state/log dirs are `0o755`.
+Fallbacks: `$XDG_RUNTIME_DIR` -> `~/.local/state/local-compose/run` (or per-project `<project>/run`);
+`$XDG_STATE_HOME` -> `~/.local/state`. Runtime dirs are `0o700` (they grant control
+over supervised processes); state/log dirs are `0o755`.
 
 ## Global config (`internal/globalconfig`)
 

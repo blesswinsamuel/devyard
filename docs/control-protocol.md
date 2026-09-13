@@ -11,7 +11,7 @@ Implementation:
 
 ## Transport
 
-- **Daemon Socket**: Unix domain socket at `$XDG_RUNTIME_DIR/local-compose/daemon.sock` (or `/tmp/local-compose/daemon.sock`).
+- **Daemon Socket**: Unix domain socket at `$XDG_RUNTIME_DIR/local-compose/daemon.sock` (or `~/.local/state/local-compose/run/daemon.sock`).
 - **HTTP/2 Transport**: Client and server communicate using HTTP/2 cleartext (h2c) over the Unix socket.
 - **Multiplexing**: A single connection can serve multiple parallel requests and streams concurrently.
 

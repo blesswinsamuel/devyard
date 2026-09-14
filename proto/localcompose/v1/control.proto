@@ -28,10 +28,10 @@ service DaemonService {
   rpc Logs(LogsRequest) returns (stream LogChunk);
   rpc ListPorts(ListPortsRequest) returns (ListPortsResponse);
 
-  // Actions
-  rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
-  rpc RunAction(RunActionRequest) returns (stream ActionOutputChunk);
-  rpc StopAction(StopActionRequest) returns (StopActionResponse);
+  // Tasks
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc RunTask(RunTaskRequest) returns (stream TaskOutputChunk);
+  rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
 
   // Git Operations
   rpc GitLog(GitLogRequest) returns (GitLogResponse);
@@ -73,7 +73,7 @@ message ServiceState {
   string project = 10;
 }
 
-message ActionState {
+message TaskState {
   string name = 1;
   string command = 2;
   string working_dir = 3;
@@ -181,15 +181,15 @@ message GitDiffResult {
 message LogChunk {
   string project = 1;
   string service = 2;
-  string action = 3;
+  string task = 3;
   repeated string lines = 4;
   string content = 5;
   bool rotated = 6;
 }
 
-message ActionOutputChunk {
+message TaskOutputChunk {
   string project = 1;
-  string action = 2;
+  string task = 2;
   string line = 3;
   optional int32 exit_code = 4;
 }
@@ -199,9 +199,9 @@ message ServiceStateChangedEvent {
   ServiceState state = 2;
 }
 
-message ActionStateChangedEvent {
+message TaskStateChangedEvent {
   string project = 1;
-  ActionState state = 2;
+  TaskState state = 2;
 }
 
 message GitChangedEvent {
@@ -215,7 +215,7 @@ message HeartbeatEvent {}
 message Event {
   oneof event {
     ServiceStateChangedEvent service_state_changed = 1;
-    ActionStateChangedEvent action_state_changed = 2;
+    TaskStateChangedEvent task_state_changed = 2;
     GitChangedEvent git_changed = 3;
     ProjectsChangedEvent projects_changed = 4;
     HeartbeatEvent heartbeat = 5;
@@ -323,7 +323,7 @@ message TopResponse {
 message LogsRequest {
   string project = 1;
   string service = 2;
-  string action = 3;
+  string task = 3;
   bool follow = 4;
   bool previous = 5;
   int32 tail = 6;
@@ -337,26 +337,26 @@ message ListPortsResponse {
   repeated PortBinding ports = 1;
 }
 
-message ListActionsRequest {
+message ListTasksRequest {
   string project = 1;
 }
 
-message ListActionsResponse {
-  repeated ActionState actions = 1;
+message ListTasksResponse {
+  repeated TaskState tasks = 1;
 }
 
-message RunActionRequest {
+message RunTaskRequest {
   string project = 1;
-  string action = 2;
+  string task = 2;
   repeated string args = 3;
 }
 
-message StopActionRequest {
+message StopTaskRequest {
   string project = 1;
-  string action = 2;
+  string task = 2;
 }
 
-message StopActionResponse {}
+message StopTaskResponse {}
 
 message GitLogRequest {
   string project = 1;

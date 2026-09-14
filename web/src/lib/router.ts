@@ -1,7 +1,7 @@
 export interface RouteState {
   project: string | null;
   service: string | null;
-  action: string | null;
+  task: string | null;
   view?: "logs" | "git" | null;
   commit?: string | null;
 }
@@ -18,23 +18,23 @@ export function parseRoute(pathname = window.location.pathname): RouteState {
   if (parts[0] === "projects" && parts[1]) {
     const project = parts[1];
     if (parts[2] === "services" && parts[3]) {
-      return { project, service: parts[3], action: null, view: "logs", commit: null };
+      return { project, service: parts[3], task: null, view: "logs", commit: null };
     }
-    if (parts[2] === "actions" && parts[3]) {
-      return { project, service: null, action: parts[3], view: "logs", commit: null };
+    if (parts[2] === "tasks" && parts[3]) {
+      return { project, service: null, task: parts[3], view: "logs", commit: null };
     }
     if (parts[2] === "git") {
       if (parts[3] === "commits" && parts[4]) {
-        return { project, service: null, action: null, view: "git", commit: parts[4] };
+        return { project, service: null, task: null, view: "git", commit: parts[4] };
       }
       if (parts[3] && parts[3] !== "commits") {
-        return { project, service: null, action: null, view: "git", commit: parts[3] };
+        return { project, service: null, task: null, view: "git", commit: parts[3] };
       }
-      return { project, service: null, action: null, view: "git", commit: null };
+      return { project, service: null, task: null, view: "git", commit: null };
     }
-    return { project, service: null, action: null, view: "logs", commit: null };
+    return { project, service: null, task: null, view: "logs", commit: null };
   }
-  return { project: null, service: null, action: null, view: "logs", commit: null };
+  return { project: null, service: null, task: null, view: "logs", commit: null };
 }
 
 export function buildRoute(state: RouteState): string {
@@ -49,8 +49,8 @@ export function buildRoute(state: RouteState): string {
   if (state.service) {
     return `/projects/${p}/services/${encodeURIComponent(state.service)}`;
   }
-  if (state.action) {
-    return `/projects/${p}/actions/${encodeURIComponent(state.action)}`;
+  if (state.task) {
+    return `/projects/${p}/tasks/${encodeURIComponent(state.task)}`;
   }
   return `/projects/${p}`;
 }

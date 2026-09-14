@@ -72,7 +72,7 @@ func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showPr
 }
 
 // renderTasksHelper formats and displays task states as JSON or an aligned table.
-func renderTasksHelper(ctx *CLIContext, tasks []*protocol.ActionState) error {
+func renderTasksHelper(ctx *CLIContext, tasks []*protocol.TaskState) error {
 	if ctx.IsJSON() {
 		return ctx.PrintJSON(tasks)
 	}
@@ -168,7 +168,7 @@ func runStopHelper(ctx *CLIContext, client *control.Client, projName, target str
 		return nil
 	}
 	if isTask {
-		if err := client.StopAction(projName, target); err != nil {
+		if err := client.StopTask(projName, target); err != nil {
 			return err
 		}
 		ctx.Errorf("local-compose: stopped task %q\n", target)
@@ -190,7 +190,7 @@ func streamLogsHelper(cmdCtx context.Context, ctx *CLIContext, client *control.C
 	printer := newLogPrinterTo(ctx.Out, target)
 
 	if isTask {
-		return client.ActionLogsCtx(cmdCtx, projName, target, follow, previous, tail, printer)
+		return client.TaskLogsCtx(cmdCtx, projName, target, follow, previous, tail, printer)
 	}
 
 	if target != "" {

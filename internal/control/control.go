@@ -21,13 +21,13 @@ type Backend interface {
 	KillService(name, signal string) error
 	Restart(name string) error
 	Top(name string) ([]*protocol.ServiceStat, error)
-	ListActions() []*protocol.ActionState
-	RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error)
-	StopAction(name string) error
+	ListTasks() []*protocol.TaskState
+	RunTask(ctx context.Context, name string, args []string, out io.Writer) (int, error)
+	StopTask(name string) error
 	LogPath(name string) (string, error)
 	PreviousLogPath(name string) (string, error)
-	ActionLogPath(name string) (string, error)
-	ActionPreviousLogPath(name string) (string, error)
+	TaskLogPath(name string) (string, error)
+	TaskPreviousLogPath(name string) (string, error)
 	ListPorts() ([]*protocol.PortBinding, error)
 }
 
@@ -48,7 +48,7 @@ type MultiBackend interface {
 	RestartDaemon(restartServices bool) (int32, error)
 	ProjectBackend(project string) (Backend, error)
 	ListServices(project string) ([]*protocol.ServiceState, error)
-	ListActions(project string) ([]*protocol.ActionState, error)
+	ListTasks(project string) ([]*protocol.TaskState, error)
 
 	GitLog(project string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error)
 	GitDiff(project string, hash string, path string, contextLines ...int) (*protocol.GitDiffResult, error)
@@ -60,7 +60,7 @@ type MultiBackend interface {
 	ListPorts(project string) ([]*protocol.PortBinding, error)
 
 	SetOnStateChange(fn func(project string, state *protocol.ServiceState))
-	SetOnActionStateChange(fn func(project string, state *protocol.ActionState))
+	SetOnTaskStateChange(fn func(project string, state *protocol.TaskState))
 	SetOnGitChange(fn func(project string))
 	SetOnProjectsChange(fn func())
 }
@@ -213,7 +213,7 @@ func (s SingleProjectBackend) ProjectBackend(project string) (Backend, error) {
 
 func (s SingleProjectBackend) SetOnStateChange(func(string, *protocol.ServiceState)) {}
 
-func (s SingleProjectBackend) SetOnActionStateChange(func(string, *protocol.ActionState)) {}
+func (s SingleProjectBackend) SetOnTaskStateChange(func(string, *protocol.TaskState)) {}
 
 func (s SingleProjectBackend) SetOnGitChange(func(string)) {}
 
@@ -230,15 +230,15 @@ func (s SingleProjectBackend) ListServices(project string) ([]*protocol.ServiceS
 	return states, nil
 }
 
-func (s SingleProjectBackend) ListActions(project string) ([]*protocol.ActionState, error) {
+func (s SingleProjectBackend) ListTasks(project string) ([]*protocol.TaskState, error) {
 	if project != "" && project != s.Project {
 		return nil, fmt.Errorf("unknown project %q", project)
 	}
-	actions := s.Backend.ListActions()
-	for _, act := range actions {
-		act.Project = s.Project
+	tasks := s.Backend.ListTasks()
+	for _, t := range tasks {
+		t.Project = s.Project
 	}
-	return actions, nil
+	return tasks, nil
 }
 
 func (s SingleProjectBackend) ListPorts(project string) ([]*protocol.PortBinding, error) {

@@ -3,10 +3,10 @@ import { createSignal } from "solid-js";
 import { rpcClient } from "~/lib/rpc";
 
 export interface LogTab {
-  /** Stable identity: `s:project/service` or `a:project/action`. */
+  /** Stable identity: `s:project/service` or `t:project/task`. */
   key: string;
   project: string;
-  kind: "service" | "action";
+  kind: "service" | "task";
   name: string;
 }
 
@@ -22,7 +22,7 @@ const [previousKeys, setPreviousKeys] = createSignal<Set<string>>(new Set());
 export { tabs, activeKey, previousKeys };
 
 export function tabKey(project: string, kind: LogTab["kind"], name: string): string {
-  return `${kind === "service" ? "s" : "a"}:${project}/${name}`;
+  return `${kind === "service" ? "s" : "t"}:${project}/${name}`;
 }
 
 export function isPreviousLogs(key: string): boolean {
@@ -130,9 +130,9 @@ export function subscribeLogs(
   return () => controller.abort();
 }
 
-export function subscribeActionLogs(
+export function subscribeTaskLogs(
   project: string,
-  action: string,
+  task: string,
   onLine: (line: string) => void,
   onRotate?: () => void,
   prev = false
@@ -143,7 +143,7 @@ export function subscribeActionLogs(
       const stream = rpcClient.logs(
         {
           project,
-          action,
+          task,
           follow: !prev,
           previous: prev,
           tail: 500,

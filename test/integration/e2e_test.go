@@ -92,7 +92,7 @@ func newEnv(t *testing.T, configContents string) *env {
 	// Also stop the daemon so tests don't leak processes.
 	t.Cleanup(func() {
 		_, _, _ = e.run(t, context.Background(), "down")
-		_, _, _ = e.run(t, context.Background(), "stop-daemon")
+		_, _, _ = e.run(t, context.Background(), "daemon", "stop")
 		if data, err := os.ReadFile(filepath.Join(e.runtime, "local-compose", "daemon.pid")); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
 				_ = syscall.Kill(pid, syscall.SIGKILL)

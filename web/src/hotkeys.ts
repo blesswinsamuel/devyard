@@ -194,7 +194,7 @@ async function handleKeyDown(e: KeyboardEvent): Promise<void> {
       const t = previousTarget();
       if (!t || t.kind === "project") return;
       e.preventDefault();
-      const name = t.kind === "service" ? t.service : t.action;
+      const name = t.kind === "service" ? t.service : t.task;
       togglePreviousLogs(tabKey(t.project, t.kind, name));
       break;
     }

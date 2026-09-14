@@ -1,12 +1,12 @@
 import { Show } from "solid-js";
 import { Globe, Menu, PackageOpen, Play, Square, SquareTerminal } from "lucide-solid";
-import { actions as actionsMap, fetchPorts, runAction, stopAction } from "~/stores/data";
-import { activeView, selectedAction, selectedProject, selectedService } from "~/stores/nav";
+import { fetchPorts, runTask, stopTask, tasks as tasksMap } from "~/stores/data";
+import { activeView, selectedProject, selectedService, selectedTask } from "~/stores/nav";
 import { openPortsModal, setSidebarOpen } from "~/stores/app";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
-import { ActionHeader, ProjectHeader, ServiceHeader } from "~/components/header";
+import { ProjectHeader, ServiceHeader, TaskHeader } from "~/components/header";
 import { LogView } from "~/components/logs";
 import { GitView } from "~/components/git/GitView";
 import { BottomPanel } from "~/components/bottom_panel";
@@ -14,7 +14,7 @@ import { PortsModal } from "~/components/ports_modal";
 
 function EmptyState() {
   const project = () => selectedProject();
-  const actionList = () => (project() ? actionsMap()[project()!] ?? [] : []);
+  const taskList = () => (project() ? tasksMap()[project()!] ?? [] : []);
 
   return (
     <div class="flex h-full flex-col items-center justify-center p-6 text-muted-foreground">
@@ -39,15 +39,15 @@ function EmptyState() {
             Select a service under{" "}
             <span class="font-semibold text-foreground">{project()}</span> to follow its logs.
           </p>
-          <Show when={actionList().length > 0}>
+          <Show when={taskList().length > 0}>
             <Card class="shadow-sm">
               <CardHeader class="pb-2">
                 <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Project actions
+                  Project tasks
                 </CardTitle>
               </CardHeader>
               <CardContent class="grid gap-1.5 pt-0">
-                {actionList().map((act) => (
+                {taskList().map((act) => (
                   <div class="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-2.5 py-2 transition-colors hover:bg-muted/60">
                     <div class="min-w-0 pr-2">
                       <div class="truncate text-[13px] font-medium text-foreground">{act.name}</div>
@@ -62,7 +62,7 @@ function EmptyState() {
                           size="xs"
                           variant="secondary"
                           class="shrink-0"
-                          onClick={() => runAction(project()!, act.name)}
+                          onClick={() => runTask(project()!, act.name)}
                         >
                           <Play class="!size-3 text-primary" />
                           Run
@@ -73,7 +73,7 @@ function EmptyState() {
                         size="xs"
                         variant="secondary"
                         class="shrink-0"
-                        onClick={() => stopAction(project()!, act.name)}
+                        onClick={() => stopTask(project()!, act.name)}
                       >
                         <Square class="!size-3 text-destructive" />
                         Stop
@@ -130,7 +130,7 @@ export function Main() {
           >
             <Show
               when={selectedService()}
-              fallback={<Show when={selectedAction()} fallback={<ProjectHeader />}><ActionHeader /></Show>}
+              fallback={<Show when={selectedTask()} fallback={<ProjectHeader />}><TaskHeader /></Show>}
             >
               <ServiceHeader />
             </Show>
@@ -142,7 +142,7 @@ export function Main() {
       <div class="relative min-h-0 flex-1 overflow-hidden">
         <Show when={activeView() !== "git"} fallback={<GitView />}>
           <Show
-            when={selectedService() || selectedAction()}
+            when={selectedService() || selectedTask()}
             fallback={<EmptyState />}
           >
             <LogView />

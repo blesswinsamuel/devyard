@@ -46,7 +46,7 @@ Tests and lint must stay green. CI (`.github/workflows/ci.yml`) runs `go vet`,
 `gofmt`, `golangci-lint`, `go build`, and `go test -race` on Ubuntu and macOS.
 The integration suite builds the actual binary and drives the full CLI lifecycle
 (`up -d`, `ps`, `logs`, `restart`, `down`, `build`, `up --build`,
-`start-daemon`, `stop-daemon`) against isolated XDG dirs — it never touches the
+`daemon start`, `daemon stop`) against isolated XDG dirs — it never touches the
 user's real state.
 
 ## Repo layout

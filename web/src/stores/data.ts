@@ -1,7 +1,6 @@
 import { untrack } from "solid-js";
 import { createSignal } from "solid-js";
 import type {
-  ActionState,
   DaemonInfo,
   GitBranch,
   GitCommit,
@@ -11,6 +10,7 @@ import type {
   PortBinding,
   ProjectInfo,
   ServiceState,
+  TaskState,
 } from "~/lib/types";
 import { rpcClient } from "~/lib/rpc";
 import { onConnectionOpen, onDaemonEvent } from "~/lib/events";
@@ -23,7 +23,7 @@ import { activeView, selectedProject } from "~/stores/nav";
 
 const [projects, setProjects] = createSignal<ProjectInfo[]>([]);
 const [services, setServices] = createSignal<Record<string, ServiceState[]>>({});
-const [actions, setActions] = createSignal<Record<string, ActionState[]>>({});
+const [tasks, setTasks] = createSignal<Record<string, TaskState[]>>({});
 const [ports, setPorts] = createSignal<Record<string, PortBinding[]>>({});
 const [daemonInfo, setDaemonInfo] = createSignal<DaemonInfo | null>(null);
 
@@ -44,7 +44,7 @@ const [gitCommitError, setGitCommitError] = createSignal<Record<string, string>>
 export {
   projects,
   services,
-  actions,
+  tasks,
   ports,
   daemonInfo,
   gitCommits,
@@ -85,7 +85,7 @@ function sameService(a: ServiceState, b: ServiceState): boolean {
   );
 }
 
-function sameActionState(a: ActionState, b: ActionState): boolean {
+function sameTaskState(a: TaskState, b: TaskState): boolean {
   return (
     a.name === b.name &&
     a.command === b.command &&
@@ -158,7 +158,7 @@ export function pruneData(projectNames: Set<string>) {
     return changed ? next : null;
   };
   setServices((m) => keepMap(m) ?? m);
-  setActions((m) => keepMap(m) ?? m);
+  setTasks((m) => keepMap(m) ?? m);
 }
 
 /**
@@ -172,6 +172,7 @@ export function scheduleProjectStatusRefresh() {
     statusRefreshTimer = null;
     fetchProjects();
     fetchServices();
+    fetchTasks();
     fetchPorts();
   }, 300);
 }
@@ -228,13 +229,13 @@ export async function fetchServices(project?: string) {
   }
 }
 
-export async function fetchActions(project?: string) {
+export async function fetchTasks(project?: string) {
   try {
-    const res = await rpcClient.listActions({ project: project || "" });
-    const list = res.actions;
+    const res = await rpcClient.listTasks({ project: project || "" });
+    const list = res.tasks;
     if (!project) {
-      setActions((prev) => {
-        const next: Record<string, ActionState[]> = {};
+      setTasks((prev) => {
+        const next: Record<string, TaskState[]> = {};
         for (const a of list) {
           const p = a.project || "";
           if (!next[p]) next[p] = [];
@@ -247,7 +248,7 @@ export async function fetchActions(project?: string) {
           changed = true;
         } else {
           for (const k of nextKeys) {
-            if (!prev[k] || !sameArray(prev[k], next[k], sameActionState)) {
+            if (!prev[k] || !sameArray(prev[k], next[k], sameTaskState)) {
               changed = true;
               break;
             }
@@ -257,14 +258,14 @@ export async function fetchActions(project?: string) {
       });
       return;
     }
-    setActions((m) => {
+    setTasks((m) => {
       const prev = m[project];
-      if (prev && sameArray(prev, list, sameActionState)) return m;
+      if (prev && sameArray(prev, list, sameTaskState)) return m;
       return { ...m, [project]: list };
     });
   } catch (err: any) {
     if (!/not running/i.test(err.message)) {
-      pushToast(err.message || (project ? `Failed to fetch actions for ${project}` : "Failed to fetch actions"), "error");
+      pushToast(err.message || (project ? `Failed to fetch tasks for ${project}` : "Failed to fetch tasks"), "error");
     }
   }
 }
@@ -309,12 +310,16 @@ export function refreshAll() {
   fetchProjects();
   fetchDaemonStatus();
   fetchServices();
-  fetchActions();
+  fetchTasks();
   fetchPorts();
 }
 
 export function refreshServices(project: string) {
   fetchServices(project);
+}
+
+export function refreshTasks(project: string) {
+  fetchTasks(project);
 }
 
 // --- lifecycle commands -----------------------------------------------------
@@ -329,6 +334,7 @@ export async function startProject(project: string, configPath?: string) {
     });
     fetchProjects();
     refreshServices(project);
+    refreshTasks(project);
   } catch (err: any) {
     pushToast(err.message || `Failed to start project ${project}`, "error");
   }
@@ -343,6 +349,8 @@ export async function startProjectByPath(configPath: string, envFile?: string) {
       removeOrphans: true,
     });
     fetchProjects();
+    fetchServices();
+    fetchTasks();
     setShowAddProject(false);
   } catch (err: any) {
     pushToast(err.message || `Failed to start project at ${configPath}`, "error");
@@ -354,6 +362,7 @@ export async function stopProject(project: string) {
     await rpcClient.stopProject({ project });
     fetchProjects();
     refreshServices(project);
+    refreshTasks(project);
   } catch (err: any) {
     pushToast(err.message || `Failed to stop project ${project}`, "error");
   }
@@ -395,19 +404,19 @@ export async function killService(project: string, service: string, signal = "SI
   }
 }
 
-export function runAction(project: string, actionName: string, args?: string[]) {
-  const currentState = untrack(actions)[project]?.find((a) => a.name === actionName);
+export function runTask(project: string, taskName: string, args?: string[]) {
+  const currentState = untrack(tasks)[project]?.find((a) => a.name === taskName);
   if (currentState?.status === "running" || currentState?.status === "starting") {
-    pushToast(`Task '${actionName}' is already running`, "info");
+    pushToast(`Task '${taskName}' is already running`, "info");
     return false;
   }
-  pushToast(`Started task '${actionName}'`, "info");
+  pushToast(`Started task '${taskName}'`, "info");
 
   (async () => {
     try {
-      const stream = rpcClient.runAction({
+      const stream = rpcClient.runTask({
         project,
-        action: actionName,
+        task: taskName,
         args: args || [],
       });
       let exitCode = 0;
@@ -416,21 +425,21 @@ export function runAction(project: string, actionName: string, args?: string[]) 
           exitCode = chunk.exitCode;
         }
       }
-      pushToast(`Task '${actionName}' finished (exit code ${exitCode})`, "success");
+      pushToast(`Task '${taskName}' finished (exit code ${exitCode})`, "success");
     } catch (err: any) {
-      pushToast(err.message || `Task '${actionName}' failed`, "error");
+      pushToast(err.message || `Task '${taskName}' failed`, "error");
     }
   })();
 
   return true;
 }
 
-export async function stopAction(project: string, actionName: string) {
+export async function stopTask(project: string, taskName: string) {
   try {
-    await rpcClient.stopAction({ project, action: actionName });
-    pushToast(`Stopped task '${actionName}'`, "info");
+    await rpcClient.stopTask({ project, task: taskName });
+    pushToast(`Stopped task '${taskName}'`, "info");
   } catch (err: any) {
-    pushToast(err.message || `Failed to stop task ${actionName}`, "error");
+    pushToast(err.message || `Failed to stop task ${taskName}`, "error");
   }
 }
 
@@ -581,7 +590,7 @@ export function selectCommit(project: string, hash: string | null, opts?: { skip
     loadGitDiff(project, hash);
   }
   if (!opts?.skipPush) {
-    pushRoute({ project, service: null, action: null, view: "git", commit: hash });
+    pushRoute({ project, service: null, task: null, view: "git", commit: hash });
   }
 }
 
@@ -629,14 +638,14 @@ export function initDataHandlers() {
       if (changed) {
         scheduleProjectStatusRefresh();
       }
-    } else if (event.event.case === "actionStateChanged") {
+    } else if (event.event.case === "taskStateChanged") {
       const { project, state } = event.event.value;
       if (!project || !state) return;
-      setActions((m) => {
+      setTasks((m) => {
         const list = m[project] ?? [];
         const idx = list.findIndex((a) => a.name === state.name);
         const updated = idx >= 0 ? list.map((a, i) => (i === idx ? { ...a, ...state } : a)) : [...list, state];
-        if (sameArray(list, updated, sameActionState)) return m;
+        if (sameArray(list, updated, sameTaskState)) return m;
         return { ...m, [project]: updated };
       });
     } else if (event.event.case === "projectsChanged") {

@@ -108,29 +108,29 @@ func (b *ControlBackend) PreviousLogPath(name string) (string, error) {
 	return b.s.PreviousLogPath(name)
 }
 
-// ListActions returns a snapshot of defined actions and runtime states for the project.
-func (b *ControlBackend) ListActions() []*protocol.ActionState {
-	return b.s.ListActions()
+// ListTasks returns a snapshot of defined tasks and runtime states for the project.
+func (b *ControlBackend) ListTasks() []*protocol.TaskState {
+	return b.s.ListTasks()
 }
 
-// RunAction executes a named action command in a dedicated process group, streaming output to out.
-func (b *ControlBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
-	return b.s.RunAction(ctx, name, args, out)
+// RunTask executes a named task command in a dedicated process group, streaming output to out.
+func (b *ControlBackend) RunTask(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
+	return b.s.RunTask(ctx, name, args, out)
 }
 
-// StopAction stops a running action by name.
-func (b *ControlBackend) StopAction(name string) error {
-	return b.s.StopAction(name)
+// StopTask stops a running task by name.
+func (b *ControlBackend) StopTask(name string) error {
+	return b.s.StopTask(name)
 }
 
-// ActionLogPath returns the absolute path of an action's log file.
-func (b *ControlBackend) ActionLogPath(name string) (string, error) {
-	return b.s.ActionLogPath(name)
+// TaskLogPath returns the absolute path of a task's log file.
+func (b *ControlBackend) TaskLogPath(name string) (string, error) {
+	return b.s.TaskLogPath(name)
 }
 
-// ActionPreviousLogPath returns the absolute path of an action's previous-run log file.
-func (b *ControlBackend) ActionPreviousLogPath(name string) (string, error) {
-	return b.s.ActionPreviousLogPath(name)
+// TaskPreviousLogPath returns the absolute path of a task's previous-run log file.
+func (b *ControlBackend) TaskPreviousLogPath(name string) (string, error) {
+	return b.s.TaskPreviousLogPath(name)
 }
 
 // Compile-time assertion that ControlBackend satisfies control.Backend.

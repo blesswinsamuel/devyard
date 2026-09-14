@@ -116,7 +116,7 @@ local-compose logs --tail 100 api # last 100 lines only
 local-compose logs --previous api # inspect the previous run's logs
 local-compose restart web  # restart one service
 local-compose down         # stop the current project
-local-compose stop-daemon  # stop all projects and the daemon
+local-compose daemon stop  # stop all projects and the daemon
 ```
 
 ## Commands

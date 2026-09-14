@@ -112,15 +112,15 @@ type Options struct {
 	// The callback is invoked with the service runtime lock held.
 	OnStateChange func(service string, state *protocol.ServiceState)
 
-	// OnActionStateChange, when non-nil, is called whenever an action's
+	// OnTaskStateChange, when non-nil, is called whenever a task's
 	// runtime state changes (started, completed).
-	OnActionStateChange func(action string, state *protocol.ActionState)
+	OnTaskStateChange func(task string, state *protocol.TaskState)
 }
 
-// actionRuntime tracks the mutable state of a running or recently-completed
-// action. It is much simpler than serviceRuntime — actions don't restart and
+// taskRuntime tracks the mutable state of a running or recently-completed
+// task. It is much simpler than serviceRuntime — tasks don't restart and
 // don't have healthchecks.
-type actionRuntime struct {
+type taskRuntime struct {
 	name    string
 	command string
 
@@ -131,15 +131,15 @@ type actionRuntime struct {
 	exitCode   int
 	startedAt  time.Time
 	finishedAt time.Time
-	// done is closed when the current run's RunAction call finishes. A live
+	// done is closed when the current run's RunTask call finishes. A live
 	// run holds an open channel; restored snapshots and completed runs hold a
 	// closed one (or nil before the first run).
 	done chan struct{}
 }
 
-// actionRuntimeBusy reports whether the runtime belongs to an in-flight
-// RunAction call. The caller must hold rt.mu.
-func actionRuntimeBusy(rt *actionRuntime) bool {
+// taskRuntimeBusy reports whether the runtime belongs to an in-flight
+// RunTask call. The caller must hold rt.mu.
+func taskRuntimeBusy(rt *taskRuntime) bool {
 	if rt.done == nil {
 		return false
 	}
@@ -151,14 +151,14 @@ func actionRuntimeBusy(rt *actionRuntime) bool {
 	}
 }
 
-// notifyActionStateChange builds a single-action protocol snapshot and fires
-// the OnActionStateChange callback. Safe to call from any goroutine.
-func (s *Supervisor) notifyActionStateChange(rt *actionRuntime) {
-	if s.opts.OnActionStateChange == nil {
+// notifyTaskStateChange builds a single-task protocol snapshot and fires
+// the OnTaskStateChange callback. Safe to call from any goroutine.
+func (s *Supervisor) notifyTaskStateChange(rt *taskRuntime) {
+	if s.opts.OnTaskStateChange == nil {
 		return
 	}
 	rt.mu.Lock()
-	state := &protocol.ActionState{
+	state := &protocol.TaskState{
 		Name:       rt.name,
 		Command:    rt.command,
 		Status:     string(rt.status),
@@ -178,7 +178,7 @@ func (s *Supervisor) notifyActionStateChange(rt *actionRuntime) {
 			state.DependsOn = deps
 		}
 	}
-	s.opts.OnActionStateChange(rt.name, state)
+	s.opts.OnTaskStateChange(rt.name, state)
 }
 
 // ServiceState is a point-in-time snapshot of a service used by ps/web.
@@ -326,9 +326,9 @@ type Supervisor struct {
 	services map[string]*serviceRuntime
 	order    []string
 
-	// actionRuntimes tracks runtime state of actions (running or
+	// taskRuntimes tracks runtime state of tasks (running or
 	// recently-completed). guarded by mu.
-	actionRuntimes map[string]*actionRuntime
+	taskRuntimes map[string]*taskRuntime
 
 	// selected, when non-empty, is the set of services to launch at Start.
 	// See Options.Selected. Services not in it are skipped at Start.
@@ -404,12 +404,12 @@ func New(opts Options) (*Supervisor, error) {
 	}
 
 	return &Supervisor{
-		opts:           opts,
-		services:       services,
-		order:          order,
-		selected:       selected,
-		stopCh:         make(chan struct{}),
-		actionRuntimes: make(map[string]*actionRuntime),
+		opts:         opts,
+		services:     services,
+		order:        order,
+		selected:     selected,
+		stopCh:       make(chan struct{}),
+		taskRuntimes: make(map[string]*taskRuntime),
 	}, nil
 }
 
@@ -550,43 +550,43 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 		}()
 	}
 
-	// Restore action runtime state from the persisted snapshot so ps/web
-	// show the last run's PID, exit code, and timestamps. Actions are
+	// Restore task runtime state from the persisted snapshot so ps/web
+	// show the last run's PID, exit code, and timestamps. Tasks are
 	// one-shot, so we never re-run them — we only restore metadata. A
 	// snapshot that still says running/starting describes a run owned by a
 	// previous daemon: adopt it when its process group is genuinely alive
 	// (it survived the daemon exit), otherwise normalize it to a terminal
-	// state so a dead run doesn't haunt ps/web (and resist StopAction)
+	// state so a dead run doesn't haunt ps/web (and resist StopTask)
 	// forever.
-	if snap != nil && snap.Actions != nil {
+	if snap != nil && snap.Tasks != nil {
 		closed := make(chan struct{})
 		close(closed)
 		s.mu.Lock()
-		for name, as := range snap.Actions {
-			rt := &actionRuntime{
+		for name, ts := range snap.Tasks {
+			rt := &taskRuntime{
 				name:       name,
-				command:    as.Command,
-				status:     as.Status,
-				pid:        as.PID,
-				pgid:       as.PGID,
-				exitCode:   as.ExitCode,
-				startedAt:  as.StartedAt,
-				finishedAt: as.FinishedAt,
+				command:    ts.Command,
+				status:     ts.Status,
+				pid:        ts.PID,
+				pgid:       ts.PGID,
+				exitCode:   ts.ExitCode,
+				startedAt:  ts.StartedAt,
+				finishedAt: ts.FinishedAt,
 				done:       closed,
 			}
-			switch as.Status {
+			switch ts.Status {
 			case StatusStarting, StatusRunning:
-				if !adoptableActionSnapshot(as) {
+				if !adoptableTaskSnapshot(ts) {
 					// The run's process group is gone — record a terminal
 					// state instead of haunting ps/web (and resisting
-					// StopAction) forever.
+					// StopTask) forever.
 					rt.status = StatusExited
 					rt.pid = 0
 					rt.pgid = 0
 					rt.exitCode = -1
 				}
 			}
-			s.actionRuntimes[name] = rt
+			s.taskRuntimes[name] = rt
 		}
 		s.mu.Unlock()
 	}
@@ -1208,7 +1208,7 @@ func (s *Supervisor) KillService(name, signal string) error {
 	}
 	rt, ok := s.services[name]
 	if !ok {
-		act, actOk := s.actionRuntimes[name]
+		act, actOk := s.taskRuntimes[name]
 		if !actOk {
 			return fmt.Errorf("supervisor: unknown service or task %q", name)
 		}
@@ -1460,7 +1460,7 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 		rt.mu.Unlock()
 	}
 
-	for name, act := range s.actionRuntimes {
+	for name, act := range s.taskRuntimes {
 		if service != "" && name != service {
 			continue
 		}
@@ -1681,9 +1681,9 @@ func (s *Supervisor) Close() error {
 	return firstErr
 }
 
-// ListActionsFromFile returns action metadata and initial state directly from a config file
+// ListTasksFromFile returns task metadata and initial state directly from a config file
 // without requiring an active supervisor.
-func ListActionsFromFile(file *config.File) []*protocol.ActionState {
+func ListTasksFromFile(file *config.File) []*protocol.TaskState {
 	if file == nil {
 		return nil
 	}
@@ -1692,13 +1692,13 @@ func ListActionsFromFile(file *config.File) []*protocol.ActionState {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out := make([]*protocol.ActionState, len(names))
+	out := make([]*protocol.TaskState, len(names))
 	for i, name := range names {
 		act := file.Tasks[name]
 		deps := make([]string, len(act.Spec.DependsOn.Order))
 		copy(deps, act.Spec.DependsOn.Order)
 		sort.Strings(deps)
-		out[i] = &protocol.ActionState{
+		out[i] = &protocol.TaskState{
 			Name:       name,
 			Command:    act.Spec.Command,
 			WorkingDir: act.Spec.WorkingDir,
@@ -1710,8 +1710,8 @@ func ListActionsFromFile(file *config.File) []*protocol.ActionState {
 	return out
 }
 
-// ListActions returns a snapshot of defined actions and their runtime states for the project.
-func (s *Supervisor) ListActions() []*protocol.ActionState {
+// ListTasks returns a snapshot of defined tasks and their runtime states for the project.
+func (s *Supervisor) ListTasks() []*protocol.TaskState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.opts.File == nil {
@@ -1722,13 +1722,13 @@ func (s *Supervisor) ListActions() []*protocol.ActionState {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out := make([]*protocol.ActionState, 0, len(names))
+	out := make([]*protocol.TaskState, 0, len(names))
 	for _, name := range names {
 		act := s.opts.File.Tasks[name]
 		deps := make([]string, len(act.Spec.DependsOn.Order))
 		copy(deps, act.Spec.DependsOn.Order)
 		sort.Strings(deps)
-		st := &protocol.ActionState{
+		st := &protocol.TaskState{
 			Name:       name,
 			Command:    act.Spec.Command,
 			WorkingDir: act.Spec.WorkingDir,
@@ -1736,7 +1736,7 @@ func (s *Supervisor) ListActions() []*protocol.ActionState {
 			DependsOn:  deps,
 			Status:     "idle",
 		}
-		if rt, ok := s.actionRuntimes[name]; ok {
+		if rt, ok := s.taskRuntimes[name]; ok {
 			rt.mu.Lock()
 			st.Status = string(rt.status)
 			st.Pid = int32(rt.pid)
@@ -1750,27 +1750,27 @@ func (s *Supervisor) ListActions() []*protocol.ActionState {
 	return out
 }
 
-// RunAction executes a named action command in a dedicated process group,
-// streaming output lines to out. Returns the exit code of the action process.
-// It tracks the action's runtime state (PID, status, timestamps) and fires
-// OnActionStateChange on every transition, matching the service lifecycle.
-func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []string, out io.Writer) (int, error) {
+// RunTask executes a named task command in a dedicated process group,
+// streaming output lines to out. Returns the exit code of the task process.
+// It tracks the task's runtime state (PID, status, timestamps) and fires
+// OnTaskStateChange on every transition, matching the service lifecycle.
+func (s *Supervisor) RunTask(ctx context.Context, name string, extraArgs []string, out io.Writer) (int, error) {
 	if s.opts.File == nil {
 		return 1, fmt.Errorf("supervisor: no config file loaded")
 	}
 	act, ok := s.opts.File.Tasks[name]
 	if !ok {
-		return 1, fmt.Errorf("action %q not found", name)
+		return 1, fmt.Errorf("task %q not found", name)
 	}
 
 	s.mu.Lock()
-	if rt, ok := s.actionRuntimes[name]; ok {
+	if rt, ok := s.taskRuntimes[name]; ok {
 		rt.mu.Lock()
-		busy := actionRuntimeBusy(rt)
+		busy := taskRuntimeBusy(rt)
 		rt.mu.Unlock()
 		if busy {
 			s.mu.Unlock()
-			return 1, fmt.Errorf("supervisor: action %q is already running", name)
+			return 1, fmt.Errorf("supervisor: task %q is already running", name)
 		}
 	}
 	s.mu.Unlock()
@@ -1780,12 +1780,12 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 		if rt, ok := s.services[depName]; ok {
 			if rt.status == StatusStopped || rt.status == StatusExited || !rt.startedOnce.Load() {
 				if err := s.Restart(depName); err != nil {
-					return 1, fmt.Errorf("action %q: failed to start dependency service %q: %w", name, depName, err)
+					return 1, fmt.Errorf("task %q: failed to start dependency service %q: %w", name, depName, err)
 				}
 			}
 		}
 		if err := s.waitForDep(ctx, depName, entry.Condition); err != nil {
-			return 1, fmt.Errorf("action %q: dependency %q not ready: %w", name, depName, err)
+			return 1, fmt.Errorf("task %q: dependency %q not ready: %w", name, depName, err)
 		}
 	}
 
@@ -1812,7 +1812,7 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	var logFile *os.File
 	var logPath string
 	if s.opts.Locations != nil {
-		actDir := filepath.Join(s.opts.Locations.State, "actions")
+		actDir := filepath.Join(s.opts.Locations.State, "tasks")
 		if err := os.MkdirAll(actDir, 0o755); err == nil {
 			logPath = filepath.Join(actDir, name+".log")
 			prevPath := filepath.Join(actDir, name+".prev.log")
@@ -1827,29 +1827,29 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 		}
 	}
 
-	actionCmd := newCommand(shell, "-c", fullCmd)
-	actionCmd.dir = workDir
-	actionCmd.env = env
-	_ = applyProcessGroup(actionCmd)
+	taskCmd := newCommand(shell, "-c", fullCmd)
+	taskCmd.dir = workDir
+	taskCmd.env = env
+	_ = applyProcessGroup(taskCmd)
 
-	stdoutPipe, stderrPipe, err := actionCmd.pipes()
+	stdoutPipe, stderrPipe, err := taskCmd.pipes()
 	if err != nil {
-		return 1, fmt.Errorf("action %q: pipes: %w", name, err)
+		return 1, fmt.Errorf("task %q: pipes: %w", name, err)
 	}
 
-	if err := actionCmd.start(); err != nil {
-		return 1, fmt.Errorf("action %q: start: %w", name, err)
+	if err := taskCmd.start(); err != nil {
+		return 1, fmt.Errorf("task %q: start: %w", name, err)
 	}
 
 	now := time.Now()
-	pid := actionCmd.processPID()
+	pid := taskCmd.processPID()
 
 	// Register runtime state.
 	s.mu.Lock()
-	rt, rtExists := s.actionRuntimes[name]
+	rt, rtExists := s.taskRuntimes[name]
 	if !rtExists {
-		rt = &actionRuntime{name: name, command: act.Spec.Command}
-		s.actionRuntimes[name] = rt
+		rt = &taskRuntime{name: name, command: act.Spec.Command}
+		s.taskRuntimes[name] = rt
 	}
 	rt.mu.Lock()
 	rt.pid = pid
@@ -1861,7 +1861,7 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	rt.done = make(chan struct{})
 	rt.mu.Unlock()
 	s.mu.Unlock()
-	s.notifyActionStateChange(rt)
+	s.notifyTaskStateChange(rt)
 	_ = s.SaveState()
 
 	if logFile != nil {
@@ -1894,7 +1894,7 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	go readLineStream(stdoutPipe)
 	go readLineStream(stderrPipe)
 
-	// Kill the action when the requesting client goes away (cancelled
+	// Kill the task when the requesting client goes away (cancelled
 	// context) so a disconnected CLI/web client doesn't leave an orphaned
 	// process running in the daemon.
 	watchDone := make(chan struct{})
@@ -1913,7 +1913,7 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	}()
 
 	wg.Wait()
-	waitErr := actionCmd.Wait()
+	waitErr := taskCmd.Wait()
 	code := exitCodeFrom(waitErr)
 
 	finishTime := time.Now()
@@ -1925,7 +1925,7 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	rt.status = StatusExited
 	doneCh := rt.done
 	rt.mu.Unlock()
-	s.notifyActionStateChange(rt)
+	s.notifyTaskStateChange(rt)
 	_ = s.SaveState()
 	if doneCh != nil {
 		close(doneCh)
@@ -1938,27 +1938,27 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	return code, nil
 }
 
-// StopAction stops a running action by sending SIGTERM to its process group,
+// StopTask stops a running task by sending SIGTERM to its process group,
 // escalating to SIGKILL after the supervisor's graceful-stop grace period. It
-// blocks until the run has finished and returns an error when the action is
-// unknown or not running. It also handles an action group adopted at startup
-// from a previous daemon's snapshot (no in-flight RunAction): the group is
+// blocks until the run has finished and returns an error when the task is
+// unknown or not running. It also handles a task group adopted at startup
+// from a previous daemon's snapshot (no in-flight RunTask): the group is
 // terminated and the recorded state is finalized here.
-func (s *Supervisor) StopAction(name string) error {
+func (s *Supervisor) StopTask(name string) error {
 	s.mu.Lock()
-	rt, ok := s.actionRuntimes[name]
+	rt, ok := s.taskRuntimes[name]
 	s.mu.Unlock()
 	if !ok {
-		return fmt.Errorf("supervisor: unknown action %q", name)
+		return fmt.Errorf("supervisor: unknown task %q", name)
 	}
 
 	rt.mu.Lock()
 	pgid := rt.pgid
-	busy := actionRuntimeBusy(rt)
+	busy := taskRuntimeBusy(rt)
 	doneCh := rt.done
 	rt.mu.Unlock()
 	if pgid <= 0 {
-		return fmt.Errorf("supervisor: action %q is not running", name)
+		return fmt.Errorf("supervisor: task %q is not running", name)
 	}
 
 	if busy {
@@ -1980,24 +1980,24 @@ func (s *Supervisor) StopAction(name string) error {
 		return nil
 	}
 
-	// Adopted orphan from a previous daemon's snapshot: no RunAction call is
+	// Adopted orphan from a previous daemon's snapshot: no RunTask call is
 	// waiting on it, so terminate the group and record the terminal state.
 	if !IsProcessGroupAlive(pgid) {
-		s.finishAdoptedAction(rt)
-		return fmt.Errorf("supervisor: action %q is not running", name)
+		s.finishAdoptedTask(rt)
+		return fmt.Errorf("supervisor: task %q is not running", name)
 	}
 	_ = killGroup(pgid, syscall.SIGTERM)
 	if !waitForGroupDeath(pgid, 3*time.Second) {
 		_ = killGroup(pgid, syscall.SIGKILL)
 		waitForGroupDeath(pgid, 2*time.Second)
 	}
-	s.finishAdoptedAction(rt)
+	s.finishAdoptedTask(rt)
 	return nil
 }
 
-// finishAdoptedAction records the terminal state of an adopted action run
-// (one without an in-flight RunAction call to do it) and saves it.
-func (s *Supervisor) finishAdoptedAction(rt *actionRuntime) {
+// finishAdoptedTask records the terminal state of an adopted task run
+// (one without an in-flight RunTask call to do it) and saves it.
+func (s *Supervisor) finishAdoptedTask(rt *taskRuntime) {
 	rt.mu.Lock()
 	rt.pid = 0
 	rt.pgid = 0
@@ -2005,7 +2005,7 @@ func (s *Supervisor) finishAdoptedAction(rt *actionRuntime) {
 	rt.exitCode = -1
 	rt.finishedAt = time.Now()
 	rt.mu.Unlock()
-	s.notifyActionStateChange(rt)
+	s.notifyTaskStateChange(rt)
 	_ = s.SaveState()
 }
 
@@ -2024,8 +2024,8 @@ func waitForGroupDeath(pgid int, timeout time.Duration) bool {
 	}
 }
 
-// ActionLogPath returns the absolute path of an action's log file.
-func (s *Supervisor) ActionLogPath(name string) (string, error) {
+// TaskLogPath returns the absolute path of a task's log file.
+func (s *Supervisor) TaskLogPath(name string) (string, error) {
 	if s.opts.Locations == nil {
 		return "", fmt.Errorf("supervisor: no state location configured")
 	}
@@ -2033,17 +2033,17 @@ func (s *Supervisor) ActionLogPath(name string) (string, error) {
 		return "", fmt.Errorf("supervisor: no config file loaded")
 	}
 	if _, ok := s.opts.File.Tasks[name]; !ok {
-		return "", fmt.Errorf("action %q not found", name)
+		return "", fmt.Errorf("task %q not found", name)
 	}
-	path := filepath.Join(s.opts.Locations.State, "actions", name+".log")
+	path := filepath.Join(s.opts.Locations.State, "tasks", name+".log")
 	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("action %q has no log file yet", name)
+		return "", fmt.Errorf("task %q has no log file yet", name)
 	}
 	return path, nil
 }
 
-// ActionPreviousLogPath returns the absolute path of an action's previous run log file.
-func (s *Supervisor) ActionPreviousLogPath(name string) (string, error) {
+// TaskPreviousLogPath returns the absolute path of a task's previous run log file.
+func (s *Supervisor) TaskPreviousLogPath(name string) (string, error) {
 	if s.opts.Locations == nil {
 		return "", fmt.Errorf("supervisor: no state location configured")
 	}
@@ -2051,11 +2051,11 @@ func (s *Supervisor) ActionPreviousLogPath(name string) (string, error) {
 		return "", fmt.Errorf("supervisor: no config file loaded")
 	}
 	if _, ok := s.opts.File.Tasks[name]; !ok {
-		return "", fmt.Errorf("action %q not found", name)
+		return "", fmt.Errorf("task %q not found", name)
 	}
-	path := filepath.Join(s.opts.Locations.State, "actions", name+".prev.log")
+	path := filepath.Join(s.opts.Locations.State, "tasks", name+".prev.log")
 	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("action %q has no previous log file", name)
+		return "", fmt.Errorf("task %q has no previous log file", name)
 	}
 	return path, nil
 }

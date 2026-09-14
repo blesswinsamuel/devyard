@@ -15,22 +15,22 @@ const DefaultLogTail = 5000
 
 // Type aliases to generated Protobuf types for convenience across the codebase.
 type (
-	DaemonInfo        = localcomposev1.DaemonInfo
-	ServiceState      = localcomposev1.ServiceState
-	ActionState       = localcomposev1.ActionState
-	ProjectInfo       = localcomposev1.ProjectInfo
-	ServiceStat       = localcomposev1.ServiceStat
-	PortBinding       = localcomposev1.PortBinding
-	GitRef            = localcomposev1.GitRef
-	GitBranch         = localcomposev1.GitBranch
-	GitTag            = localcomposev1.GitTag
-	GitStash          = localcomposev1.GitStash
-	GitCommit         = localcomposev1.GitCommit
-	GitFileChange     = localcomposev1.GitFileChange
-	GitDiffResult     = localcomposev1.GitDiffResult
-	LogChunk          = localcomposev1.LogChunk
-	ActionOutputChunk = localcomposev1.ActionOutputChunk
-	Event             = localcomposev1.Event
+	DaemonInfo      = localcomposev1.DaemonInfo
+	ServiceState    = localcomposev1.ServiceState
+	TaskState       = localcomposev1.TaskState
+	ProjectInfo     = localcomposev1.ProjectInfo
+	ServiceStat     = localcomposev1.ServiceStat
+	PortBinding     = localcomposev1.PortBinding
+	GitRef          = localcomposev1.GitRef
+	GitBranch       = localcomposev1.GitBranch
+	GitTag          = localcomposev1.GitTag
+	GitStash        = localcomposev1.GitStash
+	GitCommit       = localcomposev1.GitCommit
+	GitFileChange   = localcomposev1.GitFileChange
+	GitDiffResult   = localcomposev1.GitDiffResult
+	LogChunk        = localcomposev1.LogChunk
+	TaskOutputChunk = localcomposev1.TaskOutputChunk
+	Event           = localcomposev1.Event
 )
 
 // TimeToProto converts a Go time.Time to a protobuf Timestamp. Returns nil if zero.

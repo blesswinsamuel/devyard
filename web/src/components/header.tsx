@@ -12,21 +12,21 @@ import {
 } from "lucide-solid";
 import type { ServiceState } from "~/lib/types";
 import {
-  actions as actionsMap,
   fetchPorts,
   killService,
   ports,
   projects as projectsList,
   restartService,
-  runAction,
+  runTask,
   services as servicesMap,
   startProject,
   startService,
-  stopAction,
   stopProject,
   stopService,
+  stopTask,
+  tasks as tasksMap,
 } from "~/stores/data";
-import { selectedAction, selectedProject, selectedService } from "~/stores/nav";
+import { selectedProject, selectedService, selectedTask } from "~/stores/nav";
 import {
   isPreviousLogs,
   tabKey,
@@ -89,7 +89,7 @@ function HeaderButtons(props: { project: string }) {
   );
 }
 
-function PrevRunButton(props: { project: string; kind: "service" | "action"; name: string }) {
+function PrevRunButton(props: { project: string; kind: "service" | "task"; name: string }) {
   const key = () => tabKey(props.project, props.kind, props.name);
   return (
     <Tooltip>
@@ -244,11 +244,11 @@ export function ProjectHeader() {
   );
 }
 
-export function ActionHeader() {
+export function TaskHeader() {
   const project = () => selectedProject()!;
-  const actionName = () => selectedAction()!;
-  const act = createMemo(() => (actionsMap()[project()] ?? []).find((a) => a.name === actionName()));
-  const status = () => act()?.status ?? "idle";
+  const taskName = () => selectedTask()!;
+  const task = createMemo(() => (tasksMap()[project()] ?? []).find((t) => t.name === taskName()));
+  const status = () => task()?.status ?? "idle";
 
   return (
     <>
@@ -256,16 +256,16 @@ export function ActionHeader() {
         parts={[
           { label: project() },
           { label: "tasks" },
-          { label: actionName(), strong: true },
+          { label: taskName(), strong: true },
         ]}
       />
       <Show when={status() !== "idle"}>
-        <Badge variant={statusTone(status())}>{statusLabel(status(), act()?.exitCode ?? (act() as any)?.exit_code ?? 0)}</Badge>
+        <Badge variant={statusTone(status())}>{statusLabel(status(), task()?.exitCode ?? (task() as any)?.exit_code ?? 0)}</Badge>
       </Show>
-      <Show when={act()}>
-        {(a) => (
+      <Show when={task()}>
+        {(t) => (
           <span class="hidden min-w-0 truncate font-mono text-[11px] text-muted-foreground md:inline">
-            {a().command}
+            {t().command}
           </span>
         )}
       </Show>
@@ -273,21 +273,21 @@ export function ActionHeader() {
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <HeaderButtons project={project()} />
         <Separator orientation="vertical" class="mx-1 h-4" />
-        <PrevRunButton project={project()} kind="action" name={actionName()} />
+        <PrevRunButton project={project()} kind="task" name={taskName()} />
         <Show
           when={status() === "running" || status() === "starting"}
           fallback={
-            <Button size="sm" aria-label="Run task" onClick={() => runAction(project(), actionName())}>
+            <Button size="sm" aria-label="Run task" onClick={() => runTask(project(), taskName())}>
               <Play class="!size-3.5" />
               <span class="hidden md:inline">Run task</span>
             </Button>
           }
         >
-          <Button size="sm" variant="outline" aria-label="Stop task" onClick={() => stopAction(project(), actionName())}>
+          <Button size="sm" variant="outline" aria-label="Stop task" onClick={() => stopTask(project(), taskName())}>
             <Square class="!size-3.5 text-destructive" />
             <span class="hidden md:inline">Stop task</span>
           </Button>
-          <Button size="sm" variant="destructive" aria-label="Kill task" onClick={() => killService(project(), actionName())}>
+          <Button size="sm" variant="destructive" aria-label="Kill task" onClick={() => killService(project(), taskName())}>
             <Skull class="!size-3.5" />
             <span class="hidden md:inline">Kill</span>
           </Button>

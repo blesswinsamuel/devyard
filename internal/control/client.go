@@ -249,16 +249,16 @@ func (c *Client) LogsCtx(ctx context.Context, project, service string, follow, p
 	}, onLine, onRotate...)
 }
 
-// ActionLogs streams logs from an action.
-func (c *Client) ActionLogs(project, action string, follow, previous bool, tail int, onLine func(string), onRotate ...func()) error {
-	return c.ActionLogsCtx(context.Background(), project, action, follow, previous, tail, onLine, onRotate...)
+// TaskLogs streams logs from a task.
+func (c *Client) TaskLogs(project, task string, follow, previous bool, tail int, onLine func(string), onRotate ...func()) error {
+	return c.TaskLogsCtx(context.Background(), project, task, follow, previous, tail, onLine, onRotate...)
 }
 
-// ActionLogsCtx streams action logs with a caller-provided context.
-func (c *Client) ActionLogsCtx(ctx context.Context, project, action string, follow, previous bool, tail int, onLine func(string), onRotate ...func()) error {
+// TaskLogsCtx streams task logs with a caller-provided context.
+func (c *Client) TaskLogsCtx(ctx context.Context, project, task string, follow, previous bool, tail int, onLine func(string), onRotate ...func()) error {
 	return c.streamLogs(ctx, &localcomposev1.LogsRequest{
 		Project:  project,
-		Action:   action,
+		Task:     task,
 		Follow:   follow,
 		Previous: previous,
 		Tail:     int32(tail),
@@ -294,22 +294,22 @@ func (c *Client) streamLogs(ctx context.Context, req *localcomposev1.LogsRequest
 	return unwrapError(stream.Err())
 }
 
-// ListActions returns actions with metadata and runtime states for a project.
-func (c *Client) ListActions(project string) ([]*protocol.ActionState, error) {
-	resp, err := c.rpcClient.ListActions(context.Background(), connect.NewRequest(&localcomposev1.ListActionsRequest{
+// ListTasks returns tasks with metadata and runtime states for a project.
+func (c *Client) ListTasks(project string) ([]*protocol.TaskState, error) {
+	resp, err := c.rpcClient.ListTasks(context.Background(), connect.NewRequest(&localcomposev1.ListTasksRequest{
 		Project: project,
 	}))
 	if err != nil {
 		return nil, unwrapError(err)
 	}
-	return resp.Msg.Actions, nil
+	return resp.Msg.Tasks, nil
 }
 
-// RunAction executes an action and streams output lines.
-func (c *Client) RunAction(ctx context.Context, project, action string, args []string, onLine func(string)) (int, error) {
-	stream, err := c.rpcClient.RunAction(ctx, connect.NewRequest(&localcomposev1.RunActionRequest{
+// RunTask executes a task and streams output lines.
+func (c *Client) RunTask(ctx context.Context, project, task string, args []string, onLine func(string)) (int, error) {
+	stream, err := c.rpcClient.RunTask(ctx, connect.NewRequest(&localcomposev1.RunTaskRequest{
 		Project: project,
-		Action:  action,
+		Task:    task,
 		Args:    args,
 	}))
 	if err != nil {
@@ -333,11 +333,11 @@ func (c *Client) RunAction(ctx context.Context, project, action string, args []s
 	return exitCode, nil
 }
 
-// StopAction stops a running action in a project.
-func (c *Client) StopAction(project, action string) error {
-	_, err := c.rpcClient.StopAction(context.Background(), connect.NewRequest(&localcomposev1.StopActionRequest{
+// StopTask stops a running task in a project.
+func (c *Client) StopTask(project, task string) error {
+	_, err := c.rpcClient.StopTask(context.Background(), connect.NewRequest(&localcomposev1.StopTaskRequest{
 		Project: project,
-		Action:  action,
+		Task:    task,
 	}))
 	return unwrapError(err)
 }

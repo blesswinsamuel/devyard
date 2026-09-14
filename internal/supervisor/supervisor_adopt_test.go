@@ -314,28 +314,28 @@ func stateByName(states []supervisor.ServiceState, name string) *supervisor.Serv
 	return nil
 }
 
-// waitForActionState polls the supervisor until the named action appears in
-// ListActions and returns its state.
-func waitForActionState(t *testing.T, s *supervisor.Supervisor, name string) *protocol.ActionState {
+// waitForTaskState polls the supervisor until the named task appears in
+// ListTasks and returns its state.
+func waitForTaskState(t *testing.T, s *supervisor.Supervisor, name string) *protocol.TaskState {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		for _, act := range s.ListActions() {
+		for _, act := range s.ListTasks() {
 			if act.Name == name {
 				return act
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("action %s never appeared in ListActions", name)
+	t.Fatalf("task %s never appeared in ListTasks", name)
 	return nil
 }
 
-// TestAdoptOrStartNormalizesDeadAction verifies that a snapshot recording an
-// action as running whose process is long gone (the daemon that ran it
+// TestAdoptOrStartNormalizesDeadTask verifies that a snapshot recording a
+// task as running whose process is long gone (the daemon that ran it
 // exited) is restored as exited — so ps/web stop showing a ghost run and
-// StopAction reports "not running" instead of signalling a recycled pid.
-func TestAdoptOrStartNormalizesDeadAction(t *testing.T) {
+// StopTask reports "not running" instead of signalling a recycled pid.
+func TestAdoptOrStartNormalizesDeadTask(t *testing.T) {
 	t.Parallel()
 	locs := testLocations(t)
 
@@ -345,7 +345,7 @@ func TestAdoptOrStartNormalizesDeadAction(t *testing.T) {
 	}
 
 	writeState(t, locs, &supervisor.SupervisorStateSnapshot{
-		Actions: map[string]supervisor.ActionStateSnapshot{
+		Tasks: map[string]supervisor.TaskStateSnapshot{
 			"logs": {Name: "logs", Status: supervisor.StatusRunning, PID: dead.Process.Pid, StartedAt: time.Now().Add(-time.Hour)},
 		},
 		SavedAt: time.Now(),
@@ -374,29 +374,29 @@ func TestAdoptOrStartNormalizesDeadAction(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	st := waitForActionState(t, s, "logs")
+	st := waitForTaskState(t, s, "logs")
 	if st.Status != string(supervisor.StatusExited) {
-		t.Errorf("dead action restored with status %q, want exited", st.Status)
+		t.Errorf("dead task restored with status %q, want exited", st.Status)
 	}
 	if st.Pid != 0 {
-		t.Errorf("dead action restored with pid %d, want 0", st.Pid)
+		t.Errorf("dead task restored with pid %d, want 0", st.Pid)
 	}
-	if err := s.StopAction("logs"); err == nil {
-		t.Errorf("StopAction on normalized action: expected error, got nil")
+	if err := s.StopTask("logs"); err == nil {
+		t.Errorf("StopTask on normalized task: expected error, got nil")
 	}
 }
 
-// TestAdoptOrStartAdoptsAliveAction verifies that a snapshot recording an
-// action as running whose process group genuinely survived the daemon exit
+// TestAdoptOrStartAdoptsAliveTask verifies that a snapshot recording a
+// task as running whose process group genuinely survived the daemon exit
 // is adopted (still shown running) and remains stoppable.
-func TestAdoptOrStartAdoptsAliveAction(t *testing.T) {
+func TestAdoptOrStartAdoptsAliveTask(t *testing.T) {
 	t.Parallel()
 	locs := testLocations(t)
 
 	leader, _ := startOrphanGroup(t)
 
 	writeState(t, locs, &supervisor.SupervisorStateSnapshot{
-		Actions: map[string]supervisor.ActionStateSnapshot{
+		Tasks: map[string]supervisor.TaskStateSnapshot{
 			"logs": {Name: "logs", Status: supervisor.StatusRunning, PID: leader, PGID: leader, StartedAt: time.Now().Add(-time.Hour)},
 		},
 		SavedAt: time.Now(),
@@ -425,18 +425,18 @@ func TestAdoptOrStartAdoptsAliveAction(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	st := waitForActionState(t, s, "logs")
+	st := waitForTaskState(t, s, "logs")
 	if st.Status != string(supervisor.StatusRunning) || st.Pid != int32(leader) {
-		t.Fatalf("alive action not adopted: status=%q pid=%d, want running/%d", st.Status, st.Pid, leader)
+		t.Fatalf("alive task not adopted: status=%q pid=%d, want running/%d", st.Status, st.Pid, leader)
 	}
 
-	if err := s.StopAction("logs"); err != nil {
-		t.Fatalf("StopAction on adopted action: %v", err)
+	if err := s.StopTask("logs"); err != nil {
+		t.Fatalf("StopTask on adopted task: %v", err)
 	}
 
-	st = waitForActionState(t, s, "logs")
+	st = waitForTaskState(t, s, "logs")
 	if st.Status != string(supervisor.StatusExited) {
-		t.Errorf("stopped adopted action status = %q, want exited", st.Status)
+		t.Errorf("stopped adopted task status = %q, want exited", st.Status)
 	}
 
 	// The terminal state must be persisted so a restart doesn't resurrect it.
@@ -444,7 +444,7 @@ func TestAdoptOrStartAdoptsAliveAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
-	if act := snap.Actions["logs"]; act.Status != supervisor.StatusExited || act.PID != 0 {
-		t.Errorf("persisted adopted action = %+v, want exited/pid 0", act)
+	if act := snap.Tasks["logs"]; act.Status != supervisor.StatusExited || act.PID != 0 {
+		t.Errorf("persisted adopted task = %+v, want exited/pid 0", act)
 	}
 }

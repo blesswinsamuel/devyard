@@ -142,7 +142,7 @@ func TestRenderStatesHelperTableAndJSON(t *testing.T) {
 func TestRenderTasksHelperTableAndJSON(t *testing.T) {
 	t.Parallel()
 
-	tasks := []*protocol.ActionState{
+	tasks := []*protocol.TaskState{
 		{
 			Name:    "migrate",
 			Status:  "idle",
@@ -166,7 +166,7 @@ func TestRenderTasksHelperTableAndJSON(t *testing.T) {
 	if err := renderTasksHelper(ctxJSON, tasks); err != nil {
 		t.Fatalf("renderTasksHelper json: %v", err)
 	}
-	var decoded []*protocol.ActionState
+	var decoded []*protocol.TaskState
 	if err := json.Unmarshal(bufJSON.Bytes(), &decoded); err != nil {
 		t.Fatalf("unmarshal json: %v", err)
 	}

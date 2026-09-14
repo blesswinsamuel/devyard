@@ -10,16 +10,16 @@ import {
   tabKey,
   togglePreviousLogs,
 } from "~/stores/logs";
-import { actions as actionsMap, projects as projectsList, services as servicesMap } from "~/stores/data";
+import { projects as projectsList, services as servicesMap, tasks as tasksMap } from "~/stores/data";
 import {
-  selectedAction,
   selectedProject,
   selectedService,
+  selectedTask,
   selectService,
-  selectAction,
+  selectTask,
 } from "~/stores/nav";
 import { theme } from "~/stores/app";
-import { subscribeActionLogs, subscribeLogs } from "~/stores/logs";
+import { subscribeLogs, subscribeTaskLogs } from "~/stores/logs";
 import { formatLogLine } from "~/lib/ansi";
 import { cn } from "~/lib/utils";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
@@ -34,7 +34,7 @@ import { Spinner } from "~/components/ui/spinner";
  */
 function LogTerminal(props: {
   project: string;
-  kind: "service" | "action";
+  kind: "service" | "task";
   target: string;
   active: boolean;
   keyId: string;
@@ -102,7 +102,7 @@ function LogTerminal(props: {
       if (!props.active) return;
       const prev = isPreviousLogs(props.keyId);
       resetView();
-      const subscribe = props.kind === "service" ? subscribeLogs : subscribeActionLogs;
+      const subscribe = props.kind === "service" ? subscribeLogs : subscribeTaskLogs;
       const unsub = subscribe(
         props.project,
         props.target,
@@ -166,20 +166,20 @@ function LogTerminal(props: {
 }
 
 export function LogView() {
-  // Open/focus a tab whenever the selection targets a service or action.
+  // Open/focus a tab whenever the selection targets a service or task.
   createEffect(() => {
     const p = selectedProject();
     const svc = selectedService();
-    const act = selectedAction();
+    const task = selectedTask();
     if (p && svc) openLogTab(p, "service", svc);
-    else if (p && act) openLogTab(p, "action", act);
+    else if (p && task) openLogTab(p, "task", task);
   });
 
   // Prune tabs whose targets vanished.
   createEffect(() => {
     const projs = projectsList();
     const svcs = servicesMap();
-    const acts = actionsMap();
+    const tasks = tasksMap();
 
     pruneLogTabs((tab) => {
       if (projs.length > 0 && !projs.some((p) => p.name === tab.project)) {
@@ -191,8 +191,8 @@ export function LogView() {
           return false;
         }
       }
-      if (tab.kind === "action") {
-        const list = acts[tab.project];
+      if (tab.kind === "task") {
+        const list = tasks[tab.project];
         if (list !== undefined && !list.some((a) => a.name === tab.name)) {
           return false;
         }
@@ -221,7 +221,7 @@ export function LogView() {
                     type="button"
                     onClick={() => focusTab(tab)}
                     class="flex min-w-0 items-center gap-1.5 px-2 focus-visible:outline-none"
-                    title={tab.kind === "action" ? `${tab.project} · action` : `${tab.project} · service`}
+                    title={tab.kind === "task" ? `${tab.project} · task` : `${tab.project} · service`}
                   >
                     <span
                       class={cn("size-1.5 shrink-0 rounded-full", tab.kind === "service" ? "bg-primary" : "bg-warning")}
@@ -294,10 +294,10 @@ export function LogView() {
   );
 }
 
-/** Clicking a tab re-selects that service/action everywhere (sidebar + route). */
-function focusTab(tab: { project: string; kind: "service" | "action"; name: string }) {
+/** Clicking a tab re-selects that service/task everywhere (sidebar + route). */
+function focusTab(tab: { project: string; kind: "service" | "task"; name: string }) {
   if (tab.kind === "service") selectService(tab.project, tab.name);
-  else selectAction(tab.project, tab.name);
+  else selectTask(tab.project, tab.name);
 }
 
 function LogEmptyState() {

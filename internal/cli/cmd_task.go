@@ -52,11 +52,11 @@ func newTaskListCmd(ctx *CLIContext) *cobra.Command {
 			}
 			defer func() { _ = client.Close() }()
 
-			actions, err := client.ListActions(cfg.Project)
+			tasks, err := client.ListTasks(cfg.Project)
 			if err != nil {
 				return err
 			}
-			return renderTasksHelper(ctx, actions)
+			return renderTasksHelper(ctx, tasks)
 		},
 	}
 }
@@ -94,7 +94,7 @@ func newTaskRunCmd(ctx *CLIContext) *cobra.Command {
 				return fmt.Errorf("start project: %w", err)
 			}
 
-			exitCode, err := client.RunAction(cmd.Context(), cfg.Project, taskName, extraArgs, func(line string) {
+			exitCode, err := client.RunTask(cmd.Context(), cfg.Project, taskName, extraArgs, func(line string) {
 				_, _ = fmt.Fprintln(ctx.Out, line)
 			})
 			if err != nil {

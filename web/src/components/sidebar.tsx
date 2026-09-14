@@ -24,30 +24,30 @@ import {
   keyboardCursor,
   navItemKey,
   sameNavItem,
-  selectAction,
   selectProject,
   selectService,
-  selectedAction,
+  selectTask,
   selectedProject,
   selectedService,
+  selectedTask,
   setProjectExpanded,
 } from "~/stores/nav";
 import {
-  actions as actionsMap,
-  fetchDaemonStatus,
   daemonInfo,
+  fetchDaemonStatus,
   killService,
   ports,
   projects as projectsList,
   refreshAll,
   restartService,
-  runAction,
+  runTask,
   services as servicesMap,
   startProject,
   startService,
-  stopAction,
   stopProject,
   stopService,
+  stopTask,
+  tasks as tasksMap,
 } from "~/stores/data";
 import { isPreviousLogs, tabKey, togglePreviousLogs } from "~/stores/logs";
 import { pushToast, setShowAddProject, setShowDaemonModal, theme, setTheme } from "~/stores/app";
@@ -301,17 +301,17 @@ function ServiceRow(props: { project: string; name: string }) {
   );
 }
 
-function ActionRow(props: { project: string; name: string }) {
-  const act = createMemo(() =>
-    (actionsMap()[props.project] ?? []).find((a) => a.name === props.name)
+function TaskRow(props: { project: string; name: string }) {
+  const task = createMemo(() =>
+    (tasksMap()[props.project] ?? []).find((t) => t.name === props.name)
   );
   const selected = () =>
-    selectedAction() === props.name && selectedProject() === props.project;
+    selectedTask() === props.name && selectedProject() === props.project;
   const cursor = () =>
-    sameNavItem(keyboardCursor(), { kind: "action", project: props.project, action: props.name });
-  const status = () => act()?.status ?? "idle";
+    sameNavItem(keyboardCursor(), { kind: "task", project: props.project, task: props.name });
+  const status = () => task()?.status ?? "idle";
   const showingPrevLogs = () =>
-    isPreviousLogs(tabKey(props.project, "action", props.name));
+    isPreviousLogs(tabKey(props.project, "task", props.name));
 
   return (
     <ContextMenu>
@@ -319,11 +319,11 @@ function ActionRow(props: { project: string; name: string }) {
         as="div"
         class="group/act relative flex items-stretch"
         data-kbd-cursor={cursor() ? "" : undefined}
-        onContextMenu={() => selectAction(props.project, props.name)}
+        onContextMenu={() => selectTask(props.project, props.name)}
       >
         <button
           type="button"
-          onClick={() => selectAction(props.project, props.name)}
+          onClick={() => selectTask(props.project, props.name)}
           class={cn(
             "flex h-[30px] min-w-0 flex-1 items-center gap-2 py-0 pl-8 pr-2.5 text-left text-[13px]",
             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
@@ -337,14 +337,14 @@ function ActionRow(props: { project: string; name: string }) {
             )}
           />
           <span class="truncate">{props.name}</span>
-          <Show when={status() === "exited" && (act()?.exitCode ?? (act() as any)?.exit_code ?? 0) !== 0}>
+          <Show when={status() === "exited" && (task()?.exitCode ?? (task() as any)?.exit_code ?? 0) !== 0}>
             <span class="shrink-0 font-mono text-[11px] tabular text-destructive">
-              {act()?.exitCode ?? (act() as any)?.exit_code}
+              {task()?.exitCode ?? (task() as any)?.exit_code}
             </span>
           </Show>
-          <Show when={(act()?.pid ?? 0) > 0}>
+          <Show when={(task()?.pid ?? 0) > 0}>
             <span class="ml-auto shrink-0 font-mono text-[11px] tabular text-muted-foreground opacity-70">
-              {act()?.pid}
+              {task()?.pid}
             </span>
           </Show>
         </button>
@@ -367,8 +367,8 @@ function ActionRow(props: { project: string; name: string }) {
                 title={`Run task ${props.name}`}
                 onClick={(e: MouseEvent) => {
                   e.stopPropagation();
-                  selectAction(props.project, props.name);
-                  runAction(props.project, props.name);
+                  selectTask(props.project, props.name);
+                  runTask(props.project, props.name);
                 }}
               >
                 <Play class="!size-3 text-primary" />
@@ -383,7 +383,7 @@ function ActionRow(props: { project: string; name: string }) {
               title={`Stop task ${props.name}`}
               onClick={(e: MouseEvent) => {
                 e.stopPropagation();
-                stopAction(props.project, props.name);
+                stopTask(props.project, props.name);
               }}
             >
               <Square class="!size-3 text-destructive" />
@@ -398,8 +398,8 @@ function ActionRow(props: { project: string; name: string }) {
           fallback={
             <ContextMenuItem
               onSelect={() => {
-                selectAction(props.project, props.name);
-                runAction(props.project, props.name);
+                selectTask(props.project, props.name);
+                runTask(props.project, props.name);
               }}
             >
               <Play />
@@ -407,7 +407,7 @@ function ActionRow(props: { project: string; name: string }) {
             </ContextMenuItem>
           }
         >
-          <ContextMenuItem onSelect={() => stopAction(props.project, props.name)}>
+          <ContextMenuItem onSelect={() => stopTask(props.project, props.name)}>
             <Square />
             Stop Task
           </ContextMenuItem>
@@ -419,13 +419,13 @@ function ActionRow(props: { project: string; name: string }) {
             Kill Task
           </ContextMenuItem>
         </Show>
-        <ContextMenuItem onSelect={() => selectAction(props.project, props.name)}>
+        <ContextMenuItem onSelect={() => selectTask(props.project, props.name)}>
           <Terminal />
           View Logs
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
-          onSelect={() => togglePreviousLogs(tabKey(props.project, "action", props.name))}
+          onSelect={() => togglePreviousLogs(tabKey(props.project, "task", props.name))}
         >
           <History />
           {showingPrevLogs() ? "Show Live Logs" : "Show Previous Run"}
@@ -445,7 +445,7 @@ function ProjectItem(props: { name: string }) {
   const project = createMemo(() => projectsList().find((p) => p.name === props.name));
   const serviceList = createMemo(() => servicesMap()[props.name]);
   const active = () => selectedProject() === props.name;
-  const selected = () => active() && selectedService() === null && selectedAction() === null;
+  const selected = () => active() && selectedService() === null && selectedTask() === null;
   const cursor = () => sameNavItem(keyboardCursor(), { kind: "project", project: props.name });
 
   const aggregateHealth = createMemo(() => {
@@ -458,7 +458,7 @@ function ProjectItem(props: { name: string }) {
     if (runningWithHealth.every((s) => s.health === "healthy")) return "healthy";
     return "";
   });
-  const actionList = createMemo(() => actionsMap()[props.name] ?? []);
+  const taskList = createMemo(() => tasksMap()[props.name] ?? []);
 
   return (
     <Show when={project()}>
@@ -657,10 +657,10 @@ function ProjectItem(props: { name: string }) {
                   </For>
                 </Show>
               </Show>
-              <Show when={actionList().length > 0}>
+              <Show when={taskList().length > 0}>
                 <div class="my-1 border-t pt-1">
-                  <For each={actionList()}>
-                    {(a) => <ActionRow project={props.name} name={a.name} />}
+                  <For each={taskList()}>
+                    {(a) => <TaskRow project={props.name} name={a.name} />}
                   </For>
                 </div>
               </Show>

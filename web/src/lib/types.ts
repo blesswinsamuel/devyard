@@ -1,7 +1,7 @@
 export type {
   DaemonInfo,
   ServiceState,
-  ActionState,
+  TaskState,
   ProjectInfo,
   ServiceStat,
   PortBinding,

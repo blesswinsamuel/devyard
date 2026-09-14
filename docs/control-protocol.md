@@ -41,10 +41,10 @@ service DaemonService {
   rpc Top(TopRequest) returns (TopResponse);
   rpc ListPorts(ListPortsRequest) returns (ListPortsResponse);
 
-  // Actions
-  rpc ListActions(ListActionsRequest) returns (ListActionsResponse);
-  rpc RunAction(RunActionRequest) returns (stream ActionOutputChunk);
-  rpc StopAction(StopActionRequest) returns (StopActionResponse);
+  // Tasks
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc RunTask(RunTaskRequest) returns (stream TaskOutputChunk);
+  rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
 
   // Logs & Rotation
   rpc Logs(LogsRequest) returns (stream LogChunk);
@@ -74,18 +74,18 @@ the new daemon). Clients should wait until the *serving* daemon reports that
 pid via `DaemonStatus` before assuming the restart succeeded — the socket file
 alone is ambiguous while the old daemon is still exiting.
 
-### Action Runs
+### Task Runs
 
-`RunAction` streams `ActionOutputChunk` messages (output lines plus a final
+`RunTask` streams `TaskOutputChunk` messages (output lines plus a final
 chunk with `exit_code`). A run is owned by its RPC call: if the client
-disconnects (cancelled context), the daemon sends SIGTERM to the action's
-process group so no orphaned process is left behind. `StopAction` stops a
-running action the same way on demand — SIGTERM to the process group, then
+disconnects (cancelled context), the daemon sends SIGTERM to the task's
+process group so no orphaned process is left behind. `StopTask` stops a
+running task the same way on demand — SIGTERM to the process group, then
 SIGKILL after the supervisor's graceful-stop grace period. Stopping an
-in-flight `RunAction` stream ends it with the signal's exit code; an action
+in-flight `RunTask` stream ends it with the signal's exit code; a task
 that is not running yields an error.
 
-### Logs & Action Logs
+### Logs & Task Logs
 
 The `Logs` RPC streams `LogChunk` messages:
 - **History**: When requested, initial history is sent in `content`.
@@ -96,7 +96,7 @@ The `Logs` RPC streams `LogChunk` messages:
 
 The `SubscribeEvents` server-streaming RPC streams real-time updates for:
 - Service state changes (`ServiceStateChangedEvent`)
-- Action state changes (`ActionStateChangedEvent`)
+- Task state changes (`TaskStateChangedEvent`)
 - Git repository changes (`GitChangedEvent`)
 - Project lifecycle changes (`ProjectsChangedEvent`: projects started, stopped, or removed)
 - Keepalive heartbeats (`HeartbeatEvent`: emitted immediately on subscription to flush headers and periodically every 30s)

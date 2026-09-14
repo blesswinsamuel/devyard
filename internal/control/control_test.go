@@ -19,35 +19,35 @@ import (
 // fakeBackend is an in-memory control.Backend for exercising the server
 // without spinning up real child processes.
 type fakeBackend struct {
-	mu          sync.Mutex
-	states      []*protocol.ServiceState
-	stopErr     error
-	logPaths    map[string]string
-	restarts    []string
-	stopped     bool
-	stoppedSvc  []string
-	startedSvc  []string
-	killedSvc   []string
-	killedSigs  []string
-	stopSvcErr  error
-	startSvcErr error
-	actions     []*protocol.ActionState
-	runActionFn func(name string, args []string, out io.Writer) (int, error)
-	stoppedActs []string
-	stopActErr  error
+	mu           sync.Mutex
+	states       []*protocol.ServiceState
+	stopErr      error
+	logPaths     map[string]string
+	restarts     []string
+	stopped      bool
+	stoppedSvc   []string
+	startedSvc   []string
+	killedSvc    []string
+	killedSigs   []string
+	stopSvcErr   error
+	startSvcErr  error
+	tasks        []*protocol.TaskState
+	runTaskFn    func(name string, args []string, out io.Writer) (int, error)
+	stoppedTasks []string
+	stopTaskErr  error
 }
 
-func (b *fakeBackend) ListActions() []*protocol.ActionState {
+func (b *fakeBackend) ListTasks() []*protocol.TaskState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]*protocol.ActionState, len(b.actions))
-	copy(out, b.actions)
+	out := make([]*protocol.TaskState, len(b.tasks))
+	copy(out, b.tasks)
 	return out
 }
 
-func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
+func (b *fakeBackend) RunTask(ctx context.Context, name string, args []string, out io.Writer) (int, error) {
 	b.mu.Lock()
-	fn := b.runActionFn
+	fn := b.runTaskFn
 	b.mu.Unlock()
 	if fn != nil {
 		return fn(name, args, out)
@@ -55,11 +55,11 @@ func (b *fakeBackend) RunAction(ctx context.Context, name string, args []string,
 	return 0, nil
 }
 
-func (b *fakeBackend) StopAction(name string) error {
+func (b *fakeBackend) StopTask(name string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.stoppedActs = append(b.stoppedActs, name)
-	return b.stopActErr
+	b.stoppedTasks = append(b.stoppedTasks, name)
+	return b.stopTaskErr
 }
 
 func (b *fakeBackend) States() []*protocol.ServiceState {
@@ -124,22 +124,22 @@ func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
 	return "", errors.New("unknown service " + name)
 }
 
-func (b *fakeBackend) ActionLogPath(name string) (string, error) {
+func (b *fakeBackend) TaskLogPath(name string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if p, ok := b.logPaths[name]; ok {
 		return p, nil
 	}
-	return "", errors.New("unknown action " + name)
+	return "", errors.New("unknown task " + name)
 }
 
-func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
+func (b *fakeBackend) TaskPreviousLogPath(name string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if p, ok := b.logPaths[name]; ok {
 		return strings.TrimSuffix(p, ".log") + ".prev.log", nil
 	}
-	return "", errors.New("unknown action " + name)
+	return "", errors.New("unknown task " + name)
 }
 
 func (b *fakeBackend) Top(name string) ([]*protocol.ServiceStat, error) {
@@ -253,12 +253,12 @@ func TestRoundtripList(t *testing.T) {
 	}
 }
 
-func TestRoundtripActions(t *testing.T) {
+func TestRoundtripTasks(t *testing.T) {
 	b := &fakeBackend{
-		actions: []*protocol.ActionState{
+		tasks: []*protocol.TaskState{
 			{Name: "migrate", Command: "npx prisma db push", Status: "idle"},
 		},
-		runActionFn: func(name string, args []string, out io.Writer) (int, error) {
+		runTaskFn: func(name string, args []string, out io.Writer) (int, error) {
 			_, _ = fmt.Fprintln(out, "running migration...")
 			return 0, nil
 		},
@@ -270,12 +270,12 @@ func TestRoundtripActions(t *testing.T) {
 	}
 	defer func() { _ = c1.Close() }()
 
-	actions, err := c1.ListActions("")
+	tasks, err := c1.ListTasks("")
 	if err != nil {
-		t.Fatalf("ListActions: %v", err)
+		t.Fatalf("ListTasks: %v", err)
 	}
-	if len(actions) != 1 || actions[0].Name != "migrate" {
-		t.Fatalf("ListActions got %+v", actions)
+	if len(tasks) != 1 || tasks[0].Name != "migrate" {
+		t.Fatalf("ListTasks got %+v", tasks)
 	}
 
 	c2, err := control.Dial(srv.Addr())
@@ -285,11 +285,11 @@ func TestRoundtripActions(t *testing.T) {
 	defer func() { _ = c2.Close() }()
 
 	var output []string
-	code, err := c2.RunAction(context.Background(), "", "migrate", nil, func(line string) {
+	code, err := c2.RunTask(context.Background(), "", "migrate", nil, func(line string) {
 		output = append(output, line)
 	})
 	if err != nil {
-		t.Fatalf("RunAction: %v", err)
+		t.Fatalf("RunTask: %v", err)
 	}
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0", code)
@@ -331,7 +331,7 @@ func TestRoundtripStopService(t *testing.T) {
 	}
 }
 
-func TestRoundtripStopAction(t *testing.T) {
+func TestRoundtripStopTask(t *testing.T) {
 	b := &fakeBackend{}
 	srv := newServer(t, b)
 	c, err := control.Dial(srv.Addr())
@@ -339,15 +339,15 @@ func TestRoundtripStopAction(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.StopAction("", "migrate"); err != nil {
-		t.Fatalf("StopAction: %v", err)
+	if err := c.StopTask("", "migrate"); err != nil {
+		t.Fatalf("StopTask: %v", err)
 	}
-	if len(b.stoppedActs) != 1 || b.stoppedActs[0] != "migrate" {
-		t.Errorf("stopped actions = %+v, want [migrate]", b.stoppedActs)
+	if len(b.stoppedTasks) != 1 || b.stoppedTasks[0] != "migrate" {
+		t.Errorf("stopped tasks = %+v, want [migrate]", b.stoppedTasks)
 	}
 }
 
-func TestStopActionRequiresName(t *testing.T) {
+func TestStopTaskRequiresName(t *testing.T) {
 	b := &fakeBackend{}
 	srv := newServer(t, b)
 	c, err := control.Dial(srv.Addr())
@@ -355,8 +355,8 @@ func TestStopActionRequiresName(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer func() { _ = c.Close() }()
-	if err := c.StopAction("", ""); err == nil {
-		t.Fatalf("StopAction with empty action name: expected error, got nil")
+	if err := c.StopTask("", ""); err == nil {
+		t.Fatalf("StopTask with empty task name: expected error, got nil")
 	}
 }
 
@@ -708,9 +708,9 @@ func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, erro
 	return b, nil
 }
 
-func (m *fakeMultiBackend) SetOnStateChange(func(string, *protocol.ServiceState))      {}
-func (m *fakeMultiBackend) SetOnActionStateChange(func(string, *protocol.ActionState)) {}
-func (m *fakeMultiBackend) SetOnGitChange(func(string))                                {}
+func (m *fakeMultiBackend) SetOnStateChange(func(string, *protocol.ServiceState))  {}
+func (m *fakeMultiBackend) SetOnTaskStateChange(func(string, *protocol.TaskState)) {}
+func (m *fakeMultiBackend) SetOnGitChange(func(string))                            {}
 func (m *fakeMultiBackend) SetOnProjectsChange(fn func()) {
 	m.mu.Lock()
 	m.onProjects = fn
@@ -753,7 +753,7 @@ func (m *fakeMultiBackend) ListServices(project string) ([]*protocol.ServiceStat
 	return all, nil
 }
 
-func (m *fakeMultiBackend) ListActions(project string) ([]*protocol.ActionState, error) {
+func (m *fakeMultiBackend) ListTasks(project string) ([]*protocol.TaskState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if project != "" {
@@ -761,19 +761,19 @@ func (m *fakeMultiBackend) ListActions(project string) ([]*protocol.ActionState,
 		if !ok {
 			return nil, fmt.Errorf("project %q not running", project)
 		}
-		actions := b.ListActions()
-		for _, act := range actions {
+		tasks := b.ListTasks()
+		for _, act := range tasks {
 			act.Project = project
 		}
-		return actions, nil
+		return tasks, nil
 	}
-	var all []*protocol.ActionState
+	var all []*protocol.TaskState
 	for name, b := range m.projects {
-		actions := b.ListActions()
-		for _, act := range actions {
+		tasks := b.ListTasks()
+		for _, act := range tasks {
 			act.Project = name
 		}
-		all = append(all, actions...)
+		all = append(all, tasks...)
 	}
 	return all, nil
 }

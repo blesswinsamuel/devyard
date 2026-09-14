@@ -82,10 +82,10 @@ type Daemon struct {
 	stopOnce sync.Once
 	exited   chan struct{}
 
-	onStateChange       func(project string, state *protocol.ServiceState)
-	onActionStateChange func(project string, state *protocol.ActionState)
-	onGitChange         func(project string)
-	onProjectsChange    func()
+	onStateChange     func(project string, state *protocol.ServiceState)
+	onTaskStateChange func(project string, state *protocol.TaskState)
+	onGitChange       func(project string)
+	onProjectsChange  func()
 
 	watcher *gitwatcher.RepoWatcher
 }
@@ -126,11 +126,11 @@ func (d *Daemon) SetOnStateChange(fn func(project string, state *protocol.Servic
 	d.mu.Unlock()
 }
 
-// SetOnActionStateChange registers a callback that fires whenever any action's
+// SetOnTaskStateChange registers a callback that fires whenever any task's
 // runtime state changes (started, completed). Same semantics as SetOnStateChange.
-func (d *Daemon) SetOnActionStateChange(fn func(project string, state *protocol.ActionState)) {
+func (d *Daemon) SetOnTaskStateChange(fn func(project string, state *protocol.TaskState)) {
 	d.mu.Lock()
-	d.onActionStateChange = fn
+	d.onTaskStateChange = fn
 	d.mu.Unlock()
 }
 
@@ -348,10 +348,10 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 				fn(name, state)
 			}
 		},
-		OnActionStateChange: func(action string, state *protocol.ActionState) {
+		OnTaskStateChange: func(task string, state *protocol.TaskState) {
 			state.Project = name
 			d.mu.Lock()
-			fn := d.onActionStateChange
+			fn := d.onTaskStateChange
 			d.mu.Unlock()
 			if fn != nil {
 				fn(name, state)
@@ -884,13 +884,13 @@ func (b stoppedBackend) Top(string) ([]*protocol.ServiceStat, error) {
 func (b stoppedBackend) ListPorts() ([]*protocol.PortBinding, error) {
 	return nil, nil
 }
-func (b stoppedBackend) ListActions() []*protocol.ActionState {
-	return supervisor.ListActionsFromFile(b.file)
+func (b stoppedBackend) ListTasks() []*protocol.TaskState {
+	return supervisor.ListTasksFromFile(b.file)
 }
-func (b stoppedBackend) RunAction(context.Context, string, []string, io.Writer) (int, error) {
+func (b stoppedBackend) RunTask(context.Context, string, []string, io.Writer) (int, error) {
 	return 1, b.err()
 }
-func (b stoppedBackend) StopAction(string) error { return b.err() }
+func (b stoppedBackend) StopTask(string) error { return b.err() }
 
 func (b stoppedBackend) knownService(name string) error {
 	if b.file != nil {
@@ -901,13 +901,13 @@ func (b stoppedBackend) knownService(name string) error {
 	return fmt.Errorf("supervisor: unknown service %q", name)
 }
 
-func (b stoppedBackend) knownAction(name string) error {
+func (b stoppedBackend) knownTask(name string) error {
 	if b.file != nil {
 		if _, ok := b.file.Tasks[name]; ok {
 			return nil
 		}
 	}
-	return fmt.Errorf("action %q not found", name)
+	return fmt.Errorf("task %q not found", name)
 }
 
 func (b stoppedBackend) logsDir() (string, error) {
@@ -940,26 +940,26 @@ func (b stoppedBackend) PreviousLogPath(name string) (string, error) {
 	return filepath.Join(dir, name+".prev.log"), nil
 }
 
-func (b stoppedBackend) ActionLogPath(name string) (string, error) {
-	if err := b.knownAction(name); err != nil {
+func (b stoppedBackend) TaskLogPath(name string) (string, error) {
+	if err := b.knownTask(name); err != nil {
 		return "", err
 	}
 	dir, err := b.logsDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "actions", name+".log"), nil
+	return filepath.Join(dir, "tasks", name+".log"), nil
 }
 
-func (b stoppedBackend) ActionPreviousLogPath(name string) (string, error) {
-	if err := b.knownAction(name); err != nil {
+func (b stoppedBackend) TaskPreviousLogPath(name string) (string, error) {
+	if err := b.knownTask(name); err != nil {
 		return "", err
 	}
 	dir, err := b.logsDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "actions", name+".prev.log"), nil
+	return filepath.Join(dir, "tasks", name+".prev.log"), nil
 }
 
 // Compile-time assertion that stoppedBackend satisfies control.Backend.
@@ -1254,18 +1254,18 @@ func (d *Daemon) ListServices(project string) ([]*protocol.ServiceState, error) 
 	return all, nil
 }
 
-// ListActions returns defined actions and runtime states for a project (or all projects when project is empty).
-func (d *Daemon) ListActions(project string) ([]*protocol.ActionState, error) {
+// ListTasks returns defined tasks and runtime states for a project (or all projects when project is empty).
+func (d *Daemon) ListTasks(project string) ([]*protocol.TaskState, error) {
 	if project != "" {
 		b, err := d.ProjectBackend(project)
 		if err != nil {
 			return nil, err
 		}
-		actions := b.ListActions()
-		for _, act := range actions {
-			act.Project = project
+		tasks := b.ListTasks()
+		for _, task := range tasks {
+			task.Project = project
 		}
-		return actions, nil
+		return tasks, nil
 	}
 
 	d.mu.Lock()
@@ -1276,17 +1276,17 @@ func (d *Daemon) ListActions(project string) ([]*protocol.ActionState, error) {
 	d.mu.Unlock()
 	sort.Strings(projects)
 
-	var all []*protocol.ActionState
+	var all []*protocol.TaskState
 	for _, name := range projects {
 		b, err := d.ProjectBackend(name)
 		if err != nil {
 			continue
 		}
-		actions := b.ListActions()
-		for _, act := range actions {
-			act.Project = name
+		tasks := b.ListTasks()
+		for _, task := range tasks {
+			task.Project = name
 		}
-		all = append(all, actions...)
+		all = append(all, tasks...)
 	}
 	return all, nil
 }

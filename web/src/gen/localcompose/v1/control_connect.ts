@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ActionOutputChunk, DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, ListActionsRequest, ListActionsResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunActionRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopActionRequest, StopActionResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, SubscribeEventsRequest, TopRequest, TopResponse } from "./control_pb.js";
+import { DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, ListTasksRequest, ListTasksResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunTaskRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SubscribeEventsRequest, TaskOutputChunk, TopRequest, TopResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -154,32 +154,32 @@ export const DaemonService = {
       kind: MethodKind.Unary,
     },
     /**
-     * Actions
+     * Tasks
      *
-     * @generated from rpc localcompose.v1.DaemonService.ListActions
+     * @generated from rpc localcompose.v1.DaemonService.ListTasks
      */
-    listActions: {
-      name: "ListActions",
-      I: ListActionsRequest,
-      O: ListActionsResponse,
+    listTasks: {
+      name: "ListTasks",
+      I: ListTasksRequest,
+      O: ListTasksResponse,
       kind: MethodKind.Unary,
     },
     /**
-     * @generated from rpc localcompose.v1.DaemonService.RunAction
+     * @generated from rpc localcompose.v1.DaemonService.RunTask
      */
-    runAction: {
-      name: "RunAction",
-      I: RunActionRequest,
-      O: ActionOutputChunk,
+    runTask: {
+      name: "RunTask",
+      I: RunTaskRequest,
+      O: TaskOutputChunk,
       kind: MethodKind.ServerStreaming,
     },
     /**
-     * @generated from rpc localcompose.v1.DaemonService.StopAction
+     * @generated from rpc localcompose.v1.DaemonService.StopTask
      */
-    stopAction: {
-      name: "StopAction",
-      I: StopActionRequest,
-      O: StopActionResponse,
+    stopTask: {
+      name: "StopTask",
+      I: StopTaskRequest,
+      O: StopTaskResponse,
       kind: MethodKind.Unary,
     },
     /**

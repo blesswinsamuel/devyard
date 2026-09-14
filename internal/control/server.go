@@ -58,10 +58,10 @@ func NewServer(socket string, backend MultiBackend) *Server {
 				},
 			})
 		})
-		backend.SetOnActionStateChange(func(project string, state *protocol.ActionState) {
+		backend.SetOnTaskStateChange(func(project string, state *protocol.TaskState) {
 			srv.broadcastEvent(&localcomposev1.Event{
-				Event: &localcomposev1.Event_ActionStateChanged{
-					ActionStateChanged: &localcomposev1.ActionStateChangedEvent{
+				Event: &localcomposev1.Event_TaskStateChanged{
+					TaskStateChanged: &localcomposev1.TaskStateChangedEvent{
 						Project: project,
 						State:   state,
 					},
@@ -341,13 +341,13 @@ func (s *Server) ListPorts(ctx context.Context, req *connect.Request[localcompos
 	}), nil
 }
 
-func (s *Server) ListActions(ctx context.Context, req *connect.Request[localcomposev1.ListActionsRequest]) (*connect.Response[localcomposev1.ListActionsResponse], error) {
-	actions, err := s.backend.ListActions(req.Msg.Project)
+func (s *Server) ListTasks(ctx context.Context, req *connect.Request[localcomposev1.ListTasksRequest]) (*connect.Response[localcomposev1.ListTasksResponse], error) {
+	tasks, err := s.backend.ListTasks(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&localcomposev1.ListActionsResponse{
-		Actions: actions,
+	return connect.NewResponse(&localcomposev1.ListTasksResponse{
+		Tasks: tasks,
 	}), nil
 }
 
@@ -359,10 +359,10 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[localcomposev1.L
 
 	target := req.Msg.Service
 	if target == "" {
-		target = req.Msg.Action
+		target = req.Msg.Task
 	}
 	if target == "" {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("service or action is required"))
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("service or task is required"))
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -370,12 +370,12 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[localcomposev1.L
 
 	var path string
 	switch {
-	case req.Msg.Action != "" && req.Msg.Previous:
-		path, err = b.ActionPreviousLogPath(req.Msg.Action)
-	case req.Msg.Action != "" && req.Msg.Follow:
-		path, err = WaitForActionLog(waitCtx, b, req.Msg.Action)
-	case req.Msg.Action != "":
-		path, err = b.ActionLogPath(req.Msg.Action)
+	case req.Msg.Task != "" && req.Msg.Previous:
+		path, err = b.TaskPreviousLogPath(req.Msg.Task)
+	case req.Msg.Task != "" && req.Msg.Follow:
+		path, err = WaitForTaskLog(waitCtx, b, req.Msg.Task)
+	case req.Msg.Task != "":
+		path, err = b.TaskLogPath(req.Msg.Task)
 	case req.Msg.Previous:
 		path, err = b.PreviousLogPath(req.Msg.Service)
 	default:
@@ -390,12 +390,12 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[localcomposev1.L
 		}
 	}
 
-	return streamLogsConnect(ctx, path, req.Msg.Follow, !req.Msg.Previous, int(req.Msg.Tail), s.stopCh, req.Msg.Project, req.Msg.Service, req.Msg.Action, stream)
+	return streamLogsConnect(ctx, path, req.Msg.Follow, !req.Msg.Previous, int(req.Msg.Tail), s.stopCh, req.Msg.Project, req.Msg.Service, req.Msg.Task, stream)
 }
 
 const followPollInterval = 100 * time.Millisecond
 
-func streamLogsConnect(ctx context.Context, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service, action string, stream *connect.ServerStream[localcomposev1.LogChunk]) error {
+func streamLogsConnect(ctx context.Context, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service, task string, stream *connect.ServerStream[localcomposev1.LogChunk]) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -409,7 +409,7 @@ func streamLogsConnect(ctx context.Context, path string, follow, trackRotation b
 	if err := stream.Send(&localcomposev1.LogChunk{
 		Project: project,
 		Service: service,
-		Action:  action,
+		Task:    task,
 		Content: string(content),
 	}); err != nil {
 		return err
@@ -440,7 +440,7 @@ func streamLogsConnect(ctx context.Context, path string, follow, trackRotation b
 			return stream.Send(&localcomposev1.LogChunk{
 				Project: project,
 				Service: service,
-				Action:  action,
+				Task:    task,
 				Lines:   lines,
 			})
 		}
@@ -467,7 +467,7 @@ func streamLogsConnect(ctx context.Context, path string, follow, trackRotation b
 					if err := stream.Send(&localcomposev1.LogChunk{
 						Project: project,
 						Service: service,
-						Action:  action,
+						Task:    task,
 						Rotated: true,
 					}); err != nil {
 						return err
@@ -538,29 +538,29 @@ func rewindIfRotated(f *os.File) (bool, error) {
 	return false, nil
 }
 
-func WaitForActionLog(ctx context.Context, b Backend, action string) (string, error) {
+func WaitForTaskLog(ctx context.Context, b Backend, task string) (string, error) {
 	for {
-		path, err := b.ActionLogPath(action)
+		path, err := b.TaskLogPath(task)
 		if err == nil {
 			return path, nil
 		}
 		select {
 		case <-ctx.Done():
-			return "", fmt.Errorf("action %q log did not appear: %w", action, ctx.Err())
+			return "", fmt.Errorf("task %q log did not appear: %w", task, ctx.Err())
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
 }
 
-type actionConnectWriter struct {
+type taskConnectWriter struct {
 	project string
-	action  string
-	stream  *connect.ServerStream[localcomposev1.ActionOutputChunk]
+	task    string
+	stream  *connect.ServerStream[localcomposev1.TaskOutputChunk]
 	buf     bytes.Buffer
 	mu      sync.Mutex
 }
 
-func (l *actionConnectWriter) Write(p []byte) (int, error) {
+func (l *taskConnectWriter) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	n := len(p)
@@ -572,66 +572,66 @@ func (l *actionConnectWriter) Write(p []byte) (int, error) {
 			break
 		}
 		line = strings.TrimRight(line, "\r\n")
-		_ = l.stream.Send(&localcomposev1.ActionOutputChunk{
+		_ = l.stream.Send(&localcomposev1.TaskOutputChunk{
 			Project: l.project,
-			Action:  l.action,
+			Task:    l.task,
 			Line:    line,
 		})
 	}
 	return n, nil
 }
 
-func (l *actionConnectWriter) Flush() {
+func (l *taskConnectWriter) Flush() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.buf.Len() > 0 {
 		line := strings.TrimRight(l.buf.String(), "\r\n")
 		l.buf.Reset()
 		if line != "" {
-			_ = l.stream.Send(&localcomposev1.ActionOutputChunk{
+			_ = l.stream.Send(&localcomposev1.TaskOutputChunk{
 				Project: l.project,
-				Action:  l.action,
+				Task:    l.task,
 				Line:    line,
 			})
 		}
 	}
 }
 
-func (s *Server) RunAction(ctx context.Context, req *connect.Request[localcomposev1.RunActionRequest], stream *connect.ServerStream[localcomposev1.ActionOutputChunk]) error {
+func (s *Server) RunTask(ctx context.Context, req *connect.Request[localcomposev1.RunTaskRequest], stream *connect.ServerStream[localcomposev1.TaskOutputChunk]) error {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	writer := &actionConnectWriter{
+	writer := &taskConnectWriter{
 		project: req.Msg.Project,
-		action:  req.Msg.Action,
+		task:    req.Msg.Task,
 		stream:  stream,
 	}
-	exitCode, err := b.RunAction(ctx, req.Msg.Action, req.Msg.Args, writer)
+	exitCode, err := b.RunTask(ctx, req.Msg.Task, req.Msg.Args, writer)
 	writer.Flush()
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, err)
 	}
 	ec := int32(exitCode)
-	return stream.Send(&localcomposev1.ActionOutputChunk{
+	return stream.Send(&localcomposev1.TaskOutputChunk{
 		Project:  req.Msg.Project,
-		Action:   req.Msg.Action,
+		Task:     req.Msg.Task,
 		ExitCode: &ec,
 	})
 }
 
-func (s *Server) StopAction(ctx context.Context, req *connect.Request[localcomposev1.StopActionRequest]) (*connect.Response[localcomposev1.StopActionResponse], error) {
+func (s *Server) StopTask(ctx context.Context, req *connect.Request[localcomposev1.StopTaskRequest]) (*connect.Response[localcomposev1.StopTaskResponse], error) {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	if req.Msg.Action == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("action is required"))
+	if req.Msg.Task == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("task is required"))
 	}
-	if err := b.StopAction(req.Msg.Action); err != nil {
+	if err := b.StopTask(req.Msg.Task); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.StopActionResponse{}), nil
+	return connect.NewResponse(&localcomposev1.StopTaskResponse{}), nil
 }
 
 func (s *Server) GitLog(ctx context.Context, req *connect.Request[localcomposev1.GitLogRequest]) (*connect.Response[localcomposev1.GitLogResponse], error) {

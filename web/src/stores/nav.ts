@@ -3,7 +3,6 @@ import { connectWS } from "~/lib/ws";
 import { onDaemonEvent, startEvents, stopEvents } from "~/lib/events";
 import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } from "~/lib/router";
 import {
-  actions as actionsData,
   clearSelectedCommit,
   initDataHandlers,
   loadGitLog,
@@ -12,6 +11,7 @@ import {
   selectCommit,
   services as servicesData,
   selectedCommitHash,
+  tasks as tasksData,
 } from "~/stores/data";
 import { ensureShellWorkspace } from "~/stores/shells";
 import { setSidebarOpen } from "~/stores/app";
@@ -22,11 +22,11 @@ import { isMobile } from "~/lib/is-mobile";
 export type NavItem =
   | { kind: "project"; project: string }
   | { kind: "service"; project: string; service: string }
-  | { kind: "action"; project: string; action: string };
+  | { kind: "task"; project: string; task: string };
 
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
 const [selectedService, setSelectedService] = createSignal<string | null>(null);
-const [selectedAction, setSelectedAction] = createSignal<string | null>(null);
+const [selectedTask, setSelectedTask] = createSignal<string | null>(null);
 /** Which main view is shown: logs or the full-page git view. */
 const [activeView, setActiveView] = createSignal<"logs" | "git">("logs");
 /** Projects the user has collapsed; everything else is expanded by default. */
@@ -41,7 +41,7 @@ const [keyboardCursor, setKeyboardCursor] = createSignal<NavItem | null>(null);
 export {
   selectedProject,
   selectedService,
-  selectedAction,
+  selectedTask,
   activeView,
   setActiveView,
   keyboardCursor,
@@ -51,14 +51,14 @@ export function sameNavItem(a: NavItem | null, b: NavItem | null): boolean {
   if (!a || !b) return a === b;
   if (a.kind !== b.kind || a.project !== b.project) return false;
   if (a.kind === "service" && b.kind === "service") return a.service === b.service;
-  if (a.kind === "action" && b.kind === "action") return a.action === b.action;
+  if (a.kind === "task" && b.kind === "task") return a.task === b.task;
   return true;
 }
 
 export function navItemKey(item: NavItem): string {
   if (item.kind === "project") return `p:${item.project}`;
   if (item.kind === "service") return `s:${item.project}/${item.service}`;
-  return `a:${item.project}/${item.action}`;
+  return `t:${item.project}/${item.task}`;
 }
 
 export function isProjectExpanded(name: string): boolean {
@@ -74,8 +74,8 @@ export function navItems(): NavItem[] {
       for (const s of servicesData()[p.name] ?? []) {
         items.push({ kind: "service", project: p.name, service: s.name });
       }
-      for (const a of actionsData()[p.name] ?? []) {
-        items.push({ kind: "action", project: p.name, action: a.name });
+      for (const t of tasksData()[p.name] ?? []) {
+        items.push({ kind: "task", project: p.name, task: t.name });
       }
     }
   }
@@ -87,8 +87,8 @@ function selectionAsNavItem(): NavItem | null {
   if (!proj) return null;
   const svc = selectedService();
   if (svc) return { kind: "service", project: proj, service: svc };
-  const act = selectedAction();
-  if (act) return { kind: "action", project: proj, action: act };
+  const task = selectedTask();
+  if (task) return { kind: "task", project: proj, task: task };
   return { kind: "project", project: proj };
 }
 
@@ -141,7 +141,7 @@ export function commitKeyboardCursor() {
   if (!cur) return;
   if (cur.kind === "project") selectProject(cur.project);
   else if (cur.kind === "service") selectService(cur.project, cur.service);
-  else selectAction(cur.project, cur.action);
+  else selectTask(cur.project, cur.task);
 }
 
 /** Service targeted by action keys: cursor service, else selected service. */
@@ -184,15 +184,15 @@ export function navigateKeyboardHorizontal(dir: "left" | "right") {
   }
 }
 
-/** Target of the previous-logs toggle: cursor service/action, else selection. */
+/** Target of the previous-logs toggle: cursor service/task, else selection. */
 export function previousTarget(): NavItem | null {
   const cur = keyboardCursor();
-  if (cur?.kind === "service" || cur?.kind === "action") return cur;
+  if (cur?.kind === "service" || cur?.kind === "task") return cur;
   const proj = selectedProject();
   const svc = selectedService();
-  const act = selectedAction();
+  const task = selectedTask();
   if (proj && svc) return { kind: "service", project: proj, service: svc };
-  if (proj && act) return { kind: "action", project: proj, action: act };
+  if (proj && task) return { kind: "task", project: proj, task: task };
   return null;
 }
 
@@ -214,13 +214,13 @@ export function setProjectExpanded(name: string, open: boolean) {
 function applySelection(
   project: string | null,
   service: string | null,
-  action: string | null,
+  task: string | null,
   view: "logs" | "git"
 ) {
   batch(() => {
     setSelectedProject(project);
     setSelectedService(service);
-    setSelectedAction(action);
+    setSelectedTask(task);
     setActiveView(view);
   });
   // On phones the sidebar is a drawer; picking a target slides it away.
@@ -233,21 +233,21 @@ export function selectProject(name: string, opts?: { skipPush?: boolean }) {
   applySelection(name, null, null, "logs");
   setProjectExpanded(name, true);
   setKeyboardCursor({ kind: "project", project: name });
-  if (!opts?.skipPush) pushRoute({ project: name, service: null, action: null });
+  if (!opts?.skipPush) pushRoute({ project: name, service: null, task: null });
 }
 
 export function selectService(project: string, service: string, opts?: { skipPush?: boolean }) {
   applySelection(project, service, null, "logs");
   setProjectExpanded(project, true);
   setKeyboardCursor({ kind: "service", project, service });
-  if (!opts?.skipPush) pushRoute({ project, service, action: null });
+  if (!opts?.skipPush) pushRoute({ project, service, task: null });
 }
 
-export function selectAction(project: string, actionName: string, opts?: { skipPush?: boolean }) {
-  applySelection(project, null, actionName, "logs");
+export function selectTask(project: string, taskName: string, opts?: { skipPush?: boolean }) {
+  applySelection(project, null, taskName, "logs");
   setProjectExpanded(project, true);
-  setKeyboardCursor({ kind: "action", project, action: actionName });
-  if (!opts?.skipPush) pushRoute({ project, service: null, action: actionName });
+  setKeyboardCursor({ kind: "task", project, task: taskName });
+  if (!opts?.skipPush) pushRoute({ project, service: null, task: taskName });
 }
 
 /** Open the full-page git view for a project. */
@@ -259,17 +259,17 @@ export function openGitView(name: string, commitHash?: string) {
     selectCommit(name, commitHash, { skipPush: true });
   }
   const commit = commitHash ?? untrack(selectedCommitHash)[name] ?? null;
-  pushRoute({ project: name, service: null, action: null, view: "git", commit });
+  pushRoute({ project: name, service: null, task: null, view: "git", commit });
 }
 
 /** Close the git view, returning to the project's log view. */
 export function closeGitView() {
   const p = selectedProject();
-  applySelection(p, p ? untrack(selectedService) : null, p ? untrack(selectedAction) : null, "logs");
+  applySelection(p, p ? untrack(selectedService) : null, p ? untrack(selectedTask) : null, "logs");
   if (p) {
-    pushRoute({ project: p, service: selectedService(), action: selectedAction(), view: "logs" });
+    pushRoute({ project: p, service: selectedService(), task: selectedTask(), view: "logs" });
   } else {
-    pushRoute({ project: null, service: null, action: null });
+    pushRoute({ project: null, service: null, task: null });
   }
 }
 
@@ -282,7 +282,7 @@ function pruneSelection() {
   if (projList.length > 0 && sel && !names.has(sel)) {
     applySelection(null, null, null, "logs");
     pruneCursor();
-    replaceRoute({ project: null, service: null, action: null });
+    replaceRoute({ project: null, service: null, task: null });
     return;
   }
   if (sel) {
@@ -290,14 +290,14 @@ function pruneSelection() {
     const svcList = untrack(servicesData)[sel];
     if (svc && svcList !== undefined && !svcList.some((s) => s.name === svc)) {
       applySelection(sel, null, null, untrack(activeView));
-      replaceRoute({ project: sel, service: null, action: null });
+      replaceRoute({ project: sel, service: null, task: null });
     }
-    const act = untrack(selectedAction);
-    if (!act) return;
-    const actList = untrack(actionsData)[sel];
-    if (actList !== undefined && !actList.some((a) => a.name === act)) {
+    const task = untrack(selectedTask);
+    if (!task) return;
+    const taskList = untrack(tasksData)[sel];
+    if (taskList !== undefined && !taskList.some((a) => a.name === task)) {
       applySelection(sel, null, null, untrack(activeView));
-      replaceRoute({ project: sel, service: null, action: null });
+      replaceRoute({ project: sel, service: null, task: null });
     }
   }
   pruneCursor();
@@ -312,6 +312,12 @@ export function start(): () => void {
   if (started) return () => {};
   started = true;
 
+  bindNavHooks({
+    selectCommitRoute: (project, hash) => {
+      selectCommit(project, hash);
+    },
+  });
+
   startEvents();
   connectWS();
 
@@ -321,7 +327,7 @@ export function start(): () => void {
     applySelection(
       initRoute.project,
       initRoute.service ?? null,
-      initRoute.action ?? null,
+      initRoute.task ?? null,
       initRoute.view === "git" ? "git" : "logs"
     );
     setProjectExpanded(initRoute.project, true);
@@ -331,12 +337,12 @@ export function start(): () => void {
         selectCommit(initRoute.project, initRoute.commit, { skipPush: true });
       }
     }
-    const { service, action, project } = initRoute;
+    const { service, task, project } = initRoute;
     setKeyboardCursor(
       service
         ? { kind: "service", project, service }
-        : action
-          ? { kind: "action", project, action }
+        : task
+          ? { kind: "task", project, task }
           : { kind: "project", project: project! }
     );
   } else if (isMobile()) {
@@ -360,8 +366,8 @@ export function start(): () => void {
       }
     } else if (route.service) {
       selectService(route.project, route.service, { skipPush: true });
-    } else if (route.action) {
-      selectAction(route.project, route.action, { skipPush: true });
+    } else if (route.task) {
+      selectTask(route.project, route.task, { skipPush: true });
     } else {
       selectProject(route.project, { skipPush: true });
     }
@@ -372,7 +378,7 @@ export function start(): () => void {
   createEffect(() => {
     projectsData();
     servicesData();
-    actionsData();
+    tasksData();
     pruneSelection();
   });
 

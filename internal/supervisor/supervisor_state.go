@@ -27,11 +27,11 @@ type ServiceStateSnapshot struct {
 	FinishedAt time.Time `json:"finished_at"`
 }
 
-// ActionStateSnapshot is the JSON-serializable snapshot of an action's
-// most recent run (or in-progress run). Actions are one-shot so only the
+// TaskStateSnapshot is the JSON-serializable snapshot of a task's
+// most recent run (or in-progress run). Tasks are one-shot so only the
 // latest state is persisted — matching how ServiceStateSnapshot records the
 // current spawn.
-type ActionStateSnapshot struct {
+type TaskStateSnapshot struct {
 	Name       string    `json:"name"`
 	Command    string    `json:"command,omitempty"`
 	Status     Status    `json:"status"`
@@ -45,7 +45,7 @@ type ActionStateSnapshot struct {
 // SupervisorStateSnapshot is the JSON-serializable snapshot of all services in a supervisor.
 type SupervisorStateSnapshot struct {
 	Services map[string]ServiceStateSnapshot `json:"services"`
-	Actions  map[string]ActionStateSnapshot  `json:"actions,omitempty"`
+	Tasks    map[string]TaskStateSnapshot    `json:"tasks,omitempty"`
 	// Selected is the lazy-start selection (see Options.Selected) persisted
 	// so a project materialized via `start <service>` is not expanded to
 	// every service by autostart after a daemon restart. Empty means all
@@ -86,10 +86,10 @@ func (s *Supervisor) SaveState() error {
 		rt.mu.Unlock()
 	}
 
-	actions := make(map[string]ActionStateSnapshot, len(s.actionRuntimes))
-	for name, rt := range s.actionRuntimes {
+	tasks := make(map[string]TaskStateSnapshot, len(s.taskRuntimes))
+	for name, rt := range s.taskRuntimes {
 		rt.mu.Lock()
-		actions[name] = ActionStateSnapshot{
+		tasks[name] = TaskStateSnapshot{
 			Name:       rt.name,
 			Command:    rt.command,
 			Status:     rt.status,
@@ -110,7 +110,7 @@ func (s *Supervisor) SaveState() error {
 
 	snap := SupervisorStateSnapshot{
 		Services: services,
-		Actions:  actions,
+		Tasks:    tasks,
 		Selected: selected,
 		SavedAt:  time.Now(),
 	}
@@ -209,13 +209,13 @@ func adoptedLeaderAlive(snap ServiceStateSnapshot) bool {
 	return ok && !info.Zombie && info.PGID == snap.PGID
 }
 
-// adoptableActionSnapshot reports whether a persisted action snapshot
+// adoptableTaskSnapshot reports whether a persisted task snapshot
 // describes a process group this supervisor can safely re-attach to: the
 // recorded group leader must be alive, not a zombie, and still lead the
-// recorded process group (actions run with Setpgid, so the leader's pgid
+// recorded process group (tasks run with Setpgid, so the leader's pgid
 // equals its pid). Anything else is a stale record of a run whose daemon is
 // gone.
-func adoptableActionSnapshot(snap ActionStateSnapshot) bool {
+func adoptableTaskSnapshot(snap TaskStateSnapshot) bool {
 	if snap.PID <= 0 || snap.PGID <= 0 {
 		return false
 	}

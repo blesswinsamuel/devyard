@@ -588,7 +588,7 @@ func TestStartServiceUnknownProject(t *testing.T) {
 	}
 }
 
-func TestStoppedProjectBackendListsServicesAndActions(t *testing.T) {
+func TestStoppedProjectBackendListsServicesAndTasks(t *testing.T) {
 	setupEnv(t)
 	configPath := writeConfig(t, `version: "1"
 name: lc-stopped
@@ -647,9 +647,9 @@ tasks:
 		t.Fatalf("HasHealth = %v/%v, want true/false", states[0].HasHealth, states[1].HasHealth)
 	}
 
-	actions := backend.ListActions()
-	if len(actions) != 1 || actions[0].Name != "build" {
-		t.Fatalf("ListActions = %+v, want [build]", actions)
+	tasks := backend.ListTasks()
+	if len(tasks) != 1 || tasks[0].Name != "build" {
+		t.Fatalf("ListTasks = %+v, want [build]", tasks)
 	}
 
 	// Mutations still fail with the stopped-project error.

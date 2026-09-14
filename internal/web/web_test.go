@@ -26,23 +26,23 @@ import (
 // fakeBackend is an in-memory control.Backend for exercising the daemon-side
 // control server behind the web proxy.
 type fakeBackend struct {
-	mu             sync.Mutex
-	states         []*protocol.ServiceState
-	logPaths       map[string]string
-	actions        []*protocol.ActionState
-	actionLogPaths map[string]string
-	restarts       []string
-	stopped        []string
-	started        []string
-	killed         []string
-	stoppedActs    []string
-	runActionFn    func(name string, args []string, out io.Writer) (int, error)
+	mu           sync.Mutex
+	states       []*protocol.ServiceState
+	logPaths     map[string]string
+	tasks        []*protocol.TaskState
+	taskLogPaths map[string]string
+	restarts     []string
+	stopped      []string
+	started      []string
+	killed       []string
+	stoppedTasks []string
+	runTaskFn    func(name string, args []string, out io.Writer) (int, error)
 }
 
 func newFakeBackend() *fakeBackend {
 	return &fakeBackend{
-		logPaths:       make(map[string]string),
-		actionLogPaths: make(map[string]string),
+		logPaths:     make(map[string]string),
+		taskLogPaths: make(map[string]string),
 	}
 }
 
@@ -53,8 +53,6 @@ func (b *fakeBackend) States() []*protocol.ServiceState {
 	copy(out, b.states)
 	return out
 }
-
-func (b *fakeBackend) ActionStates() []*protocol.ActionState { return nil }
 
 func (b *fakeBackend) Stop(context.Context) error { return nil }
 
@@ -108,17 +106,17 @@ func (b *fakeBackend) PreviousLogPath(name string) (string, error) {
 	return "", fmt.Errorf("unknown service %q", name)
 }
 
-func (b *fakeBackend) ListActions() []*protocol.ActionState {
+func (b *fakeBackend) ListTasks() []*protocol.TaskState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]*protocol.ActionState, len(b.actions))
-	copy(out, b.actions)
+	out := make([]*protocol.TaskState, len(b.tasks))
+	copy(out, b.tasks)
 	return out
 }
 
-func (b *fakeBackend) RunAction(_ context.Context, name string, args []string, out io.Writer) (int, error) {
+func (b *fakeBackend) RunTask(_ context.Context, name string, args []string, out io.Writer) (int, error) {
 	b.mu.Lock()
-	fn := b.runActionFn
+	fn := b.runTaskFn
 	b.mu.Unlock()
 	if fn != nil {
 		return fn(name, args, out)
@@ -126,29 +124,29 @@ func (b *fakeBackend) RunAction(_ context.Context, name string, args []string, o
 	return 0, nil
 }
 
-func (b *fakeBackend) StopAction(name string) error {
+func (b *fakeBackend) StopTask(name string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.stoppedActs = append(b.stoppedActs, name)
+	b.stoppedTasks = append(b.stoppedTasks, name)
 	return nil
 }
 
-func (b *fakeBackend) ActionLogPath(name string) (string, error) {
+func (b *fakeBackend) TaskLogPath(name string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	p, ok := b.actionLogPaths[name]
+	p, ok := b.taskLogPaths[name]
 	if !ok {
-		return "", fmt.Errorf("action %q has no log file yet", name)
+		return "", fmt.Errorf("task %q has no log file yet", name)
 	}
 	return p, nil
 }
 
-func (b *fakeBackend) ActionPreviousLogPath(name string) (string, error) {
+func (b *fakeBackend) TaskPreviousLogPath(name string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	p, ok := b.actionLogPaths[name]
+	p, ok := b.taskLogPaths[name]
 	if !ok {
-		return "", fmt.Errorf("unknown action %q", name)
+		return "", fmt.Errorf("unknown task %q", name)
 	}
 	return strings.TrimSuffix(p, ".log") + ".prev.log", nil
 }
@@ -158,7 +156,7 @@ type fakeMultiBackend struct {
 	mu         sync.Mutex
 	projects   map[string]*projectEntry
 	onState    func(project string, state *protocol.ServiceState)
-	onAction   func(project string, state *protocol.ActionState)
+	onTask     func(project string, state *protocol.TaskState)
 	onGit      func(project string)
 	onProjects func()
 	daemonStop chan struct{}
@@ -316,7 +314,7 @@ func (m *fakeMultiBackend) ListServices(project string) ([]*protocol.ServiceStat
 	return all, nil
 }
 
-func (m *fakeMultiBackend) ListActions(project string) ([]*protocol.ActionState, error) {
+func (m *fakeMultiBackend) ListTasks(project string) ([]*protocol.TaskState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if project != "" {
@@ -324,19 +322,19 @@ func (m *fakeMultiBackend) ListActions(project string) ([]*protocol.ActionState,
 		if !ok {
 			return nil, fmt.Errorf("project %q is not running", project)
 		}
-		actions := e.backend.ListActions()
-		for _, act := range actions {
+		tasks := e.backend.ListTasks()
+		for _, act := range tasks {
 			act.Project = project
 		}
-		return actions, nil
+		return tasks, nil
 	}
-	var all []*protocol.ActionState
+	var all []*protocol.TaskState
 	for name, e := range m.projects {
-		actions := e.backend.ListActions()
-		for _, act := range actions {
+		tasks := e.backend.ListTasks()
+		for _, act := range tasks {
 			act.Project = name
 		}
-		all = append(all, actions...)
+		all = append(all, tasks...)
 	}
 	return all, nil
 }
@@ -347,9 +345,9 @@ func (m *fakeMultiBackend) SetOnStateChange(fn func(string, *protocol.ServiceSta
 	m.mu.Unlock()
 }
 
-func (m *fakeMultiBackend) SetOnActionStateChange(fn func(string, *protocol.ActionState)) {
+func (m *fakeMultiBackend) SetOnTaskStateChange(fn func(string, *protocol.TaskState)) {
 	m.mu.Lock()
-	m.onAction = fn
+	m.onTask = fn
 	m.mu.Unlock()
 }
 

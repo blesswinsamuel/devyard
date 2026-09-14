@@ -146,16 +146,10 @@ type TaskSpec struct {
 	DependsOn  DependsOn         `yaml:"depends_on,omitempty"`
 }
 
-// ActionSpec is an alias for TaskSpec.
-type ActionSpec = TaskSpec
-
 // Task accepts either a command string or a TaskSpec object in YAML.
 type Task struct {
 	Spec TaskSpec
 }
-
-// Action is an alias for Task.
-type Action = Task
 
 // UnmarshalYAML implements yaml.Unmarshaler for Task.
 func (t *Task) UnmarshalYAML(value *yaml.Node) error {
@@ -191,7 +185,6 @@ type File struct {
 	Name     string             `yaml:"name,omitempty"`
 	Services map[string]Service `yaml:"services"`
 	Tasks    map[string]Task    `yaml:"tasks,omitempty"`
-	Actions  map[string]Task    `yaml:"actions,omitempty"`
 }
 
 // Load reads and validates a config file. Environment variable references in
@@ -305,20 +298,14 @@ func (f *File) Validate(configPath string) error {
 		}
 		f.Services[name] = svc
 	}
-	if f.Tasks == nil && len(f.Actions) > 0 {
-		f.Tasks = f.Actions
-	}
-	if f.Actions == nil && len(f.Tasks) > 0 {
-		f.Actions = f.Tasks
-	}
-	for name, act := range f.Tasks {
-		if strings.TrimSpace(act.Spec.Command) == "" {
+	for name, task := range f.Tasks {
+		if strings.TrimSpace(task.Spec.Command) == "" {
 			return fmt.Errorf("task %q: command is required", name)
 		}
-		if act.Spec.Shell == "" {
-			act.Spec.Shell = DefaultShell
+		if task.Spec.Shell == "" {
+			task.Spec.Shell = DefaultShell
 		}
-		for depName, entry := range act.Spec.DependsOn.Entries {
+		for depName, entry := range task.Spec.DependsOn.Entries {
 			if _, ok := f.Services[depName]; !ok {
 				return fmt.Errorf("task %q: depends_on references unknown service %q", name, depName)
 			}
@@ -332,17 +319,14 @@ func (f *File) Validate(configPath string) error {
 				}
 			}
 		}
-		if act.Spec.Env != nil {
-			for k := range act.Spec.Env {
+		if task.Spec.Env != nil {
+			for k := range task.Spec.Env {
 				if strings.TrimSpace(k) == "" {
 					return fmt.Errorf("task %q: env key must be non-empty", name)
 				}
 			}
 		}
-		f.Tasks[name] = act
-		if f.Actions != nil {
-			f.Actions[name] = act
-		}
+		f.Tasks[name] = task
 	}
 	return nil
 }

@@ -354,8 +354,8 @@ func TestAdoptOrStartNormalizesDeadAction(t *testing.T) {
 	file := fileWith(map[string]config.Service{
 		"svc": {Command: "echo service-running", Shell: "sh"},
 	})
-	file.Actions = map[string]config.Action{
-		"logs": {Spec: config.ActionSpec{Command: "sleep 60", Shell: "sh"}},
+	file.Tasks = map[string]config.Task{
+		"logs": {Spec: config.TaskSpec{Command: "sleep 60", Shell: "sh"}},
 	}
 	s, err := supervisor.New(supervisor.Options{
 		Locations: locs,
@@ -405,8 +405,8 @@ func TestAdoptOrStartAdoptsAliveAction(t *testing.T) {
 	file := fileWith(map[string]config.Service{
 		"svc": {Command: "echo service-running", Shell: "sh"},
 	})
-	file.Actions = map[string]config.Action{
-		"logs": {Spec: config.ActionSpec{Command: "sleep 60", Shell: "sh"}},
+	file.Tasks = map[string]config.Task{
+		"logs": {Spec: config.TaskSpec{Command: "sleep 60", Shell: "sh"}},
 	}
 	s, err := supervisor.New(supervisor.Options{
 		Locations: locs,

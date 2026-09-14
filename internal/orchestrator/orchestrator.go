@@ -903,7 +903,7 @@ func (b stoppedBackend) knownService(name string) error {
 
 func (b stoppedBackend) knownAction(name string) error {
 	if b.file != nil {
-		if _, ok := b.file.Actions[name]; ok {
+		if _, ok := b.file.Tasks[name]; ok {
 			return nil
 		}
 	}

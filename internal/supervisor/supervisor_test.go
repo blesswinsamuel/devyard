@@ -906,9 +906,9 @@ func TestSupervisorRunAction(t *testing.T) {
 	file := fileWith(map[string]config.Service{
 		"svc": {Command: "echo service-running", Shell: "sh"},
 	})
-	file.Actions = map[string]config.Action{
+	file.Tasks = map[string]config.Task{
 		"echo-test": {
-			Spec: config.ActionSpec{
+			Spec: config.TaskSpec{
 				Command: "echo hello action",
 				Shell:   "sh",
 			},
@@ -937,15 +937,15 @@ func TestSupervisorStopAction(t *testing.T) {
 	file := fileWith(map[string]config.Service{
 		"svc": {Command: "echo service-running", Shell: "sh"},
 	})
-	file.Actions = map[string]config.Action{
+	file.Tasks = map[string]config.Task{
 		"sleeper": {
-			Spec: config.ActionSpec{
+			Spec: config.TaskSpec{
 				Command: "echo started; sleep 30",
 				Shell:   "sh",
 			},
 		},
 		"echo-test": {
-			Spec: config.ActionSpec{
+			Spec: config.TaskSpec{
 				Command: "echo hello action",
 				Shell:   "sh",
 			},
@@ -1017,9 +1017,9 @@ func TestSupervisorStopActionNotRunning(t *testing.T) {
 	file := fileWith(map[string]config.Service{
 		"svc": {Command: "echo service-running", Shell: "sh"},
 	})
-	file.Actions = map[string]config.Action{
+	file.Tasks = map[string]config.Task{
 		"echo-test": {
-			Spec: config.ActionSpec{Command: "echo hello action", Shell: "sh"},
+			Spec: config.TaskSpec{Command: "echo hello action", Shell: "sh"},
 		},
 	}
 	s := newSupervisor(t, file, []string{"svc"})
@@ -1040,9 +1040,9 @@ func TestRunActionContextCancel(t *testing.T) {
 	file := fileWith(map[string]config.Service{
 		"svc": {Command: "echo service-running", Shell: "sh"},
 	})
-	file.Actions = map[string]config.Action{
+	file.Tasks = map[string]config.Task{
 		"sleeper": {
-			Spec: config.ActionSpec{
+			Spec: config.TaskSpec{
 				Command: "echo started; sleep 30",
 				Shell:   "sh",
 			},
@@ -1179,8 +1179,8 @@ func TestSupervisorActionLogs(t *testing.T) {
 	f := fileWith(map[string]config.Service{
 		"app": {Command: "echo app"},
 	})
-	f.Actions = map[string]config.Action{
-		"migrate": {Spec: config.ActionSpec{Command: "echo action_first_run"}},
+	f.Tasks = map[string]config.Task{
+		"migrate": {Spec: config.TaskSpec{Command: "echo action_first_run"}},
 	}
 	s := newSupervisor(t, f, []string{"app"})
 
@@ -1203,7 +1203,7 @@ func TestSupervisorActionLogs(t *testing.T) {
 	}
 
 	// Run action a second time to test log rotation
-	f.Actions["migrate"] = config.Action{Spec: config.ActionSpec{Command: "echo action_second_run"}}
+	f.Tasks["migrate"] = config.Task{Spec: config.TaskSpec{Command: "echo action_second_run"}}
 	s.UpdateFile(f)
 	buf.Reset()
 	code, err = s.RunAction(context.Background(), "migrate", nil, &buf)

@@ -169,7 +169,7 @@ func (s *Supervisor) notifyActionStateChange(rt *actionRuntime) {
 	}
 	rt.mu.Unlock()
 	if s.opts.File != nil {
-		if act, ok := s.opts.File.Actions[rt.name]; ok {
+		if act, ok := s.opts.File.Tasks[rt.name]; ok {
 			state.WorkingDir = act.Spec.WorkingDir
 			state.Tty = act.Spec.TTY
 			deps := make([]string, len(act.Spec.DependsOn.Order))
@@ -1687,14 +1687,14 @@ func ListActionsFromFile(file *config.File) []*protocol.ActionState {
 	if file == nil {
 		return nil
 	}
-	names := make([]string, 0, len(file.Actions))
-	for name := range file.Actions {
+	names := make([]string, 0, len(file.Tasks))
+	for name := range file.Tasks {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	out := make([]*protocol.ActionState, len(names))
 	for i, name := range names {
-		act := file.Actions[name]
+		act := file.Tasks[name]
 		deps := make([]string, len(act.Spec.DependsOn.Order))
 		copy(deps, act.Spec.DependsOn.Order)
 		sort.Strings(deps)
@@ -1717,14 +1717,14 @@ func (s *Supervisor) ListActions() []*protocol.ActionState {
 	if s.opts.File == nil {
 		return nil
 	}
-	names := make([]string, 0, len(s.opts.File.Actions))
-	for name := range s.opts.File.Actions {
+	names := make([]string, 0, len(s.opts.File.Tasks))
+	for name := range s.opts.File.Tasks {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	out := make([]*protocol.ActionState, 0, len(names))
 	for _, name := range names {
-		act := s.opts.File.Actions[name]
+		act := s.opts.File.Tasks[name]
 		deps := make([]string, len(act.Spec.DependsOn.Order))
 		copy(deps, act.Spec.DependsOn.Order)
 		sort.Strings(deps)
@@ -1758,7 +1758,7 @@ func (s *Supervisor) RunAction(ctx context.Context, name string, extraArgs []str
 	if s.opts.File == nil {
 		return 1, fmt.Errorf("supervisor: no config file loaded")
 	}
-	act, ok := s.opts.File.Actions[name]
+	act, ok := s.opts.File.Tasks[name]
 	if !ok {
 		return 1, fmt.Errorf("action %q not found", name)
 	}
@@ -2032,7 +2032,7 @@ func (s *Supervisor) ActionLogPath(name string) (string, error) {
 	if s.opts.File == nil {
 		return "", fmt.Errorf("supervisor: no config file loaded")
 	}
-	if _, ok := s.opts.File.Actions[name]; !ok {
+	if _, ok := s.opts.File.Tasks[name]; !ok {
 		return "", fmt.Errorf("action %q not found", name)
 	}
 	path := filepath.Join(s.opts.Locations.State, "actions", name+".log")
@@ -2050,7 +2050,7 @@ func (s *Supervisor) ActionPreviousLogPath(name string) (string, error) {
 	if s.opts.File == nil {
 		return "", fmt.Errorf("supervisor: no config file loaded")
 	}
-	if _, ok := s.opts.File.Actions[name]; !ok {
+	if _, ok := s.opts.File.Tasks[name]; !ok {
 		return "", fmt.Errorf("action %q not found", name)
 	}
 	path := filepath.Join(s.opts.Locations.State, "actions", name+".prev.log")

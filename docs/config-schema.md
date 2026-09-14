@@ -13,7 +13,7 @@ version: "1"          # required
 name: myapp           # optional; defaults to the config file's directory name
 services:             # required, non-empty
   <name>: <Service>
-tasks:                # optional (alias: actions)
+tasks:                # optional
   <name>: <Task>
 ```
 
@@ -184,9 +184,9 @@ build:                                       # object form
 - `command` is required in the object form (validation rejects an empty
   command). `env` is additive over the parent env, same rule as service `env`.
 
-## Tasks (tasks / actions)
+## Tasks
 
-Tasks define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `local-compose task run <task>` (or shortcut `local-compose run <task>`) or the Web UI. The section in `local-compose.yml` can be named either `tasks:` (preferred) or `actions:`.
+Tasks define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `local-compose task run <task>` (or shortcut `local-compose run <task>`) or the Web UI.
 
 ```yaml
 tasks:

@@ -39,6 +39,6 @@ services:
     build: bun install
     restart: always
 
-actions:
+tasks:
   install-daemon: go install ./cmd/local-compose
   restart-daemon: bash -c 'local-compose daemon restart >/dev/null 2>&1 &'

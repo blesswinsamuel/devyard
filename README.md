@@ -135,7 +135,7 @@ local-compose stop-daemon  # stop all projects and the daemon
 | `logs [service]` | Output or stream service logs (`--follow`, `--tail N`, `--previous`). | `service logs` |
 | `top [service]` | Sample process-group CPU% and memory usage. | `service top` |
 | `kill [service...]` | Forcefully terminate services with a signal (`-s SIGKILL`, `SIGTERM`, ...). | `service kill` |
-| `run <task> [-- args]` | Execute a one-off task defined in `tasks:` (or `actions:`). | `task run` |
+| `run <task> [-- args]` | Execute a one-off task defined in `tasks:`. | `task run` |
 | `build [service...]` | Run pre-start build commands. | `service build` |
 
 ### Resource-Based Commands
@@ -201,7 +201,7 @@ Top-level:
 | `version` | **Required.** Config schema version (currently `"1"`). |
 | `name` | Optional project name. Defaults to the config file's directory name. |
 | `services` | **Required.** Map of service name → `Service`. |
-| `tasks` | Optional. Map of task name → `Task` (one-off tasks; alias: `actions`). |
+| `tasks` | Optional. Map of task name → `Task` (one-off tasks). |
 
 `Service`:
 

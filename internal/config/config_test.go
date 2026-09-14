@@ -252,7 +252,7 @@ func TestBuildEnvOver(t *testing.T) {
 	}
 }
 
-func TestActionsParsingAndValidation(t *testing.T) {
+func TestTasksParsingAndValidation(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "local-compose.yml")
@@ -262,7 +262,7 @@ services:
     command: echo db
     healthcheck:
       test: ["CMD-SHELL", "true"]
-actions:
+tasks:
   migrate: npx prisma db push
   seed:
     command: node scripts/seed.js
@@ -279,54 +279,18 @@ actions:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(file.Actions) != 2 {
-		t.Fatalf("Actions length = %d, want 2", len(file.Actions))
-	}
-	migrate := file.Actions["migrate"]
-	if migrate.Spec.Command != "npx prisma db push" || migrate.Spec.Shell != "sh" {
-		t.Errorf("migrate action: %+v", migrate.Spec)
-	}
-	seed := file.Actions["seed"]
-	if seed.Spec.Command != "node scripts/seed.js" || seed.Spec.WorkingDir != "./backend" || seed.Spec.Env["NODE_ENV"] != "development" {
-		t.Errorf("seed action: %+v", seed.Spec)
-	}
-	if seed.Spec.DependsOn.Entries["db"].Condition != config.ConditionServiceHealthy {
-		t.Errorf("seed depends_on db condition: %+v", seed.Spec.DependsOn)
-	}
-}
-
-func TestTasksParsingAndValidation(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
-	content := `version: "1"
-services:
-  api:
-    command: echo api
-tasks:
-  build: go build ./...
-  lint:
-    command: golangci-lint run
-    working_dir: ./backend
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := config.Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
 	if len(file.Tasks) != 2 {
 		t.Fatalf("Tasks length = %d, want 2", len(file.Tasks))
 	}
-	if file.Tasks["build"].Spec.Command != "go build ./..." {
-		t.Errorf("task build command = %q", file.Tasks["build"].Spec.Command)
+	migrate := file.Tasks["migrate"]
+	if migrate.Spec.Command != "npx prisma db push" || migrate.Spec.Shell != "sh" {
+		t.Errorf("migrate task: %+v", migrate.Spec)
 	}
-	if file.Tasks["lint"].Spec.WorkingDir != "./backend" {
-		t.Errorf("task lint working_dir = %q", file.Tasks["lint"].Spec.WorkingDir)
+	seed := file.Tasks["seed"]
+	if seed.Spec.Command != "node scripts/seed.js" || seed.Spec.WorkingDir != "./backend" || seed.Spec.Env["NODE_ENV"] != "development" {
+		t.Errorf("seed task: %+v", seed.Spec)
 	}
-	// Verify synced to file.Actions for compatibility
-	if file.Actions["build"].Spec.Command != "go build ./..." {
-		t.Errorf("action build command = %q", file.Actions["build"].Spec.Command)
+	if seed.Spec.DependsOn.Entries["db"].Condition != config.ConditionServiceHealthy {
+		t.Errorf("seed depends_on db condition: %+v", seed.Spec.DependsOn)
 	}
 }

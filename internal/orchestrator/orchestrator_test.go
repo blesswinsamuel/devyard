@@ -599,7 +599,7 @@ services:
       test: ["CMD-SHELL", "true"]
   worker:
     command: sleep 60
-actions:
+tasks:
   build:
     command: echo build
 `)

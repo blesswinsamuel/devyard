@@ -1482,11 +1482,18 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 		return nil, fmt.Errorf("supervisor: unknown service or task %q", service)
 	}
 
+	sampleInterval := TopSampleInterval
+	if env := os.Getenv("LOCAL_COMPOSE_TOP_INTERVAL"); env != "" {
+		if d, err := time.ParseDuration(env); err == nil && d > 0 {
+			sampleInterval = d
+		}
+	}
+
 	first := make([]procstat.Sample, len(targets))
 	for i, t := range targets {
 		first[i], _ = procstat.SampleGroup(t.PGID)
 	}
-	time.Sleep(TopSampleInterval)
+	time.Sleep(sampleInterval)
 	second := make([]procstat.Sample, len(targets))
 	for i, t := range targets {
 		second[i], _ = procstat.SampleGroup(t.PGID)
@@ -1499,7 +1506,7 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 		targets[i].Procs = second[i].Procs
 		targets[i].RSS = second[i].RSS
 		if d := second[i].CPU - first[i].CPU; d > 0 {
-			targets[i].CPU = float64(d) / float64(TopSampleInterval) * 100
+			targets[i].CPU = float64(d) / float64(sampleInterval) * 100
 		}
 	}
 	return targets, nil

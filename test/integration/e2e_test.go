@@ -157,6 +157,7 @@ func (e *env) environ() []string {
 	out = override(out, "XDG_RUNTIME_DIR", e.runtime)
 	out = override(out, "XDG_STATE_HOME", e.state)
 	out = override(out, "XDG_CONFIG_HOME", e.config)
+	out = override(out, "LOCAL_COMPOSE_TOP_INTERVAL", "50ms")
 	return out
 }
 
@@ -248,7 +249,7 @@ func waitForCond(t *testing.T, timeout time.Duration, cond func() bool, msg stri
 		if cond() {
 			return
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(15 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for: %s", msg)
 }
@@ -260,14 +261,14 @@ const threeServiceLoopConfig = `version: "1"
 name: lc-test
 services:
   alpha:
-    command: sh -c 'echo alpha-start; i=0; while true; do i=$((i+1)); echo alpha-tick $i; sleep 1; done'
+    command: sh -c 'echo alpha-start; i=0; while true; do i=$((i+1)); echo alpha-tick $i; sleep 0.1; done'
     restart: always
   beta:
-    command: sh -c 'echo beta-start; i=0; while true; do i=$((i+1)); echo beta-tick $i; sleep 1; done'
+    command: sh -c 'echo beta-start; i=0; while true; do i=$((i+1)); echo beta-tick $i; sleep 0.1; done'
     depends_on: [alpha]
     restart: always
   gamma:
-    command: sh -c 'echo gamma-start; i=0; while true; do i=$((i+1)); echo gamma-tick $i; sleep 1; done'
+    command: sh -c 'echo gamma-start; i=0; while true; do i=$((i+1)); echo gamma-tick $i; sleep 0.1; done'
     depends_on:
       alpha: { condition: service_started }
       beta: { condition: service_started }
@@ -275,6 +276,7 @@ services:
 `
 
 func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
 
 	// up -d: supervisor daemonizes and returns 0. The "supervisor started"
@@ -327,7 +329,7 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 	}
 
 	// logs --follow: streams live lines (bounded by a short timeout).
-	followCtx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
+	followCtx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
 	defer cancel()
 	followOut, _, _ := e.run(t, followCtx, "logs", "--follow", "gamma")
 	if !strings.Contains(followOut, "gamma-start") {

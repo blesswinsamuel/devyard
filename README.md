@@ -121,52 +121,76 @@ local-compose stop-daemon  # stop all projects and the daemon
 
 ## Commands
 
-### Project-level Commands
-Commands operating on a project context (defaults to `local-compose.yml` in cwd, or explicitly via `-p <name>` / `-f <path>`):
+`local-compose` provides clean resource-oriented commands (`project`, `service`, `task`, `daemon`, `ui`), paired with intuitive root-level shortcuts for your daily workflow.
 
-| Command | Description |
-| --- | --- |
-| `ls` | List all projects managed by the daemon (both running and stopped). |
-| `up [-d] [--build]` | Start all services in the project (in dependency order). `-d` detaches. `--build` runs build steps first. Auto-starts the daemon if needed. |
-| `down` | Stop all services in the project. Idempotent — safe to run when nothing's up. |
-| `ps [-p project]` | List services in the project with status, PID, restart count, and health. |
-| `top [service]` | Show CPU and memory usage of each service's process group, sampled over ~1s. `[service]` narrows the view to one service. |
-| `remove` / `rm` | Stop and completely remove a project state from the daemon. |
+### Daily Shortcuts
 
-### Service & Interactive Commands
+| Shortcut | Description | Target Resource |
+| --- | --- | --- |
+| `start [service...]` | Start services (or all services in the project). Auto-starts daemon. | `service start` |
+| `stop [service...]` | Stop services (or all services in the project). | `service stop` |
+| `restart [service...]` | Restart services (or all services in the project). | `service restart` |
+| `reload [project]` | Re-read config from disk and reconcile running services in place. | `project reload` |
+| `status` / `ps` | List services in the project with status, PID, restart count, and health. | `service list` |
+| `logs [service]` | Output or stream service logs (`--follow`, `--tail N`, `--previous`). | `service logs` |
+| `top [service]` | Sample process-group CPU% and memory usage. | `service top` |
+| `kill [service...]` | Forcefully terminate services with a signal (`-s SIGKILL`, `SIGTERM`, ...). | `service kill` |
+| `run <task> [-- args]` | Execute a one-off task defined in `tasks:` (or `actions:`). | `task run` |
+| `build [service...]` | Run pre-start build commands. | `service build` |
 
-| Command | Description |
-| --- | --- |
-| `start [service]` | Start or resume one service, or all services in the project. |
-| `stop [service]` | Stop one service in place, or all services in the project when omitted. |
-| `restart [service]` | Restart one service, or all services in the project when omitted. |
-| `kill [service] [-s signal]` | Forcefully terminate one service, or all services in the project when omitted. Sends `SIGKILL` by default; pick another signal with `-s/--signal` (e.g. `SIGTERM`). |
-| `logs [service] [-f] [--tail N] [--previous]` | Output or tail logs for a service (or all services in the project). `--tail N` limits history to the last N lines (`0` / omitted = all, still byte-capped). `--previous` shows the immediately preceding run's log instead of the current one (each spawn starts a fresh log; the finished run's is kept as `<service>.prev.log`). |
-| `build [service...]` | Run build commands for named services (or all services with build steps). |
+### Resource-Based Commands
 
-### Daemon Commands
+#### `project` (`proj`, `p`)
+- `project list` — List all projects registered with the daemon.
+- `project add <path>` — Register a project config file with the daemon (persists state).
+- `project reload [project]` — Re-read config from disk and reconcile running services.
+- `project start [project]` — Start all services in a project.
+- `project stop [project]` — Stop all services in a project.
+- `project restart [project]` — Restart all services in a project.
+- `project remove [project]` / `rm` — Stop and completely remove a project from the daemon.
+- `project logs [project]` — Combined log stream across all services in the project.
 
-| Command | Description |
-| --- | --- |
-| `daemon start` | Start the global background daemon. (Usually auto-started by `up`). |
-| `daemon stop` | Stop the global daemon and all managed projects. |
-| `daemon restart` | Seamlessly reload/restart the global daemon process. |
-| `daemon status` | Display current daemon status and active projects. |
-| `version` | Print the local-compose version. Also available as `local-compose --version`. |
+#### `service` (`svc`, `s`)
+- `service list` (`ps`) — List services and statuses (`-a` for all projects).
+- `service start [service...]` — Start one or more services (`--build`, `--follow`).
+- `service stop [service...]` — Stop one or more services.
+- `service restart [service...]` — Restart one or more services.
+- `service kill [service...]` — Terminate services with a signal (`-s SIGKILL`).
+- `service logs [service]` — Inspect or follow service logs (`--follow`, `--tail`, `--previous`).
+- `service top [service]` — CPU and memory consumption.
+- `service build [service...]` — Run build steps for services.
+
+#### `task` (`tasks`, `t`)
+- `task list` — List available tasks defined in the project config.
+- `task run <task> [-- args]` — Execute a task on demand (`--follow`).
+- `task stop <task>` — Stop a running task.
+- `task kill <task>` — Send a signal to a running task process group (`-s SIGKILL`).
+- `task logs <task>` — Inspect or follow task logs (`--follow`, `--tail`, `--previous`).
+- `task top [task]` — CPU and memory consumption for running tasks.
+
+#### `daemon` (`d`)
+- `daemon status` — Check running daemon status, socket path, and managed projects.
+- `daemon start` — Launch the global background daemon.
+- `daemon stop` — Stop the daemon and all managed projects.
+- `daemon restart` — Seamlessly restart the daemon with process adoption (`-r` to restart services too).
+
+#### `ui` (alias: `web`)
+- `ui` — Start the browser dashboard web server and connect to the daemon.
 
 ### Global Flags
 
 | Flag | Description |
 | --- | --- |
 | `-f, --file <path>` | Path to `local-compose.yml` (default: walk up from current directory). |
-| `-p, --project <name>` | Resolve a registered project by name from any directory when no `local-compose.yml` is found. When a config file is available, its declared `name` is authoritative. |
-| `--env-file <path>` | Path to an env file for variables and config interpolation (default: `.env` next to the config file). |
+| `-p, --project <name>` | Resolve a registered project by name when no config file is found. |
+| `--env-file <path>` | Path to an env file for variables and config interpolation. |
+| `-o, --format <table\|json>` | Output format: `table` (default) or `json` (for scripting and automation). |
 
 ### The Web UI
 
 The web UI is a browser-based dashboard over the same control protocol — project/service
-listing, live xterm.js logs, and start/stop/restart actions. Start it with `local-compose web`
-and open the printed URL (loopback-only by default).
+listing, live xterm.js logs, and start/stop/restart actions. Start it with `local-compose ui`
+(or `local-compose web`) and open the printed URL (loopback-only by default).
 
 ## Config reference
 
@@ -177,6 +201,7 @@ Top-level:
 | `version` | **Required.** Config schema version (currently `"1"`). |
 | `name` | Optional project name. Defaults to the config file's directory name. |
 | `services` | **Required.** Map of service name → `Service`. |
+| `tasks` | Optional. Map of task name → `Task` (one-off tasks; alias: `actions`). |
 
 `Service`:
 

@@ -6,6 +6,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -207,6 +208,8 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, rem
 			// autostart again (user explicitly asked to run the project).
 			if locs, locErr := project.Resolve(name); locErr == nil {
 				_ = removeProjectStoppedMarker(locs)
+				_ = writeConfigPath(locs, configPath)
+				_ = writeConfigSnapshot(locs, cfg.File)
 			}
 			p.TotalServices = len(cfg.File.Services)
 			err := sup.StartStopped()
@@ -393,8 +396,9 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 	d.mu.Unlock()
 	d.notifyProjectsChanged()
 
-	// Write config path for autostart discovery.
+	// Write config path and snapshot for autostart discovery and recovery.
 	_ = writeConfigPath(locs, configPath)
+	_ = writeConfigSnapshot(locs, cfg.File)
 
 	go func() {
 		sup.Wait()
@@ -1048,6 +1052,15 @@ func writeConfigPath(locs *project.Locations, configPath string) error {
 		abs = configPath
 	}
 	return os.WriteFile(path, []byte(abs+"\n"), 0o644)
+}
+
+// writeConfigSnapshot persists the effective config structure in the project's state dir.
+func writeConfigSnapshot(locs *project.Locations, file *config.File) error {
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(locs.State, "config.snapshot.json"), data, 0o644)
 }
 
 // writeProjectStoppedMarker writes a project-level ".stopped" marker file so

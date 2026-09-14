@@ -13,8 +13,8 @@ version: "1"          # required
 name: myapp           # optional; defaults to the config file's directory name
 services:             # required, non-empty
   <name>: <Service>
-actions:              # optional
-  <name>: <Action>
+tasks:                # optional (alias: actions)
+  <name>: <Task>
 ```
 
 - `version` **must** be present (any value is accepted today; the field gates
@@ -184,12 +184,12 @@ build:                                       # object form
 - `command` is required in the object form (validation rejects an empty
   command). `env` is additive over the parent env, same rule as service `env`.
 
-## Actions
+## Tasks (tasks / actions)
 
-Actions define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `local-compose run <action>` or the Web UI.
+Tasks define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `local-compose task run <task>` (or shortcut `local-compose run <task>`) or the Web UI. The section in `local-compose.yml` can be named either `tasks:` (preferred) or `actions:`.
 
 ```yaml
-actions:
+tasks:
   # Short form (string command)
   migrate: npx prisma db push
 
@@ -206,11 +206,11 @@ actions:
 
 | Field | Required | Default | Notes |
 | --- | :-: | --- | --- |
-| `command` | yes | — | Command to run. Can be extended via CLI args (`local-compose run <action> -- <args>`). |
+| `command` | yes | — | Command to run. Can be extended via CLI args (`local-compose run <task> -- <args>`). |
 | `working_dir` | no | config dir | Relative path resolved against config file directory. |
-| `env` | no | — | Map of environment variables for the action process. |
+| `env` | no | — | Map of environment variables for the task process. |
 | `shell` | no | `sh` | Shell used to run command. |
-| `depends_on` | no | — | Dependent services auto-started and waited for before running the action. |
+| `depends_on` | no | — | Dependent services auto-started and waited for before running the task. |
 
 ## Intentionally absent
 

@@ -14,17 +14,8 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
 
-var buildCmd = &cobra.Command{
-	Use:   "build [service...]",
-	Short: "Run build commands for services that declare them",
-	Args:  cobra.ArbitraryArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(flagConfigPath, flagProject)
-		if err != nil {
-			return err
-		}
-		return runBuilds(cfg, args...)
-	},
+func newBuildCmd(ctx *CLIContext) *cobra.Command {
+	return newServiceBuildCmd(ctx)
 }
 
 // runAllBuilds runs the build step for every service (in start order) that

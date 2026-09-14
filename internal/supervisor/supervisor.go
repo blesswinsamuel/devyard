@@ -1208,7 +1208,25 @@ func (s *Supervisor) KillService(name, signal string) error {
 	}
 	rt, ok := s.services[name]
 	if !ok {
-		return fmt.Errorf("supervisor: unknown service %q", name)
+		act, actOk := s.actionRuntimes[name]
+		if !actOk {
+			return fmt.Errorf("supervisor: unknown service or task %q", name)
+		}
+		act.mu.Lock()
+		pgid := act.pgid
+		doneCh := act.done
+		act.mu.Unlock()
+		if pgid <= 0 {
+			return fmt.Errorf("supervisor: task %q is not running", name)
+		}
+		_ = killGroup(pgid, sig)
+		if doneCh != nil {
+			select {
+			case <-doneCh:
+			case <-time.After(5 * time.Second):
+			}
+		}
+		return nil
 	}
 	if rt.stopped.Swap(true) {
 		select {
@@ -1421,6 +1439,7 @@ func (s *Supervisor) PreviousLogPath(name string) (string, error) {
 func (s *Supervisor) Top(service string) ([]TopStat, error) {
 	s.mu.Lock()
 	targets := make([]TopStat, 0, len(s.order))
+	found := false
 	for _, name := range s.order {
 		if service != "" && name != service {
 			continue
@@ -1430,6 +1449,7 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 			s.mu.Unlock()
 			return nil, fmt.Errorf("supervisor: unknown service %q", name)
 		}
+		found = true
 		rt.mu.Lock()
 		targets = append(targets, TopStat{
 			Name:   rt.name,
@@ -1439,7 +1459,28 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 		})
 		rt.mu.Unlock()
 	}
+
+	for name, act := range s.actionRuntimes {
+		if service != "" && name != service {
+			continue
+		}
+		act.mu.Lock()
+		if service != "" || (act.pgid > 0 && act.status == StatusRunning) {
+			found = true
+			targets = append(targets, TopStat{
+				Name:   name,
+				Status: act.status,
+				PID:    act.pid,
+				PGID:   act.pgid,
+			})
+		}
+		act.mu.Unlock()
+	}
 	s.mu.Unlock()
+
+	if service != "" && !found {
+		return nil, fmt.Errorf("supervisor: unknown service or task %q", service)
+	}
 
 	first := make([]procstat.Sample, len(targets))
 	for i, t := range targets {

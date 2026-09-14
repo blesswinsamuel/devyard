@@ -13,46 +13,48 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/web"
 )
 
-var (
-	webHost string
-	webPort int
-)
-
-var webCmd = &cobra.Command{
-	Use:   "web",
-	Short: "Start the web UI",
-	Long:  "Start the web UI server, connecting to a running daemon over its control socket.",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
-
-		socket, err := dialDaemon()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "local-compose: no daemon running (is it up?)\n")
-			return err
-		}
-
-		addr := fmt.Sprintf("%s:%d", webHost, webPort)
-		srv := web.NewServer(addr, socket)
-		if err := srv.ListenAndServe(); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "local-compose: web UI at http://%s\n", srv.Addr())
-
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		<-sigCh
-
-		return srv.Close()
-	},
-}
-
-func init() {
+func newUICmd(ctx *CLIContext) *cobra.Command {
 	host := globalconfig.DefaultHost
 	port := globalconfig.DefaultPort
 	if cfg, err := globalconfig.Load(); err == nil {
 		host = cfg.Web.Host
 		port = cfg.Web.Port
 	}
-	webCmd.Flags().StringVar(&webHost, "host", host, "Web UI listen host")
-	webCmd.Flags().IntVar(&webPort, "port", port, "Web UI listen port")
+
+	var webHost string
+	var webPort int
+
+	cmd := &cobra.Command{
+		Use:     "ui",
+		Aliases: []string{"web"},
+		Short:   "Start the browser dashboard",
+		Long:    "Start the web dashboard server, connecting to a running daemon over its control socket.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			slog.SetDefault(slog.New(slog.NewTextHandler(ctx.Err, nil)))
+
+			socket, err := dialDaemon()
+			if err != nil {
+				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				return err
+			}
+
+			addr := fmt.Sprintf("%s:%d", webHost, webPort)
+			srv := web.NewServer(addr, socket)
+			if err := srv.ListenAndServe(); err != nil {
+				return err
+			}
+			ctx.Errorf("local-compose: dashboard at http://%s\n", srv.Addr())
+
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			<-sigCh
+
+			return srv.Close()
+		},
+	}
+
+	cmd.Flags().StringVar(&webHost, "host", host, "Web dashboard listen host")
+	cmd.Flags().IntVar(&webPort, "port", port, "Web dashboard listen port")
+
+	return cmd
 }

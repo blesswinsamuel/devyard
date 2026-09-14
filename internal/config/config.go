@@ -136,8 +136,8 @@ func (d *DependsOn) UnmarshalYAML(value *yaml.Node) error {
 	}
 }
 
-// ActionSpec describes a one-off task or command.
-type ActionSpec struct {
+// TaskSpec describes a one-off task or command.
+type TaskSpec struct {
 	Command    string            `yaml:"command"`
 	WorkingDir string            `yaml:"working_dir,omitempty"`
 	Env        map[string]string `yaml:"env,omitempty"`
@@ -146,36 +146,42 @@ type ActionSpec struct {
 	DependsOn  DependsOn         `yaml:"depends_on,omitempty"`
 }
 
-// Action accepts either a command string or an ActionSpec object in YAML.
-type Action struct {
-	Spec ActionSpec
+// ActionSpec is an alias for TaskSpec.
+type ActionSpec = TaskSpec
+
+// Task accepts either a command string or a TaskSpec object in YAML.
+type Task struct {
+	Spec TaskSpec
 }
 
-// UnmarshalYAML implements yaml.Unmarshaler for Action.
-func (a *Action) UnmarshalYAML(value *yaml.Node) error {
+// Action is an alias for Task.
+type Action = Task
+
+// UnmarshalYAML implements yaml.Unmarshaler for Task.
+func (t *Task) UnmarshalYAML(value *yaml.Node) error {
 	switch value.Kind {
 	case yaml.ScalarNode:
 		var cmd string
 		if err := value.Decode(&cmd); err != nil {
 			return err
 		}
-		a.Spec = ActionSpec{Command: cmd, Shell: DefaultShell}
+		t.Spec = TaskSpec{Command: cmd, Shell: DefaultShell}
 		return nil
 	case yaml.MappingNode:
-		var spec ActionSpec
+		var spec TaskSpec
 		if err := value.Decode(&spec); err != nil {
 			return err
 		}
 		if strings.TrimSpace(spec.Command) == "" {
-			return fmt.Errorf("action.command is required")
+			return fmt.Errorf("task.command is required")
 		}
 		if spec.Shell == "" {
 			spec.Shell = DefaultShell
 		}
-		a.Spec = spec
+		t.Spec = spec
 		return nil
 	default:
-		return fmt.Errorf("action must be a string or object")
+		return fmt.Errorf("task must be a string or object")
 	}
 }
 
@@ -184,7 +190,8 @@ type File struct {
 	Version  string             `yaml:"version"`
 	Name     string             `yaml:"name,omitempty"`
 	Services map[string]Service `yaml:"services"`
-	Actions  map[string]Action  `yaml:"actions,omitempty"`
+	Tasks    map[string]Task    `yaml:"tasks,omitempty"`
+	Actions  map[string]Task    `yaml:"actions,omitempty"`
 }
 
 // Load reads and validates a config file. Environment variable references in
@@ -298,35 +305,44 @@ func (f *File) Validate(configPath string) error {
 		}
 		f.Services[name] = svc
 	}
-	for name, act := range f.Actions {
+	if f.Tasks == nil && len(f.Actions) > 0 {
+		f.Tasks = f.Actions
+	}
+	if f.Actions == nil && len(f.Tasks) > 0 {
+		f.Actions = f.Tasks
+	}
+	for name, act := range f.Tasks {
 		if strings.TrimSpace(act.Spec.Command) == "" {
-			return fmt.Errorf("action %q: command is required", name)
+			return fmt.Errorf("task %q: command is required", name)
 		}
 		if act.Spec.Shell == "" {
 			act.Spec.Shell = DefaultShell
 		}
 		for depName, entry := range act.Spec.DependsOn.Entries {
 			if _, ok := f.Services[depName]; !ok {
-				return fmt.Errorf("action %q: depends_on references unknown service %q", name, depName)
+				return fmt.Errorf("task %q: depends_on references unknown service %q", name, depName)
 			}
 			if err := validateCondition(entry.Condition); err != nil {
-				return fmt.Errorf("action %q depends_on %q: %w", name, depName, err)
+				return fmt.Errorf("task %q depends_on %q: %w", name, depName, err)
 			}
 			if entry.Condition == ConditionServiceHealthy {
 				dep := f.Services[depName]
 				if dep.Healthcheck == nil {
-					return fmt.Errorf("action %q depends_on %q with service_healthy but %q has no healthcheck", name, depName, depName)
+					return fmt.Errorf("task %q depends_on %q with service_healthy but %q has no healthcheck", name, depName, depName)
 				}
 			}
 		}
 		if act.Spec.Env != nil {
 			for k := range act.Spec.Env {
 				if strings.TrimSpace(k) == "" {
-					return fmt.Errorf("action %q: env key must be non-empty", name)
+					return fmt.Errorf("task %q: env key must be non-empty", name)
 				}
 			}
 		}
-		f.Actions[name] = act
+		f.Tasks[name] = act
+		if f.Actions != nil {
+			f.Actions[name] = act
+		}
 	}
 	return nil
 }

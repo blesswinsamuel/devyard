@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,20 +29,8 @@ type loadedConfig struct {
 	DotEnv     map[string]string
 }
 
-// flagConfigPath and flagProject are bound to the root command's persistent
-// --file/-f and --project/-p flags. They're package-level so command RunE
-// closures can read them without threading state through cobra.
-var flagConfigPath string
-var flagProject string
-var flagEnvFile string
-
-// resolveProjectName returns the project name to operate on. The daemon
-// registers projects by the config's declared name, so whenever a config file
-// is resolvable — via --file, discovery in cwd, or a registered config path
-// for -p/--project — the config's name is authoritative. projectName is only a
-// fallback for name-based resolution when no config file exists.
-func resolveProjectName(configPath, projectName string) (string, error) {
-	cfg, err := loadConfig(configPath, projectName)
+func resolveProjectNameWith(configPath, projectName, envFilePath string) (string, error) {
+	cfg, err := loadConfigWith(configPath, projectName, envFilePath)
 	if err != nil {
 		if projectName != "" {
 			return projectName, nil
@@ -51,10 +40,7 @@ func resolveProjectName(configPath, projectName string) (string, error) {
 	return cfg.Project, nil
 }
 
-// loadConfig finds, parses, and validates the config file, derives the project
-// name, and computes the topological start order. If configPath is empty it
-// walks up from the cwd looking for local-compose.yml.
-func loadConfig(configPath, projectName string) (*loadedConfig, error) {
+func loadConfigWith(configPath, projectName, envFilePath string) (*loadedConfig, error) {
 	if configPath == "" {
 		if projectName != "" {
 			if regPath, err := project.GetRegisteredConfigPath(projectName); err == nil {
@@ -75,7 +61,7 @@ func loadConfig(configPath, projectName string) (*loadedConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve config path: %w", err)
 	}
-	envFile, dotenv, err := config.ResolveDotEnv(abs, flagEnvFile)
+	envFile, dotenv, err := config.ResolveDotEnv(abs, envFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -131,10 +117,7 @@ func daemonSocketPath() (string, error) {
 	return locs.Socket, nil
 }
 
-// ensureDaemon checks whether the global daemon is running and spawns it if
-// not. It returns the daemon's control socket path. Used by `up` which needs
-// the daemon to start a project.
-func ensureDaemon() (string, error) {
+func ensureDaemonTo(w io.Writer) (string, error) {
 	locs, err := project.ResolveDaemon()
 	if err != nil {
 		return "", err
@@ -148,7 +131,9 @@ func ensureDaemon() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(os.Stderr, "local-compose: daemon started (pid %d)\n", pid)
+		if w != nil {
+			_, _ = fmt.Fprintf(w, "local-compose: daemon started (pid %d)\n", pid)
+		}
 		_ = control.WaitForSocket(locs.Socket, 3*time.Second)
 	}
 	return locs.Socket, nil

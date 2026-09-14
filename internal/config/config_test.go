@@ -294,3 +294,39 @@ actions:
 		t.Errorf("seed depends_on db condition: %+v", seed.Spec.DependsOn)
 	}
 }
+
+func TestTasksParsingAndValidation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "local-compose.yml")
+	content := `version: "1"
+services:
+  api:
+    command: echo api
+tasks:
+  build: go build ./...
+  lint:
+    command: golangci-lint run
+    working_dir: ./backend
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(file.Tasks) != 2 {
+		t.Fatalf("Tasks length = %d, want 2", len(file.Tasks))
+	}
+	if file.Tasks["build"].Spec.Command != "go build ./..." {
+		t.Errorf("task build command = %q", file.Tasks["build"].Spec.Command)
+	}
+	if file.Tasks["lint"].Spec.WorkingDir != "./backend" {
+		t.Errorf("task lint working_dir = %q", file.Tasks["lint"].Spec.WorkingDir)
+	}
+	// Verify synced to file.Actions for compatibility
+	if file.Actions["build"].Spec.Command != "go build ./..." {
+		t.Errorf("action build command = %q", file.Actions["build"].Spec.Command)
+	}
+}

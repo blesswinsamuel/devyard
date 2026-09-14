@@ -64,52 +64,50 @@ Add a case to `internal/control/control_test.go` using a fake `Backend`.
 
 ### 5. CLI command
 
-Create `internal/cli/pause.go` mirroring `restart.go` (the closest analogue):
+Add a command constructor factory to the appropriate resource file (e.g. `cmd_service.go`):
 
 ```go
-var pauseCmd = &cobra.Command{
-    Use:   "pause [service]",
-    Short: "Pause one or all services",
-    Args:  cobra.MaximumNArgs(1),
-    RunE: func(cmd *cobra.Command, args []string) error {
-        cfg, err := loadConfig(flagConfigPath, flagProject)
-        if err != nil {
-            return err
-        }
-        service := ""
-        if len(args) == 1 {
-            service = args[0]
-        }
-        socket, err := dialDaemon()
-        if err != nil {
-            fmt.Fprintf(os.Stderr, "local-compose: no daemon running\n")
-            return err
-        }
-        client, err := control.Dial(socket)
-        if err != nil {
-            fmt.Fprintf(os.Stderr, "local-compose: no daemon running\n")
-            return err
-        }
-        defer func() { _ = client.Close() }()
-        if err := client.Pause(cfg.Project, service); err != nil {
-            return err
-        }
-        fmt.Fprintf(os.Stderr, "local-compose: paused %q\n", service)
-        return nil
-    },
+func newServicePauseCmd(ctx *CLIContext) *cobra.Command {
+    return &cobra.Command{
+        Use:   "pause [service]",
+        Short: "Pause one or all services",
+        Args:  cobra.MaximumNArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            cfg, err := ctx.LoadConfig()
+            if err != nil {
+                return err
+            }
+            service := ""
+            if len(args) == 1 {
+                service = args[0]
+            }
+            client, err := ctx.DialDaemon()
+            if err != nil {
+                ctx.Errorln("local-compose: no daemon running")
+                return err
+            }
+            defer func() { _ = client.Close() }()
+            if err := client.Pause(cfg.Project, service); err != nil {
+                return err
+            }
+            ctx.Errorf("local-compose: paused %q\n", service)
+            return nil
+        },
+    }
 }
 ```
 
-Register it in `internal/cli/root.go`:
+Register it on the parent resource command (and optionally as a top-level shortcut in `internal/cli/root.go`):
 
 ```go
-rootCmd.AddCommand(pauseCmd)
+serviceCmd.AddCommand(newServicePauseCmd(ctx))
 ```
 
 ### 6. Tests + docs
 
 - Unit test in `internal/control/control_test.go` (fake backend) and
   `internal/supervisor/` (real behavior).
+- CLI unit test in `internal/cli/cli_test.go` to test command tree and argument parsing.
 - Add an integration case in `test/integration/e2e_test.go` if the command is
   user-facing and observable through the binary.
 - Add a row to the Commands table in [README.md](../README.md).
@@ -120,29 +118,31 @@ rootCmd.AddCommand(pauseCmd)
 
 | You're adding... | Copy |
 | --- | --- |
-| A control one-shot (`restart`, `down`) | `internal/cli/restart.go`, `down.go` |
-| A streaming command (`logs`) | `internal/cli/logs.go` + `client.Logs` |
+| A project command | `internal/cli/cmd_project.go` |
+| A service command (`restart`, `stop`, `kill`) | `internal/cli/cmd_service.go` |
+| A task command (`run`, `logs`) | `internal/cli/cmd_task.go` |
+| A streaming command (`logs`) | `internal/cli/proc_helpers.go` + `client.Logs` |
 | A local command (`build`) | `internal/cli/build.go` (no socket) |
-| A daemon-management command | `internal/cli/start_daemon.go`, `stop_daemon.go` |
+| A daemon-management command | `internal/cli/daemon_cmd.go` |
 
-## Key helpers
+## Key helpers on CLIContext
 
 | Helper | What it does |
 | --- | --- |
-| `loadConfig(flagConfigPath, flagProject)` | Finds, parses, validates the config, derives project name, computes topo order. |
-| `ensureDaemon()` | Checks if the daemon is running, spawns it if not, returns the socket path. Used by `up`. |
-| `dialDaemon()` | Dials the daemon's control socket. Returns an error if the daemon is not running. Used by `ps`, `logs`, `restart`, `down`. |
-| `control.Dial(socket)` | Opens a connection to the control socket. |
+| `ctx.LoadConfig()` | Finds, parses, validates the config, derives project name, computes topo order. |
+| `ctx.ResolveProjectName()` | Resolves project name from config file or `-p` flag without full validation. |
+| `ctx.EnsureDaemon()` | Checks if the daemon is running, spawns it if not, returns control client. |
+| `ctx.DialDaemon()` | Dials the daemon's control socket. Returns an error if the daemon is not running. |
+| `ctx.Errorf(format, ...)` | Writes formatted message to `ctx.Err` without unchecked error returns. |
+| `ctx.PrintJSON(val)` | Encodes structured output when `-o json` is set. |
 
 ## Gotchas
 
 - **`-f` is reserved** as the persistent `--file` flag, so don't use `-f` as a
   shorthand for any new command flag.
-- **Always `loadConfig` + `dialDaemon`** (or `ensureDaemon` for `up`) in the
-  command, then `control.Dial(socket)`. Don't invent a second way to find the
-  socket.
+- **Use `CLIContext` streams** (`ctx.Out`, `ctx.Err`) rather than `os.Stdout`/`os.Stderr` so commands remain isolated and unit-testable.
 - **Close the client** (`defer client.Close()`).
-- **`loadConfig`** already finds the config (walking up from cwd), validates it,
+- **`ctx.LoadConfig()`** already finds the config (walking up from cwd), validates it,
   derives the project name, and computes the topological `Order` — reuse it,
   don't re-derive.
 - If the daemon child needs to inherit a new flag, handle it in

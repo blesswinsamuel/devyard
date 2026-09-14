@@ -255,7 +255,7 @@ export function ActionHeader() {
       <HeaderBreadcrumb
         parts={[
           { label: project() },
-          { label: "actions" },
+          { label: "tasks" },
           { label: actionName(), strong: true },
         ]}
       />
@@ -277,15 +277,19 @@ export function ActionHeader() {
         <Show
           when={status() === "running" || status() === "starting"}
           fallback={
-            <Button size="sm" aria-label="Run action" onClick={() => runAction(project(), actionName())}>
+            <Button size="sm" aria-label="Run task" onClick={() => runAction(project(), actionName())}>
               <Play class="!size-3.5" />
-              <span class="hidden md:inline">Run action</span>
+              <span class="hidden md:inline">Run task</span>
             </Button>
           }
         >
-          <Button size="sm" variant="outline" aria-label="Stop action" onClick={() => stopAction(project(), actionName())}>
+          <Button size="sm" variant="outline" aria-label="Stop task" onClick={() => stopAction(project(), actionName())}>
             <Square class="!size-3.5 text-destructive" />
-            <span class="hidden md:inline">Stop action</span>
+            <span class="hidden md:inline">Stop task</span>
+          </Button>
+          <Button size="sm" variant="destructive" aria-label="Kill task" onClick={() => killService(project(), actionName())}>
+            <Skull class="!size-3.5" />
+            <span class="hidden md:inline">Kill</span>
           </Button>
         </Show>
       </div>

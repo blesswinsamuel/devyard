@@ -398,10 +398,10 @@ export async function killService(project: string, service: string, signal = "SI
 export function runAction(project: string, actionName: string, args?: string[]) {
   const currentState = untrack(actions)[project]?.find((a) => a.name === actionName);
   if (currentState?.status === "running" || currentState?.status === "starting") {
-    pushToast(`Action '${actionName}' is already running`, "info");
+    pushToast(`Task '${actionName}' is already running`, "info");
     return false;
   }
-  pushToast(`Started action '${actionName}'`, "info");
+  pushToast(`Started task '${actionName}'`, "info");
 
   (async () => {
     try {
@@ -416,9 +416,9 @@ export function runAction(project: string, actionName: string, args?: string[]) 
           exitCode = chunk.exitCode;
         }
       }
-      pushToast(`Action '${actionName}' finished (exit code ${exitCode})`, "success");
+      pushToast(`Task '${actionName}' finished (exit code ${exitCode})`, "success");
     } catch (err: any) {
-      pushToast(err.message || `Action '${actionName}' failed`, "error");
+      pushToast(err.message || `Task '${actionName}' failed`, "error");
     }
   })();
 
@@ -428,9 +428,9 @@ export function runAction(project: string, actionName: string, args?: string[]) 
 export async function stopAction(project: string, actionName: string) {
   try {
     await rpcClient.stopAction({ project, action: actionName });
-    pushToast(`Stopped action '${actionName}'`, "info");
+    pushToast(`Stopped task '${actionName}'`, "info");
   } catch (err: any) {
-    pushToast(err.message || `Failed to stop action ${actionName}`, "error");
+    pushToast(err.message || `Failed to stop task ${actionName}`, "error");
   }
 }
 

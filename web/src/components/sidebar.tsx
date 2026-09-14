@@ -364,7 +364,7 @@ function ActionRow(props: { project: string; name: string }) {
                 variant="secondary"
                 size="icon-sm"
                 class="border border-border shadow-sm"
-                title={`Run ${props.name}`}
+                title={`Run task ${props.name}`}
                 onClick={(e: MouseEvent) => {
                   e.stopPropagation();
                   selectAction(props.project, props.name);
@@ -380,7 +380,7 @@ function ActionRow(props: { project: string; name: string }) {
               variant="secondary"
               size="icon-sm"
               class="border border-border shadow-sm"
-              title={`Stop ${props.name}`}
+              title={`Stop task ${props.name}`}
               onClick={(e: MouseEvent) => {
                 e.stopPropagation();
                 stopAction(props.project, props.name);
@@ -403,13 +403,20 @@ function ActionRow(props: { project: string; name: string }) {
               }}
             >
               <Play />
-              Run Action
+              Run Task
             </ContextMenuItem>
           }
         >
           <ContextMenuItem onSelect={() => stopAction(props.project, props.name)}>
             <Square />
-            Stop Action
+            Stop Task
+          </ContextMenuItem>
+          <ContextMenuItem
+            variant="destructive"
+            onSelect={() => killService(props.project, props.name)}
+          >
+            <Skull />
+            Kill Task
           </ContextMenuItem>
         </Show>
         <ContextMenuItem onSelect={() => selectAction(props.project, props.name)}>
@@ -425,7 +432,7 @@ function ActionRow(props: { project: string; name: string }) {
           <ContextMenuShortcut>p</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => copyToClipboard(props.name, "action name")}>
+        <ContextMenuItem onSelect={() => copyToClipboard(props.name, "task name")}>
           <Copy />
           Copy Name
         </ContextMenuItem>

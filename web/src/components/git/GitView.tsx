@@ -135,6 +135,28 @@ function RefBadge(props: { ref: { name: string; type: string; isActive?: boolean
   return null;
 }
 
+function AheadBehindPill(props: { kind: "ahead" | "behind"; count?: number; upstream?: string; class?: string }) {
+  return (
+    <Show when={(props.count ?? 0) > 0}>
+      <span
+        class={cn(
+          "shrink-0 rounded-full px-1.5 py-px font-mono text-[10px] tabular",
+          props.kind === "ahead" ? "bg-success/12 text-success" : "bg-warning/12 text-warning",
+          props.class,
+        )}
+        title={
+          props.kind === "ahead"
+            ? `${props.count} ahead of ${props.upstream || "upstream"}`
+            : `${props.count} behind ${props.upstream || "upstream"}`
+        }
+      >
+        {props.kind === "ahead" ? "↑" : "↓"}
+        {props.count}
+      </span>
+    </Show>
+  );
+}
+
 export function GitView() {
   const project = () => selectedProject();
   const commits = createMemo(() => (project() ? gitCommits()[project()!] ?? [] : []));
@@ -143,6 +165,9 @@ export function GitView() {
   const stashes = createMemo(() => (project() ? gitStashes()[project()!] ?? [] : []));
 
   const activeBranch = createMemo(() => branches().find((b) => b.isActive));
+  const upstreamName = createMemo(() => activeBranch()?.upstream ?? "");
+  const aheadCount = createMemo(() => activeBranch()?.ahead ?? 0);
+  const behindCount = createMemo(() => activeBranch()?.behind ?? 0);
   const localBranches = createMemo(() => branches().filter((b) => !b.isRemote));
   const remoteBranches = createMemo(() => branches().filter((b) => b.isRemote));
   const remoteNames = createMemo(() => {
@@ -932,16 +957,8 @@ export function GitView() {
                 <Badge class="border-success/35 bg-success/12 font-mono text-[10px] text-success">
                   {b().name}
                 </Badge>
-                <Show when={(b().ahead ?? 0) > 0}>
-                  <span class="rounded-full bg-success/12 px-1.5 py-px font-mono text-[10px] tabular text-success" title={`${b().ahead} ahead of ${b().upstream}`}>
-                    ↑{b().ahead}
-                  </span>
-                </Show>
-                <Show when={(b().behind ?? 0) > 0}>
-                  <span class="rounded-full bg-warning/12 px-1.5 py-px font-mono text-[10px] tabular text-warning" title={`${b().behind} behind ${b().upstream}`}>
-                    ↓{b().behind}
-                  </span>
-                </Show>
+                <AheadBehindPill kind="ahead" count={b().ahead} upstream={b().upstream} />
+                <AheadBehindPill kind="behind" count={b().behind} upstream={b().upstream} />
               </div>
             )}
           </Show>
@@ -966,9 +983,11 @@ export function GitView() {
             </Button>
             <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && pullGit(project()!)}>
               <Download class="!size-3.5" /> Pull
+              <AheadBehindPill kind="behind" count={behindCount()} upstream={upstreamName()} class="ml-1.5" />
             </Button>
             <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && pushGit(project()!)}>
               <Upload class="!size-3.5" /> Push
+              <AheadBehindPill kind="ahead" count={aheadCount()} upstream={upstreamName()} class="ml-1.5" />
             </Button>
           </div>
 
@@ -992,10 +1011,12 @@ export function GitView() {
                 <DropdownMenuItem onSelect={() => project() && pullGit(project()!)}>
                   <Download class="size-3.5 mr-2" />
                   Pull
+                  <AheadBehindPill kind="behind" count={behindCount()} upstream={upstreamName()} class="ml-auto" />
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => project() && pushGit(project()!)}>
                   <Upload class="size-3.5 mr-2" />
                   Push
+                  <AheadBehindPill kind="ahead" count={aheadCount()} upstream={upstreamName()} class="ml-auto" />
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

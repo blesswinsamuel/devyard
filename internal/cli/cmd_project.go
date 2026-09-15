@@ -274,7 +274,7 @@ func newProjectLogsCmd(ctx *CLIContext) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&follow, "follow", false, "Stream logs in real time")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Stream logs in real time")
 	cmd.Flags().BoolVar(&previous, "previous", false, "Inspect the immediately preceding run's log")
 	cmd.Flags().IntVar(&tail, "tail", 0, "Number of lines to show from the end of logs (0 = all)")
 

@@ -56,7 +56,7 @@ func NewRootCommand(ctx *CLIContext) *cobra.Command {
 	}
 
 	// Global persistent flags
-	rootCmd.PersistentFlags().StringVarP(&ctx.ConfigPath, "file", "f", "", "Path to local-compose.yml (default: walk up from cwd)")
+	rootCmd.PersistentFlags().StringVar(&ctx.ConfigPath, "file", "", "Path to local-compose.yml (default: walk up from cwd)")
 	rootCmd.PersistentFlags().StringVarP(&ctx.Project, "project", "p", "", "Resolve a registered project by name when no config file is found (default: config name)")
 	rootCmd.PersistentFlags().StringVar(&ctx.EnvFile, "env-file", "", "Path to an env file for variables and config interpolation (default: .env next to the config file)")
 	rootCmd.PersistentFlags().StringVarP(&ctx.Format, "format", "o", "table", "Output format (table, json)")

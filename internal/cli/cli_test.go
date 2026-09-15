@@ -23,8 +23,8 @@ func TestRootCommandFlagBinding(t *testing.T) {
 	}
 
 	rootCmd := NewRootCommand(cliCtx)
-	rootCmd.SetArgs([]string{"-f", "/path/to/local-compose.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
-	_ = rootCmd.ParseFlags([]string{"-f", "/path/to/local-compose.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
+	rootCmd.SetArgs([]string{"--file", "/path/to/local-compose.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
+	_ = rootCmd.ParseFlags([]string{"--file", "/path/to/local-compose.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
 
 	if cliCtx.ConfigPath != "/path/to/local-compose.yml" {
 		t.Errorf("ConfigPath = %q, want /path/to/local-compose.yml", cliCtx.ConfigPath)
@@ -203,3 +203,29 @@ func TestVersionCommand(t *testing.T) {
 		t.Errorf("got version %q, want %q", res["version"], Version)
 	}
 }
+
+func TestLogsFollowFlag(t *testing.T) {
+	t.Parallel()
+
+	cliCtx := NewDefaultCLIContext()
+	rootCmd := NewRootCommand(cliCtx)
+
+	cmd, args, err := rootCmd.Find([]string{"svc", "logs", "-f", "frontend"})
+	if err != nil {
+		t.Fatalf("Find: %v", err)
+	}
+	if cmd.Name() != "logs" {
+		t.Fatalf("expected command logs, got %s", cmd.Name())
+	}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	follow, err := cmd.Flags().GetBool("follow")
+	if err != nil || !follow {
+		t.Fatalf("expected follow=true, got %v, err=%v", follow, err)
+	}
+	if len(cmd.Flags().Args()) != 1 || cmd.Flags().Args()[0] != "frontend" {
+		t.Fatalf("expected arg frontend, got %v", cmd.Flags().Args())
+	}
+}
+

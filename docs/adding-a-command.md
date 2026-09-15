@@ -138,8 +138,7 @@ serviceCmd.AddCommand(newServicePauseCmd(ctx))
 
 ## Gotchas
 
-- **`-f` is reserved** as the persistent `--file` flag, so don't use `-f` as a
-  shorthand for any new command flag.
+- **`-f` is used for `--follow`** on logs commands (`logs`, `svc logs`, `task logs`). `--file` is available persistently across commands without a shorthand.
 - **Use `CLIContext` streams** (`ctx.Out`, `ctx.Err`) rather than `os.Stdout`/`os.Stderr` so commands remain isolated and unit-testable.
 - **Close the client** (`defer client.Close()`).
 - **`ctx.LoadConfig()`** already finds the config (walking up from cwd), validates it,

@@ -1046,3 +1046,55 @@ func TestSubscribeEventsHeartbeatAndProjectsChanged(t *testing.T) {
 		t.Fatal("timed out waiting for projects_changed event")
 	}
 }
+
+func TestGitSyncEventBroadcast(t *testing.T) {
+	m := newFakeMultiBackend()
+	m.projects["api"] = &fakeBackend{}
+	srv := newMultiServer(t, m)
+
+	c, err := control.Dial(srv.Addr())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = c.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	events := make(chan *protocol.Event, 10)
+	go func() {
+		_ = c.SubscribeEvents(ctx, func(ev *protocol.Event) {
+			events <- ev
+		})
+	}()
+
+	// First event must be the immediate heartbeat (flushes HTTP headers)
+	select {
+	case ev := <-events:
+		if ev.GetHeartbeat() == nil {
+			t.Fatalf("expected initial HeartbeatEvent, got %+v", ev)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for initial heartbeat")
+	}
+
+	if _, err := c.GitPush("api"); err != nil {
+		t.Fatalf("GitPush: %v", err)
+	}
+
+	// Next events must be git_sync running=true followed by running=false.
+	for _, wantRunning := range []bool{true, false} {
+		select {
+		case ev := <-events:
+			sync := ev.GetGitSync()
+			if sync == nil {
+				t.Fatalf("expected GitSyncEvent, got %+v", ev)
+			}
+			if sync.Project != "api" || sync.Operation != "push" || sync.Running != wantRunning {
+				t.Fatalf("GitSyncEvent = %+v, want project=api operation=push running=%v", sync, wantRunning)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for git_sync event (running=%v)", wantRunning)
+		}
+	}
+}

@@ -98,6 +98,7 @@ The `SubscribeEvents` server-streaming RPC streams real-time updates for:
 - Service state changes (`ServiceStateChangedEvent`)
 - Task state changes (`TaskStateChangedEvent`)
 - Git repository changes (`GitChangedEvent`)
+- Git remote operations (`GitSyncEvent`: broadcast when a pull, fetch, or push starts and finishes so all connected clients can show progress)
 - Project lifecycle changes (`ProjectsChangedEvent`: projects started, stopped, or removed)
 - Keepalive heartbeats (`HeartbeatEvent`: emitted immediately on subscription to flush headers and periodically every 30s)
 

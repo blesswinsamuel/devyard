@@ -38,6 +38,7 @@ import {
   gitError,
   gitLoading,
   gitStashes,
+  gitSync,
   gitTags,
   loadGitDiff,
   loadGitLog,
@@ -213,6 +214,10 @@ export function GitView() {
 
   const isCommitting = createMemo(() => (project() ? !!gitCommitLoading()[project()!] : false));
   const commitErr = createMemo(() => (project() ? gitCommitError()[project()!] ?? "" : ""));
+
+  // Remote git operation currently running for this project ("" = idle), broadcast to all clients.
+  const syncOp = createMemo(() => (project() ? gitSync()[project()!] ?? "" : ""));
+  const isSyncing = createMemo(() => syncOp() !== "");
 
   const graphMap = createMemo(() => computeGitGraph(commits()));
   const maxColumns = createMemo(() => {
@@ -978,15 +983,45 @@ export function GitView() {
 
           {/* Desktop Actions */}
           <div class="hidden md:flex items-center gap-1">
-            <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && fetchGit(project()!)}>
-              <CloudDownload class="!size-3.5" /> Fetch
+            <Button
+              variant="ghost"
+              size="xs"
+              class="text-muted-foreground"
+              disabled={isSyncing()}
+              title={syncOp() === "fetch" ? "Fetching…" : undefined}
+              onClick={() => project() && fetchGit(project()!)}
+            >
+              <Show when={syncOp() === "fetch"} fallback={<CloudDownload class="!size-3.5" />}>
+                <Spinner class="size-3.5" />
+              </Show>
+              Fetch
             </Button>
-            <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && pullGit(project()!)}>
-              <Download class="!size-3.5" /> Pull
+            <Button
+              variant="ghost"
+              size="xs"
+              class="text-muted-foreground"
+              disabled={isSyncing()}
+              title={syncOp() === "pull" ? "Pulling…" : undefined}
+              onClick={() => project() && pullGit(project()!)}
+            >
+              <Show when={syncOp() === "pull"} fallback={<Download class="!size-3.5" />}>
+                <Spinner class="size-3.5" />
+              </Show>
+              Pull
               <AheadBehindPill kind="behind" count={behindCount()} upstream={upstreamName()} class="ml-1.5" />
             </Button>
-            <Button variant="ghost" size="xs" class="text-muted-foreground" onClick={() => project() && pushGit(project()!)}>
-              <Upload class="!size-3.5" /> Push
+            <Button
+              variant="ghost"
+              size="xs"
+              class="text-muted-foreground"
+              disabled={isSyncing()}
+              title={syncOp() === "push" ? "Pushing…" : undefined}
+              onClick={() => project() && pushGit(project()!)}
+            >
+              <Show when={syncOp() === "push"} fallback={<Upload class="!size-3.5" />}>
+                <Spinner class="size-3.5" />
+              </Show>
+              Push
               <AheadBehindPill kind="ahead" count={aheadCount()} upstream={upstreamName()} class="ml-1.5" />
             </Button>
           </div>
@@ -1004,17 +1039,23 @@ export function GitView() {
                 <MoreHorizontal class="!size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onSelect={() => project() && fetchGit(project()!)}>
-                  <CloudDownload class="size-3.5 mr-2" />
+                <DropdownMenuItem disabled={isSyncing()} onSelect={() => project() && fetchGit(project()!)}>
+                  <Show when={syncOp() === "fetch"} fallback={<CloudDownload class="size-3.5 mr-2" />}>
+                    <Spinner class="size-3.5 mr-2" />
+                  </Show>
                   Fetch
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => project() && pullGit(project()!)}>
-                  <Download class="size-3.5 mr-2" />
+                <DropdownMenuItem disabled={isSyncing()} onSelect={() => project() && pullGit(project()!)}>
+                  <Show when={syncOp() === "pull"} fallback={<Download class="size-3.5 mr-2" />}>
+                    <Spinner class="size-3.5 mr-2" />
+                  </Show>
                   Pull
                   <AheadBehindPill kind="behind" count={behindCount()} upstream={upstreamName()} class="ml-auto" />
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => project() && pushGit(project()!)}>
-                  <Upload class="size-3.5 mr-2" />
+                <DropdownMenuItem disabled={isSyncing()} onSelect={() => project() && pushGit(project()!)}>
+                  <Show when={syncOp() === "push"} fallback={<Upload class="size-3.5 mr-2" />}>
+                    <Spinner class="size-3.5 mr-2" />
+                  </Show>
                   Push
                   <AheadBehindPill kind="ahead" count={aheadCount()} upstream={upstreamName()} class="ml-auto" />
                 </DropdownMenuItem>

@@ -1268,6 +1268,60 @@ export class GitChangedEvent extends Message<GitChangedEvent> {
 }
 
 /**
+ * GitSyncEvent reports the start and end of a remote git operation
+ * (pull, fetch, push) so all connected clients can show progress.
+ *
+ * @generated from message localcompose.v1.GitSyncEvent
+ */
+export class GitSyncEvent extends Message<GitSyncEvent> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * "pull" | "fetch" | "push"
+   *
+   * @generated from field: string operation = 2;
+   */
+  operation = "";
+
+  /**
+   * @generated from field: bool running = 3;
+   */
+  running = false;
+
+  constructor(data?: PartialMessage<GitSyncEvent>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "localcompose.v1.GitSyncEvent";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "operation", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "running", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitSyncEvent {
+    return new GitSyncEvent().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitSyncEvent {
+    return new GitSyncEvent().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitSyncEvent {
+    return new GitSyncEvent().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitSyncEvent | PlainMessage<GitSyncEvent> | undefined, b: GitSyncEvent | PlainMessage<GitSyncEvent> | undefined): boolean {
+    return proto3.util.equals(GitSyncEvent, a, b);
+  }
+}
+
+/**
  * @generated from message localcompose.v1.ProjectsChangedEvent
  */
 export class ProjectsChangedEvent extends Message<ProjectsChangedEvent> {
@@ -1366,6 +1420,12 @@ export class Event extends Message<Event> {
      */
     value: HeartbeatEvent;
     case: "heartbeat";
+  } | {
+    /**
+     * @generated from field: localcompose.v1.GitSyncEvent git_sync = 6;
+     */
+    value: GitSyncEvent;
+    case: "gitSync";
   } | { case: undefined; value?: undefined } = { case: undefined };
 
   constructor(data?: PartialMessage<Event>) {
@@ -1381,6 +1441,7 @@ export class Event extends Message<Event> {
     { no: 3, name: "git_changed", kind: "message", T: GitChangedEvent, oneof: "event" },
     { no: 4, name: "projects_changed", kind: "message", T: ProjectsChangedEvent, oneof: "event" },
     { no: 5, name: "heartbeat", kind: "message", T: HeartbeatEvent, oneof: "event" },
+    { no: 6, name: "git_sync", kind: "message", T: GitSyncEvent, oneof: "event" },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Event {

@@ -224,6 +224,14 @@ message GitChangedEvent {
   string project = 1;
 }
 
+// GitSyncEvent reports the start and end of a remote git operation
+// (pull, fetch, push) so all connected clients can show progress.
+message GitSyncEvent {
+  string project = 1;
+  string operation = 2; // "pull" | "fetch" | "push"
+  bool running = 3;
+}
+
 message ProjectsChangedEvent {}
 
 message HeartbeatEvent {}
@@ -235,6 +243,7 @@ message Event {
     GitChangedEvent git_changed = 3;
     ProjectsChangedEvent projects_changed = 4;
     HeartbeatEvent heartbeat = 5;
+    GitSyncEvent git_sync = 6;
   }
 }
 

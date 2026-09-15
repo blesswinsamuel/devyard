@@ -682,7 +682,9 @@ func (s *Server) GitStage(ctx context.Context, req *connect.Request[localcompose
 }
 
 func (s *Server) GitPush(ctx context.Context, req *connect.Request[localcomposev1.GitPushRequest]) (*connect.Response[localcomposev1.GitPushResponse], error) {
-	output, err := s.backend.GitPush(req.Msg.Project)
+	output, err := s.withGitSyncEvent(req.Msg.Project, "push", func() (string, error) {
+		return s.backend.GitPush(req.Msg.Project)
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -692,7 +694,9 @@ func (s *Server) GitPush(ctx context.Context, req *connect.Request[localcomposev
 }
 
 func (s *Server) GitPull(ctx context.Context, req *connect.Request[localcomposev1.GitPullRequest]) (*connect.Response[localcomposev1.GitPullResponse], error) {
-	output, err := s.backend.GitPull(req.Msg.Project)
+	output, err := s.withGitSyncEvent(req.Msg.Project, "pull", func() (string, error) {
+		return s.backend.GitPull(req.Msg.Project)
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -702,13 +706,41 @@ func (s *Server) GitPull(ctx context.Context, req *connect.Request[localcomposev
 }
 
 func (s *Server) GitFetch(ctx context.Context, req *connect.Request[localcomposev1.GitFetchRequest]) (*connect.Response[localcomposev1.GitFetchResponse], error) {
-	output, err := s.backend.GitFetch(req.Msg.Project)
+	output, err := s.withGitSyncEvent(req.Msg.Project, "fetch", func() (string, error) {
+		return s.backend.GitFetch(req.Msg.Project)
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&localcomposev1.GitFetchResponse{
 		Output: output,
 	}), nil
+}
+
+// withGitSyncEvent runs fn and broadcasts a GitSyncEvent to all subscribers
+// before and after, so every connected client (including other web UI tabs)
+// can show progress for the remote git operation.
+func (s *Server) withGitSyncEvent(project, operation string, fn func() (string, error)) (string, error) {
+	s.broadcastEvent(&localcomposev1.Event{
+		Event: &localcomposev1.Event_GitSync{
+			GitSync: &localcomposev1.GitSyncEvent{
+				Project:   project,
+				Operation: operation,
+				Running:   true,
+			},
+		},
+	})
+	output, err := fn()
+	s.broadcastEvent(&localcomposev1.Event{
+		Event: &localcomposev1.Event_GitSync{
+			GitSync: &localcomposev1.GitSyncEvent{
+				Project:   project,
+				Operation: operation,
+				Running:   false,
+			},
+		},
+	})
+	return output, err
 }
 
 func (s *Server) GitStatus(ctx context.Context, req *connect.Request[localcomposev1.GitStatusRequest]) (*connect.Response[localcomposev1.GitStatusResponse], error) {

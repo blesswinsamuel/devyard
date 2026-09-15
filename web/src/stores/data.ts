@@ -42,6 +42,8 @@ const [gitDiffLoading, setGitDiffLoading] = createSignal<Record<string, boolean>
 const [gitCommitLoading, setGitCommitLoading] = createSignal<Record<string, boolean>>({});
 const [gitCommitError, setGitCommitError] = createSignal<Record<string, string>>({});
 const [gitStatuses, setGitStatuses] = createSignal<Record<string, GitStatus>>({});
+// project -> remote git operation currently in progress ("pull" | "fetch" | "push"), "" when idle
+const [gitSync, setGitSync] = createSignal<Record<string, string>>({});
 
 export {
   projects,
@@ -62,6 +64,7 @@ export {
   gitCommitLoading,
   gitCommitError,
   gitStatuses,
+  gitSync,
 };
 
 // --- equality ---------------------------------------------------------------
@@ -181,6 +184,7 @@ export function pruneData(projectNames: Set<string>) {
   setServices((m) => keepMap(m) ?? m);
   setTasks((m) => keepMap(m) ?? m);
   setGitStatuses((m) => keepMap(m) ?? m);
+  setGitSync((m) => keepMap(m) ?? m);
 }
 
 /**
@@ -695,6 +699,15 @@ export function initDataHandlers() {
       });
     } else if (event.event.case === "projectsChanged") {
       scheduleProjectStatusRefresh();
+    } else if (event.event.case === "gitSync") {
+      const { project, operation, running } = event.event.value;
+      if (!project || !operation) return;
+      setGitSync((m) => {
+        const prev = m[project] ?? "";
+        const next = running ? operation : "";
+        if (prev === next) return m;
+        return { ...m, [project]: next };
+      });
     } else if (event.event.case === "gitChanged") {
       const { project } = event.event.value;
       if (!project) return;

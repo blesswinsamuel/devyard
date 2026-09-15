@@ -512,7 +512,7 @@ function GitPromptBadge(props: { project: string }) {
             <GitBranch class="size-3.5 text-primary" />
             <span>{branchLabel()}</span>
             <Show when={hasAheadBehind()}>
-              <span class="text-muted-foreground font-normal">
+              <span class="text-background/65 font-normal">
                 ({[
                   (s()?.ahead ?? 0) > 0 ? `${s()?.ahead} ahead` : "",
                   (s()?.behind ?? 0) > 0 ? `${s()?.behind} behind` : "",
@@ -521,29 +521,29 @@ function GitPromptBadge(props: { project: string }) {
             </Show>
           </div>
           <Show when={s()?.upstream}>
-            <p class="text-[11px] text-muted-foreground">
-              Tracking: <span class="font-mono text-foreground">{s()?.upstream}</span>
+            <p class="text-[11px] text-background/65">
+              Tracking: <span class="font-mono text-background font-medium">{s()?.upstream}</span>
               <Show when={!hasAheadBehind()}> (up to date)</Show>
             </p>
           </Show>
           <div class="space-y-0.5 text-[11px]">
             <Show when={(s()?.staged ?? 0) > 0}>
-              <p class="text-emerald-500 font-medium">● {s()?.staged} {s()?.staged === 1 ? "file" : "files"} staged</p>
+              <p class="text-[color:color-mix(in_srgb,var(--success)_65%,var(--background))] font-medium">● {s()?.staged} {s()?.staged === 1 ? "file" : "files"} staged</p>
             </Show>
             <Show when={(s()?.dirty ?? 0) > 0}>
-              <p class="text-amber-500 font-medium">! {s()?.dirty} {s()?.dirty === 1 ? "file" : "files"} modified (unstaged)</p>
+              <p class="text-[color:color-mix(in_srgb,var(--warning)_65%,var(--background))] font-medium">! {s()?.dirty} {s()?.dirty === 1 ? "file" : "files"} modified (unstaged)</p>
             </Show>
             <Show when={(s()?.untracked ?? 0) > 0}>
-              <p class="text-muted-foreground">? {s()?.untracked} untracked {s()?.untracked === 1 ? "file" : "files"}</p>
+              <p class="text-background/65">? {s()?.untracked} untracked {s()?.untracked === 1 ? "file" : "files"}</p>
             </Show>
             <Show when={(s()?.conflicts ?? 0) > 0}>
-              <p class="text-destructive font-semibold">× {s()?.conflicts} conflicting {s()?.conflicts === 1 ? "file" : "files"}</p>
+              <p class="text-[color:color-mix(in_srgb,var(--destructive)_65%,var(--background))] font-semibold">× {s()?.conflicts} conflicting {s()?.conflicts === 1 ? "file" : "files"}</p>
             </Show>
             <Show when={isClean()}>
-              <p class="text-muted-foreground">✓ Working tree clean</p>
+              <p class="text-background/65">✓ Working tree clean</p>
             </Show>
           </div>
-          <p class="border-t border-border/60 pt-1 text-[10px] text-muted-foreground/80">
+          <p class="border-t border-border/60 pt-1 text-[10px] text-background/55">
             Click to open Git history (g)
           </p>
         </TooltipContent>

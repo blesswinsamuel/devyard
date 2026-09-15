@@ -164,7 +164,18 @@ func (s *Server) spaHandler() http.Handler {
 			name := strings.TrimPrefix(path, "/")
 			if _, err := fs.Stat(sub, name); err != nil {
 				r.URL.Path = "/"
+				path = "/"
 			}
+		}
+		// index.html must revalidate on every load: it names the content-hashed
+		// JS/CSS bundles, and embed.FS files carry no modtime, so without an
+		// explicit directive browsers heuristically cache a stale entry that
+		// keeps serving an old bundle across reloads. Hashed assets are
+		// immutable and may be cached forever.
+		if path == "/" {
+			w.Header().Set("Cache-Control", "no-cache")
+		} else if strings.HasPrefix(path, "/assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		fileServer.ServeHTTP(w, r)
 	})

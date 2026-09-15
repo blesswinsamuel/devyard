@@ -529,6 +529,31 @@ func TestWebSPAFallback(t *testing.T) {
 	}
 }
 
+// index.html must be served with Cache-Control: no-cache so browsers revalidate
+// it on every load and pick up freshly built hashed bundles. Assets are
+// content-hashed and may be cached immutably.
+func TestWebSPACacheHeaders(t *testing.T) {
+	srv := startStack(t, newFakeMulti())
+
+	resp, err := http.Get("http://" + srv.Addr() + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("index Cache-Control = %q, want no-cache", cc)
+	}
+
+	resp2, err := http.Get("http://" + srv.Addr() + "/projects/api/logs")
+	if err != nil {
+		t.Fatalf("GET fallback: %v", err)
+	}
+	defer func() { _ = resp2.Body.Close() }()
+	if cc := resp2.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("fallback Cache-Control = %q, want no-cache", cc)
+	}
+}
+
 // --- ConnectRPC Proxying ---
 
 func TestConnectRPCProxy(t *testing.T) {

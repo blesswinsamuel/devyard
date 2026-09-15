@@ -701,6 +701,16 @@ func (s *Server) GitFetch(ctx context.Context, req *connect.Request[localcompose
 	}), nil
 }
 
+func (s *Server) GitStatus(ctx context.Context, req *connect.Request[localcomposev1.GitStatusRequest]) (*connect.Response[localcomposev1.GitStatusResponse], error) {
+	status, err := s.backend.GitStatus(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&localcomposev1.GitStatusResponse{
+		Status: status,
+	}), nil
+}
+
 func (s *Server) SubscribeEvents(ctx context.Context, req *connect.Request[localcomposev1.SubscribeEventsRequest], stream *connect.ServerStream[localcomposev1.Event]) error {
 	// Immediately send a heartbeat event to flush HTTP response headers to the client.
 	if err := stream.Send(&localcomposev1.Event{

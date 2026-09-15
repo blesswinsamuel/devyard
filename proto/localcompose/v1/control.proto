@@ -41,6 +41,7 @@ service DaemonService {
   rpc GitPush(GitPushRequest) returns (GitPushResponse);
   rpc GitPull(GitPullRequest) returns (GitPullResponse);
   rpc GitFetch(GitFetchRequest) returns (GitFetchResponse);
+  rpc GitStatus(GitStatusRequest) returns (GitStatusResponse);
 
   // Real-time Event Subscription
   rpc SubscribeEvents(SubscribeEventsRequest) returns (stream Event);
@@ -172,6 +173,21 @@ message GitDiffResult {
   GitCommit commit = 1;
   repeated GitFileChange files = 2;
   string diff = 3;
+}
+
+message GitStatus {
+  string project = 1;
+  string branch = 2;
+  string upstream = 3;
+  int32 ahead = 4;
+  int32 behind = 5;
+  int32 staged = 6;
+  int32 dirty = 7;
+  int32 untracked = 8;
+  int32 conflicts = 9;
+  bool is_clean = 10;
+  bool is_repo = 11;
+  string head_hash = 12;
 }
 
 // -----------------------------------------------------------------------------
@@ -418,6 +434,14 @@ message GitFetchRequest {
 
 message GitFetchResponse {
   string output = 1;
+}
+
+message GitStatusRequest {
+  string project = 1;
+}
+
+message GitStatusResponse {
+  GitStatus status = 1;
 }
 
 message SubscribeEventsRequest {}

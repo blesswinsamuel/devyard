@@ -35,6 +35,7 @@ import {
 import {
   daemonInfo,
   fetchDaemonStatus,
+  gitStatuses,
   killService,
   ports,
   projects as projectsList,
@@ -54,9 +55,8 @@ import { pushToast, setShowAddProject, setShowDaemonModal, theme, setTheme } fro
 import { toggleHelp, sidebarOpen, setSidebarOpen } from "~/stores/app";
 import { openGitView } from "~/stores/nav";
 import { eventStatus } from "~/lib/events";
-import { healthDot, statusDot, statusTone } from "~/lib/status";
+import { healthDot, statusDot } from "~/lib/status";
 import { cn } from "~/lib/utils";
-import { Badge } from "~/components/ui/badge";
 import { Kbd } from "~/components/ui/kbd";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
@@ -441,6 +441,128 @@ function TaskRow(props: { project: string; name: string }) {
   );
 }
 
+function ProjectStatusDot(props: { status: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger as="span" class="flex items-center">
+        <span
+          class={cn("size-2 shrink-0 rounded-full", {
+            "bg-success shadow-[0_0_6px_var(--success)]": props.status === "running",
+            "bg-warning animate-pulse": props.status === "stopping" || props.status === "starting",
+            "bg-muted-foreground/35": props.status === "stopped",
+          })}
+        />
+      </TooltipTrigger>
+      <TooltipContent>Project: {props.status}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function GitPromptBadge(props: { project: string }) {
+  const status = createMemo(() => gitStatuses()[props.project]);
+
+  return (
+    <Show when={status() && status()!.isRepo}>
+      {() => {
+        const s = status()!;
+        const hasAheadBehind = () => s.ahead > 0 || s.behind > 0;
+        const hasWorktreeChanges = () => s.staged > 0 || s.dirty > 0 || s.untracked > 0 || s.conflicts > 0;
+        const isClean = () => !hasAheadBehind() && !hasWorktreeChanges();
+
+        const branchLabel = () =>
+          s.branch && s.branch !== "(detached)"
+            ? s.branch
+            : s.headHash
+            ? `detached:${s.headHash.slice(0, 7)}`
+            : "HEAD";
+
+        return (
+          <Tooltip>
+            <TooltipTrigger as="div">
+              <button
+                type="button"
+                onClick={(e: MouseEvent) => {
+                  e.stopPropagation();
+                  openGitView(props.project);
+                }}
+                class={cn(
+                  "flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] leading-none transition-colors",
+                  isClean()
+                    ? "text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+                    : "bg-muted/70 text-foreground hover:bg-muted font-medium"
+                )}
+              >
+                <GitBranch class="size-3 shrink-0 text-muted-foreground" />
+                <Show when={isClean()}>
+                  <span class="text-[10px] text-muted-foreground">✓</span>
+                </Show>
+                <Show when={s.ahead > 0}>
+                  <span class="text-sky-500 font-semibold" title={`${s.ahead} ahead`}>⇡{s.ahead}</span>
+                </Show>
+                <Show when={s.behind > 0}>
+                  <span class="text-amber-500 font-semibold" title={`${s.behind} behind`}>⇣{s.behind}</span>
+                </Show>
+                <Show when={s.staged > 0}>
+                  <span class="text-emerald-500 font-semibold" title={`${s.staged} staged`}>+{s.staged}</span>
+                </Show>
+                <Show when={s.dirty > 0}>
+                  <span class="text-amber-500 font-semibold" title={`${s.dirty} modified`}>!{s.dirty}</span>
+                </Show>
+                <Show when={s.untracked > 0}>
+                  <span class="text-muted-foreground" title={`${s.untracked} untracked`}>?{s.untracked}</span>
+                </Show>
+                <Show when={s.conflicts > 0}>
+                  <span class="text-destructive font-bold" title={`${s.conflicts} conflicts`}>×{s.conflicts}</span>
+                </Show>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent class="max-w-xs space-y-1.5 p-2 text-xs">
+              <div class="flex items-center gap-1.5 font-medium">
+                <GitBranch class="size-3.5 text-primary" />
+                <span>{branchLabel()}</span>
+                <Show when={hasAheadBehind()}>
+                  <span class="text-muted-foreground font-normal">
+                    ({[
+                      s.ahead > 0 ? `${s.ahead} ahead` : "",
+                      s.behind > 0 ? `${s.behind} behind` : "",
+                    ].filter(Boolean).join(", ")})
+                  </span>
+                </Show>
+              </div>
+              <Show when={s.upstream}>
+                <p class="text-[11px] text-muted-foreground">
+                  Tracking: <span class="font-mono text-foreground">{s.upstream}</span>
+                  <Show when={!hasAheadBehind()}> (up to date)</Show>
+                </p>
+              </Show>
+              <div class="space-y-0.5 text-[11px]">
+                <Show when={s.staged > 0}>
+                  <p class="text-emerald-500 font-medium">● {s.staged} {s.staged === 1 ? "file" : "files"} staged</p>
+                </Show>
+                <Show when={s.dirty > 0}>
+                  <p class="text-amber-500 font-medium">! {s.dirty} {s.dirty === 1 ? "file" : "files"} modified (unstaged)</p>
+                </Show>
+                <Show when={s.untracked > 0}>
+                  <p class="text-muted-foreground">? {s.untracked} untracked {s.untracked === 1 ? "file" : "files"}</p>
+                </Show>
+                <Show when={s.conflicts > 0}>
+                  <p class="text-destructive font-semibold">× {s.conflicts} conflicting {s.conflicts === 1 ? "file" : "files"}</p>
+                </Show>
+                <Show when={isClean()}>
+                  <p class="text-muted-foreground">✓ Working tree clean</p>
+                </Show>
+              </div>
+              <p class="border-t border-border/60 pt-1 text-[10px] text-muted-foreground/80">
+                Click to open Git history (g)
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      }}
+    </Show>
+  );
+}
+
 function ProjectItem(props: { name: string }) {
   const project = createMemo(() => projectsList().find((p) => p.name === props.name));
   const serviceList = createMemo(() => servicesMap()[props.name]);
@@ -472,7 +594,7 @@ function ProjectItem(props: { name: string }) {
               as="div"
               data-kbd-cursor={cursor() ? "" : undefined}
               class={cn(
-                "group/proj relative flex items-center border-l-2",
+                "group/proj relative flex h-8 items-center border-l-2 pr-2",
                 active() ? "border-primary" : "border-transparent",
                 selected()
                   ? "bg-accent text-accent-foreground"
@@ -488,80 +610,48 @@ function ProjectItem(props: { name: string }) {
               <button
                 type="button"
                 onClick={() => selectProject(props.name)}
-                class="flex h-8 min-w-0 flex-1 items-center gap-2 pr-1 text-left text-[13px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                class="flex h-full min-w-0 flex-1 items-center gap-2 text-left text-[13px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <Boxes class="size-3.5 shrink-0 text-muted-foreground" />
                 <span class="truncate font-medium">{props.name}</span>
-                <div class="ml-auto flex shrink-0 items-center gap-1.5 pr-1">
-                  <Show when={aggregateHealth()}>
-                    <Tooltip>
-                      <TooltipTrigger as="span" class="flex items-center">
-                        <span class={cn("size-2 rounded-full", healthDot(true, aggregateHealth()))} />
-                      </TooltipTrigger>
-                      <TooltipContent>health: {aggregateHealth()}</TooltipContent>
-                    </Tooltip>
-                  </Show>
-                  <Badge variant={statusTone(p().status)}>{p().status}</Badge>
-                </div>
               </button>
 
-              {/* Hover actions */}
-              <div
-                class={cn(
-                  "absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-card/95 p-0.5 shadow-sm ring-1 ring-border backdrop-blur transition-opacity duration-100",
-                  "opacity-0 pointer-events-none group-hover/proj:pointer-events-auto group-hover/proj:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
-                )}
-              >
-                <Tooltip>
-                  <TooltipTrigger
-                    as={Button}
-                    variant="ghost"
-                    size="icon-sm"
-                    class="text-muted-foreground hover:text-foreground"
-                    onClick={(e: MouseEvent) => {
-                      e.stopPropagation();
-                      openGitView(props.name);
-                    }}
+              <div class="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+                {/* Hover actions */}
+                <div class="hidden items-center gap-0.5 group-hover/proj:flex focus-within:flex">
+                  <Show
+                    when={p().status !== "stopped"}
+                    fallback={
+                      <Tooltip>
+                        <TooltipTrigger
+                          as={Button}
+                          variant="ghost"
+                          size="icon-xs"
+                          class="text-success hover:text-success hover:bg-success/15"
+                          onClick={(e: MouseEvent) => {
+                            e.stopPropagation();
+                            startProject(props.name);
+                          }}
+                        >
+                          <Play class="size-3" />
+                          <span class="sr-only">Start project</span>
+                        </TooltipTrigger>
+                        <TooltipContent>Start project (u)</TooltipContent>
+                      </Tooltip>
+                    }
                   >
-                    <GitBranch />
-                    <span class="sr-only">Git log</span>
-                  </TooltipTrigger>
-                  <TooltipContent>Git history (g)</TooltipContent>
-                </Tooltip>
-                <Show
-                  when={p().status !== "stopped"}
-                  fallback={
                     <Tooltip>
                       <TooltipTrigger
                         as={Button}
                         variant="ghost"
-                        size="icon-sm"
-                        class="text-success hover:text-success"
-                        onClick={(e: MouseEvent) => {
-                          e.stopPropagation();
-                          startProject(props.name);
-                        }}
-                      >
-                        <Play />
-                        <span class="sr-only">Start project</span>
-                      </TooltipTrigger>
-                      <TooltipContent>Start project (u)</TooltipContent>
-                    </Tooltip>
-                  }
-                >
-                  <>
-                    <Tooltip>
-                      <TooltipTrigger
-                        as={Button}
-                        variant="ghost"
-                        size="icon-sm"
+                        size="icon-xs"
                         class="text-muted-foreground hover:text-foreground"
                         onClick={(e: MouseEvent) => {
                           e.stopPropagation();
                           startProject(props.name);
                         }}
                       >
-                        <RefreshCw />
+                        <RefreshCw class="size-3" />
                         <span class="sr-only">Reload config</span>
                       </TooltipTrigger>
                       <TooltipContent>Reload config & prune orphans</TooltipContent>
@@ -570,20 +660,36 @@ function ProjectItem(props: { name: string }) {
                       <TooltipTrigger
                         as={Button}
                         variant="ghost"
-                        size="icon-sm"
-                        class="text-muted-foreground hover:text-destructive"
+                        size="icon-xs"
+                        class="text-muted-foreground hover:text-destructive hover:bg-destructive/15"
                         onClick={(e: MouseEvent) => {
                           e.stopPropagation();
                           stopProject(props.name);
                         }}
                       >
-                        <Power />
+                        <Power class="size-3" />
                         <span class="sr-only">Stop project</span>
                       </TooltipTrigger>
                       <TooltipContent>Stop project (d d)</TooltipContent>
                     </Tooltip>
-                  </>
+                  </Show>
+                </div>
+
+                {/* Git status prompt tokens */}
+                <GitPromptBadge project={props.name} />
+
+                {/* Aggregate health */}
+                <Show when={aggregateHealth()}>
+                  <Tooltip>
+                    <TooltipTrigger as="span" class="flex items-center">
+                      <span class={cn("size-2 rounded-full", healthDot(true, aggregateHealth()))} />
+                    </TooltipTrigger>
+                    <TooltipContent>health: {aggregateHealth()}</TooltipContent>
+                  </Tooltip>
                 </Show>
+
+                {/* Project status dot */}
+                <ProjectStatusDot status={p().status} />
               </div>
             </ContextMenuTrigger>
             <ContextMenuContent>

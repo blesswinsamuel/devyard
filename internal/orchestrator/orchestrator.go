@@ -842,6 +842,22 @@ func (d *Daemon) GitFetch(name string) (string, error) {
 	return gitlog.Fetch(p.BaseDir, "")
 }
 
+// GitStatus returns the status summary of the project's working directory.
+func (d *Daemon) GitStatus(name string) (*protocol.GitStatus, error) {
+	d.mu.Lock()
+	p, ok := d.projects[name]
+	d.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("project %q is not running", name)
+	}
+	status, err := gitlog.Status(p.BaseDir)
+	if err != nil {
+		return nil, err
+	}
+	status.Project = name
+	return status, nil
+}
+
 // stoppedBackend adapts a registered-but-never-started project (Sup == nil) to
 // control.Backend. Its retained config lets reads report every service as
 // stopped and list the project's actions; mutations report that the project is

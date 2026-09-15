@@ -920,6 +920,109 @@ export class GitDiffResult extends Message<GitDiffResult> {
 }
 
 /**
+ * @generated from message localcompose.v1.GitStatus
+ */
+export class GitStatus extends Message<GitStatus> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * @generated from field: string branch = 2;
+   */
+  branch = "";
+
+  /**
+   * @generated from field: string upstream = 3;
+   */
+  upstream = "";
+
+  /**
+   * @generated from field: int32 ahead = 4;
+   */
+  ahead = 0;
+
+  /**
+   * @generated from field: int32 behind = 5;
+   */
+  behind = 0;
+
+  /**
+   * @generated from field: int32 staged = 6;
+   */
+  staged = 0;
+
+  /**
+   * @generated from field: int32 dirty = 7;
+   */
+  dirty = 0;
+
+  /**
+   * @generated from field: int32 untracked = 8;
+   */
+  untracked = 0;
+
+  /**
+   * @generated from field: int32 conflicts = 9;
+   */
+  conflicts = 0;
+
+  /**
+   * @generated from field: bool is_clean = 10;
+   */
+  isClean = false;
+
+  /**
+   * @generated from field: bool is_repo = 11;
+   */
+  isRepo = false;
+
+  /**
+   * @generated from field: string head_hash = 12;
+   */
+  headHash = "";
+
+  constructor(data?: PartialMessage<GitStatus>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "localcompose.v1.GitStatus";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "branch", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "upstream", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "ahead", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 5, name: "behind", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 6, name: "staged", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 7, name: "dirty", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 8, name: "untracked", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 9, name: "conflicts", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 10, name: "is_clean", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 11, name: "is_repo", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 12, name: "head_hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitStatus {
+    return new GitStatus().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitStatus {
+    return new GitStatus().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitStatus {
+    return new GitStatus().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitStatus | PlainMessage<GitStatus> | undefined, b: GitStatus | PlainMessage<GitStatus> | undefined): boolean {
+    return proto3.util.equals(GitStatus, a, b);
+  }
+}
+
+/**
  * @generated from message localcompose.v1.LogChunk
  */
 export class LogChunk extends Message<LogChunk> {
@@ -3152,6 +3255,80 @@ export class GitFetchResponse extends Message<GitFetchResponse> {
 
   static equals(a: GitFetchResponse | PlainMessage<GitFetchResponse> | undefined, b: GitFetchResponse | PlainMessage<GitFetchResponse> | undefined): boolean {
     return proto3.util.equals(GitFetchResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message localcompose.v1.GitStatusRequest
+ */
+export class GitStatusRequest extends Message<GitStatusRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  constructor(data?: PartialMessage<GitStatusRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "localcompose.v1.GitStatusRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitStatusRequest {
+    return new GitStatusRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitStatusRequest {
+    return new GitStatusRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitStatusRequest {
+    return new GitStatusRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitStatusRequest | PlainMessage<GitStatusRequest> | undefined, b: GitStatusRequest | PlainMessage<GitStatusRequest> | undefined): boolean {
+    return proto3.util.equals(GitStatusRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message localcompose.v1.GitStatusResponse
+ */
+export class GitStatusResponse extends Message<GitStatusResponse> {
+  /**
+   * @generated from field: localcompose.v1.GitStatus status = 1;
+   */
+  status?: GitStatus;
+
+  constructor(data?: PartialMessage<GitStatusResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "localcompose.v1.GitStatusResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "status", kind: "message", T: GitStatus },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitStatusResponse {
+    return new GitStatusResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitStatusResponse {
+    return new GitStatusResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitStatusResponse {
+    return new GitStatusResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitStatusResponse | PlainMessage<GitStatusResponse> | undefined, b: GitStatusResponse | PlainMessage<GitStatusResponse> | undefined): boolean {
+    return proto3.util.equals(GitStatusResponse, a, b);
   }
 }
 

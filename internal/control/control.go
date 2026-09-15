@@ -57,6 +57,7 @@ type MultiBackend interface {
 	GitPush(project string) (string, error)
 	GitPull(project string) (string, error)
 	GitFetch(project string) (string, error)
+	GitStatus(project string) (*protocol.GitStatus, error)
 	ListPorts(project string) ([]*protocol.PortBinding, error)
 
 	SetOnStateChange(fn func(project string, state *protocol.ServiceState))
@@ -156,6 +157,14 @@ func (s SingleProjectBackend) GitFetch(_ string) (string, error) {
 		return "", fmt.Errorf("project %q is not a git repository", s.Project)
 	}
 	return gitlog.Fetch(dir, "")
+}
+
+func (s SingleProjectBackend) GitStatus(_ string) (*protocol.GitStatus, error) {
+	dir := s.GitDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	return gitlog.Status(dir)
 }
 
 func (s SingleProjectBackend) StartProject(configPath string, build bool, envFile string, removeOrphans bool) error {

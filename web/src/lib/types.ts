@@ -12,6 +12,7 @@ export type {
   GitCommit,
   GitFileChange,
   GitDiffResult,
+  GitStatus,
   LogChunk,
   Event,
 } from "~/gen/localcompose/v1/control_pb";

@@ -424,6 +424,17 @@ func (c *Client) GitFetch(project string) (string, error) {
 	return resp.Msg.Output, nil
 }
 
+// GitStatus gets the working tree and branch status summary.
+func (c *Client) GitStatus(project string) (*protocol.GitStatus, error) {
+	resp, err := c.rpcClient.GitStatus(context.Background(), connect.NewRequest(&localcomposev1.GitStatusRequest{
+		Project: project,
+	}))
+	if err != nil {
+		return nil, unwrapError(err)
+	}
+	return resp.Msg.Status, nil
+}
+
 // SubscribeEvents streams real-time state and git event changes.
 func (c *Client) SubscribeEvents(ctx context.Context, onEvent func(*protocol.Event)) error {
 	stream, err := c.rpcClient.SubscribeEvents(ctx, connect.NewRequest(&localcomposev1.SubscribeEventsRequest{}))

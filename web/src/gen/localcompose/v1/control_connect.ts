@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, ListTasksRequest, ListTasksResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunTaskRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SubscribeEventsRequest, TaskOutputChunk, TopRequest, TopResponse } from "./control_pb.js";
+import { DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, GitStatusRequest, GitStatusResponse, KillServiceRequest, KillServiceResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, ListTasksRequest, ListTasksResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunTaskRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SubscribeEventsRequest, TaskOutputChunk, TopRequest, TopResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -245,6 +245,15 @@ export const DaemonService = {
       name: "GitFetch",
       I: GitFetchRequest,
       O: GitFetchResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc localcompose.v1.DaemonService.GitStatus
+     */
+    gitStatus: {
+      name: "GitStatus",
+      I: GitStatusRequest,
+      O: GitStatusResponse,
       kind: MethodKind.Unary,
     },
     /**

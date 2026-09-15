@@ -28,6 +28,7 @@ type (
 	GitCommit       = localcomposev1.GitCommit
 	GitFileChange   = localcomposev1.GitFileChange
 	GitDiffResult   = localcomposev1.GitDiffResult
+	GitStatus       = localcomposev1.GitStatus
 	LogChunk        = localcomposev1.LogChunk
 	TaskOutputChunk = localcomposev1.TaskOutputChunk
 	Event           = localcomposev1.Event

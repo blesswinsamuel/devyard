@@ -728,6 +728,14 @@ func (m *fakeMultiBackend) GitStage(string, string, bool, bool) error { return n
 func (m *fakeMultiBackend) GitPush(string) (string, error)            { return "pushed", nil }
 func (m *fakeMultiBackend) GitPull(string) (string, error)            { return "pulled", nil }
 func (m *fakeMultiBackend) GitFetch(string) (string, error)           { return "fetched", nil }
+func (m *fakeMultiBackend) GitStatus(project string) (*protocol.GitStatus, error) {
+	return &protocol.GitStatus{
+		Project: project,
+		Branch:  "main",
+		IsRepo:  true,
+		IsClean: true,
+	}, nil
+}
 func (m *fakeMultiBackend) ListServices(project string) ([]*protocol.ServiceState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

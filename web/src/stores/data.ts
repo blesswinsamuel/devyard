@@ -6,6 +6,7 @@ import type {
   GitCommit,
   GitDiffResult,
   GitStash,
+  GitStatus,
   GitTag,
   PortBinding,
   ProjectInfo,
@@ -40,6 +41,7 @@ const [gitDiffs, setGitDiffs] = createSignal<Record<string, Record<string, GitDi
 const [gitDiffLoading, setGitDiffLoading] = createSignal<Record<string, boolean>>({});
 const [gitCommitLoading, setGitCommitLoading] = createSignal<Record<string, boolean>>({});
 const [gitCommitError, setGitCommitError] = createSignal<Record<string, string>>({});
+const [gitStatuses, setGitStatuses] = createSignal<Record<string, GitStatus>>({});
 
 export {
   projects,
@@ -59,6 +61,7 @@ export {
   gitDiffLoading,
   gitCommitLoading,
   gitCommitError,
+  gitStatuses,
 };
 
 // --- equality ---------------------------------------------------------------
@@ -146,6 +149,24 @@ function sameGitStash(a: GitStash, b: GitStash): boolean {
   return a.index === b.index && a.name === b.name && a.hash === b.hash;
 }
 
+function sameGitStatus(a?: GitStatus, b?: GitStatus): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.project === b.project &&
+    a.branch === b.branch &&
+    a.upstream === b.upstream &&
+    a.ahead === b.ahead &&
+    a.behind === b.behind &&
+    a.staged === b.staged &&
+    a.dirty === b.dirty &&
+    a.untracked === b.untracked &&
+    a.conflicts === b.conflicts &&
+    a.isClean === b.isClean &&
+    a.isRepo === b.isRepo &&
+    a.headHash === b.headHash
+  );
+}
+
 /** Drops cache entries for projects that no longer exist. */
 export function pruneData(projectNames: Set<string>) {
   const keepMap = <T>(m: Record<string, T>): Record<string, T> | null => {
@@ -159,6 +180,7 @@ export function pruneData(projectNames: Set<string>) {
   };
   setServices((m) => keepMap(m) ?? m);
   setTasks((m) => keepMap(m) ?? m);
+  setGitStatuses((m) => keepMap(m) ?? m);
 }
 
 /**
@@ -183,6 +205,9 @@ export async function fetchProjects() {
     const next = res.projects;
     setProjects((prev) => (sameArray(prev, next, sameProject) ? prev : next));
     pruneData(new Set(next.map((p) => p.name)));
+    for (const p of next) {
+      fetchGitStatus(p.name);
+    }
   } catch (err: any) {
     pushToast(err.message || "Failed to fetch projects", "error");
   }
@@ -454,6 +479,21 @@ export async function restartDaemon(restartServices = false) {
 
 // --- git --------------------------------------------------------------------
 
+/** Fetch the git status summary for a project (branch, ahead/behind, staged/dirty/untracked). */
+export async function fetchGitStatus(project: string) {
+  try {
+    const res = await rpcClient.gitStatus({ project });
+    if (res.status) {
+      setGitStatuses((m) => {
+        if (sameGitStatus(m[project], res.status)) return m;
+        return { ...m, [project]: res.status! };
+      });
+    }
+  } catch (err: any) {
+    // Silently ignore errors (e.g. non-git project or daemon offline)
+  }
+}
+
 /** Fetch the git commit log for a project. */
 export async function loadGitLog(name: string) {
   setGitLoading((m) => ({ ...m, [name]: true }));
@@ -514,6 +554,7 @@ export async function stageGitFile(project: string, path: string, unstage?: bool
       stageAll: stageAll || false,
     });
     clearWorkdirCache(project);
+    fetchGitStatus(project);
     loadGitDiff(project, "WORKDIR", undefined, true);
   } catch (err: any) {
     pushToast(err.message || "Failed to stage git file", "error");
@@ -531,6 +572,7 @@ export async function commitGitChanges(project: string, message: string) {
       message: message.trim(),
     });
     clearWorkdirCache(project);
+    fetchGitStatus(project);
     setSelectedCommitHash((m) => ({ ...m, [project]: null }));
     loadGitLog(project);
     pushToast("Committed changes", "success");
@@ -545,6 +587,7 @@ export async function pushGit(project: string) {
   try {
     const res = await rpcClient.gitPush({ project });
     clearWorkdirCache(project);
+    fetchGitStatus(project);
     loadGitLog(project);
     if (res.output) pushToast(res.output.trim(), "info");
   } catch (err: any) {
@@ -556,6 +599,7 @@ export async function pullGit(project: string) {
   try {
     const res = await rpcClient.gitPull({ project });
     clearWorkdirCache(project);
+    fetchGitStatus(project);
     loadGitLog(project);
     if (res.output) pushToast(res.output.trim(), "info");
   } catch (err: any) {
@@ -567,6 +611,7 @@ export async function fetchGit(project: string) {
   try {
     const res = await rpcClient.gitFetch({ project });
     clearWorkdirCache(project);
+    fetchGitStatus(project);
     loadGitLog(project);
     if (res.output) pushToast(res.output.trim(), "info");
   } catch (err: any) {
@@ -653,6 +698,7 @@ export function initDataHandlers() {
     } else if (event.event.case === "gitChanged") {
       const { project } = event.event.value;
       if (!project) return;
+      fetchGitStatus(project);
       clearWorkdirCache(project);
       if (untrack(activeView) === "git" && untrack(selectedProject) === project) {
         loadGitLog(project);

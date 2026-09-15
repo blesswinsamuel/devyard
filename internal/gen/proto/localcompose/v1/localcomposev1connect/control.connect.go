@@ -94,6 +94,8 @@ const (
 	DaemonServiceGitPullProcedure = "/localcompose.v1.DaemonService/GitPull"
 	// DaemonServiceGitFetchProcedure is the fully-qualified name of the DaemonService's GitFetch RPC.
 	DaemonServiceGitFetchProcedure = "/localcompose.v1.DaemonService/GitFetch"
+	// DaemonServiceGitStatusProcedure is the fully-qualified name of the DaemonService's GitStatus RPC.
+	DaemonServiceGitStatusProcedure = "/localcompose.v1.DaemonService/GitStatus"
 	// DaemonServiceSubscribeEventsProcedure is the fully-qualified name of the DaemonService's
 	// SubscribeEvents RPC.
 	DaemonServiceSubscribeEventsProcedure = "/localcompose.v1.DaemonService/SubscribeEvents"
@@ -131,6 +133,7 @@ type DaemonServiceClient interface {
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
+	GitStatus(context.Context, *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error)
 	// Real-time Event Subscription
 	SubscribeEvents(context.Context, *connect.Request[v1.SubscribeEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error)
 }
@@ -296,6 +299,12 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitFetch")),
 			connect.WithClientOptions(opts...),
 		),
+		gitStatus: connect.NewClient[v1.GitStatusRequest, v1.GitStatusResponse](
+			httpClient,
+			baseURL+DaemonServiceGitStatusProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitStatus")),
+			connect.WithClientOptions(opts...),
+		),
 		subscribeEvents: connect.NewClient[v1.SubscribeEventsRequest, v1.Event](
 			httpClient,
 			baseURL+DaemonServiceSubscribeEventsProcedure,
@@ -332,6 +341,7 @@ type daemonServiceClient struct {
 	gitPush         *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
 	gitPull         *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
 	gitFetch        *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
+	gitStatus       *connect.Client[v1.GitStatusRequest, v1.GitStatusResponse]
 	subscribeEvents *connect.Client[v1.SubscribeEventsRequest, v1.Event]
 }
 
@@ -460,6 +470,11 @@ func (c *daemonServiceClient) GitFetch(ctx context.Context, req *connect.Request
 	return c.gitFetch.CallUnary(ctx, req)
 }
 
+// GitStatus calls localcompose.v1.DaemonService.GitStatus.
+func (c *daemonServiceClient) GitStatus(ctx context.Context, req *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error) {
+	return c.gitStatus.CallUnary(ctx, req)
+}
+
 // SubscribeEvents calls localcompose.v1.DaemonService.SubscribeEvents.
 func (c *daemonServiceClient) SubscribeEvents(ctx context.Context, req *connect.Request[v1.SubscribeEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error) {
 	return c.subscribeEvents.CallServerStream(ctx, req)
@@ -497,6 +512,7 @@ type DaemonServiceHandler interface {
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
+	GitStatus(context.Context, *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error)
 	// Real-time Event Subscription
 	SubscribeEvents(context.Context, *connect.Request[v1.SubscribeEventsRequest], *connect.ServerStream[v1.Event]) error
 }
@@ -658,6 +674,12 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitFetch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	daemonServiceGitStatusHandler := connect.NewUnaryHandler(
+		DaemonServiceGitStatusProcedure,
+		svc.GitStatus,
+		connect.WithSchema(daemonServiceMethods.ByName("GitStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
 	daemonServiceSubscribeEventsHandler := connect.NewServerStreamHandler(
 		DaemonServiceSubscribeEventsProcedure,
 		svc.SubscribeEvents,
@@ -716,6 +738,8 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGitPullHandler.ServeHTTP(w, r)
 		case DaemonServiceGitFetchProcedure:
 			daemonServiceGitFetchHandler.ServeHTTP(w, r)
+		case DaemonServiceGitStatusProcedure:
+			daemonServiceGitStatusHandler.ServeHTTP(w, r)
 		case DaemonServiceSubscribeEventsProcedure:
 			daemonServiceSubscribeEventsHandler.ServeHTTP(w, r)
 		default:
@@ -825,6 +849,10 @@ func (UnimplementedDaemonServiceHandler) GitPull(context.Context, *connect.Reque
 
 func (UnimplementedDaemonServiceHandler) GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("localcompose.v1.DaemonService.GitFetch is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitStatus(context.Context, *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("localcompose.v1.DaemonService.GitStatus is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) SubscribeEvents(context.Context, *connect.Request[v1.SubscribeEventsRequest], *connect.ServerStream[v1.Event]) error {

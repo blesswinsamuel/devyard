@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -844,4 +845,32 @@ services:
 		time.Sleep(20 * time.Millisecond)
 	}
 	_ = d1.StopDaemon()
+}
+
+func TestDaemonGitStatus(t *testing.T) {
+	setupEnv(t)
+
+	configPath := writeConfig(t, shortSleepConfig)
+	dir := filepath.Dir(configPath)
+
+	initCmd := exec.Command("git", "init", "-q", "-b", "main")
+	initCmd.Dir = dir
+	if err := initCmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	d := orchestrator.New()
+	defer func() { _ = d.StopDaemon() }()
+
+	if err := d.StartProject(configPath, false, "", false); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+
+	st, err := d.GitStatus("lc-test")
+	if err != nil {
+		t.Fatalf("GitStatus: %v", err)
+	}
+	if !st.IsRepo || st.Project != "lc-test" || st.Branch != "main" {
+		t.Fatalf("expected git status on main for lc-test, got %+v", st)
+	}
 }

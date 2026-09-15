@@ -861,3 +861,76 @@ func Fetch(dir string, remote string) (string, error) {
 	combined := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
 	return combined, nil
 }
+
+// Status runs `git status --porcelain=v2 --branch` in dir and parses the result
+// into a protocol.GitStatus summary.
+func Status(dir string) (*protocol.GitStatus, error) {
+	if dir == "" || !IsRepo(dir) {
+		return &protocol.GitStatus{
+			IsRepo:  false,
+			IsClean: true,
+		}, nil
+	}
+
+	cmd := gitCmd(dir, "status", "--porcelain=v2", "--branch")
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("git status: %s: %w", msg, err)
+	}
+
+	res := &protocol.GitStatus{
+		IsRepo:  true,
+		IsClean: true,
+	}
+
+	for _, line := range strings.Split(outBuf.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "# branch.oid ") {
+			res.HeadHash = strings.TrimPrefix(line, "# branch.oid ")
+			if res.HeadHash == "(initial)" {
+				res.HeadHash = ""
+			}
+		} else if strings.HasPrefix(line, "# branch.head ") {
+			res.Branch = strings.TrimPrefix(line, "# branch.head ")
+		} else if strings.HasPrefix(line, "# branch.upstream ") {
+			res.Upstream = strings.TrimPrefix(line, "# branch.upstream ")
+		} else if strings.HasPrefix(line, "# branch.ab ") {
+			parts := strings.Fields(strings.TrimPrefix(line, "# branch.ab "))
+			for _, p := range parts {
+				if strings.HasPrefix(p, "+") {
+					_, _ = fmt.Sscanf(p, "+%d", &res.Ahead)
+				} else if strings.HasPrefix(p, "-") {
+					_, _ = fmt.Sscanf(p, "-%d", &res.Behind)
+				}
+			}
+		} else if strings.HasPrefix(line, "1 ") || strings.HasPrefix(line, "2 ") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && len(fields[1]) >= 2 {
+				stagedChar := fields[1][0]
+				dirtyChar := fields[1][1]
+				if stagedChar != '.' {
+					res.Staged++
+				}
+				if dirtyChar != '.' {
+					res.Dirty++
+				}
+			}
+		} else if strings.HasPrefix(line, "u ") {
+			res.Conflicts++
+		} else if strings.HasPrefix(line, "? ") {
+			res.Untracked++
+		}
+	}
+
+	res.IsClean = (res.Staged == 0 && res.Dirty == 0 && res.Untracked == 0 && res.Conflicts == 0)
+	return res, nil
+}

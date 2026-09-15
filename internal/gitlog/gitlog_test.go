@@ -458,3 +458,66 @@ func TestParseShortstat(t *testing.T) {
 		}
 	}
 }
+
+func TestStatus(t *testing.T) {
+	dir := initRepo(t)
+
+	// Clean status
+	st, err := Status(dir)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if !st.IsRepo || !st.IsClean || st.Branch != "main" {
+		t.Fatalf("expected clean repo on branch main, got %+v", st)
+	}
+	if st.Staged != 0 || st.Dirty != 0 || st.Untracked != 0 {
+		t.Fatalf("expected all counts 0, got staged=%d dirty=%d untracked=%d", st.Staged, st.Dirty, st.Untracked)
+	}
+
+	// Add untracked file
+	if err := os.WriteFile(filepath.Join(dir, "untracked.txt"), []byte("untracked"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err = Status(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.IsClean || st.Untracked != 1 {
+		t.Fatalf("expected 1 untracked file and not clean, got %+v", st)
+	}
+
+	// Modify existing file (dirty)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("modified\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err = Status(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Dirty != 1 {
+		t.Fatalf("expected 1 dirty file, got %+v", st)
+	}
+
+	// Stage a change
+	cmd := exec.Command("git", "-C", dir, "add", "untracked.txt")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, out)
+	}
+	st, err = Status(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Staged != 1 || st.Untracked != 0 || st.Dirty != 1 {
+		t.Fatalf("expected staged=1, untracked=0, dirty=1; got %+v", st)
+	}
+
+	// Test non-repo
+	emptyDir := t.TempDir()
+	st, err = Status(emptyDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.IsRepo {
+		t.Fatalf("expected IsRepo=false for empty dir, got %+v", st)
+	}
+}

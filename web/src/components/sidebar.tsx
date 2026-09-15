@@ -156,16 +156,6 @@ function ServiceRow(props: { project: string; name: string }) {
                     <TooltipContent>health: {s().health}</TooltipContent>
                   </Tooltip>
                 </Show>
-                <Show when={portBinding()}>
-                  {(p) => (
-                    <span
-                      class="rounded bg-primary/10 px-1 font-mono text-[10.5px] font-medium tabular text-primary"
-                      title={`${p().ip}:${p().port}`}
-                    >
-                      :{p().port}
-                    </span>
-                  )}
-                </Show>
                 <Show when={s().pid > 0}>
                   <span class="font-mono tabular opacity-70">{s().pid}</span>
                 </Show>

@@ -644,7 +644,7 @@ export function initDataHandlers() {
       setTasks((m) => {
         const list = m[project] ?? [];
         const idx = list.findIndex((a) => a.name === state.name);
-        const updated = idx >= 0 ? list.map((a, i) => (i === idx ? { ...a, ...state } : a)) : [...list, state];
+        const updated = idx >= 0 ? list.map((a, i) => (i === idx ? state : a)) : [...list, state];
         if (sameArray(list, updated, sameTaskState)) return m;
         return { ...m, [project]: updated };
       });

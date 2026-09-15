@@ -3,6 +3,7 @@ import { connectWS } from "~/lib/ws";
 import { onDaemonEvent, startEvents, stopEvents } from "~/lib/events";
 import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } from "~/lib/router";
 import {
+  bindNavHooks,
   clearSelectedCommit,
   initDataHandlers,
   loadGitLog,

@@ -87,9 +87,9 @@ function statusBadge(status: string): { label: string; class: string } {
   }
 }
 
-function RefBadge(props: { ref: { name: string; type: string; is_active?: boolean }; hasActiveBranch: boolean }) {
+function RefBadge(props: { ref: { name: string; type: string; isActive?: boolean }; hasActiveBranch: boolean }) {
   const r = () => props.ref;
-  if (r().type === "branch" && r().is_active) {
+  if (r().type === "branch" && r().isActive) {
     return (
       <Badge class="border-success/40 bg-success/15 font-mono text-[10px] text-success">
         <GitBranch class="size-2.5" />
@@ -142,9 +142,9 @@ export function GitView() {
   const tags = createMemo(() => (project() ? gitTags()[project()!] ?? [] : []));
   const stashes = createMemo(() => (project() ? gitStashes()[project()!] ?? [] : []));
 
-  const activeBranch = createMemo(() => branches().find((b) => b.is_active));
-  const localBranches = createMemo(() => branches().filter((b) => !b.is_remote));
-  const remoteBranches = createMemo(() => branches().filter((b) => b.is_remote));
+  const activeBranch = createMemo(() => branches().find((b) => b.isActive));
+  const localBranches = createMemo(() => branches().filter((b) => !b.isRemote));
+  const remoteBranches = createMemo(() => branches().filter((b) => b.isRemote));
   const remoteNames = createMemo(() => {
     const names = new Set<string>();
     for (const b of remoteBranches()) {
@@ -321,8 +321,8 @@ export function GitView() {
             <RefRow
               name={b.name}
               hash={b.hash}
-              active={!!b.is_active}
-              badge={b.is_active ? "HEAD" : undefined}
+              active={!!b.isActive}
+              badge={b.isActive ? "HEAD" : undefined}
               ahead={b.ahead}
               behind={b.behind}
               upstream={b.upstream}
@@ -578,7 +578,7 @@ export function GitView() {
                           </Show>
                           <Show when={commit.refs && commit.refs.length > 0}>
                             <For each={commit.refs}>
-                              {(ref) => <RefBadge ref={ref} hasActiveBranch={!!commit.refs?.some((r) => r.type === "branch" && r.is_active)} />}
+                              {(ref) => <RefBadge ref={ref} hasActiveBranch={!!commit.refs?.some((r) => r.type === "branch" && r.isActive)} />}
                             </For>
                           </Show>
                           <span class={cn("truncate leading-tight", isWorkdirRow ? "font-semibold text-warning" : "")}>
@@ -728,12 +728,12 @@ export function GitView() {
               fallback={
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div class="min-w-0 flex-1">
-                    <h2 class="text-sm font-semibold leading-snug">{diffResult()?.commit.subject}</h2>
+                    <h2 class="text-sm font-semibold leading-snug">{diffResult()?.commit?.subject}</h2>
                     <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-                      <span class="font-medium text-foreground">{diffResult()?.commit.author}</span>
-                      <span class="truncate">&lt;{diffResult()?.commit.email}&gt;</span>
+                      <span class="font-medium text-foreground">{diffResult()?.commit?.author}</span>
+                      <span class="truncate">&lt;{diffResult()?.commit?.email}&gt;</span>
                       <span>·</span>
-                      <span>{diffResult()?.commit.time ? formatAuthorTime(diffResult()!.commit.time) : ""}</span>
+                      <span>{diffResult()?.commit?.time ? formatAuthorTime(diffResult()!.commit!.time) : ""}</span>
                       <Show when={totalAdditions() > 0 || totalDeletions() > 0}>
                         <span>·</span>
                         <span class="flex items-center gap-1 font-mono text-[11px] tabular">
@@ -748,7 +748,7 @@ export function GitView() {
                     </div>
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
-                    <CopyHash hash={diffResult()?.commit.hash ?? ""} />
+                    <CopyHash hash={diffResult()?.commit?.hash ?? ""} />
                     <Show when={!showFilesPane() && allFiles().length > 0}>
                       <Button
                         variant="secondary"

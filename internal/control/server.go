@@ -544,6 +544,16 @@ func WaitForTaskLog(ctx context.Context, b Backend, task string) (string, error)
 		if err == nil {
 			return path, nil
 		}
+		running := false
+		for _, st := range b.ListTasks() {
+			if st.Name == task && (st.Status == "running" || st.Status == "starting") {
+				running = true
+				break
+			}
+		}
+		if !running {
+			return "", err
+		}
 		select {
 		case <-ctx.Done():
 			return "", fmt.Errorf("task %q log did not appear: %w", task, ctx.Err())

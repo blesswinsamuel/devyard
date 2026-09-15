@@ -1,5 +1,5 @@
-import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { ArrowDownToLine, History, RadioTower, X } from "lucide-solid";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { ArrowDownToLine, History, Play, RadioTower, X } from "lucide-solid";
 import {
   activeKey,
   closeLogTab,
@@ -10,7 +10,7 @@ import {
   tabKey,
   togglePreviousLogs,
 } from "~/stores/logs";
-import { projects as projectsList, services as servicesMap, tasks as tasksMap } from "~/stores/data";
+import { projects as projectsList, runTask, services as servicesMap, tasks as tasksMap } from "~/stores/data";
 import {
   selectedProject,
   selectedService,
@@ -44,6 +44,21 @@ function LogTerminal(props: {
 
   const [receivedAny, setReceivedAny] = createSignal(false);
   const [following, setFollowing] = createSignal(true);
+  const [notFound, setNotFound] = createSignal(false);
+
+  const task = createMemo(() =>
+    props.kind === "task"
+      ? (tasksMap()[props.project] ?? []).find((t) => t.name === props.target)
+      : undefined
+  );
+  const isRunning = createMemo(() => {
+    if (props.kind === "task") {
+      const s = task()?.status;
+      return s === "running" || s === "starting";
+    }
+    const svc = (servicesMap()[props.project] ?? []).find((s) => s.name === props.target);
+    return svc?.status === "running" || svc?.status === "starting";
+  });
 
   onMount(() => {
     const t = createTerminal(container, theme(), {
@@ -78,6 +93,7 @@ function LogTerminal(props: {
       }
       buffer = [];
       setReceivedAny(false);
+      setNotFound(false);
       setFollowing(true);
       t.reset();
       t.clear();
@@ -96,14 +112,14 @@ function LogTerminal(props: {
       t.options.theme = terminalTheme(theme());
     });
 
-    // Re-subscribe reactively when the previous/live mode changes; either way
-    // the stream restarts from history.
-    createEffect(() => {
-      if (!props.active) return;
-      const prev = isPreviousLogs(props.keyId);
+    let unsub: (() => void) | null = null;
+
+    const startStream = () => {
+      unsub?.();
       resetView();
+      const prev = isPreviousLogs(props.keyId);
       const subscribe = props.kind === "service" ? subscribeLogs : subscribeTaskLogs;
-      const unsub = subscribe(
+      unsub = subscribe(
         props.project,
         props.target,
         (line) => {
@@ -112,15 +128,37 @@ function LogTerminal(props: {
           scheduleFlush();
         },
         resetView,
-        prev
+        prev,
+        () => {
+          setNotFound(true);
+        }
       );
-      onCleanup(() => {
-        unsub();
+    };
+
+    // Re-subscribe reactively when active or previous/live mode changes.
+    createEffect(() => {
+      if (!props.active) {
+        unsub?.();
+        unsub = null;
         resetView();
-      });
+        return;
+      }
+      isPreviousLogs(props.keyId);
+      startStream();
+    });
+
+    // Re-subscribe when an idle/unrun task transitions to running.
+    createEffect((prevRunning?: boolean) => {
+      const running = isRunning();
+      if (props.active && prevRunning === false && running === true) {
+        startStream();
+      }
+      return running;
     });
 
     onCleanup(() => {
+      unsub?.();
+      unsub = null;
       container.removeEventListener("scroll", handleScroll, true);
       if (rafId !== null) cancelAnimationFrame(rafId);
       t.dispose();
@@ -145,9 +183,93 @@ function LogTerminal(props: {
     <div class="relative h-full w-full overflow-hidden bg-[#101014] dark:bg-transparent" classList={{ hidden: !props.active }}>
       <div ref={container} class="h-full w-full" />
       <Show when={!receivedAny()}>
-        <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-          <Spinner class="opacity-60" />
-          <p class="text-xs">{isPreviousLogs(props.keyId) ? "Loading previous run…" : "Waiting for output…"}</p>
+        <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-muted-foreground">
+          <Show
+            when={isPreviousLogs(props.keyId)}
+            fallback={
+              <Show
+                when={notFound() && props.kind === "task" && !isRunning()}
+                fallback={
+                  <Show
+                    when={notFound() && props.kind === "service"}
+                    fallback={
+                      <div class="flex flex-col items-center gap-2">
+                        <Spinner class="opacity-60" />
+                        <p class="text-xs">Waiting for output…</p>
+                      </div>
+                    }
+                  >
+                    <div class="pointer-events-auto flex flex-col items-center gap-3 text-center">
+                      <div class="flex size-10 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+                        <RadioTower class="size-5" />
+                      </div>
+                      <div class="flex flex-col gap-1">
+                        <p class="text-sm font-medium text-foreground">No logs available</p>
+                        <p class="max-w-xs text-xs text-muted-foreground">
+                          No logs found for service &ldquo;{props.target}&rdquo;.
+                        </p>
+                      </div>
+                    </div>
+                  </Show>
+                }
+              >
+                <div class="pointer-events-auto flex flex-col items-center gap-3 text-center">
+                  <div class="flex size-10 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+                    <Play class="size-5 translate-x-0.5" />
+                  </div>
+                  <div class="flex flex-col gap-1">
+                    <p class="text-sm font-medium text-foreground">Task has not run yet</p>
+                    <p class="max-w-xs text-xs text-muted-foreground">
+                      Run this task to start execution and view its output stream.
+                    </p>
+                  </div>
+                  <Show when={task()?.command}>
+                    <code class="rounded border border-border/60 bg-muted/40 px-2.5 py-1 font-mono text-xs text-foreground/80">
+                      {task()?.command}
+                    </code>
+                  </Show>
+                  <Button
+                    size="sm"
+                    onClick={() => runTask(props.project, props.target)}
+                    class="mt-1 gap-1.5"
+                  >
+                    <Play class="!size-3.5" />
+                    Run task
+                  </Button>
+                </div>
+              </Show>
+            }
+          >
+            <Show
+              when={notFound()}
+              fallback={
+                <div class="flex flex-col items-center gap-2">
+                  <Spinner class="opacity-60" />
+                  <p class="text-xs">Loading previous run…</p>
+                </div>
+              }
+            >
+              <div class="pointer-events-auto flex flex-col items-center gap-3 text-center">
+                <div class="flex size-10 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+                  <History class="size-5" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <p class="text-sm font-medium text-foreground">No previous run logs</p>
+                  <p class="max-w-xs text-xs text-muted-foreground">
+                    There are no archived logs from an earlier run of {props.kind} &ldquo;{props.target}&rdquo;.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => togglePreviousLogs(props.keyId)}
+                  class="mt-1"
+                >
+                  Switch to live logs
+                </Button>
+              </div>
+            </Show>
+          </Show>
         </div>
       </Show>
       <Show when={receivedAny() && !following()}>

@@ -88,7 +88,8 @@ export function subscribeLogs(
   service: string,
   onLine: (line: string) => void,
   onRotate?: () => void,
-  prev = false
+  prev = false,
+  onError?: (err: unknown) => void
 ): () => void {
   const controller = new AbortController();
   (async () => {
@@ -122,8 +123,10 @@ export function subscribeLogs(
           onLine(line);
         }
       }
-    } catch {
-      // Abort or stream close
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        onError?.(err);
+      }
     }
   })();
 
@@ -135,7 +138,8 @@ export function subscribeTaskLogs(
   task: string,
   onLine: (line: string) => void,
   onRotate?: () => void,
-  prev = false
+  prev = false,
+  onError?: (err: unknown) => void
 ): () => void {
   const controller = new AbortController();
   (async () => {
@@ -169,8 +173,10 @@ export function subscribeTaskLogs(
           onLine(line);
         }
       }
-    } catch {
-      // Abort or stream close
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        onError?.(err);
+      }
     }
   })();
 

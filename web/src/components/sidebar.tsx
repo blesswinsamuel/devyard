@@ -468,43 +468,43 @@ function GitPromptBadge(props: { project: string }) {
 
         return (
           <Tooltip>
-            <TooltipTrigger as="div">
-              <button
-                type="button"
-                onClick={(e: MouseEvent) => {
-                  e.stopPropagation();
-                  openGitView(props.project);
-                }}
-                class={cn(
-                  "flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] leading-none transition-colors",
-                  isClean()
-                    ? "text-muted-foreground/60 hover:bg-muted hover:text-foreground"
-                    : "bg-muted/70 text-foreground hover:bg-muted font-medium"
-                )}
-              >
-                <GitBranch class="size-3 shrink-0 text-muted-foreground" />
-                <Show when={isClean()}>
-                  <span class="text-[10px] text-muted-foreground">✓</span>
-                </Show>
-                <Show when={s.ahead > 0}>
-                  <span class="text-sky-500 font-semibold" title={`${s.ahead} ahead`}>⇡{s.ahead}</span>
-                </Show>
-                <Show when={s.behind > 0}>
-                  <span class="text-amber-500 font-semibold" title={`${s.behind} behind`}>⇣{s.behind}</span>
-                </Show>
-                <Show when={s.staged > 0}>
-                  <span class="text-emerald-500 font-semibold" title={`${s.staged} staged`}>+{s.staged}</span>
-                </Show>
-                <Show when={s.dirty > 0}>
-                  <span class="text-amber-500 font-semibold" title={`${s.dirty} modified`}>!{s.dirty}</span>
-                </Show>
-                <Show when={s.untracked > 0}>
-                  <span class="text-muted-foreground" title={`${s.untracked} untracked`}>?{s.untracked}</span>
-                </Show>
-                <Show when={s.conflicts > 0}>
-                  <span class="text-destructive font-bold" title={`${s.conflicts} conflicts`}>×{s.conflicts}</span>
-                </Show>
-              </button>
+            <TooltipTrigger
+              as="button"
+              type="button"
+              aria-label={`Git status for ${props.project}`}
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                openGitView(props.project);
+              }}
+              class={cn(
+                "flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11px] leading-none transition-colors",
+                isClean()
+                  ? "text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+                  : "bg-muted/70 text-foreground hover:bg-muted font-medium"
+              )}
+            >
+              <GitBranch class="size-3 shrink-0 text-muted-foreground" />
+              <Show when={isClean()}>
+                <span class="text-[10px] text-muted-foreground">✓</span>
+              </Show>
+              <Show when={s.ahead > 0}>
+                <span class="text-sky-500 font-semibold" title={`${s.ahead} ahead`}>⇡{s.ahead}</span>
+              </Show>
+              <Show when={s.behind > 0}>
+                <span class="text-amber-500 font-semibold" title={`${s.behind} behind`}>⇣{s.behind}</span>
+              </Show>
+              <Show when={s.staged > 0}>
+                <span class="text-emerald-500 font-semibold" title={`${s.staged} staged`}>+{s.staged}</span>
+              </Show>
+              <Show when={s.dirty > 0}>
+                <span class="text-amber-500 font-semibold" title={`${s.dirty} modified`}>!{s.dirty}</span>
+              </Show>
+              <Show when={s.untracked > 0}>
+                <span class="text-muted-foreground" title={`${s.untracked} untracked`}>?{s.untracked}</span>
+              </Show>
+              <Show when={s.conflicts > 0}>
+                <span class="text-destructive font-bold" title={`${s.conflicts} conflicts`}>×{s.conflicts}</span>
+              </Show>
             </TooltipTrigger>
             <TooltipContent class="max-w-xs space-y-1.5 p-2 text-xs">
               <div class="flex items-center gap-1.5 font-medium">

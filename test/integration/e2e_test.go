@@ -407,13 +407,14 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 }
 
 func TestE2E_ForegroundUpShortLived(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
   maker:
-    command: sh -c 'echo maker-running; sleep 1'
+    command: sh -c 'echo maker-running; sleep 0.05'
   shaper:
-    command: sh -c 'echo shaper-running; sleep 1'
+    command: sh -c 'echo shaper-running; sleep 0.05'
 `
 	e := newEnv(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -432,14 +433,15 @@ services:
 }
 
 func TestE2E_BuildStringAndObjectForms(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
   maker:
-    command: sh -c 'echo maker-run; sleep 1'
+    command: sh -c 'echo maker-run; sleep 0.05'
     build: echo built-maker-string-form
   shaper:
-    command: sh -c 'echo shaper-run; sleep 1'
+    command: sh -c 'echo shaper-run; sleep 0.05'
     build:
       command: echo built-shaper-object-form && echo shaper-env=$SHAPER_ENV
       env:
@@ -463,11 +465,12 @@ services:
 }
 
 func TestE2E_UpWithBuild(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
   svc:
-    command: sh -c 'echo svc-run; sleep 1'
+    command: sh -c 'echo svc-run; sleep 0.05'
     build: echo svc-built
 `
 	e := newEnv(t, cfg)
@@ -486,6 +489,7 @@ services:
 }
 
 func TestE2E_CycleDetected(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
@@ -507,6 +511,7 @@ services:
 }
 
 func TestE2E_EmptyCommandRejected(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
@@ -524,6 +529,7 @@ services:
 }
 
 func TestE2E_MissingConfigFile(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
 	// Point -f at a non-existent file.
 	ctx := context.Background()
@@ -542,6 +548,7 @@ func TestE2E_MissingConfigFile(t *testing.T) {
 }
 
 func TestE2E_PSWithNoSupervisorErrors(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
 	_, errOut, code := e.run(t, context.Background(), "ps")
 	if code == 0 {
@@ -555,6 +562,7 @@ func TestE2E_PSWithNoSupervisorErrors(t *testing.T) {
 // TestE2E_DownIsIdempotent verifies `down` with nothing running succeeds and
 // reports the no-supervisor case rather than erroring.
 func TestE2E_DownIsIdempotent(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
 	_, errOut, code := e.run(t, context.Background(), "down")
 	if code != 0 {
@@ -569,6 +577,7 @@ func TestE2E_DownIsIdempotent(t *testing.T) {
 // quickly and verifies the dependent only appears in `ps` once the dependency
 // is healthy.
 func TestE2E_HealthcheckGatesDependent(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
@@ -602,6 +611,7 @@ services:
 // healthcheck exhausts retries, the dependent never starts and a subsequent
 // foreground `up` reports failure.
 func TestE2E_UnhealthyDependencyFailsDependent(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
@@ -646,6 +656,7 @@ services:
 // TestE2E_KillService verifies `kill` forcefully terminates a service with the
 // default SIGKILL, and `kill --signal` lets the caller pick the signal.
 func TestE2E_KillService(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
@@ -693,6 +704,7 @@ services:
 // the project-level stopped marker (which suppresses daemon autostart only)
 // and resume the project's services.
 func TestE2E_DownThenUpAndStart(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
@@ -758,6 +770,7 @@ services:
 // service's process group and supports a single-service filter. The daemon
 // samples over ~1s, so the command is slow by design.
 func TestE2E_Top(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
 	_, _, code := e.run(t, context.Background(), "up", "-d")
 	if code != 0 {
@@ -801,6 +814,7 @@ func TestE2E_Top(t *testing.T) {
 // env, and ${VAR} / ${VAR:-default} references in the config are interpolated.
 // It also exercises an explicit --env-file.
 func TestE2E_DotEnvAndInterpolation(t *testing.T) {
+	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
 services:
@@ -868,6 +882,7 @@ services:
 }
 
 func TestRegisteredProjectByName(t *testing.T) {
+	t.Parallel()
 	cfg := `
 version: "1"
 name: reg-test
@@ -921,6 +936,7 @@ services:
 }
 
 func TestPSAllAndAutoFallback(t *testing.T) {
+	t.Parallel()
 	cfg := `
 version: "1"
 name: ps-all-test
@@ -950,6 +966,7 @@ services:
 }
 
 func TestE2E_UpRemoveOrphans(t *testing.T) {
+	t.Parallel()
 	cfg1 := `
 version: "1"
 name: orphan-test
@@ -1011,6 +1028,7 @@ services:
 // restart policy — unless a project-level .stopped marker (written by `down`)
 // suppresses it.
 func TestE2E_AutostartResumesProjectWithoutRestartPolicy(t *testing.T) {
+	t.Parallel()
 	cfg := `version: "1"
 name: restart-skip-test
 services:
@@ -1059,6 +1077,7 @@ services:
 // `down` stays stopped across a daemon restart (project .stopped marker) but is
 // still listed so `ps` reports every service as stopped and logs stay readable.
 func TestE2E_AutostartHonorsDownMarker(t *testing.T) {
+	t.Parallel()
 	cfg := `version: "1"
 name: down-marker-test
 services:
@@ -1120,6 +1139,7 @@ services:
 // project lazily starts just that service (and its depends_on chain) instead
 // of the whole project, and re-arms autostart by clearing the stopped marker.
 func TestE2E_StartServiceOnDownedProject(t *testing.T) {
+	t.Parallel()
 	cfg := `version: "1"
 name: lazy-start-test
 services:
@@ -1193,6 +1213,7 @@ services:
 // TestE2E_DaemonRestartAdoptsServices verifies `daemon restart` adopts running
 // processes without killing them, while `daemon restart --restart-services` restarts them.
 func TestE2E_DaemonRestartAdoptsServices(t *testing.T) {
+	t.Parallel()
 	cfg := `version: "1"
 name: lc-daemon-restart
 services:
@@ -1253,6 +1274,7 @@ services:
 // PID), and the daemon must survive the whole cycle — it used to panic with
 // "close of closed channel" when an adopted service's run loop ended.
 func TestE2E_AdoptedServiceExitRestarts(t *testing.T) {
+	t.Parallel()
 	cfg := `version: "1"
 name: lc-adopt-restart
 services:
@@ -1320,6 +1342,7 @@ services:
 // service by autostart after a daemon restart: the unselected service stays
 // stopped and the selected ones are adopted.
 func TestE2E_DaemonRestartKeepsLazySelection(t *testing.T) {
+	t.Parallel()
 	cfg := `version: "1"
 name: lc-lazy-adopt
 services:

@@ -507,7 +507,7 @@ function GitPromptBadge(props: { project: string }) {
             <span class="pointer-events-none text-destructive font-bold">×{s()?.conflicts}</span>
           </Show>
         </TooltipTrigger>
-        <TooltipContent class="max-w-xs !cursor-default space-y-1.5 p-2 text-xs">
+        <TooltipContent class="max-w-xs !cursor-default flex-col items-start p-2 text-xs">
           <div class="flex items-center gap-1.5 font-medium">
             <GitBranch class="size-3.5 text-primary" />
             <span>{branchLabel()}</span>

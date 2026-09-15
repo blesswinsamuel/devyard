@@ -478,7 +478,7 @@ function GitPromptBadge(props: { project: string }) {
                 openGitView(props.project);
               }}
               class={cn(
-                "h-5 cursor-pointer gap-1 rounded px-1.5 py-0 font-mono text-[11px] leading-none transition-colors select-none",
+                "h-5 !cursor-default gap-1 rounded px-1.5 py-0 font-mono text-[11px] leading-none transition-colors select-none",
                 isClean()
                   ? "text-muted-foreground/60 hover:bg-muted hover:text-foreground"
                   : "bg-muted/70 text-foreground hover:bg-muted font-medium"
@@ -489,31 +489,25 @@ function GitPromptBadge(props: { project: string }) {
                 <span class="pointer-events-none text-[10px] text-muted-foreground">✓</span>
               </Show>
               <Show when={s.ahead > 0}>
-                <span class="pointer-events-none text-sky-500 font-semibold" title={`${s.ahead} ahead`}>⇡{s.ahead}</span>
+                <span class="pointer-events-none text-sky-500 font-semibold">⇡{s.ahead}</span>
               </Show>
               <Show when={s.behind > 0}>
-                <span class="pointer-events-none text-amber-500 font-semibold" title={`${s.behind} behind`}>⇣{s.behind}</span>
+                <span class="pointer-events-none text-amber-500 font-semibold">⇣{s.behind}</span>
               </Show>
               <Show when={s.staged > 0}>
-                <span class="pointer-events-none text-emerald-500 font-semibold" title={`${s.staged} staged`}>+{s.staged}</span>
+                <span class="pointer-events-none text-emerald-500 font-semibold">+{s.staged}</span>
               </Show>
               <Show when={s.dirty > 0}>
-                <span class="pointer-events-none text-amber-500 font-semibold" title={`${s.dirty} modified`}>!{s.dirty}</span>
+                <span class="pointer-events-none text-amber-500 font-semibold">!{s.dirty}</span>
               </Show>
               <Show when={s.untracked > 0}>
-                <span class="pointer-events-none text-muted-foreground" title={`${s.untracked} untracked`}>?{s.untracked}</span>
+                <span class="pointer-events-none text-muted-foreground">?{s.untracked}</span>
               </Show>
               <Show when={s.conflicts > 0}>
-                <span class="pointer-events-none text-destructive font-bold" title={`${s.conflicts} conflicts`}>×{s.conflicts}</span>
+                <span class="pointer-events-none text-destructive font-bold">×{s.conflicts}</span>
               </Show>
             </TooltipTrigger>
-            <TooltipContent
-              class="max-w-xs cursor-pointer space-y-1.5 p-2 text-xs transition-colors hover:bg-foreground/90"
-              onClick={(e: MouseEvent) => {
-                e.stopPropagation();
-                openGitView(props.project);
-              }}
-            >
+            <TooltipContent class="max-w-xs !cursor-default space-y-1.5 p-2 text-xs">
               <div class="flex items-center gap-1.5 font-medium">
                 <GitBranch class="size-3.5 text-primary" />
                 <span>{branchLabel()}</span>
@@ -614,6 +608,9 @@ function ProjectItem(props: { name: string }) {
               </button>
 
               <div class="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+                {/* Git status prompt tokens */}
+                <GitPromptBadge project={props.name} />
+
                 {/* Hover actions */}
                 <div class="hidden items-center gap-0.5 group-hover/proj:flex focus-within:flex">
                   <Show
@@ -671,9 +668,6 @@ function ProjectItem(props: { name: string }) {
                     </Tooltip>
                   </Show>
                 </div>
-
-                {/* Git status prompt tokens */}
-                <GitPromptBadge project={props.name} />
 
                 {/* Aggregate health */}
                 <Show when={aggregateHealth()}>

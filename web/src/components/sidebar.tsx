@@ -449,107 +449,105 @@ function ProjectStatusDot(props: { status: string }) {
 }
 
 function GitPromptBadge(props: { project: string }) {
-  const status = createMemo(() => gitStatuses()[props.project]);
+  const s = createMemo(() => gitStatuses()[props.project]);
+
+  const hasAheadBehind = () => (s()?.ahead ?? 0) > 0 || (s()?.behind ?? 0) > 0;
+  const hasWorktreeChanges = () =>
+    (s()?.staged ?? 0) > 0 || (s()?.dirty ?? 0) > 0 || (s()?.untracked ?? 0) > 0 || (s()?.conflicts ?? 0) > 0;
+  const isClean = () => !hasAheadBehind() && !hasWorktreeChanges();
+
+  const branchLabel = () => {
+    const st = s();
+    return st?.branch && st.branch !== "(detached)"
+      ? st.branch
+      : st?.headHash
+      ? `detached:${st.headHash.slice(0, 7)}`
+      : "HEAD";
+  };
 
   return (
-    <Show when={status() && status()!.isRepo}>
-      {() => {
-        const s = status()!;
-        const hasAheadBehind = () => s.ahead > 0 || s.behind > 0;
-        const hasWorktreeChanges = () => s.staged > 0 || s.dirty > 0 || s.untracked > 0 || s.conflicts > 0;
-        const isClean = () => !hasAheadBehind() && !hasWorktreeChanges();
-
-        const branchLabel = () =>
-          s.branch && s.branch !== "(detached)"
-            ? s.branch
-            : s.headHash
-            ? `detached:${s.headHash.slice(0, 7)}`
-            : "HEAD";
-
-        return (
-          <Tooltip>
-            <TooltipTrigger
-              as={Button}
-              variant="ghost"
-              size="xs"
-              aria-label={`Git status for ${props.project}`}
-              onClick={(e: MouseEvent) => {
-                e.stopPropagation();
-                openGitView(props.project);
-              }}
-              class={cn(
-                "h-5 !cursor-default gap-1 rounded px-1.5 py-0 font-mono text-[11px] leading-none transition-colors select-none",
-                isClean()
-                  ? "text-muted-foreground/60 hover:bg-muted hover:text-foreground"
-                  : "bg-muted/70 text-foreground hover:bg-muted font-medium"
-              )}
-            >
-              <GitBranch class="size-3 shrink-0 pointer-events-none text-muted-foreground" />
-              <Show when={isClean()}>
-                <span class="pointer-events-none text-[10px] text-muted-foreground">✓</span>
-              </Show>
-              <Show when={s.ahead > 0}>
-                <span class="pointer-events-none text-sky-500 font-semibold">⇡{s.ahead}</span>
-              </Show>
-              <Show when={s.behind > 0}>
-                <span class="pointer-events-none text-amber-500 font-semibold">⇣{s.behind}</span>
-              </Show>
-              <Show when={s.staged > 0}>
-                <span class="pointer-events-none text-emerald-500 font-semibold">+{s.staged}</span>
-              </Show>
-              <Show when={s.dirty > 0}>
-                <span class="pointer-events-none text-amber-500 font-semibold">!{s.dirty}</span>
-              </Show>
-              <Show when={s.untracked > 0}>
-                <span class="pointer-events-none text-muted-foreground">?{s.untracked}</span>
-              </Show>
-              <Show when={s.conflicts > 0}>
-                <span class="pointer-events-none text-destructive font-bold">×{s.conflicts}</span>
-              </Show>
-            </TooltipTrigger>
-            <TooltipContent class="max-w-xs !cursor-default space-y-1.5 p-2 text-xs">
-              <div class="flex items-center gap-1.5 font-medium">
-                <GitBranch class="size-3.5 text-primary" />
-                <span>{branchLabel()}</span>
-                <Show when={hasAheadBehind()}>
-                  <span class="text-muted-foreground font-normal">
-                    ({[
-                      s.ahead > 0 ? `${s.ahead} ahead` : "",
-                      s.behind > 0 ? `${s.behind} behind` : "",
-                    ].filter(Boolean).join(", ")})
-                  </span>
-                </Show>
-              </div>
-              <Show when={s.upstream}>
-                <p class="text-[11px] text-muted-foreground">
-                  Tracking: <span class="font-mono text-foreground">{s.upstream}</span>
-                  <Show when={!hasAheadBehind()}> (up to date)</Show>
-                </p>
-              </Show>
-              <div class="space-y-0.5 text-[11px]">
-                <Show when={s.staged > 0}>
-                  <p class="text-emerald-500 font-medium">● {s.staged} {s.staged === 1 ? "file" : "files"} staged</p>
-                </Show>
-                <Show when={s.dirty > 0}>
-                  <p class="text-amber-500 font-medium">! {s.dirty} {s.dirty === 1 ? "file" : "files"} modified (unstaged)</p>
-                </Show>
-                <Show when={s.untracked > 0}>
-                  <p class="text-muted-foreground">? {s.untracked} untracked {s.untracked === 1 ? "file" : "files"}</p>
-                </Show>
-                <Show when={s.conflicts > 0}>
-                  <p class="text-destructive font-semibold">× {s.conflicts} conflicting {s.conflicts === 1 ? "file" : "files"}</p>
-                </Show>
-                <Show when={isClean()}>
-                  <p class="text-muted-foreground">✓ Working tree clean</p>
-                </Show>
-              </div>
-              <p class="border-t border-border/60 pt-1 text-[10px] text-muted-foreground/80">
-                Click to open Git history (g)
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        );
-      }}
+    <Show when={s()?.isRepo}>
+      <Tooltip>
+        <TooltipTrigger
+          as={Button}
+          variant="ghost"
+          size="xs"
+          aria-label={`Git status for ${props.project}`}
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation();
+            openGitView(props.project);
+          }}
+          class={cn(
+            "h-5 !cursor-default gap-1 rounded px-1.5 py-0 font-mono text-[11px] leading-none transition-colors select-none",
+            isClean()
+              ? "text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+              : "bg-muted/70 text-foreground hover:bg-muted font-medium"
+          )}
+        >
+          <GitBranch class="size-3 shrink-0 pointer-events-none text-muted-foreground" />
+          <Show when={isClean()}>
+            <span class="pointer-events-none text-[10px] text-muted-foreground">✓</span>
+          </Show>
+          <Show when={(s()?.ahead ?? 0) > 0}>
+            <span class="pointer-events-none text-sky-500 font-semibold">⇡{s()?.ahead}</span>
+          </Show>
+          <Show when={(s()?.behind ?? 0) > 0}>
+            <span class="pointer-events-none text-amber-500 font-semibold">⇣{s()?.behind}</span>
+          </Show>
+          <Show when={(s()?.staged ?? 0) > 0}>
+            <span class="pointer-events-none text-emerald-500 font-semibold">+{s()?.staged}</span>
+          </Show>
+          <Show when={(s()?.dirty ?? 0) > 0}>
+            <span class="pointer-events-none text-amber-500 font-semibold">!{s()?.dirty}</span>
+          </Show>
+          <Show when={(s()?.untracked ?? 0) > 0}>
+            <span class="pointer-events-none text-muted-foreground">?{s()?.untracked}</span>
+          </Show>
+          <Show when={(s()?.conflicts ?? 0) > 0}>
+            <span class="pointer-events-none text-destructive font-bold">×{s()?.conflicts}</span>
+          </Show>
+        </TooltipTrigger>
+        <TooltipContent class="max-w-xs !cursor-default space-y-1.5 p-2 text-xs">
+          <div class="flex items-center gap-1.5 font-medium">
+            <GitBranch class="size-3.5 text-primary" />
+            <span>{branchLabel()}</span>
+            <Show when={hasAheadBehind()}>
+              <span class="text-muted-foreground font-normal">
+                ({[
+                  (s()?.ahead ?? 0) > 0 ? `${s()?.ahead} ahead` : "",
+                  (s()?.behind ?? 0) > 0 ? `${s()?.behind} behind` : "",
+                ].filter(Boolean).join(", ")})
+              </span>
+            </Show>
+          </div>
+          <Show when={s()?.upstream}>
+            <p class="text-[11px] text-muted-foreground">
+              Tracking: <span class="font-mono text-foreground">{s()?.upstream}</span>
+              <Show when={!hasAheadBehind()}> (up to date)</Show>
+            </p>
+          </Show>
+          <div class="space-y-0.5 text-[11px]">
+            <Show when={(s()?.staged ?? 0) > 0}>
+              <p class="text-emerald-500 font-medium">● {s()?.staged} {s()?.staged === 1 ? "file" : "files"} staged</p>
+            </Show>
+            <Show when={(s()?.dirty ?? 0) > 0}>
+              <p class="text-amber-500 font-medium">! {s()?.dirty} {s()?.dirty === 1 ? "file" : "files"} modified (unstaged)</p>
+            </Show>
+            <Show when={(s()?.untracked ?? 0) > 0}>
+              <p class="text-muted-foreground">? {s()?.untracked} untracked {s()?.untracked === 1 ? "file" : "files"}</p>
+            </Show>
+            <Show when={(s()?.conflicts ?? 0) > 0}>
+              <p class="text-destructive font-semibold">× {s()?.conflicts} conflicting {s()?.conflicts === 1 ? "file" : "files"}</p>
+            </Show>
+            <Show when={isClean()}>
+              <p class="text-muted-foreground">✓ Working tree clean</p>
+            </Show>
+          </div>
+          <p class="border-t border-border/60 pt-1 text-[10px] text-muted-foreground/80">
+            Click to open Git history (g)
+          </p>
+        </TooltipContent>
+      </Tooltip>
     </Show>
   );
 }
@@ -608,11 +606,16 @@ function ProjectItem(props: { name: string }) {
               </button>
 
               <div class="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
-                {/* Git status prompt tokens */}
-                <GitPromptBadge project={props.name} />
-
-                {/* Hover actions */}
-                <div class="hidden items-center gap-0.5 group-hover/proj:flex focus-within:flex">
+                {/* Hover actions — space is always reserved (opacity, not display) so the
+                    git badge never shifts when the actions fade in on hover. */}
+                <div
+                  class={cn(
+                    "flex items-center gap-0.5 transition-opacity duration-100",
+                    "pointer-events-none opacity-0",
+                    "group-hover/proj:pointer-events-auto group-hover/proj:opacity-100",
+                    "focus-within:pointer-events-auto focus-within:opacity-100"
+                  )}
+                >
                   <Show
                     when={p().status !== "stopped"}
                     fallback={
@@ -668,6 +671,9 @@ function ProjectItem(props: { name: string }) {
                     </Tooltip>
                   </Show>
                 </div>
+
+                {/* Git status prompt tokens */}
+                <GitPromptBadge project={props.name} />
 
                 {/* Aggregate health */}
                 <Show when={aggregateHealth()}>

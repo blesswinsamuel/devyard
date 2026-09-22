@@ -1260,8 +1260,10 @@ function FileRow(props: { file: GitFileChange; selected: boolean; onSelect: () =
         <span class={cn("shrink-0 rounded border px-1 font-mono text-[9.5px] font-semibold", badge.class)}>
           {badge.label}
         </span>
-        <span class="truncate font-mono" title={props.file.path}>
-          {props.file.path}
+        <span class="truncate font-mono" title={props.file.oldPath ? `${props.file.oldPath} → ${props.file.path}` : props.file.path}>
+          {props.file.oldPath && props.file.oldPath !== props.file.path
+            ? `${props.file.oldPath} → ${props.file.path}`
+            : props.file.path}
         </span>
       </div>
       <div class="flex shrink-0 items-center gap-1 font-mono text-[10px] tabular">
@@ -1355,24 +1357,28 @@ function DiffBody(props: { project: string; hash: string; diff: string; files?: 
           const meta = parseGitMeta(chunk.metaLines);
           const fileStat = () => fileStatsMap().get(chunk.filePath);
           const collapsed = () => !!collapsedFiles()[chunk.filePath];
+          const rename = () => {
+            const fs = fileStat();
+            return fs && fs.oldPath && fs.oldPath !== fs.path ? `${fs.oldPath} → ${fs.path}` : null;
+          };
           return (
             <Card class="overflow-hidden p-0 shadow-sm max-w-full">
-              <div class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-muted/70 px-1.5 sm:px-2 py-1 backdrop-blur">
+              <div
+                onClick={() => toggleFile(chunk.filePath)}
+                role="presentation"
+                class="sticky top-0 z-10 flex cursor-pointer select-none items-center justify-between gap-2 border-b bg-muted/70 px-1.5 sm:px-2 py-1 backdrop-blur"
+                title={collapsed() ? "Expand file diff" : "Collapse file diff"}
+              >
                 <div class="flex min-w-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => toggleFile(chunk.filePath)}
-                    class="flex min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted/80"
-                    title={collapsed() ? "Expand file diff" : "Collapse file diff"}
-                  >
-                    {collapsed() ? (
-                      <ChevronRight class="size-3.5 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown class="size-3.5 shrink-0 text-muted-foreground" />
-                    )}
-                    <FileCode class="size-3.5 shrink-0 text-primary" />
-                    <span class="truncate font-mono">{chunk.filePath}</span>
-                  </button>
+                  {collapsed() ? (
+                    <ChevronRight class="size-3.5 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown class="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <FileCode class="size-3.5 shrink-0 text-primary" />
+                  <span class="min-w-0 truncate font-mono text-[11px] font-medium">
+                    {rename() ?? chunk.filePath}
+                  </span>
                   <Show when={fileStat()}>
                     {(stat) => (
                       <Show when={stat().additions > 0 || stat().deletions > 0}>
@@ -1388,37 +1394,38 @@ function DiffBody(props: { project: string; hash: string; diff: string; files?: 
                     )}
                   </Show>
                 </div>
-                <Show when={contextLines() > 3}>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    disabled={props.loading}
-                    class="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground"
-                    onClick={() => expandTo(3)}
-                  >
-                    reset ctx
-                  </Button>
-                </Show>
+                <div class="flex shrink-0 items-center gap-1.5 text-[10px]">
+                  <Show when={meta.blobs}>
+                    <span class="rounded border border-border/70 bg-muted/60 px-1.5 py-px font-mono text-muted-foreground">
+                      {meta.blobs!.oldHash.substring(0, 7)} → {meta.blobs!.newHash.substring(0, 7)}
+                    </span>
+                  </Show>
+                  <Show when={meta.modeChange}>
+                    <span class="rounded bg-warning/15 px-1.5 py-px text-warning">
+                      mode {meta.modeChange!.oldMode} → {meta.modeChange!.newMode}
+                    </span>
+                  </Show>
+                  <Show when={meta.isExecutable}>
+                    <span class="rounded bg-info/15 px-1.5 py-px text-info">exec</span>
+                  </Show>
+                  <Show when={contextLines() > 3}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      disabled={props.loading}
+                      class="h-5 px-1.5 text-[10px] text-muted-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        expandTo(3);
+                      }}
+                    >
+                      reset ctx
+                    </Button>
+                  </Show>
+                </div>
               </div>
 
               <Show when={!collapsed()}>
-                <Show when={meta.blobs || meta.modeChange || meta.isExecutable}>
-                  <div class="flex flex-wrap select-text items-center gap-1.5 border-b bg-muted/25 px-2.5 sm:px-3 py-1 text-[10px]">
-                    <Show when={meta.blobs}>
-                      <span class="rounded border border-border/70 bg-muted/60 px-1.5 py-px font-mono text-muted-foreground">
-                        {meta.blobs!.oldHash.substring(0, 7)} → {meta.blobs!.newHash.substring(0, 7)}
-                      </span>
-                    </Show>
-                    <Show when={meta.modeChange}>
-                      <span class="rounded bg-warning/15 px-1.5 py-px text-warning">
-                        mode {meta.modeChange!.oldMode} → {meta.modeChange!.newMode}
-                      </span>
-                    </Show>
-                    <Show when={meta.isExecutable}>
-                      <span class="rounded bg-info/15 px-1.5 py-px text-info">executable</span>
-                    </Show>
-                  </div>
-                </Show>
 
                 <div class="w-full overflow-x-auto">
                   <table class="w-full border-collapse">

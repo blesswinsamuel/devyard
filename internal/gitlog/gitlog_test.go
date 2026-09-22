@@ -405,21 +405,30 @@ func TestLogDoesNotModifyIndex(t *testing.T) {
 	}
 }
 
-func TestNumstatKey(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"a.txt", "a.txt"},
-		{"a.txt => b.txt", "b.txt"},
-		{"dir/{a.txt => b.txt}", "dir/b.txt"},
-		{"dir/{a.txt => sub/b.txt}/file.txt", "dir/sub/b.txt/file.txt"},
-		{"sp ace.txt => sp ace2.txt", "sp ace2.txt"},
+func TestParseStatsFromPatch(t *testing.T) {
+	patch := "diff --git a/a.txt b/a.txt\n" +
+		"index 111111132..444444 100644\n" +
+		"--- a/a.txt\n" +
+		"+++ b/a.txt\n" +
+		"@@ -1,2 +1,3 @@\n" +
+		"+new line\n" +
+		" ctx\n" +
+		"-old line\n" +
+		"diff --git a/dir/old.txt b/dir/new.txt\n" +
+		"rename from dir/old.txt\n" +
+		"rename to dir/new.txt\n" +
+		"diff --git a/c.bin b/c.bin\n" +
+		"Binary files a/c.bin and b/c.bin differ\n"
+
+	stats := parseStatsFromPatch(patch)
+	if s := stats["a.txt"]; s.add != 1 || s.del != 1 {
+		t.Errorf("a.txt stats = %+v, want 1 add / 1 del", s)
 	}
-	for _, tc := range tests {
-		if got := numstatKey(tc.input); got != tc.want {
-			t.Errorf("numstatKey(%q) = %q, want %q", tc.input, got, tc.want)
-		}
+	if s := stats["dir/new.txt"]; s.add != 0 || s.del != 0 {
+		t.Errorf("rename stats = %+v, want 0 add / 0 del", s)
+	}
+	if s := stats["c.bin"]; s.add != 0 || s.del != 0 {
+		t.Errorf("binary stats = %+v, want 0 add / 0 del", s)
 	}
 }
 

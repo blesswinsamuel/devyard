@@ -387,25 +387,39 @@ func checkUncommitted(dir string) bool {
 	return len(bytes.TrimSpace(out.Bytes())) > 0
 }
 
-// numstatKey resolves the *new* path of a `--numstat` row, handling rename
-// output: plain "old => new", or the brace-compressed form
-// "dir/{old => new}/file". Returns the raw field when there is no rename
-// marker so file stats can be looked up by the new path.
-func numstatKey(field string) string {
-	if !strings.Contains(field, " => ") {
-		return field
-	}
-	open := strings.Index(field, "{")
-	close := strings.Index(field, "}")
-	if open != -1 && close != -1 && close > open+1 {
-		if parts := strings.Split(field[open+1:close], " => "); len(parts) == 2 {
-			return field[:open] + strings.TrimSpace(parts[1]) + field[close+1:]
+// fileStats are per-file +/- counters computed from a patch body.
+type fileStats struct{ add, del int32 }
+
+// parseStatsFromPatch computes +/− stats per file from a unified patch,
+// avoiding a separate `git show --numstat` spawn. The current file is the
+// `diff --git a/x b/y` header; lines starting with + / - count as
+// additions / deletions, with `--- ` and `+++ ` headers excluded — the same
+// rules as the frontend parser.
+func parseStatsFromPatch(patch string) map[string]fileStats {
+	stats := make(map[string]fileStats)
+	current := ""
+	for _, line := range strings.Split(patch, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			idx := strings.LastIndex(line, " b/")
+			if idx < 0 {
+				current = ""
+				continue
+			}
+			current = unquoteGitPath(line[idx+len(" b/"):])
+			continue
 		}
+		if current == "" {
+			continue
+		}
+		s := stats[current]
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			s.add++
+		} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+			s.del++
+		}
+		stats[current] = s
 	}
-	if parts := strings.Split(field, " => "); len(parts) == 2 {
-		return strings.TrimSpace(parts[1])
-	}
-	return field
+	return stats
 }
 
 // unquoteGitPath decodes the C-style quoting git applies to pathnames in
@@ -508,32 +522,20 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 		commit.Parents = strings.Fields(parents)
 	}
 
+	diffArgs := []string{"show", fmt.Sprintf("-U%d", ctxLines), "--patch", "--format=", hash}
+	if pathFilter != "" {
+		diffArgs = append(diffArgs, "--", pathFilter)
+	}
+	cmdDiff := gitCmd(dir, diffArgs...)
+	var outDiff bytes.Buffer
+	cmdDiff.Stdout = &outDiff
+	_ = cmdDiff.Run()
+	statsFromPatch := parseStatsFromPatch(outDiff.String())
+
 	cmdStatus := gitCmd(dir, "show", "--name-status", "--format=", hash)
 	var outStatus bytes.Buffer
 	cmdStatus.Stdout = &outStatus
 	_ = cmdStatus.Run()
-
-	cmdNumstat := gitCmd(dir, "show", "--numstat", "--format=", hash)
-	var outNumstat bytes.Buffer
-	cmdNumstat.Stdout = &outNumstat
-	_ = cmdNumstat.Run()
-
-	type stats struct{ add, del int32 }
-	numstatMap := make(map[string]stats)
-	for _, line := range strings.Split(outNumstat.String(), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.Split(line, "\t")
-		if len(parts) >= 3 {
-			var add, del int32
-			_, _ = fmt.Sscanf(parts[0], "%d", &add)
-			_, _ = fmt.Sscanf(parts[1], "%d", &del)
-			path := numstatKey(parts[len(parts)-1])
-			numstatMap[unquoteGitPath(path)] = stats{add: add, del: del}
-		}
-	}
 
 	var files []*protocol.GitFileChange
 	for _, line := range strings.Split(outStatus.String(), "\n") {
@@ -553,7 +555,7 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 			if pathFilter != "" && path != pathFilter {
 				continue
 			}
-			s := numstatMap[path]
+			s := statsFromPatch[path]
 			statusLetter := st
 			if len(st) > 0 {
 				statusLetter = string(st[0])
@@ -567,15 +569,6 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 			})
 		}
 	}
-
-	diffArgs := []string{"show", fmt.Sprintf("-U%d", ctxLines), "--patch", "--format=", hash}
-	if pathFilter != "" {
-		diffArgs = append(diffArgs, "--", pathFilter)
-	}
-	cmdDiff := gitCmd(dir, diffArgs...)
-	var outDiff bytes.Buffer
-	cmdDiff.Stdout = &outDiff
-	_ = cmdDiff.Run()
 
 	var totalAdd, totalDel int32
 	for _, f := range files {
@@ -611,28 +604,6 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 	cmdStatus.Stdout = &outStatus
 	_ = cmdStatus.Run()
 
-	cmdNumstat := gitCmd(dir, "diff", "HEAD", "--numstat")
-	var outNumstat bytes.Buffer
-	cmdNumstat.Stdout = &outNumstat
-	_ = cmdNumstat.Run()
-
-	type stats struct{ add, del int32 }
-	numstatMap := make(map[string]stats)
-	for _, line := range strings.Split(outNumstat.String(), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.Split(line, "\t")
-		if len(parts) >= 3 {
-			var add, del int32
-			_, _ = fmt.Sscanf(parts[0], "%d", &add)
-			_, _ = fmt.Sscanf(parts[1], "%d", &del)
-			path := numstatKey(parts[len(parts)-1])
-			numstatMap[unquoteGitPath(path)] = stats{add: add, del: del}
-		}
-	}
-
 	var files []*protocol.GitFileChange
 	statusLines := strings.Split(outStatus.String(), "\n")
 	for _, rawLine := range statusLines {
@@ -656,15 +627,11 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 			continue
 		}
 
-		s := numstatMap[path]
-
 		// Check for untracked file
 		if stX == '?' && stY == '?' {
 			files = append(files, &protocol.GitFileChange{
 				Path:      path,
 				Status:    "A",
-				Additions: s.add,
-				Deletions: s.del,
 				Untracked: true,
 			})
 			continue
@@ -673,24 +640,20 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 		// Check for staged changes (stX != ' ')
 		if stX != ' ' {
 			files = append(files, &protocol.GitFileChange{
-				Path:      path,
-				OldPath:   oldPath,
-				Status:    string(stX),
-				Additions: s.add,
-				Deletions: s.del,
-				Staged:    true,
+				Path:    path,
+				OldPath: oldPath,
+				Status:  string(stX),
+				Staged:  true,
 			})
 		}
 
 		// Check for unstaged changes (stY != ' ')
 		if stY != ' ' {
 			files = append(files, &protocol.GitFileChange{
-				Path:      path,
-				OldPath:   oldPath,
-				Status:    string(stY),
-				Additions: s.add,
-				Deletions: s.del,
-				Unstaged:  true,
+				Path:     path,
+				OldPath:  oldPath,
+				Status:   string(stY),
+				Unstaged: true,
 			})
 		}
 	}
@@ -721,6 +684,16 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 				}
 				diffText += outUntracked.String()
 			}
+		}
+	}
+
+	// Fill per-file +/− stats from the patch body (including appended
+	// new-file fallbacks) instead of spawning `git diff --numstat`.
+	statsFromPatch := parseStatsFromPatch(diffText)
+	for _, f := range files {
+		if s, ok := statsFromPatch[f.Path]; ok {
+			f.Additions = s.add
+			f.Deletions = s.del
 		}
 	}
 

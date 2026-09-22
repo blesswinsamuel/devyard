@@ -1296,10 +1296,12 @@ const CONTEXT_STEP = 20;
 
 function DiffBody(props: { project: string; hash: string; diff: string; files?: GitFileChange[]; selectedFile: string | null; loading?: boolean }) {
   const [contextLines, setContextLines] = createSignal(3);
+  const [collapsedFiles, setCollapsedFiles] = createSignal<Record<string, boolean>>({});
 
   createEffect(() => {
     props.hash;
     setContextLines(3);
+    setCollapsedFiles({});
   });
 
   const fileStatsMap = createMemo(() => {
@@ -1315,6 +1317,12 @@ function DiffBody(props: { project: string; hash: string; diff: string; files?: 
     props.selectedFile ? chunks().filter((c) => c.filePath === props.selectedFile) : chunks()
   );
 
+  const toggleFile = (path: string) =>
+    setCollapsedFiles((prev) => ({ ...prev, [path]: !prev[path] }));
+
+  const setAllCollapsed = (collapsed: boolean) =>
+    setCollapsedFiles(Object.fromEntries(visibleChunks().map((c) => [c.filePath, collapsed])));
+
   const expandTo = (n: number) => {
     setContextLines(n);
     loadGitDiff(props.project, props.hash, n === 3 ? 3 : Math.min(n, 100000), true);
@@ -1322,18 +1330,49 @@ function DiffBody(props: { project: string; hash: string; diff: string; files?: 
 
   return (
     <div class="flex flex-col gap-3 sm:gap-4 max-w-full">
+      <Show when={visibleChunks().length > 1}>
+        <div class="flex shrink-0 items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="xs"
+            class="h-5 px-1.5 text-[10px] text-muted-foreground"
+            onClick={() => setAllCollapsed(true)}
+          >
+            Collapse all
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            class="h-5 px-1.5 text-[10px] text-muted-foreground"
+            onClick={() => setAllCollapsed(false)}
+          >
+            Expand all
+          </Button>
+        </div>
+      </Show>
       <For each={visibleChunks()}>
         {(chunk) => {
           const meta = parseGitMeta(chunk.metaLines);
           const fileStat = () => fileStatsMap().get(chunk.filePath);
+          const collapsed = () => !!collapsedFiles()[chunk.filePath];
           return (
             <Card class="overflow-hidden p-0 shadow-sm max-w-full">
-              <div class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-muted/70 px-2.5 sm:px-3 py-1.5 backdrop-blur">
+              <div class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-muted/70 px-1.5 sm:px-2 py-1 backdrop-blur">
                 <div class="flex min-w-0 items-center gap-2">
-                  <span class="flex min-w-0 items-center gap-1.5 text-[11px] font-medium">
+                  <button
+                    type="button"
+                    onClick={() => toggleFile(chunk.filePath)}
+                    class="flex min-w-0 items-center gap-1.5 rounded-sm px-1 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted/80"
+                    title={collapsed() ? "Expand file diff" : "Collapse file diff"}
+                  >
+                    {collapsed() ? (
+                      <ChevronRight class="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown class="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
                     <FileCode class="size-3.5 shrink-0 text-primary" />
                     <span class="truncate font-mono">{chunk.filePath}</span>
-                  </span>
+                  </button>
                   <Show when={fileStat()}>
                     {(stat) => (
                       <Show when={stat().additions > 0 || stat().deletions > 0}>
@@ -1357,89 +1396,100 @@ function DiffBody(props: { project: string; hash: string; diff: string; files?: 
                     class="h-5 shrink-0 px-1.5 text-[10px] text-muted-foreground"
                     onClick={() => expandTo(3)}
                   >
-                    collapse
+                    reset ctx
                   </Button>
                 </Show>
               </div>
 
-              <Show when={meta.blobs || meta.modeChange || meta.isExecutable}>
-                <div class="flex flex-wrap select-text items-center gap-1.5 border-b bg-muted/25 px-2.5 sm:px-3 py-1 text-[10px]">
-                  <Show when={meta.blobs}>
-                    <span class="rounded border border-border/70 bg-muted/60 px-1.5 py-px font-mono text-muted-foreground">
-                      {meta.blobs!.oldHash.substring(0, 7)} → {meta.blobs!.newHash.substring(0, 7)}
-                    </span>
-                  </Show>
-                  <Show when={meta.modeChange}>
-                    <span class="rounded bg-warning/15 px-1.5 py-px text-warning">
-                      mode {meta.modeChange!.oldMode} → {meta.modeChange!.newMode}
-                    </span>
-                  </Show>
-                  <Show when={meta.isExecutable}>
-                    <span class="rounded bg-info/15 px-1.5 py-px text-info">executable</span>
-                  </Show>
-                </div>
-              </Show>
+              <Show when={!collapsed()}>
+                <Show when={meta.blobs || meta.modeChange || meta.isExecutable}>
+                  <div class="flex flex-wrap select-text items-center gap-1.5 border-b bg-muted/25 px-2.5 sm:px-3 py-1 text-[10px]">
+                    <Show when={meta.blobs}>
+                      <span class="rounded border border-border/70 bg-muted/60 px-1.5 py-px font-mono text-muted-foreground">
+                        {meta.blobs!.oldHash.substring(0, 7)} → {meta.blobs!.newHash.substring(0, 7)}
+                      </span>
+                    </Show>
+                    <Show when={meta.modeChange}>
+                      <span class="rounded bg-warning/15 px-1.5 py-px text-warning">
+                        mode {meta.modeChange!.oldMode} → {meta.modeChange!.newMode}
+                      </span>
+                    </Show>
+                    <Show when={meta.isExecutable}>
+                      <span class="rounded bg-info/15 px-1.5 py-px text-info">executable</span>
+                    </Show>
+                  </div>
+                </Show>
 
-              <div class="w-full overflow-x-auto">
-                <table class="w-full border-collapse">
-                  <tbody>
-                    <For each={chunk.lines}>
-                      {(line) => {
-                        if (line.type === "hunk") {
+                <div class="w-full overflow-x-auto">
+                  <table class="w-full border-collapse">
+                    <tbody>
+                      <For each={chunk.lines}>
+                        {(line) => {
+                          if (line.type === "hunk") {
+                            return (
+                              <tr class="border-y border-primary/15 bg-primary/6 select-none">
+                                <td class="w-8 md:w-9 border-r border-border/60" />
+                                <td class="w-8 md:w-9 border-r border-border/60" />
+                                <td class="px-2 sm:px-3 py-0.5">
+                                  <div class="flex flex-wrap items-center justify-between gap-1.5">
+                                    <span class="truncate font-medium text-primary/90 text-[10.5px] sm:text-[11px]">{line.text}</span>
+                                    <span class="flex shrink-0 items-center gap-1">
+                                      <Button
+                                        variant="secondary"
+                                        size="xs"
+                                        disabled={props.loading}
+                                        class="h-5 bg-primary/12 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20"
+                                        onClick={() => expandTo(contextLines() + CONTEXT_STEP)}
+                                      >
+                                        +{CONTEXT_STEP} ctx
+                                      </Button>
+                                      <Button
+                                        variant="secondary"
+                                        size="xs"
+                                        disabled={props.loading}
+                                        class="h-5 bg-primary/12 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20"
+                                        onClick={() => expandTo(100000)}
+                                      >
+                                        full
+                                      </Button>
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+                          if (line.type === "note") {
+                            return (
+                              <tr class="select-none bg-muted/20">
+                                <td class="w-8 md:w-9 border-r border-border/60" />
+                                <td class="w-8 md:w-9 border-r border-border/60" />
+                                <td class="px-2 sm:px-3 py-0.5 font-mono text-[10px] italic text-muted-foreground/70">{line.text}</td>
+                              </tr>
+                            );
+                          }
+                          const tone =
+                            line.type === "add"
+                              ? "bg-success/8 text-success"
+                              : line.type === "delete"
+                                ? "bg-destructive/8 text-destructive"
+                                : "";
                           return (
-                            <tr class="border-y border-primary/15 bg-primary/6 select-none">
-                              <td class="w-8 md:w-9 border-r border-border/60" />
-                              <td class="w-8 md:w-9 border-r border-border/60" />
-                              <td class="px-2 sm:px-3 py-0.5">
-                                <div class="flex flex-wrap items-center justify-between gap-1.5">
-                                  <span class="truncate font-medium text-primary/90 text-[10.5px] sm:text-[11px]">{line.text}</span>
-                                  <span class="flex shrink-0 items-center gap-1">
-                                    <Button
-                                      variant="secondary"
-                                      size="xs"
-                                      disabled={props.loading}
-                                      class="h-5 bg-primary/12 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20"
-                                      onClick={() => expandTo(contextLines() + CONTEXT_STEP)}
-                                    >
-                                      +{CONTEXT_STEP} ctx
-                                    </Button>
-                                    <Button
-                                      variant="secondary"
-                                      size="xs"
-                                      disabled={props.loading}
-                                      class="h-5 bg-primary/12 px-1.5 text-[10px] font-medium text-primary hover:bg-primary/20"
-                                      onClick={() => expandTo(100000)}
-                                    >
-                                      full
-                                    </Button>
-                                  </span>
-                                </div>
+                            <tr class={cn("transition-colors hover:bg-muted/25", tone)}>
+                              <td class="w-8 md:w-9 select-none border-r border-border/50 pr-1 text-right align-top font-mono text-[9px] md:text-[9.5px] tabular text-muted-foreground/50">
+                                {line.oldLine ?? ""}
                               </td>
+                              <td class="w-8 md:w-9 select-none border-r border-border/50 pr-1 text-right align-top font-mono text-[9px] md:text-[9.5px] tabular text-muted-foreground/50">
+                                {line.newLine ?? ""}
+                              </td>
+                              <td class="whitespace-pre px-2 sm:px-3 font-mono text-[11px] sm:text-[11.5px]">{line.text || " "}</td>
                             </tr>
                           );
-                        }
-                        const tone =
-                          line.type === "add"
-                            ? "bg-success/8 text-success"
-                            : line.type === "delete"
-                              ? "bg-destructive/8 text-destructive"
-                              : "";
-                        return (
-                          <tr class={cn("transition-colors hover:bg-muted/25", tone)}>
-                            <td class="w-8 md:w-9 select-none border-r border-border/50 pr-1 text-right align-top font-mono text-[9px] md:text-[9.5px] tabular text-muted-foreground/50">
-                              {line.oldLine ?? ""}
-                            </td>
-                            <td class="w-8 md:w-9 select-none border-r border-border/50 pr-1 text-right align-top font-mono text-[9px] md:text-[9.5px] tabular text-muted-foreground/50">
-                              {line.newLine ?? ""}
-                            </td>
-                            <td class="whitespace-pre px-2 sm:px-3 font-mono text-[11px] sm:text-[11.5px]">{line.text || " "}</td>
-                          </tr>
-                        );
-                      }}
-                    </For>
-                  </tbody>
-                </table>
-              </div>
+                        }}
+                      </For>
+                    </tbody>
+                  </table>
+                </div>
+              </Show>
             </Card>
           );
         }}

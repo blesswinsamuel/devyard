@@ -1,7 +1,7 @@
 // Unified-diff parsing shared by the commit diff viewer.
 
 export interface ParsedDiffLine {
-  type: "header" | "add" | "delete" | "context" | "hunk";
+  type: "header" | "add" | "delete" | "context" | "hunk" | "note";
   text: string;
   oldLine?: number;
   newLine?: number;
@@ -91,6 +91,8 @@ export function parseDiff(raw: string): ParsedFileChunk[] {
 
     for (let i = 1; i < rawLines.length; i++) {
       const line = rawLines[i]!;
+      // Trailing empty element from the final newline — not a real diff line.
+      if (i === rawLines.length - 1 && line === "") break;
       if (line.startsWith("@@")) {
         const hunkMatch = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
         if (hunkMatch) {
@@ -104,6 +106,10 @@ export function parseDiff(raw: string): ParsedFileChunk[] {
         lines.push({ type: "delete", text: line, oldLine: oldLineNum++ });
       } else if (line.startsWith(" ") || line === "") {
         lines.push({ type: "context", text: line, oldLine: oldLineNum++, newLine: newLineNum++ });
+      } else if (line.startsWith("\\")) {
+        // "\ No newline at end of file" marker — keep it in the diff body
+        // instead of letting it sink into metaLines and vanish.
+        lines.push({ type: "note", text: line.trim() });
       } else if (!line.startsWith("--- ") && !line.startsWith("+++ ")) {
         metaLines.push(line);
       }

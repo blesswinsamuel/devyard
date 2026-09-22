@@ -27,3 +27,4 @@ coverage.html
 # OS
 .DS_Store
 .dirac-cache/
+.openchamber/

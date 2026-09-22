@@ -1,9 +1,8 @@
-import { For, Show, createSignal, onMount, onCleanup } from "solid-js";
+import { For, Show } from "solid-js";
 import { GRAPH_COLORS, type CommitGraphInfo } from "~/lib/git_graph";
 
 export const GIT_COL_WIDTH = 13;
 const WORKDIR_COLOR = "#fbbf24"; // amber
-const DEFAULT_ROW_HEIGHT = 46;
 
 function laneColor(colorIndex: number, workdir: boolean): string {
   return workdir
@@ -12,9 +11,11 @@ function laneColor(colorIndex: number, workdir: boolean): string {
 }
 
 /**
- * One commit-list row's DAG strip. The row's rendered height is measured with
- * a ResizeObserver so lane segments span the full row and lines connect
- * continuously across rows (Sublime-Merge style), even when rows wrap.
+ * One commit-list row's DAG strip. The svg uses a unit-height viewBox with
+ * preserveAspectRatio="none" and vector-effect="non-scaling-stroke", so edges
+ * span the full row height no matter how tall the row renders (Sublime Merge
+ * style connectivity without measuring row heights). The node is a plain div
+ * so it stays a perfect circle.
  */
 export function CommitGraphCell(props: {
   info: CommitGraphInfo | undefined;
@@ -23,80 +24,70 @@ export function CommitGraphCell(props: {
   workdir: boolean;
 }) {
   const width = () => Math.max(1, props.columns) * GIT_COL_WIDTH;
-  const [rowHeight, setRowHeight] = createSignal(DEFAULT_ROW_HEIGHT);
-
-  let el: HTMLDivElement | undefined;
-  let ro: ResizeObserver | undefined;
-
-  onMount(() => {
-    if (!el) return;
-    ro = new ResizeObserver(() => {
-      const h = el!.offsetHeight;
-      if (h > 0) setRowHeight(h);
-    });
-    ro.observe(el);
-    setRowHeight(el.offsetHeight || DEFAULT_ROW_HEIGHT);
-    onCleanup(() => ro?.disconnect());
-  });
-
-  const y1 = () => rowHeight() / 2;
-  const y2 = () => rowHeight();
+  const vFrom = (edge: { from: number; to: number }) => edge.from === edge.to;
+  const nodeRadius = () => (props.selected ? 4.5 : 3.5);
 
   return (
     <div
-      ref={el}
       class="relative self-stretch shrink-0"
       style={{ width: `${width()}px` }}
     >
       <svg
+        viewBox={`0 0 ${width()} 1`}
+        preserveAspectRatio="none"
         aria-hidden="true"
-        width={width()}
-        height={rowHeight()}
-        viewBox={`0 0 ${width()} ${rowHeight()}`}
-        class="pointer-events-none absolute inset-0"
+        class="pointer-events-none absolute inset-0 h-full w-full"
       >
         <For each={props.info?.edges ?? []}>
           {(edge) => {
             const x1 = edge.from * GIT_COL_WIDTH + GIT_COL_WIDTH / 2;
             const x2 = edge.to * GIT_COL_WIDTH + GIT_COL_WIDTH / 2;
             const color = laneColor(edge.colorIndex, props.workdir);
-            if (edge.from === edge.to) {
+            if (vFrom(edge)) {
               return (
                 <line
                   x1={x1}
                   y1={0}
                   x2={x2}
-                  y2={y2()}
+                  y2={1}
                   stroke={color}
                   stroke-width="1.75"
                   stroke-linecap="round"
+                  vector-effect="non-scaling-stroke"
                 />
               );
             }
             return (
               <path
-                d={`M ${x1} ${y1()} C ${x1} ${(y1() + y2()) / 2}, ${x2} ${(y1() + y2()) / 2}, ${x2} ${y2()}`}
+                d={`M ${x1} 0.5 C ${x1} 0.75, ${x2} 0.75, ${x2} 1`}
                 fill="none"
                 stroke={color}
                 stroke-width="1.75"
                 stroke-linecap="round"
+                vector-effect="non-scaling-stroke"
               />
             );
           }}
         </For>
-        <Show when={props.info} keyed>
-          {(info) => (
-            <circle
-              cx={info.column * GIT_COL_WIDTH + GIT_COL_WIDTH / 2}
-              cy={y1()}
-              r={props.selected ? 4.5 : 3.5}
-              fill={laneColor(info.colorIndex, props.workdir)}
-              stroke="var(--background)"
-              stroke-width="1.5"
-            />
-          )}
-        </Show>
       </svg>
+      <Show when={props.info} keyed>
+        {(info) => {
+          const infoColor = () => laneColor(info.colorIndex, props.workdir);
+          return (
+            <span
+              aria-hidden="true"
+              class="absolute left-[0px] top-1/2 rounded-full border-[1.5px] border-background"
+              style={{
+                width: `${nodeRadius() * 2}px`,
+                height: `${nodeRadius() * 2}px`,
+                left: `${info.column * GIT_COL_WIDTH + GIT_COL_WIDTH / 2 - nodeRadius()}px`,
+                "background-color": infoColor(),
+                transform: "translateY(-50%)",
+              }}
+            />
+          );
+        }}
+      </Show>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import solid from "vite-plugin-solid";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 
+const backend = process.env.LC_WEB_BACKEND ?? "http://127.0.0.1:9090";
+
 export default defineConfig({
   plugins: [solid(), tailwindcss()],
   resolve: {
@@ -29,10 +31,10 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/localcompose.v1.DaemonService": {
-        target: "http://127.0.0.1:9090",
+        target: backend,
       },
       "/ws": {
-        target: "http://127.0.0.1:9090",
+        target: backend,
         ws: true,
       },
     },

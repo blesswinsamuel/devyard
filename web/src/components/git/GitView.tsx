@@ -53,7 +53,8 @@ import {
 import { setSidebarOpen } from "~/stores/app";
 import { closeGitView, selectedProject } from "~/stores/nav";
 import type { GitBranch as GitBranchType, GitFileChange } from "~/lib/types";
-import { computeGitGraph, GRAPH_COLORS } from "~/lib/git_graph";
+import { computeGitGraph } from "~/lib/git_graph";
+import { CommitListRow } from "~/components/git/CommitListRow";
 import { parseDiff, parseGitMeta } from "~/lib/diff";
 import { formatAuthorTime, formatRelativeTime } from "~/lib/format";
 import { Alert, AlertDescription } from "~/components/ui/alert";
@@ -86,54 +87,6 @@ function statusBadge(status: string): { label: string; class: string } {
     default:
       return { label: "M", class: "bg-warning/15 text-warning border-warning/25" };
   }
-}
-
-function RefBadge(props: { ref: { name: string; type: string; isActive?: boolean }; hasActiveBranch: boolean }) {
-  const r = () => props.ref;
-  if (r().type === "branch" && r().isActive) {
-    return (
-      <Badge class="border-success/40 bg-success/15 font-mono text-[10px] text-success">
-        <GitBranch class="size-2.5" />
-        {r().name}
-        <Check class="size-2.5 stroke-[3]" />
-      </Badge>
-    );
-  }
-  if (r().type === "branch") {
-    return (
-      <Badge class="border-primary/30 bg-primary/10 font-mono text-[10px] text-primary">
-        <GitBranch class="size-2.5" />
-        {r().name}
-      </Badge>
-    );
-  }
-  if (r().type === "remote") {
-    return (
-      <Badge variant="outline" class="font-mono text-[10px]">
-        origin/{r().name}
-      </Badge>
-    );
-  }
-  if (r().type === "tag") {
-    return (
-      <Badge class="border-warning/40 bg-warning/15 font-mono text-[10px] text-warning">
-        <Tag class="size-2.5" />
-        {r().name}
-      </Badge>
-    );
-  }
-  if (r().type === "stash") {
-    return (
-      <Badge variant="secondary" class="font-mono text-[10px]">
-        <Archive class="size-2.5" />
-        {r().name}
-      </Badge>
-    );
-  }
-  if (r().type === "head" && !props.hasActiveBranch) {
-    return <Badge variant="secondary" class="font-mono text-[10px]">HEAD</Badge>;
-  }
-  return null;
 }
 
 function AheadBehindPill(props: { kind: "ahead" | "behind"; count?: number; upstream?: string; class?: string }) {
@@ -223,9 +176,9 @@ export function GitView() {
   const maxColumns = createMemo(() => {
     let max = 1;
     for (const info of graphMap().values()) {
-      if (info.activeCount > max) max = info.activeCount;
+      if (info.activeWidth > max) max = info.activeWidth;
     }
-    return Math.min(max, 8);
+    return max;
   });
 
   const filteredCommits = createMemo(() => {
@@ -535,110 +488,15 @@ export function GitView() {
               }
             >
               <For each={filteredCommits()}>
-                {(commit) => {
-                  const isSelected = () => currentCommitHash() === commit.hash;
-                  const isWorkdirRow = commit.hash === "WORKDIR";
-                  const colWidth = 13;
-                  const rowHeight = 46;
-                  const info = () => graphMap().get(commit.hash);
-
-                  return (
-                    <button
-                      type="button"
-                      data-commit={commit.hash}
-                      onClick={() => onCommitClicked(commit.hash)}
-                      class={cn(
-                        "relative flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
-                        isSelected()
-                          ? "bg-accent"
-                          : isWorkdirRow
-                            ? "hover:bg-warning/8"
-                            : "hover:bg-muted/50"
-                      )}
-                    >
-                      {/* selection bar */}
-                      <span
-                        class={cn(
-                          "absolute left-0 top-0 h-full w-[2.5px]",
-                          isSelected() ? "bg-primary" : "bg-transparent"
-                        )}
-                      />
-                      {/* DAG column */}
-                      <div class="relative h-[46px] shrink-0 self-stretch" style={{ width: `${maxColumns() * colWidth}px` }}>
-                        <svg class="pointer-events-none absolute inset-0 h-full w-full">
-                          <For each={info()?.connections ?? []}>
-                            {(conn) => {
-                              const x1 = conn.fromColumn * colWidth + colWidth / 2;
-                              const x2 = conn.toColumn * colWidth + colWidth / 2;
-                              const color = isWorkdirRow ? "#fbbf24" : GRAPH_COLORS[conn.colorIndex % GRAPH_COLORS.length];
-                              if (conn.fromColumn === conn.toColumn) {
-                                return <line x1={x1} y1={0} x2={x2} y2={rowHeight} stroke={color} stroke-width="1.75" />;
-                              }
-                              const y1 = rowHeight / 2;
-                              const y2 = rowHeight;
-                              return (
-                                <path
-                                  d={`M ${x1} ${y1} C ${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`}
-                                  fill="none"
-                                  stroke={color}
-                                  stroke-width="1.75"
-                                />
-                              );
-                            }}
-                          </For>
-                          <Show when={info()} keyed>
-                            {(i) => (
-                              <circle
-                                cx={i.column * colWidth + colWidth / 2}
-                                cy={rowHeight / 2}
-                                r={isSelected() ? 4.5 : 3.5}
-                                fill={isWorkdirRow ? "#fbbf24" : GRAPH_COLORS[i.colorIndex % GRAPH_COLORS.length]}
-                                stroke="var(--background)"
-                                stroke-width="1.5"
-                              />
-                            )}
-                          </Show>
-                        </svg>
-                      </div>
-
-                      <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <div class="flex min-w-0 flex-wrap items-center gap-1">
-                          <Show when={isWorkdirRow}>
-                            <Badge class="border-warning/40 bg-warning/15 text-[10px] text-warning">Uncommitted</Badge>
-                          </Show>
-                          <Show when={commit.refs && commit.refs.length > 0}>
-                            <For each={commit.refs}>
-                              {(ref) => <RefBadge ref={ref} hasActiveBranch={!!commit.refs?.some((r) => r.type === "branch" && r.isActive)} />}
-                            </For>
-                          </Show>
-                          <span class={cn("truncate leading-tight", isWorkdirRow ? "font-semibold text-warning" : "")}>
-                            {commit.subject}
-                          </span>
-                        </div>
-                        <div class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                          <span class="truncate">{commit.author}</span>
-                          <span class="shrink-0 opacity-50">·</span>
-                          <span class="shrink-0">{formatRelativeTime(commit.time)}</span>
-                          <div class="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[10px] tabular">
-                            <Show when={commit.additions > 0 || commit.deletions > 0}>
-                              <span class="flex items-center gap-1">
-                                <Show when={commit.additions > 0}>
-                                  <span class="text-success">+{commit.additions}</span>
-                                </Show>
-                                <Show when={commit.deletions > 0}>
-                                  <span class="text-destructive">−{commit.deletions}</span>
-                                </Show>
-                              </span>
-                            </Show>
-                            <Show when={!isWorkdirRow}>
-                              <span class="opacity-60">{commit.short}</span>
-                            </Show>
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                }}
+                {(commit) => (
+                  <CommitListRow
+                    commit={commit}
+                    info={graphMap().get(commit.hash)}
+                    columns={maxColumns()}
+                    selected={currentCommitHash() === commit.hash}
+                    onSelect={() => onCommitClicked(commit.hash)}
+                  />
+                )}
               </For>
             </Show>
           </Show>

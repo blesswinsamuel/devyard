@@ -1,17 +1,16 @@
 import type { GitCommit } from "~/lib/types";
 
-export interface GraphConnection {
-  fromColumn: number;
-  toColumn: number;
+export interface GraphEdge {
+  from: number;
+  to: number;
   colorIndex: number;
-  type: "straight" | "merge" | "fork";
 }
 
 export interface CommitGraphInfo {
   column: number;
   colorIndex: number;
-  connections: GraphConnection[];
-  activeCount: number;
+  edges: GraphEdge[];
+  activeWidth: number;
 }
 
 export const GRAPH_COLORS = [
@@ -25,95 +24,100 @@ export const GRAPH_COLORS = [
   "#2dd4bf", // teal
 ];
 
+type Lane = { hash: string; colorIndex: number } | null;
+
 /**
- * Computes DAG column positions and connection paths for each commit in a top-down list.
+ * Computes DAG column positions and edges for a newest-first commit list.
+ *
+ * Each row resolves its own column, emits pass-through segments for every
+ * other open lane (so lanes stay visually connected through unrelated rows),
+ * resolves its parents' columns (claiming or reusing lanes, never duplicating
+ * a lane), and records colors per lane so each branch keeps a stable color.
  */
-export function computeGitGraph(
-  commits: GitCommit[]
-): Map<string, CommitGraphInfo> {
+export function computeGitGraph(commits: GitCommit[]): Map<string, CommitGraphInfo> {
   const result = new Map<string, CommitGraphInfo>();
 
-  let activeColumns: (string | null)[] = [];
+  let lanes: Lane[] = [];
   const colorMap = new Map<string, number>();
   let nextColorIndex = 0;
 
-  function getColor(hash: string): number {
-    if (!colorMap.has(hash)) {
-      colorMap.set(hash, nextColorIndex % GRAPH_COLORS.length);
-      nextColorIndex++;
+  const laneIndexOf = (hash: string) => lanes.findIndex((l) => l?.hash === hash);
+
+  const colorOf = (hash: string, inherit?: number): number => {
+    let idx = colorMap.get(hash);
+    if (idx === undefined) {
+      idx = inherit !== undefined ? inherit : nextColorIndex++ % GRAPH_COLORS.length;
+      colorMap.set(hash, idx);
     }
-    return colorMap.get(hash)!;
-  }
+    return idx;
+  };
 
-  for (let i = 0; i < commits.length; i++) {
-    const c = commits[i];
-    const hash = c.hash;
-    const parents = c.parents ?? [];
+  const trimTrailingNulls = () => {
+    while (lanes.length > 0 && lanes[lanes.length - 1] === null) lanes.pop();
+  };
 
-    let col = activeColumns.indexOf(hash);
+  for (const commit of commits) {
+    const hash = commit.hash;
+    const parents = commit.parents ?? [];
+
+    // 1. Resolve the commit's own column (claiming a lane if the commit is a
+    //    tip of a new lane).
+    let col = laneIndexOf(hash);
     if (col === -1) {
-      col = activeColumns.indexOf(null);
-      if (col === -1) {
-        col = activeColumns.length;
-        activeColumns.push(hash);
-      } else {
-        activeColumns[col] = hash;
+      col = lanes.findIndex((l) => l === null);
+      if (col === -1) col = lanes.length;
+      lanes[col] = { hash, colorIndex: colorOf(hash) };
+    }
+    const commitColor = lanes[col]!.colorIndex;
+
+    // 2. Emit pass-through segments for every other open lane so lanes stay
+    //    visually connected through rows that don't belong to them.
+    const edges: GraphEdge[] = [];
+    for (let i = 0; i < lanes.length; i++) {
+      if (i !== col && lanes[i]) {
+        edges.push({ from: i, to: i, colorIndex: lanes[i]!.colorIndex });
       }
     }
 
-    const commitColor = getColor(hash);
-    const connections: GraphConnection[] = [];
-
+    // 3. Resolve parents. The first parent inherits the commit's lane color;
+    //    merged parents get fresh colors. Ties into already-tracked lanes emit
+    //    cross-column edges instead of duplicating lanes.
     if (parents.length === 0) {
-      activeColumns[col] = null;
+      lanes[col] = null;
     } else {
-      const firstParent = parents[0];
-      activeColumns[col] = firstParent;
-      if (!colorMap.has(firstParent)) {
-        colorMap.set(firstParent, commitColor);
-      }
+      for (let pIdx = 0; pIdx < parents.length; pIdx++) {
+        const parent = parents[pIdx]!;
+        const isFirst = pIdx === 0;
+        let pCol = laneIndexOf(parent);
 
-      connections.push({
-        fromColumn: col,
-        toColumn: col,
-        colorIndex: commitColor,
-        type: "straight",
-      });
-
-      for (let pIdx = 1; pIdx < parents.length; pIdx++) {
-        const parentHash = parents[pIdx];
-        let pCol = activeColumns.indexOf(parentHash);
         if (pCol === -1) {
-          pCol = activeColumns.indexOf(null);
-          if (pCol === -1) {
-            pCol = activeColumns.length;
-            activeColumns.push(parentHash);
+          if (isFirst) {
+            // First parent continues in the same lane.
+            lanes[col] = { hash: parent, colorIndex: colorOf(parent, commitColor) };
+            pCol = col;
           } else {
-            activeColumns[pCol] = parentHash;
+            pCol = lanes.findIndex((l) => l === null);
+            if (pCol === -1) pCol = lanes.length;
+            lanes[pCol] = { hash: parent, colorIndex: colorOf(parent) };
           }
+        } else if (isFirst && pCol !== col) {
+          // Parent already tracked elsewhere — close this lane rather than
+          // duplicating the same hash in two columns.
+          lanes[col] = null;
         }
-        const pColor = getColor(parentHash);
-        connections.push({
-          fromColumn: col,
-          toColumn: pCol,
-          colorIndex: pColor,
-          type: "merge",
-        });
+
+        const edgeColor = isFirst ? colorOf(parent, commitColor) : colorOf(parent);
+        edges.push({ from: col, to: pCol, colorIndex: edgeColor });
       }
     }
 
-    while (
-      activeColumns.length > 0 &&
-      activeColumns[activeColumns.length - 1] === null
-    ) {
-      activeColumns.pop();
-    }
+    trimTrailingNulls();
 
     result.set(hash, {
       column: col,
       colorIndex: commitColor,
-      connections,
-      activeCount: Math.max(1, activeColumns.length, col + 1),
+      edges,
+      activeWidth: Math.max(col + 1, lanes.length, 1),
     });
   }
 

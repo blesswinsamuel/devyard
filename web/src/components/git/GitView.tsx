@@ -1362,7 +1362,7 @@ function DiffBody(props: { project: string; hash: string; diff: string; files?: 
             return fs && fs.oldPath && fs.oldPath !== fs.path ? `${fs.oldPath} → ${fs.path}` : null;
           };
           return (
-            <Card class="overflow-hidden p-0 shadow-sm max-w-full">
+            <Card class="gap-0 overflow-hidden p-0 shadow-sm max-w-full">
               <div
                 onClick={() => toggleFile(chunk.filePath)}
                 role="presentation"

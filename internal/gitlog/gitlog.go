@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -386,6 +387,39 @@ func checkUncommitted(dir string) bool {
 	return len(bytes.TrimSpace(out.Bytes())) > 0
 }
 
+// numstatKey resolves the *new* path of a `--numstat` row, handling rename
+// output: plain "old => new", or the brace-compressed form
+// "dir/{old => new}/file". Returns the raw field when there is no rename
+// marker so file stats can be looked up by the new path.
+func numstatKey(field string) string {
+	if !strings.Contains(field, " => ") {
+		return field
+	}
+	open := strings.Index(field, "{")
+	close := strings.Index(field, "}")
+	if open != -1 && close != -1 && close > open+1 {
+		if parts := strings.Split(field[open+1:close], " => "); len(parts) == 2 {
+			return field[:open] + strings.TrimSpace(parts[1]) + field[close+1:]
+		}
+	}
+	if parts := strings.Split(field, " => "); len(parts) == 2 {
+		return strings.TrimSpace(parts[1])
+	}
+	return field
+}
+
+// unquoteGitPath decodes the C-style quoting git applies to pathnames in
+// --porcelain/--name-status/-z-less output when they contain special
+// characters (e.g. `?? "sp ace.txt"`).
+func unquoteGitPath(s string) string {
+	if len(s) >= 2 && strings.HasPrefix(s, "\"") && strings.HasSuffix(s, "\"") {
+		if unq, err := strconv.Unquote(s); err == nil {
+			return unq
+		}
+	}
+	return s
+}
+
 // resolveHead returns the full hash of HEAD ("" if it cannot be determined,
 // e.g. an unborn branch in an empty repository).
 func resolveHead(dir string) string {
@@ -496,8 +530,8 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 			var add, del int32
 			_, _ = fmt.Sscanf(parts[0], "%d", &add)
 			_, _ = fmt.Sscanf(parts[1], "%d", &del)
-			path := parts[len(parts)-1]
-			numstatMap[path] = stats{add: add, del: del}
+			path := numstatKey(parts[len(parts)-1])
+			numstatMap[unquoteGitPath(path)] = stats{add: add, del: del}
 		}
 	}
 
@@ -510,11 +544,11 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pro
 		parts := strings.Split(line, "\t")
 		if len(parts) >= 2 {
 			st := parts[0]
-			path := parts[1]
+			path := unquoteGitPath(parts[1])
 			oldPath := ""
 			if len(parts) >= 3 {
-				oldPath = parts[1]
-				path = parts[2]
+				oldPath = unquoteGitPath(parts[1])
+				path = unquoteGitPath(parts[2])
 			}
 			if pathFilter != "" && path != pathFilter {
 				continue
@@ -594,8 +628,8 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 			var add, del int32
 			_, _ = fmt.Sscanf(parts[0], "%d", &add)
 			_, _ = fmt.Sscanf(parts[1], "%d", &del)
-			path := parts[len(parts)-1]
-			numstatMap[path] = stats{add: add, del: del}
+			path := numstatKey(parts[len(parts)-1])
+			numstatMap[unquoteGitPath(path)] = stats{add: add, del: del}
 		}
 	}
 
@@ -612,8 +646,10 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 		oldPath := ""
 		if strings.Contains(rest, " -> ") {
 			parts := strings.Split(rest, " -> ")
-			oldPath = parts[0]
-			path = parts[1]
+			oldPath = unquoteGitPath(parts[0])
+			path = unquoteGitPath(parts[1])
+		} else {
+			path = unquoteGitPath(rest)
 		}
 
 		if pathFilter != "" && path != pathFilter {
@@ -671,7 +707,10 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 	diffText := outDiff.String()
 
 	for _, f := range files {
-		if (f.Untracked || f.Status == "A") && !strings.Contains(diffText, f.Path) {
+		// An added/untracked file only appears in the `git diff HEAD` output
+		// once it carries a `+++ b/<path>` patch header; use that instead of a
+		// raw substring match so unrelated paths can't suppress the fallback.
+		if (f.Untracked || f.Status == "A") && !strings.Contains(diffText, "+++ b/"+f.Path) {
 			cmdUntracked := gitCmd(dir, "diff", "--no-index", "/dev/null", f.Path)
 			var outUntracked bytes.Buffer
 			cmdUntracked.Stdout = &outUntracked

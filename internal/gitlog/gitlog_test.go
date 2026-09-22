@@ -405,6 +405,72 @@ func TestLogDoesNotModifyIndex(t *testing.T) {
 	}
 }
 
+func TestNumstatKey(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"a.txt", "a.txt"},
+		{"a.txt => b.txt", "b.txt"},
+		{"dir/{a.txt => b.txt}", "dir/b.txt"},
+		{"dir/{a.txt => sub/b.txt}/file.txt", "dir/sub/b.txt/file.txt"},
+		{"sp ace.txt => sp ace2.txt", "sp ace2.txt"},
+	}
+	for _, tc := range tests {
+		if got := numstatKey(tc.input); got != tc.want {
+			t.Errorf("numstatKey(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestUnquoteGitPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"plain.txt", "plain.txt"},
+		{`"sp ace.txt"`, "sp ace.txt"},
+		{`"weird\"name.txt"`, `weird"name.txt`},
+		{"", ""},
+		{`"`, `"`}, // malformed: left as-is
+	}
+	for _, tc := range tests {
+		if got := unquoteGitPath(tc.input); got != tc.want {
+			t.Errorf("unquoteGitPath(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// TestDiffRenameStats ensures renamed files get their +/− stats resolved
+// against the rename-aware numstat key ("old => new"), not the raw field.
+func TestDiffRenameStats(t *testing.T) {
+	dir := initRepo(t)
+	// Rename b.txt -> renamed.txt and verify the file row still resolves.
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("-C", dir, "mv", "b.txt", "renamed.txt")
+	run("-C", dir, "add", "-A")
+	run("commit", "-q", "-m", "rename")
+
+	commits, _, _, _, err := Log(dir)
+	if err != nil || len(commits) == 0 {
+		t.Fatalf("Log: %v", err)
+	}
+	res, err := Diff(dir, commits[0].Hash, "")
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if len(res.Files) != 1 || res.Files[0].Path != "renamed.txt" || res.Files[0].Status != "R" {
+		t.Fatalf("unexpected rename files: %+v", res.Files)
+	}
+}
+
 func TestParseShortstat(t *testing.T) {
 	tests := []struct {
 		input     string

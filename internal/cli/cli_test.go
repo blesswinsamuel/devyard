@@ -228,4 +228,3 @@ func TestLogsFollowFlag(t *testing.T) {
 		t.Fatalf("expected arg frontend, got %v", cmd.Flags().Args())
 	}
 }
-

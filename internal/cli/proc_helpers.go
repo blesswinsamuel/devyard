@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
+	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/local-compose/internal/proxy"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
 	"github.com/blesswinsamuel/local-compose/internal/ui"
 )
@@ -35,15 +38,25 @@ func fmtBytes(n uint64) string {
 }
 
 // renderStatesHelper formats and displays service states as JSON or an aligned table.
-func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showProject bool) error {
+// urls maps service name → proxy host:port list (nil omits the column).
+func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showProject bool, urls map[string][]string) error {
 	if ctx.IsJSON() {
 		return ctx.PrintJSON(states)
 	}
 	w := ctx.NewTabWriter()
+	showURLs := len(urls) > 0
 	if showProject {
-		_, _ = fmt.Fprintln(w, "PROJECT\tNAME\tSTATUS\tPID\tRESTARTS\tHEALTH")
+		if showURLs {
+			_, _ = fmt.Fprintln(w, "PROJECT\tNAME\tSTATUS\tPID\tRESTARTS\tHEALTH\tURLS")
+		} else {
+			_, _ = fmt.Fprintln(w, "PROJECT\tNAME\tSTATUS\tPID\tRESTARTS\tHEALTH")
+		}
 	} else {
-		_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tPID\tRESTARTS\tHEALTH")
+		if showURLs {
+			_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tPID\tRESTARTS\tHEALTH\tURLS")
+		} else {
+			_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tPID\tRESTARTS\tHEALTH")
+		}
 	}
 	if len(states) == 0 {
 		_, _ = fmt.Fprintln(w, "(no services)")
@@ -62,6 +75,15 @@ func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showPr
 		if st.Status == "exited" {
 			status = fmt.Sprintf("exited (%d)", st.ExitCode)
 		}
+		if showURLs {
+			urls := strings.Join(urls[st.Name], ", ")
+			if showProject {
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n", st.Project, st.Name, status, pid, st.Restarts, health, urls)
+			} else {
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n", st.Name, status, pid, st.Restarts, health, urls)
+			}
+			continue
+		}
 		if showProject {
 			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", st.Project, st.Name, status, pid, st.Restarts, health)
 		} else {
@@ -69,6 +91,36 @@ func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showPr
 		}
 	}
 	return w.Flush()
+}
+
+// proxyURLsFor returns the proxy URL (host:port) for every service that
+// exposes ports in cfg, keyed by service name. Empty when no service is
+// exposed or the global config cannot be loaded.
+func proxyURLsFor(cfg *loadedConfig, project string) map[string][]string {
+	gcfg, err := globalconfig.Load()
+	if err != nil {
+		return nil
+	}
+	if cfg.File == nil {
+		return nil
+	}
+	out := make(map[string][]string)
+	for name, svc := range cfg.File.Services {
+		if svc.Ports == nil || len(svc.Ports.Entries) == 0 {
+			continue
+		}
+		isDefault := cfg.File.Proxy != nil && cfg.File.Proxy.DefaultService == name
+		hosts := proxy.ServiceHosts(project, name, svc, isDefault, gcfg.Proxy.DomainSuffix)
+		if len(hosts) == 0 {
+			continue
+		}
+		list := make([]string, 0, len(hosts))
+		for _, host := range hosts {
+			list = append(list, fmt.Sprintf("%s:%d", host, gcfg.Proxy.Port))
+		}
+		out[name] = list
+	}
+	return out
 }
 
 // renderTasksHelper formats and displays task states as JSON or an aligned table.

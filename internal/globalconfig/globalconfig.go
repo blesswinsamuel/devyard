@@ -31,9 +31,39 @@ type WebConfig struct {
 	Port int `yaml:"port"`
 }
 
+// DefaultProxyHost is the default bind address for the daemon's reverse proxy.
+// Loopback only for security; users who want LAN access must explicitly set
+// host: 0.0.0.0.
+const DefaultProxyHost = "127.0.0.1"
+
+// DefaultProxyPort is the default port for the daemon's reverse proxy.
+const DefaultProxyPort = 8080
+
+// DefaultProxyDomainSuffix is the default domain suffix for proxied URLs.
+// `*.localhost` resolves to 127.0.0.1 per RFC 6761 on macOS and
+// systemd-resolved Linux, so the default needs no DNS setup. Users who want
+// LAN access set a custom suffix (e.g. `192-168-1-5.nip.io` via nip.io or a
+// wildcard DNS zone they control) and bind host to 0.0.0.0.
+const DefaultProxyDomainSuffix = "localhost"
+
+// ProxyConfig holds settings for the daemon's reverse proxy, which exposes
+// services that declare `port`/`ports` at named URLs
+// (<service>.<project>.<domain_suffix>:<port>).
+type ProxyConfig struct {
+	// Host is the bind address. Defaults to 127.0.0.1 (loopback only).
+	Host string `yaml:"host"`
+	// Port is the TCP port. Defaults to 8080.
+	Port int `yaml:"port"`
+	// DomainSuffix is the domain routes are served under. Defaults to
+	// "localhost". Set to a nip.io/sslip.io name (e.g. 192-168-1-5.nip.io)
+	// or a wildcard DNS zone for LAN access.
+	DomainSuffix string `yaml:"domain_suffix"`
+}
+
 // Config is the top-level global config schema.
 type Config struct {
-	Web WebConfig `yaml:"web"`
+	Web   WebConfig   `yaml:"web"`
+	Proxy ProxyConfig `yaml:"proxy"`
 }
 
 // Defaults returns a Config populated with default values.
@@ -42,6 +72,11 @@ func Defaults() Config {
 		Web: WebConfig{
 			Host: DefaultHost,
 			Port: DefaultPort,
+		},
+		Proxy: ProxyConfig{
+			Host:         DefaultProxyHost,
+			Port:         DefaultProxyPort,
+			DomainSuffix: DefaultProxyDomainSuffix,
 		},
 	}
 }
@@ -110,7 +145,8 @@ func loadFile(path string, read readerFunc, errOut io.Writer) (*Config, error) {
 	}
 
 	knownTopLevel := map[string]bool{
-		"web": true,
+		"web":   true,
+		"proxy": true,
 	}
 
 	for key := range raw {
@@ -128,6 +164,15 @@ func loadFile(path string, read readerFunc, errOut io.Writer) (*Config, error) {
 	}
 	if cfg.Web.Port == 0 {
 		cfg.Web.Port = DefaultPort
+	}
+	if cfg.Proxy.Host == "" {
+		cfg.Proxy.Host = DefaultProxyHost
+	}
+	if cfg.Proxy.Port == 0 {
+		cfg.Proxy.Port = DefaultProxyPort
+	}
+	if cfg.Proxy.DomainSuffix == "" {
+		cfg.Proxy.DomainSuffix = DefaultProxyDomainSuffix
 	}
 
 	return &cfg, nil
@@ -173,6 +218,6 @@ func SaveForTest(path string, cfg *Config) error {
 // String returns a human-readable summary of the config (for logging).
 func (c *Config) String() string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "web=%s:%d", c.Web.Host, c.Web.Port)
+	fmt.Fprintf(&sb, "web=%s:%d proxy=%s:%d suffix=%s", c.Web.Host, c.Web.Port, c.Proxy.Host, c.Proxy.Port, c.Proxy.DomainSuffix)
 	return sb.String()
 }

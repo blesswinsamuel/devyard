@@ -116,7 +116,7 @@ func TestRenderStatesHelperTableAndJSON(t *testing.T) {
 	// 1. Table output
 	bufTable := &bytes.Buffer{}
 	ctxTable := &CLIContext{Out: bufTable, Format: "table"}
-	if err := renderStatesHelper(ctxTable, states, false); err != nil {
+	if err := renderStatesHelper(ctxTable, states, false, nil); err != nil {
 		t.Fatalf("renderStatesHelper table: %v", err)
 	}
 	outTable := bufTable.String()
@@ -127,7 +127,7 @@ func TestRenderStatesHelperTableAndJSON(t *testing.T) {
 	// 2. JSON output
 	bufJSON := &bytes.Buffer{}
 	ctxJSON := &CLIContext{Out: bufJSON, Format: "json"}
-	if err := renderStatesHelper(ctxJSON, states, false); err != nil {
+	if err := renderStatesHelper(ctxJSON, states, false, nil); err != nil {
 		t.Fatalf("renderStatesHelper json: %v", err)
 	}
 	var decoded []*protocol.ServiceState

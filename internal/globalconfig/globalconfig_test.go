@@ -179,3 +179,80 @@ func TestSaveAndLoadRoundtrip(t *testing.T) {
 		t.Errorf("Port = %d, want 12345", loaded.Web.Port)
 	}
 }
+
+func TestLoadProxyDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+
+	var buf bytes.Buffer
+	cfg, err := globalconfig.LoadForTest(path, &buf)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Proxy.Host != globalconfig.DefaultProxyHost {
+		t.Errorf("Proxy.Host = %q, want %q", cfg.Proxy.Host, globalconfig.DefaultProxyHost)
+	}
+	if cfg.Proxy.Port != globalconfig.DefaultProxyPort {
+		t.Errorf("Proxy.Port = %d, want %d", cfg.Proxy.Port, globalconfig.DefaultProxyPort)
+	}
+	if cfg.Proxy.DomainSuffix != globalconfig.DefaultProxyDomainSuffix {
+		t.Errorf("Proxy.DomainSuffix = %q, want %q", cfg.Proxy.DomainSuffix, globalconfig.DefaultProxyDomainSuffix)
+	}
+	if buf.Len() > 0 {
+		t.Errorf("unexpected warnings: %s", buf.String())
+	}
+}
+
+func TestLoadProxyOverrides(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	content := `proxy:
+  host: 0.0.0.0
+  port: 9091
+  domain_suffix: 192-168-1-5.nip.io
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	cfg, err := globalconfig.LoadForTest(path, &buf)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Proxy.Host != "0.0.0.0" {
+		t.Errorf("Proxy.Host = %q, want 0.0.0.0", cfg.Proxy.Host)
+	}
+	if cfg.Proxy.Port != 9091 {
+		t.Errorf("Proxy.Port = %d, want 9091", cfg.Proxy.Port)
+	}
+	if cfg.Proxy.DomainSuffix != "192-168-1-5.nip.io" {
+		t.Errorf("Proxy.DomainSuffix = %q, want 192-168-1-5.nip.io", cfg.Proxy.DomainSuffix)
+	}
+	if buf.Len() > 0 {
+		t.Errorf("unexpected warnings: %s", buf.String())
+	}
+}
+
+func TestSaveAndLoadProxyRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+
+	cfg := globalconfig.Defaults()
+	cfg.Proxy.Host = "0.0.0.0"
+	cfg.Proxy.Port = 8081
+	cfg.Proxy.DomainSuffix = "dev.lan"
+
+	if err := globalconfig.SaveForTest(path, &cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	var buf bytes.Buffer
+	loaded, err := globalconfig.LoadForTest(path, &buf)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Proxy.Host != "0.0.0.0" || loaded.Proxy.Port != 8081 || loaded.Proxy.DomainSuffix != "dev.lan" {
+		t.Errorf("proxy roundtrip: %+v", loaded.Proxy)
+	}
+}

@@ -64,7 +64,13 @@ func newServiceListCmd(ctx *CLIContext) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderStatesHelper(ctx, states, showAll)
+			var urls map[string][]string
+			if !showAll {
+				if cfg, err := ctx.LoadConfig(); err == nil {
+					urls = proxyURLsFor(cfg, projName)
+				}
+			}
+			return renderStatesHelper(ctx, states, showAll, urls)
 		},
 	}
 

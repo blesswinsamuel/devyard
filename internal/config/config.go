@@ -83,6 +83,86 @@ type DependsOnEntry struct {
 	Condition DependsOnCondition `yaml:"condition,omitempty"`
 }
 
+// ServicePort is one proxied port of a service.
+type ServicePort struct {
+	// Name is the optional port name. The unnamed (empty) entry or the first
+	// entry of the ports map is the service's default port.
+	Name string
+	Port int
+}
+
+// Ports holds the ports a service exposes for the daemon's reverse proxy.
+// It accepts either a scalar (`port: 3000`, shorthand for one unnamed
+// default port) or an ordered map of named ports (`ports: {http: 3000}`).
+// The first entry is the service's default port.
+type Ports struct {
+	Entries []ServicePort
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler for Ports.
+func (p *Ports) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var n int
+		if err := value.Decode(&n); err != nil {
+			return fmt.Errorf("port must be a number")
+		}
+		if err := validatePortNumber(n); err != nil {
+			return err
+		}
+		p.Entries = []ServicePort{{Name: "", Port: n}}
+		return nil
+	case yaml.MappingNode:
+		seen := make(map[string]bool, len(value.Content)/2)
+		for i := 0; i+1 < len(value.Content); i += 2 {
+			name := value.Content[i].Value
+			if err := validateHostLabel(name); err != nil {
+				return err
+			}
+			if seen[name] {
+				return fmt.Errorf("duplicate port name %q", name)
+			}
+			seen[name] = true
+			var n int
+			if err := value.Content[i+1].Decode(&n); err != nil {
+				return fmt.Errorf("port %q: must be a number", name)
+			}
+			if err := validatePortNumber(n); err != nil {
+				return fmt.Errorf("port %q: %w", name, err)
+			}
+			p.Entries = append(p.Entries, ServicePort{Name: name, Port: n})
+		}
+		if len(p.Entries) == 0 {
+			return fmt.Errorf("ports must not be empty")
+		}
+		return nil
+	default:
+		return fmt.Errorf("ports must be a number or a map of name: port")
+	}
+}
+
+// Default returns the service's default port (the first entry).
+func (p *Ports) Default() (ServicePort, bool) {
+	if p == nil || len(p.Entries) == 0 {
+		return ServicePort{}, false
+	}
+	return p.Entries[0], true
+}
+
+// ServiceProxy customizes how the daemon's reverse proxy exposes a service.
+type ServiceProxy struct {
+	// Host overrides the service's host label in the routed hostname
+	// (<host>.<project>.<domain>). Defaults to the service name.
+	Host string `yaml:"host,omitempty"`
+}
+
+// ProjectProxy configures the daemon's reverse proxy at the project level.
+type ProjectProxy struct {
+	// DefaultService names the service reached at <project>.<domain>. It
+	// must reference a service that exposes ports.
+	DefaultService string `yaml:"default_service,omitempty"`
+}
+
 // Service defines one managed process.
 type Service struct {
 	Command     string            `yaml:"command"`
@@ -94,6 +174,9 @@ type Service struct {
 	Build       *Build            `yaml:"build,omitempty"`
 	Shell       string            `yaml:"shell,omitempty"`
 	TTY         bool              `yaml:"tty,omitempty"`
+	Port        int               `yaml:"port,omitempty"`
+	Ports       *Ports            `yaml:"ports,omitempty"`
+	Proxy       *ServiceProxy     `yaml:"proxy,omitempty"`
 }
 
 // DependsOn accepts either a list of service names or a map with conditions.
@@ -183,6 +266,7 @@ func (t *Task) UnmarshalYAML(value *yaml.Node) error {
 type File struct {
 	Version  string             `yaml:"version"`
 	Name     string             `yaml:"name,omitempty"`
+	Proxy    *ProjectProxy      `yaml:"proxy,omitempty"`
 	Services map[string]Service `yaml:"services"`
 	Tasks    map[string]Task    `yaml:"tasks,omitempty"`
 }
@@ -296,7 +380,42 @@ func (f *File) Validate(configPath string) error {
 				svc.Healthcheck.Retries = 3
 			}
 		}
+		if svc.Port != 0 && svc.Ports != nil {
+			return fmt.Errorf("service %q: port and ports are mutually exclusive", name)
+		}
+		if svc.Port != 0 {
+			if err := validatePortNumber(svc.Port); err != nil {
+				return fmt.Errorf("service %q: %w", name, err)
+			}
+			svc.Ports = &Ports{Entries: []ServicePort{{Name: "", Port: svc.Port}}}
+		}
+		if svc.Ports != nil {
+			for _, entry := range svc.Ports.Entries {
+				if err := validatePortNumber(entry.Port); err != nil {
+					return fmt.Errorf("service %q: %w", name, err)
+				}
+				if entry.Name != "" {
+					if err := validateHostLabel(entry.Name); err != nil {
+						return fmt.Errorf("service %q: port %q: %w", name, entry.Name, err)
+					}
+				}
+			}
+		}
+		if svc.Proxy != nil && svc.Proxy.Host != "" {
+			if err := validateHostLabel(svc.Proxy.Host); err != nil {
+				return fmt.Errorf("service %q: proxy.host: %w", name, err)
+			}
+		}
 		f.Services[name] = svc
+	}
+	if f.Proxy != nil && f.Proxy.DefaultService != "" {
+		svc, ok := f.Services[f.Proxy.DefaultService]
+		if !ok {
+			return fmt.Errorf("proxy.default_service references unknown service %q", f.Proxy.DefaultService)
+		}
+		if svc.Ports == nil || len(svc.Ports.Entries) == 0 {
+			return fmt.Errorf("proxy.default_service %q exposes no ports (add port or ports)", f.Proxy.DefaultService)
+		}
 	}
 	for name, task := range f.Tasks {
 		if strings.TrimSpace(task.Spec.Command) == "" {
@@ -352,6 +471,32 @@ func validateCondition(c DependsOnCondition) error {
 	default:
 		return fmt.Errorf("invalid condition %q", c)
 	}
+}
+
+func validatePortNumber(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535, got %d", port)
+	}
+	return nil
+}
+
+func validateHostLabel(name string) error {
+	if name == "" {
+		return fmt.Errorf("must be non-empty")
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		case c == '-':
+			if i == 0 || i == len(name)-1 {
+				return fmt.Errorf("invalid label %q: leading or trailing dash", name)
+			}
+		default:
+			return fmt.Errorf("invalid label %q: must be lowercase letters, digits, and dashes", name)
+		}
+	}
+	return nil
 }
 
 // FindConfig walks up from cwd looking for local-compose.yml.

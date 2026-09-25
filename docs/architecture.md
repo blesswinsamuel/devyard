@@ -203,6 +203,26 @@ Default bind address is `127.0.0.1:9090` (loopback only). Override with
 `--host` / `--port`, or set defaults in the global config (`web.host`,
 `web.port`). Users who want remote access must explicitly bind to `0.0.0.0`.
 
+## Reverse proxy (`internal/proxy`)
+
+The daemon child starts an HTTP reverse proxy (default `127.0.0.1:8080`,
+settings from the global config's `proxy` section) so services that declare
+`port`/`ports` are reachable at named URLs like
+`http://<service>.<project>.localhost`. Routes are resolved live on every
+request: `orchestrator.Daemon.ProxyRoutes()` (implements `proxy.Resolver`)
+walks the project map, reads each project's retained `config.File`, and
+attaches the live supervisor status. Matching is an exact, case-insensitive
+`Host`-header match over `[<port>.]<label>.<project>.<domain_suffix>`; the
+first route wins on duplicates (projects are iterated in sorted order). A
+service is forwarded to only while `running`; otherwise the proxy serves a
+styled 503 page naming the service, and an unreachable upstream gets a 502
+page. The proxy preserves the original `Host` header and passes websocket
+upgrades through (`httputil.ReverseProxy`, `FlushInterval: -1`). A failed
+listen (port in use) disables the proxy but not the daemon. URL display in
+`ps` is computed CLI-side from the config (`proxy.ServiceHosts`); the global
+config's `proxy.host` / `proxy.port` / `proxy.domain_suffix` control bind and
+naming (see config-schema.md > Global config).
+
 ## State on disk (`internal/project`)
 
 Per-project and daemon-level, XDG-compliant. Never hardcode these paths;

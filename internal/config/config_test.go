@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -292,5 +293,177 @@ tasks:
 	}
 	if seed.Spec.DependsOn.Entries["db"].Condition != config.ConditionServiceHealthy {
 		t.Errorf("seed depends_on db condition: %+v", seed.Spec.DependsOn)
+	}
+}
+
+func TestPortsAndProxyParsing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "local-compose.yml")
+	content := `version: "1"
+name: myproj
+proxy:
+  default_service: web
+services:
+  web:
+    command: echo web
+    port: 3000
+    proxy:
+      host: myapp
+  api:
+    command: echo api
+    ports:
+      http: 3000
+      metrics: 9100
+  db:
+    command: echo db
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if file.Proxy == nil || file.Proxy.DefaultService != "web" {
+		t.Fatalf("project proxy: %+v", file.Proxy)
+	}
+
+	web := file.Services["web"]
+	if web.Ports == nil || len(web.Ports.Entries) != 1 {
+		t.Fatalf("web ports (shorthand): %+v", web.Ports)
+	}
+	if web.Ports.Entries[0].Port != 3000 {
+		t.Errorf("web default port = %d, want 3000", web.Ports.Entries[0].Port)
+	}
+	if web.Proxy == nil || web.Proxy.Host != "myapp" {
+		t.Fatalf("web proxy host: %+v", web.Proxy)
+	}
+
+	api := file.Services["api"]
+	if api.Ports == nil || len(api.Ports.Entries) != 2 {
+		t.Fatalf("api ports: %+v", api.Ports)
+	}
+	if api.Ports.Entries[0].Name != "http" || api.Ports.Entries[0].Port != 3000 {
+		t.Fatalf("api first port: %+v", api.Ports.Entries[0])
+	}
+	if api.Ports.Entries[1].Name != "metrics" || api.Ports.Entries[1].Port != 9100 {
+		t.Fatalf("api second port: %+v", api.Ports.Entries[1])
+	}
+	def, ok := api.Ports.Default()
+	if !ok || def.Name != "http" || def.Port != 3000 {
+		t.Fatalf("api default port: %+v", api.Ports)
+	}
+}
+
+func TestPortAndPortsMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "local-compose.yml")
+	content := `version: "1"
+services:
+  api:
+    command: echo api
+    port: 3000
+    ports:
+      http: 3000
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("Load err = %v, want mutually exclusive error", err)
+	}
+}
+
+func TestDefaultServiceValidation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Unknown default service.
+	path := filepath.Join(dir, "a.yml")
+	content := `version: "1"
+proxy:
+  default_service: nope
+services:
+  api:
+    command: echo api
+    port: 3000
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := config.Load(path)
+	if err == nil || !strings.Contains(err.Error(), "unknown service") {
+		t.Fatalf("unknown default_service err = %v", err)
+	}
+
+	// Default service without ports.
+	path = filepath.Join(dir, "b.yml")
+	content = `version: "1"
+proxy:
+  default_service: api
+services:
+  api:
+    command: echo api
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "exposes no ports") {
+		t.Fatalf("portless default_service err = %v", err)
+	}
+}
+
+func TestPortNameValidation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for i, name := range []string{"", "UPPER", "lead-", "-tail", "with.dot", "sp ace"} {
+		path := filepath.Join(dir, fmt.Sprintf("c%d.yml", i))
+		content := fmt.Sprintf("version: \"1\"\nservices:\n  api:\n    command: echo api\n    ports:\n      %q: 3000\n", name)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := config.Load(path); err == nil {
+			t.Errorf("port name %q: expected error", name)
+		}
+	}
+
+	// Valid names pass.
+	path := filepath.Join(dir, "ok.yml")
+	content := `version: "1"
+services:
+  api:
+    command: echo api
+    ports:
+      http: 3000
+      metrics-v2: 9100
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+}
+
+func TestProxyHostValidation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "local-compose.yml")
+	content := `version: "1"
+services:
+  api:
+    command: echo api
+    port: 3000
+    proxy:
+      host: bad.host
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "proxy.host") {
+		t.Fatalf("Load err = %v, want proxy.host error", err)
 	}
 }

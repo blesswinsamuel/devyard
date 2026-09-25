@@ -27,6 +27,7 @@ import (
 	"github.com/blesswinsamuel/local-compose/internal/procstat"
 	"github.com/blesswinsamuel/local-compose/internal/project"
 	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/local-compose/internal/proxy"
 	"github.com/blesswinsamuel/local-compose/internal/supervisor"
 )
 
@@ -46,9 +47,11 @@ type Project struct {
 	done          chan struct{}
 	stopping      bool // true while StopProject is in progress
 
-	// File and Order hold the parsed config for a registered-but-never-started
-	// project (Sup == nil, e.g. skipped by autostart). The stoppedBackend uses
-	// them to report the project's services and actions as stopped.
+	// File holds the project's parsed config. For running projects it is
+	// kept in sync with the last loaded config (see startProject) so the
+	// reverse proxy can route on the effective schema even for running
+	// projects; for registered-but-never-started projects (Sup == nil) it is
+	// the only source, used by stoppedBackend and ProxyRoutes.
 	File  *config.File
 	Order []string
 }
@@ -211,7 +214,10 @@ func (d *Daemon) startProject(configPath string, build bool, envFile string, rem
 				_ = writeConfigPath(locs, configPath)
 				_ = writeConfigSnapshot(locs, cfg.File)
 			}
+			d.mu.Lock()
+			p.File = cfg.File
 			p.TotalServices = len(cfg.File.Services)
+			d.mu.Unlock()
 			err := sup.StartStopped()
 			d.notifyProjectsChanged()
 			return err
@@ -374,6 +380,8 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		ConfigPath:    configPath,
 		BaseDir:       cfg.BaseDir,
 		TotalServices: len(cfg.File.Services),
+		File:          cfg.File,
+		Order:         cfg.Order,
 		Sup:           sup,
 		cancel:        cancel,
 		done:          make(chan struct{}),
@@ -1305,6 +1313,69 @@ func (d *Daemon) ListTasks(project string) ([]*protocol.TaskState, error) {
 		all = append(all, tasks...)
 	}
 	return all, nil
+}
+
+// ProxyRoutes returns the reverse-proxy routes for every registered project,
+// in sorted project name order. It implements proxy.Resolver so the proxy
+// server can resolve Host headers against live project state on every request.
+// Services without ports produce no routes; a service whose supervisor is not
+// running still produces routes (so the proxy can serve its error page).
+// Registered-but-never-started projects report every service as stopped.
+func (d *Daemon) ProxyRoutes() []proxy.Route {
+	d.mu.Lock()
+	names := make([]string, 0, len(d.projects))
+	projects := make(map[string]*Project, len(d.projects))
+	for name, p := range d.projects {
+		names = append(names, name)
+		projects[name] = p
+	}
+	d.mu.Unlock()
+	sort.Strings(names)
+
+	var routes []proxy.Route
+	for _, name := range names {
+		p := projects[name]
+		if p.File == nil {
+			continue
+		}
+		// Snapshot per-service statuses outside the daemon lock (calling into
+		// the supervisor under d.mu could deadlock with state-change callbacks).
+		statuses := make(map[string]string, len(p.File.Services))
+		if p.Sup != nil {
+			for _, st := range p.Sup.States() {
+				statuses[st.Name] = string(st.Status)
+			}
+		}
+
+		defaultService := ""
+		if p.File.Proxy != nil {
+			defaultService = p.File.Proxy.DefaultService
+		}
+
+		for _, svcName := range p.Order {
+			svc, ok := p.File.Services[svcName]
+			if !ok || svc.Ports == nil || len(svc.Ports.Entries) == 0 {
+				continue
+			}
+			status := statuses[svcName]
+			label := svcName
+			if svc.Proxy != nil && svc.Proxy.Host != "" {
+				label = svc.Proxy.Host
+			}
+			for i, entry := range svc.Ports.Entries {
+				routes = append(routes, proxy.Route{
+					Label:     label,
+					Project:   name,
+					Service:   svcName,
+					PortName:  entry.Name,
+					Port:      entry.Port,
+					Status:    status,
+					IsDefault: i == 0 && svcName == defaultService,
+				})
+			}
+		}
+	}
+	return routes
 }
 
 // ListPorts returns open listening sockets for a project (or all projects when project is empty).

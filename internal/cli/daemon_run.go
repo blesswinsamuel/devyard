@@ -10,8 +10,10 @@ import (
 
 	"github.com/blesswinsamuel/local-compose/internal/control"
 	"github.com/blesswinsamuel/local-compose/internal/daemon"
+	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
 	"github.com/blesswinsamuel/local-compose/internal/orchestrator"
 	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/local-compose/internal/proxy"
 )
 
 // runDaemonChild is the entry point for the daemonized global daemon. It
@@ -53,6 +55,26 @@ func runDaemonChild() error {
 	srv := control.NewServer(locs.Socket, d)
 	if err := srv.ListenAndServe(); err != nil {
 		return err
+	}
+
+	// Reverse proxy exposing services that declare port(s) at named URLs
+	// (<service>.<project>.<suffix>). Settings come from the global config;
+	// loopback-only by default. A failed listen (e.g. port in use) disables
+	// the proxy but does not take the daemon down.
+	gcfg, err := globalconfig.Load()
+	if err != nil {
+		slog.Warn("global config unavailable, reverse proxy disabled", "error", err)
+	} else {
+		psrv := proxy.NewServer(
+			fmt.Sprintf("%s:%d", gcfg.Proxy.Host, gcfg.Proxy.Port),
+			gcfg.Proxy.DomainSuffix,
+			d,
+		)
+		if err := psrv.ListenAndServe(); err != nil {
+			slog.Error("reverse proxy disabled; listen failed", "addr", psrv.Addr(), "error", err)
+		} else {
+			defer func() { _ = psrv.Close() }()
+		}
 	}
 
 	// Autostart all registered projects unless a project-level .stopped

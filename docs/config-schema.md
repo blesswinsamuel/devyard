@@ -86,6 +86,9 @@ api:
 | `healthcheck` | no | — | See below. |
 | `restart` | no | `no` | See below. |
 | `build` | no | — | Pre-start build step; string or object. |
+| `port` | no | — | The port the process listens on. Shorthand for a single unnamed `ports` entry. Exposes the service to the daemon's reverse proxy (see below). Not Docker's `ports:` mapping — there is no host↔container forwarding. |
+| `ports` | no | — | Ordered map of named ports (`http: 3000`). The **first entry is the service's default port**. |
+| `proxy` | no | — | Proxy options: `host` overrides the service's host label (default: service name). |
 
 ### `depends_on`
 
@@ -184,6 +187,64 @@ build:                                       # object form
 - `command` is required in the object form (validation rejects an empty
   command). `env` is additive over the parent env, same rule as service `env`.
 
+## Named URLs (reverse proxy)
+
+Services that declare `port` or `ports` are automatically exposed by the
+daemon's built-in reverse proxy at **named URLs** — no port numbers to
+remember:
+
+```yaml
+version: "1"
+name: myproject
+proxy:
+  default_service: web        # <project>.<domain> routes to this service
+services:
+  web:
+    command: bun run dev
+    port: 3000                # → http://web.myproject.localhost:8080
+  api:
+    command: ./api
+    ports:
+      http: 3000              # first entry = api's default port
+      metrics: 9100           # → metrics.api.myproject.localhost
+  db:
+    command: postgres -D ...
+    # no port/ports → not exposed through the proxy
+```
+
+Resulting URLs (default settings):
+
+| URL | Routes to |
+| --- | --- |
+| `web.myproject.localhost:8080` | web's default port (3000) |
+| `myproject.localhost:8080` | web (the `default_service`) |
+| `http.api.myproject.localhost:8080` | api's default port (3000) |
+| `metrics.api.myproject.localhost:8080` | api port `metrics` (9100) |
+
+Rules:
+
+- A service is routed **only** if it declares `port` or `ports`. `port: N` is
+  shorthand for `ports: {<unnamed>: N}`; the two are mutually exclusive.
+- Hostnames are `<service>.<project>.<domain>`; a named port prefixes the
+  service label (`<port>.<service>.<project>.<domain>`). A `proxy.host` on
+  the service replaces the `<service>` label. The project's
+  `proxy.default_service` additionally serves `<project>.<domain>`.
+- Requests only forward while the service's supervisor reports it running.
+  Stopped/starting services get a styled 503 page; an unreachable upstream
+  gets a 502 page.
+- The proxy forwards to `127.0.0.1:<port>`, preserves the original `Host`
+  header, and passes WebSocket upgrades through.
+- Validation: `port` and `ports` are mutually exclusive; port names and
+  `proxy.host` must be lowercase letters, digits, and dashes; an unknown or
+  portless `proxy.default_service` is a config error.
+
+**LAN access.** `*.localhost` resolves to 127.0.0.1 on the machine itself only
+(RFC 6761). To reach the proxy from other machines, set `proxy.host: 0.0.0.0`
+in the global config and a `proxy.domain_suffix` that resolves to the host's
+IP on your LAN — e.g. `192-168-1-5.nip.io` (zero setup via nip.io/sslip.io) or
+a wildcard DNS zone. Note the proxy is unauthenticated; binding to a
+non-loopback address exposes your dev services to the network.
+
 ## Tasks
 
 Tasks define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `local-compose task run <task>` (or shortcut `local-compose run <task>`) or the Web UI.
@@ -214,10 +275,15 @@ tasks:
 
 ## Intentionally absent
 
-`image`, `build:` (Docker context), `volumes`, `networks`, and `ports` are
-**not** part of the schema. Processes bind ports and read the filesystem
-directly — there's nothing to map. Adding shims for these would mislead users
-about what `local-compose` does.
+`image`, `build:` (Docker context), `volumes`, and `networks` are **not** part
+of the schema. Processes bind ports and read the filesystem directly —
+there's nothing to map. Adding shims for these would mislead users about what
+`local-compose` does.
+
+Note: the service-level `port`/`ports` fields described above are **not**
+Docker's `ports:` mapping (host↔container forwarding) — they declare the
+port(s) a process listens on so the reverse proxy can route named URLs to
+them. There is still no port forwarding of any kind.
 
 ## Unknown fields
 
@@ -235,12 +301,19 @@ user-level global config at `$XDG_CONFIG_HOME/local-compose/config.yml`
 web:
   host: 127.0.0.1      # bind address (default: 127.0.0.1, loopback only)
   port: 9090           # TCP port (default: 9090)
+proxy:
+  host: 127.0.0.1      # bind address (default: 127.0.0.1, loopback only)
+  port: 8080           # TCP port (default: 8080)
+  domain_suffix: localhost
 ```
 
 | Field | Default | Notes |
 | --- | --- | --- |
 | `web.host` | `127.0.0.1` | Bind address for `local-compose web`. Set to `0.0.0.0` for remote access. |
 | `web.port` | `9090` | TCP port for the web UI. |
+| `proxy.host` | `127.0.0.1` | Bind address for the daemon's reverse proxy. Set to `0.0.0.0` for LAN access. |
+| `proxy.port` | `8080` | TCP port for the reverse proxy. |
+| `proxy.domain_suffix` | `localhost` | Domain routes are served under. Set to a nip.io name (e.g. `192-168-1-5.nip.io`) or a wildcard DNS zone for LAN access. |
 
 CLI flags `--host` / `--port` override these defaults.
 

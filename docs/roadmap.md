@@ -30,6 +30,13 @@ What's done, what's planned, and where each item lives in the code.
   (`internal/health`, `internal/supervisor`)
 - **Restart policies** — `no` / `on-failure` / `always` with
   exponential backoff + jitter. (`internal/supervisor/restart.go`)
+- **Reverse proxy / named URLs** — services that declare `port`/`ports` are
+  exposed by a daemon-owned reverse proxy at
+  `<service>.<project>.localhost[:suffix]:<port>` (project
+  `proxy.default_service` serves `project.localhost`; named ports prefix the
+  service label). Live route resolution from the orchestrator; styled 502/503
+  error pages; URL column in `ps`. (`internal/proxy`, `internal/config`,
+  `internal/cli`, `internal/orchestrator`)
 - **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Start with
   `local-compose web` (proxies to the daemon socket). Loopback-only by default.
   (`internal/web`, `web/`)

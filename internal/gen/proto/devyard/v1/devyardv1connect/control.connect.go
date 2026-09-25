@@ -54,6 +54,12 @@ const (
 	// DaemonServiceRestartDaemonProcedure is the fully-qualified name of the DaemonService's
 	// RestartDaemon RPC.
 	DaemonServiceRestartDaemonProcedure = "/devyard.v1.DaemonService/RestartDaemon"
+	// DaemonServiceGetGlobalConfigProcedure is the fully-qualified name of the DaemonService's
+	// GetGlobalConfig RPC.
+	DaemonServiceGetGlobalConfigProcedure = "/devyard.v1.DaemonService/GetGlobalConfig"
+	// DaemonServiceUpdateGlobalConfigProcedure is the fully-qualified name of the DaemonService's
+	// UpdateGlobalConfig RPC.
+	DaemonServiceUpdateGlobalConfigProcedure = "/devyard.v1.DaemonService/UpdateGlobalConfig"
 	// DaemonServiceListServicesProcedure is the fully-qualified name of the DaemonService's
 	// ListServices RPC.
 	DaemonServiceListServicesProcedure = "/devyard.v1.DaemonService/ListServices"
@@ -112,6 +118,9 @@ type DaemonServiceClient interface {
 	DaemonStatus(context.Context, *connect.Request[v1.DaemonStatusRequest]) (*connect.Response[v1.DaemonStatusResponse], error)
 	StopDaemon(context.Context, *connect.Request[v1.StopDaemonRequest]) (*connect.Response[v1.StopDaemonResponse], error)
 	RestartDaemon(context.Context, *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error)
+	// Global Settings
+	GetGlobalConfig(context.Context, *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error)
+	UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error)
 	// Service Management
 	ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error)
 	StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error)
@@ -189,6 +198,18 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			httpClient,
 			baseURL+DaemonServiceRestartDaemonProcedure,
 			connect.WithSchema(daemonServiceMethods.ByName("RestartDaemon")),
+			connect.WithClientOptions(opts...),
+		),
+		getGlobalConfig: connect.NewClient[v1.GetGlobalConfigRequest, v1.GetGlobalConfigResponse](
+			httpClient,
+			baseURL+DaemonServiceGetGlobalConfigProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GetGlobalConfig")),
+			connect.WithClientOptions(opts...),
+		),
+		updateGlobalConfig: connect.NewClient[v1.UpdateGlobalConfigRequest, v1.UpdateGlobalConfigResponse](
+			httpClient,
+			baseURL+DaemonServiceUpdateGlobalConfigProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("UpdateGlobalConfig")),
 			connect.WithClientOptions(opts...),
 		),
 		listServices: connect.NewClient[v1.ListServicesRequest, v1.ListServicesResponse](
@@ -316,33 +337,35 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 
 // daemonServiceClient implements DaemonServiceClient.
 type daemonServiceClient struct {
-	listProjects    *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
-	startProject    *connect.Client[v1.StartProjectRequest, v1.StartProjectResponse]
-	stopProject     *connect.Client[v1.StopProjectRequest, v1.StopProjectResponse]
-	removeProject   *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
-	daemonStatus    *connect.Client[v1.DaemonStatusRequest, v1.DaemonStatusResponse]
-	stopDaemon      *connect.Client[v1.StopDaemonRequest, v1.StopDaemonResponse]
-	restartDaemon   *connect.Client[v1.RestartDaemonRequest, v1.RestartDaemonResponse]
-	listServices    *connect.Client[v1.ListServicesRequest, v1.ListServicesResponse]
-	startService    *connect.Client[v1.StartServiceRequest, v1.StartServiceResponse]
-	stopService     *connect.Client[v1.StopServiceRequest, v1.StopServiceResponse]
-	killService     *connect.Client[v1.KillServiceRequest, v1.KillServiceResponse]
-	restart         *connect.Client[v1.RestartRequest, v1.RestartResponse]
-	top             *connect.Client[v1.TopRequest, v1.TopResponse]
-	logs            *connect.Client[v1.LogsRequest, v1.LogChunk]
-	listPorts       *connect.Client[v1.ListPortsRequest, v1.ListPortsResponse]
-	listTasks       *connect.Client[v1.ListTasksRequest, v1.ListTasksResponse]
-	runTask         *connect.Client[v1.RunTaskRequest, v1.TaskOutputChunk]
-	stopTask        *connect.Client[v1.StopTaskRequest, v1.StopTaskResponse]
-	gitLog          *connect.Client[v1.GitLogRequest, v1.GitLogResponse]
-	gitDiff         *connect.Client[v1.GitDiffRequest, v1.GitDiffResponse]
-	gitCommit       *connect.Client[v1.GitCommitRequest, v1.GitCommitResponse]
-	gitStage        *connect.Client[v1.GitStageRequest, v1.GitStageResponse]
-	gitPush         *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
-	gitPull         *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
-	gitFetch        *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
-	gitStatus       *connect.Client[v1.GitStatusRequest, v1.GitStatusResponse]
-	subscribeEvents *connect.Client[v1.SubscribeEventsRequest, v1.Event]
+	listProjects       *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
+	startProject       *connect.Client[v1.StartProjectRequest, v1.StartProjectResponse]
+	stopProject        *connect.Client[v1.StopProjectRequest, v1.StopProjectResponse]
+	removeProject      *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
+	daemonStatus       *connect.Client[v1.DaemonStatusRequest, v1.DaemonStatusResponse]
+	stopDaemon         *connect.Client[v1.StopDaemonRequest, v1.StopDaemonResponse]
+	restartDaemon      *connect.Client[v1.RestartDaemonRequest, v1.RestartDaemonResponse]
+	getGlobalConfig    *connect.Client[v1.GetGlobalConfigRequest, v1.GetGlobalConfigResponse]
+	updateGlobalConfig *connect.Client[v1.UpdateGlobalConfigRequest, v1.UpdateGlobalConfigResponse]
+	listServices       *connect.Client[v1.ListServicesRequest, v1.ListServicesResponse]
+	startService       *connect.Client[v1.StartServiceRequest, v1.StartServiceResponse]
+	stopService        *connect.Client[v1.StopServiceRequest, v1.StopServiceResponse]
+	killService        *connect.Client[v1.KillServiceRequest, v1.KillServiceResponse]
+	restart            *connect.Client[v1.RestartRequest, v1.RestartResponse]
+	top                *connect.Client[v1.TopRequest, v1.TopResponse]
+	logs               *connect.Client[v1.LogsRequest, v1.LogChunk]
+	listPorts          *connect.Client[v1.ListPortsRequest, v1.ListPortsResponse]
+	listTasks          *connect.Client[v1.ListTasksRequest, v1.ListTasksResponse]
+	runTask            *connect.Client[v1.RunTaskRequest, v1.TaskOutputChunk]
+	stopTask           *connect.Client[v1.StopTaskRequest, v1.StopTaskResponse]
+	gitLog             *connect.Client[v1.GitLogRequest, v1.GitLogResponse]
+	gitDiff            *connect.Client[v1.GitDiffRequest, v1.GitDiffResponse]
+	gitCommit          *connect.Client[v1.GitCommitRequest, v1.GitCommitResponse]
+	gitStage           *connect.Client[v1.GitStageRequest, v1.GitStageResponse]
+	gitPush            *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
+	gitPull            *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
+	gitFetch           *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
+	gitStatus          *connect.Client[v1.GitStatusRequest, v1.GitStatusResponse]
+	subscribeEvents    *connect.Client[v1.SubscribeEventsRequest, v1.Event]
 }
 
 // ListProjects calls devyard.v1.DaemonService.ListProjects.
@@ -378,6 +401,16 @@ func (c *daemonServiceClient) StopDaemon(ctx context.Context, req *connect.Reque
 // RestartDaemon calls devyard.v1.DaemonService.RestartDaemon.
 func (c *daemonServiceClient) RestartDaemon(ctx context.Context, req *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error) {
 	return c.restartDaemon.CallUnary(ctx, req)
+}
+
+// GetGlobalConfig calls devyard.v1.DaemonService.GetGlobalConfig.
+func (c *daemonServiceClient) GetGlobalConfig(ctx context.Context, req *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error) {
+	return c.getGlobalConfig.CallUnary(ctx, req)
+}
+
+// UpdateGlobalConfig calls devyard.v1.DaemonService.UpdateGlobalConfig.
+func (c *daemonServiceClient) UpdateGlobalConfig(ctx context.Context, req *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error) {
+	return c.updateGlobalConfig.CallUnary(ctx, req)
 }
 
 // ListServices calls devyard.v1.DaemonService.ListServices.
@@ -491,6 +524,9 @@ type DaemonServiceHandler interface {
 	DaemonStatus(context.Context, *connect.Request[v1.DaemonStatusRequest]) (*connect.Response[v1.DaemonStatusResponse], error)
 	StopDaemon(context.Context, *connect.Request[v1.StopDaemonRequest]) (*connect.Response[v1.StopDaemonResponse], error)
 	RestartDaemon(context.Context, *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error)
+	// Global Settings
+	GetGlobalConfig(context.Context, *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error)
+	UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error)
 	// Service Management
 	ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error)
 	StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error)
@@ -564,6 +600,18 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		DaemonServiceRestartDaemonProcedure,
 		svc.RestartDaemon,
 		connect.WithSchema(daemonServiceMethods.ByName("RestartDaemon")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGetGlobalConfigHandler := connect.NewUnaryHandler(
+		DaemonServiceGetGlobalConfigProcedure,
+		svc.GetGlobalConfig,
+		connect.WithSchema(daemonServiceMethods.ByName("GetGlobalConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceUpdateGlobalConfigHandler := connect.NewUnaryHandler(
+		DaemonServiceUpdateGlobalConfigProcedure,
+		svc.UpdateGlobalConfig,
+		connect.WithSchema(daemonServiceMethods.ByName("UpdateGlobalConfig")),
 		connect.WithHandlerOptions(opts...),
 	)
 	daemonServiceListServicesHandler := connect.NewUnaryHandler(
@@ -702,6 +750,10 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceStopDaemonHandler.ServeHTTP(w, r)
 		case DaemonServiceRestartDaemonProcedure:
 			daemonServiceRestartDaemonHandler.ServeHTTP(w, r)
+		case DaemonServiceGetGlobalConfigProcedure:
+			daemonServiceGetGlobalConfigHandler.ServeHTTP(w, r)
+		case DaemonServiceUpdateGlobalConfigProcedure:
+			daemonServiceUpdateGlobalConfigHandler.ServeHTTP(w, r)
 		case DaemonServiceListServicesProcedure:
 			daemonServiceListServicesHandler.ServeHTTP(w, r)
 		case DaemonServiceStartServiceProcedure:
@@ -777,6 +829,14 @@ func (UnimplementedDaemonServiceHandler) StopDaemon(context.Context, *connect.Re
 
 func (UnimplementedDaemonServiceHandler) RestartDaemon(context.Context, *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.RestartDaemon is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GetGlobalConfig(context.Context, *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GetGlobalConfig is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.UpdateGlobalConfig is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error) {

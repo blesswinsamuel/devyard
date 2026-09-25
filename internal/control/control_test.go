@@ -698,6 +698,14 @@ func (m *fakeMultiBackend) RestartDaemon(restartServices bool) (int32, error) {
 	return 0, m.StopDaemon()
 }
 
+func (m *fakeMultiBackend) GetGlobalConfig() (*protocol.GlobalConfig, error) {
+	return &protocol.GlobalConfig{}, nil
+}
+
+func (m *fakeMultiBackend) UpdateGlobalConfig(*protocol.GlobalConfig) error {
+	return nil
+}
+
 func (m *fakeMultiBackend) ProjectBackend(project string) (control.Backend, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

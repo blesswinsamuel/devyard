@@ -14,6 +14,7 @@ import type {
   TaskState,
 } from "~/lib/types";
 import { rpcClient } from "~/lib/rpc";
+import type { GlobalConfig } from "~/gen/devyard/v1/control_pb";
 import { onConnectionOpen, onDaemonEvent } from "~/lib/events";
 import { pushRoute } from "~/lib/router";
 import { sameArray } from "~/lib/utils";
@@ -27,6 +28,7 @@ const [services, setServices] = createSignal<Record<string, ServiceState[]>>({})
 const [tasks, setTasks] = createSignal<Record<string, TaskState[]>>({});
 const [ports, setPorts] = createSignal<Record<string, PortBinding[]>>({});
 const [daemonInfo, setDaemonInfo] = createSignal<DaemonInfo | null>(null);
+const [globalConfig, setGlobalConfig] = createSignal<GlobalConfig | null>(null);
 
 // git data, keyed per project
 const [gitCommits, setGitCommits] = createSignal<Record<string, GitCommit[]>>({});
@@ -51,6 +53,7 @@ export {
   tasks,
   ports,
   daemonInfo,
+  globalConfig,
   gitCommits,
   gitBranches,
   gitTags,
@@ -349,6 +352,29 @@ export function refreshServices(project: string) {
 
 export function refreshTasks(project: string) {
   fetchTasks(project);
+}
+
+// --- global settings ---------------------------------------------------------
+
+export async function fetchGlobalConfig() {
+  try {
+    const res = await rpcClient.getGlobalConfig({});
+    if (res.config) setGlobalConfig(res.config);
+  } catch (err: any) {
+    pushToast(err.message || "Failed to load settings", "error");
+  }
+}
+
+export async function updateGlobalConfig(config: GlobalConfig): Promise<boolean> {
+  try {
+    await rpcClient.updateGlobalConfig({ config });
+    setGlobalConfig(config);
+    pushToast("Settings saved. Restart the daemon for proxy changes to take effect.", "success");
+    return true;
+  } catch (err: any) {
+    pushToast(err.message || "Failed to save settings", "error");
+    return false;
+  }
 }
 
 // --- lifecycle commands -----------------------------------------------------

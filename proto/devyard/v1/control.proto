@@ -18,6 +18,10 @@ service DaemonService {
   rpc StopDaemon(StopDaemonRequest) returns (StopDaemonResponse);
   rpc RestartDaemon(RestartDaemonRequest) returns (RestartDaemonResponse);
 
+  // Global Settings
+  rpc GetGlobalConfig(GetGlobalConfigRequest) returns (GetGlobalConfigResponse);
+  rpc UpdateGlobalConfig(UpdateGlobalConfigRequest) returns (UpdateGlobalConfigResponse);
+
   // Service Management
   rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
   rpc StartService(StartServiceRequest) returns (StartServiceResponse);
@@ -298,6 +302,34 @@ message RestartDaemonResponse {
   // control socket before assuming the restart succeeded.
   int32 pid = 1;
 }
+
+message GlobalWebConfig {
+  string host = 1;
+  int32 port = 2;
+}
+
+message GlobalProxyConfig {
+  string host = 1;
+  int32 port = 2;
+  string domain_suffix = 3;
+}
+
+message GlobalConfig {
+  GlobalWebConfig web = 1;
+  GlobalProxyConfig proxy = 2;
+}
+
+message GetGlobalConfigRequest {}
+
+message GetGlobalConfigResponse {
+  GlobalConfig config = 1;
+}
+
+message UpdateGlobalConfigRequest {
+  GlobalConfig config = 1;
+}
+
+message UpdateGlobalConfigResponse {}
 
 message ListServicesRequest {
   string project = 1;

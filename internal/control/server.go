@@ -243,6 +243,26 @@ func (s *Server) RestartDaemon(ctx context.Context, req *connect.Request[devyard
 	return connect.NewResponse(&devyardv1.RestartDaemonResponse{Pid: pid}), nil
 }
 
+func (s *Server) GetGlobalConfig(ctx context.Context, req *connect.Request[devyardv1.GetGlobalConfigRequest]) (*connect.Response[devyardv1.GetGlobalConfigResponse], error) {
+	cfg, err := s.backend.GetGlobalConfig()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&devyardv1.GetGlobalConfigResponse{
+		Config: cfg,
+	}), nil
+}
+
+func (s *Server) UpdateGlobalConfig(ctx context.Context, req *connect.Request[devyardv1.UpdateGlobalConfigRequest]) (*connect.Response[devyardv1.UpdateGlobalConfigResponse], error) {
+	if err := ValidateGlobalConfig(req.Msg.Config); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := s.backend.UpdateGlobalConfig(req.Msg.Config); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&devyardv1.UpdateGlobalConfigResponse{}), nil
+}
+
 func (s *Server) ListServices(ctx context.Context, req *connect.Request[devyardv1.ListServicesRequest]) (*connect.Response[devyardv1.ListServicesResponse], error) {
 	states, err := s.backend.ListServices(req.Msg.Project)
 	if err != nil {

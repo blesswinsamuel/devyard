@@ -1960,6 +1960,277 @@ export class RestartDaemonResponse extends Message<RestartDaemonResponse> {
 }
 
 /**
+ * @generated from message devyard.v1.GlobalWebConfig
+ */
+export class GlobalWebConfig extends Message<GlobalWebConfig> {
+  /**
+   * @generated from field: string host = 1;
+   */
+  host = "";
+
+  /**
+   * @generated from field: int32 port = 2;
+   */
+  port = 0;
+
+  constructor(data?: PartialMessage<GlobalWebConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GlobalWebConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "host", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "port", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalWebConfig {
+    return new GlobalWebConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GlobalWebConfig {
+    return new GlobalWebConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GlobalWebConfig {
+    return new GlobalWebConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GlobalWebConfig | PlainMessage<GlobalWebConfig> | undefined, b: GlobalWebConfig | PlainMessage<GlobalWebConfig> | undefined): boolean {
+    return proto3.util.equals(GlobalWebConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GlobalProxyConfig
+ */
+export class GlobalProxyConfig extends Message<GlobalProxyConfig> {
+  /**
+   * @generated from field: string host = 1;
+   */
+  host = "";
+
+  /**
+   * @generated from field: int32 port = 2;
+   */
+  port = 0;
+
+  /**
+   * @generated from field: string domain_suffix = 3;
+   */
+  domainSuffix = "";
+
+  constructor(data?: PartialMessage<GlobalProxyConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GlobalProxyConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "host", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "port", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 3, name: "domain_suffix", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalProxyConfig {
+    return new GlobalProxyConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GlobalProxyConfig {
+    return new GlobalProxyConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GlobalProxyConfig {
+    return new GlobalProxyConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GlobalProxyConfig | PlainMessage<GlobalProxyConfig> | undefined, b: GlobalProxyConfig | PlainMessage<GlobalProxyConfig> | undefined): boolean {
+    return proto3.util.equals(GlobalProxyConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GlobalConfig
+ */
+export class GlobalConfig extends Message<GlobalConfig> {
+  /**
+   * @generated from field: devyard.v1.GlobalWebConfig web = 1;
+   */
+  web?: GlobalWebConfig;
+
+  /**
+   * @generated from field: devyard.v1.GlobalProxyConfig proxy = 2;
+   */
+  proxy?: GlobalProxyConfig;
+
+  constructor(data?: PartialMessage<GlobalConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GlobalConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "web", kind: "message", T: GlobalWebConfig },
+    { no: 2, name: "proxy", kind: "message", T: GlobalProxyConfig },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalConfig {
+    return new GlobalConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GlobalConfig {
+    return new GlobalConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GlobalConfig {
+    return new GlobalConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GlobalConfig | PlainMessage<GlobalConfig> | undefined, b: GlobalConfig | PlainMessage<GlobalConfig> | undefined): boolean {
+    return proto3.util.equals(GlobalConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GetGlobalConfigRequest
+ */
+export class GetGlobalConfigRequest extends Message<GetGlobalConfigRequest> {
+  constructor(data?: PartialMessage<GetGlobalConfigRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GetGlobalConfigRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetGlobalConfigRequest {
+    return new GetGlobalConfigRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GetGlobalConfigRequest {
+    return new GetGlobalConfigRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GetGlobalConfigRequest {
+    return new GetGlobalConfigRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GetGlobalConfigRequest | PlainMessage<GetGlobalConfigRequest> | undefined, b: GetGlobalConfigRequest | PlainMessage<GetGlobalConfigRequest> | undefined): boolean {
+    return proto3.util.equals(GetGlobalConfigRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GetGlobalConfigResponse
+ */
+export class GetGlobalConfigResponse extends Message<GetGlobalConfigResponse> {
+  /**
+   * @generated from field: devyard.v1.GlobalConfig config = 1;
+   */
+  config?: GlobalConfig;
+
+  constructor(data?: PartialMessage<GetGlobalConfigResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GetGlobalConfigResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "config", kind: "message", T: GlobalConfig },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetGlobalConfigResponse {
+    return new GetGlobalConfigResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GetGlobalConfigResponse {
+    return new GetGlobalConfigResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GetGlobalConfigResponse {
+    return new GetGlobalConfigResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GetGlobalConfigResponse | PlainMessage<GetGlobalConfigResponse> | undefined, b: GetGlobalConfigResponse | PlainMessage<GetGlobalConfigResponse> | undefined): boolean {
+    return proto3.util.equals(GetGlobalConfigResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.UpdateGlobalConfigRequest
+ */
+export class UpdateGlobalConfigRequest extends Message<UpdateGlobalConfigRequest> {
+  /**
+   * @generated from field: devyard.v1.GlobalConfig config = 1;
+   */
+  config?: GlobalConfig;
+
+  constructor(data?: PartialMessage<UpdateGlobalConfigRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.UpdateGlobalConfigRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "config", kind: "message", T: GlobalConfig },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateGlobalConfigRequest {
+    return new UpdateGlobalConfigRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): UpdateGlobalConfigRequest {
+    return new UpdateGlobalConfigRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): UpdateGlobalConfigRequest {
+    return new UpdateGlobalConfigRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: UpdateGlobalConfigRequest | PlainMessage<UpdateGlobalConfigRequest> | undefined, b: UpdateGlobalConfigRequest | PlainMessage<UpdateGlobalConfigRequest> | undefined): boolean {
+    return proto3.util.equals(UpdateGlobalConfigRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.UpdateGlobalConfigResponse
+ */
+export class UpdateGlobalConfigResponse extends Message<UpdateGlobalConfigResponse> {
+  constructor(data?: PartialMessage<UpdateGlobalConfigResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.UpdateGlobalConfigResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): UpdateGlobalConfigResponse {
+    return new UpdateGlobalConfigResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): UpdateGlobalConfigResponse {
+    return new UpdateGlobalConfigResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): UpdateGlobalConfigResponse {
+    return new UpdateGlobalConfigResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: UpdateGlobalConfigResponse | PlainMessage<UpdateGlobalConfigResponse> | undefined, b: UpdateGlobalConfigResponse | PlainMessage<UpdateGlobalConfigResponse> | undefined): boolean {
+    return proto3.util.equals(UpdateGlobalConfigResponse, a, b);
+  }
+}
+
+/**
  * @generated from message devyard.v1.ListServicesRequest
  */
 export class ListServicesRequest extends Message<ListServicesRequest> {

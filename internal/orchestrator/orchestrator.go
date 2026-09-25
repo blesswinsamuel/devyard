@@ -24,6 +24,7 @@ import (
 	"github.com/blesswinsamuel/devyard/internal/dag"
 	"github.com/blesswinsamuel/devyard/internal/gitlog"
 	"github.com/blesswinsamuel/devyard/internal/gitwatcher"
+	"github.com/blesswinsamuel/devyard/internal/globalconfig"
 	"github.com/blesswinsamuel/devyard/internal/procstat"
 	"github.com/blesswinsamuel/devyard/internal/project"
 	"github.com/blesswinsamuel/devyard/internal/protocol"
@@ -616,6 +617,29 @@ func (d *Daemon) DaemonStatus() (*protocol.DaemonInfo, error) {
 		MemoryRss:   rss,
 		GoVersion:   runtime.Version(),
 	}, nil
+}
+
+// GetGlobalConfig returns the user-level global config with defaults filled
+// in. The daemon loads it fresh from disk so external edits are reflected.
+func (d *Daemon) GetGlobalConfig() (*protocol.GlobalConfig, error) {
+	cfg, err := globalconfig.Load()
+	if err != nil {
+		return nil, fmt.Errorf("orchestrator: load global config: %w", err)
+	}
+	return control.GlobalConfigToProto(cfg), nil
+}
+
+// UpdateGlobalConfig validates and persists the global config. Settings that
+// bind at daemon startup (the reverse proxy) need a daemon restart to apply.
+func (d *Daemon) UpdateGlobalConfig(cfg *protocol.GlobalConfig) error {
+	if err := control.ValidateGlobalConfig(cfg); err != nil {
+		return fmt.Errorf("orchestrator: invalid global config: %w", err)
+	}
+	if err := globalconfig.Save(control.ProtoToGlobalConfig(cfg)); err != nil {
+		return fmt.Errorf("orchestrator: save global config: %w", err)
+	}
+	slog.Info("global config updated")
+	return nil
 }
 
 // StopDaemonKeepServices flushes state to disk and signals the daemon process to exit

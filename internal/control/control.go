@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/blesswinsamuel/devyard/internal/gitlog"
+	"github.com/blesswinsamuel/devyard/internal/globalconfig"
 	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
@@ -60,6 +61,14 @@ type MultiBackend interface {
 	GitStatus(project string) (*protocol.GitStatus, error)
 	ListPorts(project string) ([]*protocol.PortBinding, error)
 
+	// GetGlobalConfig returns the user-level global config
+	// ($XDG_CONFIG_HOME/devyard/config.yml) with defaults filled in.
+	GetGlobalConfig() (*protocol.GlobalConfig, error)
+	// UpdateGlobalConfig validates and persists the global config. Settings
+	// that bind at daemon startup (reverse proxy) need a daemon restart to
+	// take effect.
+	UpdateGlobalConfig(cfg *protocol.GlobalConfig) error
+
 	SetOnStateChange(fn func(project string, state *protocol.ServiceState))
 	SetOnTaskStateChange(fn func(project string, state *protocol.TaskState))
 	SetOnGitChange(fn func(project string))
@@ -76,6 +85,18 @@ type SingleProjectBackend struct {
 	// GitDir is the working directory used for GitLog. Empty runs git in the
 	// process's current working directory.
 	GitDir string
+}
+
+func (s SingleProjectBackend) GetGlobalConfig() (*protocol.GlobalConfig, error) {
+	cfg, err := globalconfig.Load()
+	if err != nil {
+		return nil, err
+	}
+	return GlobalConfigToProto(cfg), nil
+}
+
+func (s SingleProjectBackend) UpdateGlobalConfig(cfg *protocol.GlobalConfig) error {
+	return globalconfig.Save(ProtoToGlobalConfig(cfg))
 }
 
 func (s SingleProjectBackend) ListProjects() []*protocol.ProjectInfo {

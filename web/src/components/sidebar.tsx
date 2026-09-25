@@ -14,6 +14,7 @@ import {
   Power,
   RefreshCw,
   RotateCcw,
+  Settings,
   Skull,
   Square,
   Terminal,
@@ -51,7 +52,7 @@ import {
   tasks as tasksMap,
 } from "~/stores/data";
 import { isPreviousLogs, tabKey, togglePreviousLogs } from "~/stores/logs";
-import { pushToast, setShowAddProject, setShowDaemonModal, theme, setTheme } from "~/stores/app";
+import { pushToast, setShowAddProject, setShowDaemonModal, setShowSettingsModal, theme, setTheme } from "~/stores/app";
 import { toggleHelp, sidebarOpen, setSidebarOpen } from "~/stores/app";
 import { openGitView } from "~/stores/nav";
 import { eventStatus } from "~/lib/events";
@@ -812,6 +813,16 @@ export function Sidebar() {
         </button>
 
         <div class="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => setShowSettingsModal(true)}
+            class="text-muted-foreground"
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings class="size-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="xs"

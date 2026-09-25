@@ -32,6 +32,10 @@ service DaemonService {
   rpc StopDaemon(StopDaemonRequest) returns (StopDaemonResponse);
   rpc RestartDaemon(RestartDaemonRequest) returns (RestartDaemonResponse);
 
+  // Global settings
+  rpc GetGlobalConfig(GetGlobalConfigRequest) returns (GetGlobalConfigResponse);
+  rpc UpdateGlobalConfig(UpdateGlobalConfigRequest) returns (UpdateGlobalConfigResponse);
+
   // Service operations
   rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
   rpc StartService(StartServiceRequest) returns (StartServiceResponse);

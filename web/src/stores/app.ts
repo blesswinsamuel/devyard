@@ -78,6 +78,7 @@ const [showPortsModal, setShowPortsModal] = createSignal(false);
 const [portsScope, setPortsScope] = createSignal<"project" | "all">("project");
 const [showAddProject, setShowAddProject] = createSignal(false);
 const [showDaemonModal, setShowDaemonModal] = createSignal(false);
+const [showSettingsModal, setShowSettingsModal] = createSignal(false);
 const [showHelp, setShowHelp] = createSignal(false);
 
 export {
@@ -88,6 +89,8 @@ export {
   setShowAddProject,
   showDaemonModal,
   setShowDaemonModal,
+  showSettingsModal,
+  setShowSettingsModal,
   showHelp,
   setShowHelp,
 };
@@ -109,7 +112,7 @@ export function closeHelp() {
 }
 
 export function anyOverlayOpen(): boolean {
-  return showPortsModal() || showAddProject() || showDaemonModal() || showHelp();
+  return showPortsModal() || showAddProject() || showDaemonModal() || showSettingsModal() || showHelp();
 }
 
 // --- bottom terminal panel --------------------------------------------------

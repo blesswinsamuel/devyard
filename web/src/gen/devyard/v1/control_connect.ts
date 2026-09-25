@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { DaemonStatusRequest, DaemonStatusResponse, Event, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, GitStatusRequest, GitStatusResponse, KillServiceRequest, KillServiceResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, ListTasksRequest, ListTasksResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunTaskRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SubscribeEventsRequest, TaskOutputChunk, TopRequest, TopResponse } from "./control_pb.js";
+import { DaemonStatusRequest, DaemonStatusResponse, Event, GetGlobalConfigRequest, GetGlobalConfigResponse, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, GitStatusRequest, GitStatusResponse, KillServiceRequest, KillServiceResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, ListTasksRequest, ListTasksResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunTaskRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SubscribeEventsRequest, TaskOutputChunk, TopRequest, TopResponse, UpdateGlobalConfigRequest, UpdateGlobalConfigResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -77,6 +77,26 @@ export const DaemonService = {
       name: "RestartDaemon",
       I: RestartDaemonRequest,
       O: RestartDaemonResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * Global Settings
+     *
+     * @generated from rpc devyard.v1.DaemonService.GetGlobalConfig
+     */
+    getGlobalConfig: {
+      name: "GetGlobalConfig",
+      I: GetGlobalConfigRequest,
+      O: GetGlobalConfigResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.UpdateGlobalConfig
+     */
+    updateGlobalConfig: {
+      name: "UpdateGlobalConfig",
+      I: UpdateGlobalConfigRequest,
+      O: UpdateGlobalConfigResponse,
       kind: MethodKind.Unary,
     },
     /**

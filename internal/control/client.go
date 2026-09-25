@@ -173,6 +173,23 @@ func (c *Client) DaemonStatus() (*protocol.DaemonInfo, error) {
 	return resp.Msg.Info, nil
 }
 
+// GetGlobalConfig returns the user-level global config with defaults filled in.
+func (c *Client) GetGlobalConfig() (*protocol.GlobalConfig, error) {
+	resp, err := c.rpcClient.GetGlobalConfig(context.Background(), connect.NewRequest(&devyardv1.GetGlobalConfigRequest{}))
+	if err != nil {
+		return nil, unwrapError(err)
+	}
+	return resp.Msg.Config, nil
+}
+
+// UpdateGlobalConfig validates and persists the global config.
+func (c *Client) UpdateGlobalConfig(cfg *protocol.GlobalConfig) error {
+	_, err := c.rpcClient.UpdateGlobalConfig(context.Background(), connect.NewRequest(&devyardv1.UpdateGlobalConfigRequest{
+		Config: cfg,
+	}))
+	return unwrapError(err)
+}
+
 // StartService starts one service in a project.
 func (c *Client) StartService(project, service string) error {
 	_, err := c.rpcClient.StartService(context.Background(), connect.NewRequest(&devyardv1.StartServiceRequest{

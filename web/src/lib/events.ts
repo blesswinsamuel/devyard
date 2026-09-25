@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { rpcClient } from "~/lib/rpc";
-import type { Event } from "~/gen/localcompose/v1/control_pb";
+import type { Event } from "~/gen/devyard/v1/control_pb";
 
 export type EventStreamStatus = "connecting" | "open" | "closed";
 

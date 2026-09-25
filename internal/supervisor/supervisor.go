@@ -26,13 +26,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
-	"github.com/blesswinsamuel/local-compose/internal/health"
-	"github.com/blesswinsamuel/local-compose/internal/ports"
-	"github.com/blesswinsamuel/local-compose/internal/procstat"
-	"github.com/blesswinsamuel/local-compose/internal/project"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
-	"github.com/blesswinsamuel/local-compose/internal/ui"
+	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/health"
+	"github.com/blesswinsamuel/devyard/internal/ports"
+	"github.com/blesswinsamuel/devyard/internal/procstat"
+	"github.com/blesswinsamuel/devyard/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/ui"
 )
 
 // Status is the lifecycle state of a supervised service.
@@ -445,7 +445,7 @@ func (s *Supervisor) Reconcile(file *config.File, order []string, removeOrphans 
 			for _, rt := range orphans {
 				_ = s.stopOne(rt, s.opts.GracefulStopTimeout)
 				if rt.logger != nil {
-					rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped orphan service"), ui.Dim(rt.name)))
+					rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("devyard:"), ui.StatusMessage("stopped orphan service"), ui.Dim(rt.name)))
 					_ = rt.logger.close()
 				}
 			}
@@ -465,7 +465,7 @@ func (s *Supervisor) Reconcile(file *config.File, order []string, removeOrphans 
 		} else {
 			if s.opts.Stdout != nil {
 				sort.Strings(orphanNames)
-				_, _ = fmt.Fprintf(s.opts.Stdout, "%s Found orphan services: %s. Use --remove-orphans to stop them.\n", ui.Dim("local-compose:"), strings.Join(orphanNames, ", "))
+				_, _ = fmt.Fprintf(s.opts.Stdout, "%s Found orphan services: %s. Use --remove-orphans to stop them.\n", ui.Dim("devyard:"), strings.Join(orphanNames, ", "))
 			}
 		}
 	}
@@ -597,7 +597,7 @@ func (s *Supervisor) AdoptOrStart(ctx context.Context) error {
 			// Not selected for this run (lazy `start <service>`): leave the
 			// service stopped so `ps` still lists it, but launch no run loop.
 			if rt.logger != nil {
-				rt.logger.writeLine(fmt.Sprintf("local-compose: skipping service %s", name))
+				rt.logger.writeLine(fmt.Sprintf("devyard: skipping service %s", name))
 			}
 			rt.mu.Lock()
 			rt.status = StatusStopped
@@ -649,7 +649,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 	_ = s.SaveState()
 
 	if rt.logger != nil {
-		rt.logger.writeLine(fmt.Sprintf("local-compose: adopted existing process group (PGID %d)", snap.PGID))
+		rt.logger.writeLine(fmt.Sprintf("devyard: adopted existing process group (PGID %d)", snap.PGID))
 	}
 
 	var chk *health.Checker
@@ -689,7 +689,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 
 		if !adoptedLeaderAlive(snap) {
 			if rt.logger != nil {
-				rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("adopted process exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+				rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("devyard:"), ui.StatusMessage("adopted process exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 			}
 			rt.mu.Lock()
 			rt.pid = 0
@@ -708,7 +708,7 @@ func (s *Supervisor) adoptService(ctx context.Context, rt *serviceRuntime, snap 
 			}
 			if !s.shouldRetry(rt) {
 				if rt.logger != nil {
-					rt.logger.writeLine("local-compose: giving up after max restart attempts")
+					rt.logger.writeLine("devyard: giving up after max restart attempts")
 				}
 				return
 			}
@@ -802,7 +802,7 @@ func (s *Supervisor) supervise(ctx context.Context, rt *serviceRuntime) {
 		})
 		if err != nil {
 			if rt.logger != nil {
-				rt.logger.writeLine(fmt.Sprintf("local-compose: warning: invalid healthcheck: %v", err))
+				rt.logger.writeLine(fmt.Sprintf("devyard: warning: invalid healthcheck: %v", err))
 			}
 		} else {
 			chk.SetOnStateChange(func(_ health.State) {
@@ -820,7 +820,7 @@ func (s *Supervisor) supervise(ctx context.Context, rt *serviceRuntime) {
 	if err := s.waitForDeps(ctx, rt); err != nil {
 		cancelled := errors.Is(err, errSupervisorStopping)
 		if rt.logger != nil {
-			rt.logger.writeLine(fmt.Sprintf("local-compose: not starting: %v", err))
+			rt.logger.writeLine(fmt.Sprintf("devyard: not starting: %v", err))
 		}
 		rt.mu.Lock()
 		rt.status = StatusStopped
@@ -848,7 +848,7 @@ func (s *Supervisor) supervise(ctx context.Context, rt *serviceRuntime) {
 
 		cmd, pipeWG, err := s.launch(rt)
 		if err != nil {
-			rt.logger.writeLine(fmt.Sprintf("local-compose: failed to start: %v", err))
+			rt.logger.writeLine(fmt.Sprintf("devyard: failed to start: %v", err))
 			rt.mu.Lock()
 			rt.status = StatusBackoff
 			rt.mu.Unlock()
@@ -879,7 +879,7 @@ func (s *Supervisor) supervise(ctx context.Context, rt *serviceRuntime) {
 
 		exitCode := exitCodeFrom(waitErr)
 		if waitErr != nil {
-			rt.logger.writeLine(fmt.Sprintf("%s %s %s with exit code %d", ui.Dim("local-compose:"), ui.StatusMessage("exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339)), exitCode))
+			rt.logger.writeLine(fmt.Sprintf("%s %s %s with exit code %d", ui.Dim("devyard:"), ui.StatusMessage("exited"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339)), exitCode))
 		}
 
 		stopping := s.isStopping() || rt.stopped.Load()
@@ -905,7 +905,7 @@ func (s *Supervisor) supervise(ctx context.Context, rt *serviceRuntime) {
 			return
 		}
 		if !s.shouldRetry(rt) {
-			rt.logger.writeLine("local-compose: giving up after max restart attempts")
+			rt.logger.writeLine("devyard: giving up after max restart attempts")
 			return
 		}
 		if !s.sleepBackoff(ctx, rt) {
@@ -1194,7 +1194,7 @@ func (s *Supervisor) StopService(name string) error {
 	if err := s.stopOne(rt, s.opts.GracefulStopTimeout); err != nil {
 		return err
 	}
-	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("devyard:"), ui.StatusMessage("stopped"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 	return nil
 }
 
@@ -1254,7 +1254,7 @@ func (s *Supervisor) KillService(name, signal string) error {
 	case <-rt.done:
 	case <-time.After(5 * time.Second):
 	}
-	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("killed"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("devyard:"), ui.StatusMessage("killed"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 	return nil
 }
 
@@ -1324,7 +1324,7 @@ func (s *Supervisor) Restart(name string) error {
 		return err
 	}
 
-	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("local-compose:"), ui.StatusMessage("restarted"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
+	rt.logger.writeLine(fmt.Sprintf("%s %s %s", ui.Dim("devyard:"), ui.StatusMessage("restarted"), ui.Dim("at "+time.Now().UTC().Format(time.RFC3339))))
 
 	// Reset state for a clean relaunch.
 	rt.stopped.Store(false)
@@ -1483,7 +1483,7 @@ func (s *Supervisor) Top(service string) ([]TopStat, error) {
 	}
 
 	sampleInterval := TopSampleInterval
-	if env := os.Getenv("LOCAL_COMPOSE_TOP_INTERVAL"); env != "" {
+	if env := os.Getenv("DEVYARD_TOP_INTERVAL"); env != "" {
 		if d, err := time.ParseDuration(env); err == nil && d > 0 {
 			sampleInterval = d
 		}
@@ -1872,7 +1872,7 @@ func (s *Supervisor) RunTask(ctx context.Context, name string, extraArgs []strin
 	_ = s.SaveState()
 
 	if logFile != nil {
-		_, _ = fmt.Fprintf(logFile, "%s %s %s\n", ui.Dim("local-compose:"), ui.StatusMessage("started"), ui.Dim("at "+now.UTC().Format(time.RFC3339)))
+		_, _ = fmt.Fprintf(logFile, "%s %s %s\n", ui.Dim("devyard:"), ui.StatusMessage("started"), ui.Dim("at "+now.UTC().Format(time.RFC3339)))
 		_, _ = fmt.Fprintf(logFile, "$ %s\n", fullCmd)
 	}
 	if out != nil {
@@ -1939,7 +1939,7 @@ func (s *Supervisor) RunTask(ctx context.Context, name string, extraArgs []strin
 	}
 
 	if logFile != nil {
-		_, _ = fmt.Fprintf(logFile, "%s %s %s with exit code %d\n", ui.Dim("local-compose:"), ui.StatusMessage("exited"), ui.Dim("at "+finishTime.UTC().Format(time.RFC3339)), code)
+		_, _ = fmt.Fprintf(logFile, "%s %s %s with exit code %d\n", ui.Dim("devyard:"), ui.StatusMessage("exited"), ui.Dim("at "+finishTime.UTC().Format(time.RFC3339)), code)
 	}
 
 	return code, nil

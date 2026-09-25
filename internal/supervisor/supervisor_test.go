@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
-	"github.com/blesswinsamuel/local-compose/internal/project"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
-	"github.com/blesswinsamuel/local-compose/internal/supervisor"
+	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/supervisor"
 )
 
 // testBackoff is a fast backoff used by tests so restart loops settle quickly.

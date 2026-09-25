@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 func TestRootCommandFlagBinding(t *testing.T) {
@@ -23,11 +23,11 @@ func TestRootCommandFlagBinding(t *testing.T) {
 	}
 
 	rootCmd := NewRootCommand(cliCtx)
-	rootCmd.SetArgs([]string{"--file", "/path/to/local-compose.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
-	_ = rootCmd.ParseFlags([]string{"--file", "/path/to/local-compose.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
+	rootCmd.SetArgs([]string{"--file", "/path/to/devyard.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
+	_ = rootCmd.ParseFlags([]string{"--file", "/path/to/devyard.yml", "-p", "my-project", "--env-file", ".env.test", "-o", "json"})
 
-	if cliCtx.ConfigPath != "/path/to/local-compose.yml" {
-		t.Errorf("ConfigPath = %q, want /path/to/local-compose.yml", cliCtx.ConfigPath)
+	if cliCtx.ConfigPath != "/path/to/devyard.yml" {
+		t.Errorf("ConfigPath = %q, want /path/to/devyard.yml", cliCtx.ConfigPath)
 	}
 	if cliCtx.Project != "my-project" {
 		t.Errorf("Project = %q, want my-project", cliCtx.Project)
@@ -185,7 +185,7 @@ func TestVersionCommand(t *testing.T) {
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("version execute: %v", err)
 	}
-	if !strings.Contains(buf.String(), "local-compose version") {
+	if !strings.Contains(buf.String(), "devyard version") {
 		t.Errorf("unexpected version output: %s", buf.String())
 	}
 

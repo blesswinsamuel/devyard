@@ -40,7 +40,7 @@ export function DaemonStatusModal() {
       <DialogContent class="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Daemon Status</DialogTitle>
-          <DialogDescription class="sr-only">View and control the local-compose daemon process.</DialogDescription>
+          <DialogDescription class="sr-only">View and control the devyard daemon process.</DialogDescription>
         </DialogHeader>
         <div class="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-2 text-xs">
           <Server class="size-4 text-primary" />

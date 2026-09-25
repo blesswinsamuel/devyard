@@ -808,7 +808,7 @@ export function Sidebar() {
           <span class="flex size-6 items-center justify-center rounded-md bg-primary/15 text-primary">
             <Boxes class="size-3.5" />
           </span>
-          <span class="truncate text-[13px] font-semibold tracking-tight">local-compose</span>
+          <span class="truncate text-[13px] font-semibold tracking-tight">devyard</span>
         </button>
 
         <div class="flex items-center gap-0.5">
@@ -868,7 +868,7 @@ export function Sidebar() {
           <Show when={projectNames().length === 0}>
             <p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
               No projects yet. Add one above or start with{" "}
-              <code class="rounded bg-muted px-1 font-mono text-foreground">local-compose up</code>.
+              <code class="rounded bg-muted px-1 font-mono text-foreground">devyard up</code>.
             </p>
           </Show>
         </ContextMenuTrigger>

@@ -1,7 +1,7 @@
 import { createPromiseClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { QueryClient } from "@tanstack/solid-query";
-import { DaemonService } from "~/gen/localcompose/v1/control_connect";
+import { DaemonService } from "~/gen/devyard/v1/control_connect";
 
 export const transport = createConnectTransport({
   baseUrl: window.location.origin,

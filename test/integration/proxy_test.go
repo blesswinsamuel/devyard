@@ -53,7 +53,7 @@ services:
 // the test's isolated XDG_CONFIG_HOME.
 func writeGlobalProxyConfig(t *testing.T, configDir string, port int) {
 	t.Helper()
-	dir := filepath.Join(configDir, "local-compose")
+	dir := filepath.Join(configDir, "devyard")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir global config dir: %v", err)
 	}

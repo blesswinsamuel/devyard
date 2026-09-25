@@ -23,7 +23,7 @@ import (
 	"github.com/coder/websocket"
 	"golang.org/x/net/http2"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/control"
 )
 
 //go:embed all:dist
@@ -98,7 +98,7 @@ func (s *Server) ListenAndServe() error {
 		Transport:     transport,
 		FlushInterval: -1, // flush streaming RPCs immediately
 	}
-	mux.Handle("/localcompose.v1.DaemonService/", proxy)
+	mux.Handle("/devyard.v1.DaemonService/", proxy)
 
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.Handle("/", s.spaHandler())

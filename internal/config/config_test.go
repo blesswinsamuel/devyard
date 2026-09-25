@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 func TestLoadBuildStringAndObject(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   api:
@@ -52,7 +52,7 @@ services:
 func TestDependsOnListAndMap(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   db:
@@ -87,7 +87,7 @@ services:
 func TestHealthcheckDefaults(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   api:
@@ -111,7 +111,7 @@ services:
 func TestTTYField(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   web:
@@ -207,7 +207,7 @@ func TestParseDotEnvMalformed(t *testing.T) {
 func TestLoadWithEnvInterpolation(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   api:
@@ -256,7 +256,7 @@ func TestBuildEnvOver(t *testing.T) {
 func TestTasksParsingAndValidation(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   db:
@@ -299,7 +299,7 @@ tasks:
 func TestPortsAndProxyParsing(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 name: myproj
 proxy:
@@ -360,7 +360,7 @@ services:
 func TestPortAndPortsMutuallyExclusive(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   api:
@@ -451,7 +451,7 @@ services:
 func TestProxyHostValidation(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	content := `version: "1"
 services:
   api:

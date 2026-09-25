@@ -1,6 +1,6 @@
 # Adding a CLI command
 
-A recipe for adding a new `local-compose <command>` end to end, following how
+A recipe for adding a new `devyard <command>` end to end, following how
 the existing commands are wired. Use this as a checklist.
 
 ## Decide what kind of command it is
@@ -16,7 +16,7 @@ the existing commands are wired. Use this as a checklist.
 - **Daemon-management command**: `start-daemon`, `stop-daemon` — manage the
   global daemon process itself.
 
-## Steps (control command example: `local-compose pause <service>`)
+## Steps (control command example: `devyard pause <service>`)
 
 ### 1. Protocol
 
@@ -83,14 +83,14 @@ func newServicePauseCmd(ctx *CLIContext) *cobra.Command {
             }
             client, err := ctx.DialDaemon()
             if err != nil {
-                ctx.Errorln("local-compose: no daemon running")
+                ctx.Errorln("devyard: no daemon running")
                 return err
             }
             defer func() { _ = client.Close() }()
             if err := client.Pause(cfg.Project, service); err != nil {
                 return err
             }
-            ctx.Errorf("local-compose: paused %q\n", service)
+            ctx.Errorf("devyard: paused %q\n", service)
             return nil
         },
     }

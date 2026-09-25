@@ -1,6 +1,6 @@
 // Package procstat samples aggregate CPU and memory usage of a process group.
 //
-// A local-compose service runs as a process-group leader (its shell), so a
+// A devyard service runs as a process-group leader (its shell), so a
 // single service's real resource footprint spans every process in that group.
 // The package hides the per-platform source of truth behind one function:
 // procfs on Linux, the libproc APIs on macOS. The `top` command uses it to

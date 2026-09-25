@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 // fakeBackend is an in-memory control.Backend for exercising the server
@@ -835,11 +835,11 @@ func TestMultiStartProject(t *testing.T) {
 	}
 	defer func() { _ = c.Close() }()
 
-	if err := c.StartProject("/path/to/local-compose.yml", false, "/path/to/.env", true); err != nil {
+	if err := c.StartProject("/path/to/devyard.yml", false, "/path/to/.env", true); err != nil {
 		t.Fatalf("StartProject: %v", err)
 	}
-	if len(m.started) != 1 || m.started[0] != "/path/to/local-compose.yml" {
-		t.Errorf("started = %v, want [/path/to/local-compose.yml]", m.started)
+	if len(m.started) != 1 || m.started[0] != "/path/to/devyard.yml" {
+		t.Errorf("started = %v, want [/path/to/devyard.yml]", m.started)
 	}
 	if len(m.envFiles) != 1 || m.envFiles[0] != "/path/to/.env" {
 		t.Errorf("envFiles = %v, want [/path/to/.env]", m.envFiles)

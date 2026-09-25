@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # local-compose is macOS + Linux only (Unix process groups, signals,
+        # devyard is macOS + Linux only (Unix process groups, signals,
         # Unix-socket control plane). No Windows.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}

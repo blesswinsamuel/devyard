@@ -30,7 +30,7 @@ export default defineConfig({
     port: 19095,
     strictPort: true,
     proxy: {
-      "/localcompose.v1.DaemonService": {
+      "/devyard.v1.DaemonService": {
         target: backend,
       },
       "/ws": {

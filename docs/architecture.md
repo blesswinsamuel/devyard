@@ -1,25 +1,25 @@
 # Architecture
 
-How `local-compose` works internally. Start here before touching
+How `devyard` works internally. Start here before touching
 `internal/orchestrator`, `internal/supervisor`, `internal/daemon`, or
 `internal/control`.
 
 ## Big picture
 
 ```
-local-compose up  ──►  ensureDaemon() ──►  global Daemon (setsid, backgrounded)
+devyard up  ──►  ensureDaemon() ──►  global Daemon (setsid, backgrounded)
                                             │  owns map[string]*supervisor.Supervisor
                                             │  serves one Unix-socket control protocol
                                             │  optionally serves web UI (WS + SPA)
                                             ▼
-                          $XDG_RUNTIME_DIR/local-compose/daemon.sock
+                          $XDG_RUNTIME_DIR/devyard/daemon.sock
 
-local-compose ps / logs / restart / down / web  ──►  control.Client (socket)
+devyard ps / logs / restart / down / web  ──►  control.Client (socket)
 ```
 
 There is exactly one **global daemon** process. It owns one
 `*supervisor.Supervisor` per project and serves a single **Unix-socket control
-protocol** at `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. Every CLI command
+protocol** at `$XDG_RUNTIME_DIR/devyard/daemon.sock`. Every CLI command
 (`ps`, `logs`, `restart`, `down`) and the web UI are thin **Client**
 connections over that socket. The daemon autostarts every registered project
 on startup unless it carries a project-level `.stopped` marker (written by
@@ -28,20 +28,20 @@ on startup unless it carries a project-level `.stopped` marker (written by
 
 ## The global daemon
 
-The daemon is a single process (`local-compose --daemon`, spawned by `up` or
+The daemon is a single process (`devyard --daemon`, spawned by `up` or
 `start-daemon`) that owns an `orchestrator.Daemon` (`internal/orchestrator`)
 which in turn owns a `map[string]*supervisor.Supervisor`. The daemon child is
 created via `setsid` re-exec (`internal/daemon`): the CLI re-execs **the same
 binary** as a new session leader (`SysProcAttr{Setsid: true}`), with stdio
-repointed at `$XDG_STATE_HOME/local-compose/daemon.log`, writes a pidfile at
-`$XDG_RUNTIME_DIR/local-compose/daemon.pid`, and releases the child.
+repointed at `$XDG_STATE_HOME/devyard/daemon.log`, writes a pidfile at
+`$XDG_RUNTIME_DIR/devyard/daemon.pid`, and releases the child.
 
 The daemon child is detected in `cli.Execute()` (`internal/cli/root.go`)
 *before* cobra runs, via the hidden `--daemon` flag (`daemon.DaemonFlag`). It
 runs `runDaemonChild` (`internal/cli/daemon_run.go`), not a cobra command.
 `runDaemonChild` creates the orchestrator, starts the control server, runs
 `Autostart()`, and blocks on a signal or `StopDaemon`. The web UI is started
-separately with `local-compose web`.
+separately with `devyard web`.
 
 Go has no `fork(2)` binding, so we use the re-exec-then-`setsid` idiom instead
 of a double-fork. `setsid` + `cmd.Process.Release()` is sufficient on modern
@@ -82,7 +82,7 @@ Key methods:
 - **`ProjectBackend(project)`** — returns the `control.Backend` for the named
   project. A stopped project's closed supervisor is still returned so `ps`
   works; mutating calls error because the supervisor is stopped.
-- **`Autostart()`** — scans `$XDG_STATE_HOME/local-compose/*/` for
+- **`Autostart()`** — scans `$XDG_STATE_HOME/devyard/*/` for
   `config-path` files, reads each project's config, and starts every project
   **unless** a project-level `.stopped` marker exists. Skipped
   projects are still registered in the map as stopped so list commands stay
@@ -134,7 +134,7 @@ Process groups are mandatory and non-negotiable: `launch` calls
 with a **negative** pid to signal the whole group. This is what prevents
 orphaned children when `command` is a shell pipeline.
 
-`Top` (the `local-compose top [service]` command) aggregates the resource usage
+`Top` (the `devyard top [service]` command) aggregates the resource usage
 of each service's process group. It samples every group twice around one shared
 1s interval (`internal/procstat.SampleGroup`, procfs on Linux / libproc on
 macOS) and reports per-service CPU% (delta over the interval) and aggregate
@@ -185,7 +185,7 @@ Wire format and message kinds are documented in
 ## Web UI (`internal/web`)
 
 The web UI is a WebSocket frontend over the same control socket. Start it with
-`local-compose web`: it dials the daemon socket and serves an embedded SolidJS
+`devyard web`: it dials the daemon socket and serves an embedded SolidJS
 SPA (built with bun + Vite, using xterm.js for log rendering) from
 `internal/web/dist/` via `go:embed`. The WS endpoint is a pure bridge: browser
 JSON messages are translated to control-protocol frames on short-lived
@@ -233,26 +233,26 @@ always go through `project.Resolve` / `Locations` (per-project) or
 
 | Path | Holds | Persisted? |
 | --- | --- | --- |
-| `$XDG_RUNTIME_DIR/local-compose/daemon.sock` | control socket | no (cleared on reboot) |
-| `$XDG_RUNTIME_DIR/local-compose/daemon.pid` | daemon pidfile | no |
-| `$XDG_STATE_HOME/local-compose/daemon.log` | daemon's own stdout/stderr | yes |
+| `$XDG_RUNTIME_DIR/devyard/daemon.sock` | control socket | no (cleared on reboot) |
+| `$XDG_RUNTIME_DIR/devyard/daemon.pid` | daemon pidfile | no |
+| `$XDG_STATE_HOME/devyard/daemon.log` | daemon's own stdout/stderr | yes |
 
 ### Per-project paths
 
 | Path | Holds | Persisted? |
 | --- | --- | --- |
-| `$XDG_STATE_HOME/local-compose/<project>/config-path` | config file path (for autostart discovery) | yes |
-| `$XDG_STATE_HOME/local-compose/<project>/.stopped` | project-level stopped marker (suppresses daemon autostart) | yes |
-| `$XDG_STATE_HOME/local-compose/<project>/logs/<svc>.log` | per-service logs | yes |
+| `$XDG_STATE_HOME/devyard/<project>/config-path` | config file path (for autostart discovery) | yes |
+| `$XDG_STATE_HOME/devyard/<project>/.stopped` | project-level stopped marker (suppresses daemon autostart) | yes |
+| `$XDG_STATE_HOME/devyard/<project>/logs/<svc>.log` | per-service logs | yes |
 
-Fallbacks: `$XDG_RUNTIME_DIR` -> `~/.local/state/local-compose/run` (or per-project `<project>/run`);
+Fallbacks: `$XDG_RUNTIME_DIR` -> `~/.local/state/devyard/run` (or per-project `<project>/run`);
 `$XDG_STATE_HOME` -> `~/.local/state`. Runtime dirs are `0o700` (they grant control
 over supervised processes); state/log dirs are `0o755`.
 
 ## Global config (`internal/globalconfig`)
 
-The global config lives at `$XDG_CONFIG_HOME/local-compose/config.yml` (default
-`~/.config/local-compose/config.yml`). It holds settings that apply across all
+The global config lives at `$XDG_CONFIG_HOME/devyard/config.yml` (default
+`~/.config/devyard/config.yml`). It holds settings that apply across all
 projects:
 
 ```yaml
@@ -261,7 +261,7 @@ web:
   port: 9090
 ```
 
-These are default bind settings for `local-compose web`. Unknown fields
+These are default bind settings for `devyard web`. Unknown fields
 produce a warning but don't error.
 
 ## Concurrency model

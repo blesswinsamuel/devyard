@@ -7,16 +7,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/daemon"
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/daemon"
+	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 func newDaemonCmd(ctx *CLIContext) *cobra.Command {
 	daemonCmd := &cobra.Command{
 		Use:     "daemon",
 		Aliases: []string{"d"},
-		Short:   "Manage the global local-compose daemon process",
+		Short:   "Manage the global devyard daemon process",
 		Long:    "Subcommands to start, stop, restart, or inspect status of the global daemon.",
 	}
 
@@ -42,7 +42,7 @@ func newDaemonStartCmd(ctx *CLIContext) *cobra.Command {
 			if pid, err := daemon.DaemonRunning(locs); err != nil {
 				return fmt.Errorf("check running daemon: %w", err)
 			} else if pid > 0 {
-				ctx.Errorf("local-compose: daemon already running (pid %d)\n", pid)
+				ctx.Errorf("devyard: daemon already running (pid %d)\n", pid)
 				return nil
 			}
 
@@ -50,10 +50,10 @@ func newDaemonStartCmd(ctx *CLIContext) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ctx.Errorf("local-compose: daemon started (pid %d)\n", pid)
+			ctx.Errorf("devyard: daemon started (pid %d)\n", pid)
 
 			if err := control.WaitForSocket(locs.Socket, 3*time.Second); err != nil {
-				ctx.Errorf("local-compose: %v\n", err)
+				ctx.Errorf("devyard: %v\n", err)
 				return nil
 			}
 			return nil
@@ -76,14 +76,14 @@ func newDaemonStopCmd(ctx *CLIContext) *cobra.Command {
 			}
 			if pid == 0 {
 				_ = daemon.RemoveDaemonPidfile(locs)
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 
 			client, err := control.Dial(locs.Socket)
 			if err != nil {
 				_ = daemon.RemoveDaemonPidfile(locs)
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 			defer func() { _ = client.Close() }()
@@ -93,7 +93,7 @@ func newDaemonStopCmd(ctx *CLIContext) *cobra.Command {
 			}
 			waitForDaemonExit(locs, 15*time.Second)
 			_ = daemon.RemoveDaemonPidfile(locs)
-			ctx.Errorln("local-compose: daemon stopped")
+			ctx.Errorln("devyard: daemon stopped")
 			return nil
 		},
 	}
@@ -118,14 +118,14 @@ func newDaemonRestartCmd(ctx *CLIContext) *cobra.Command {
 			}
 			if pid == 0 {
 				_ = daemon.RemoveDaemonPidfile(locs)
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 
 			client, err := control.Dial(locs.Socket)
 			if err != nil {
 				_ = daemon.RemoveDaemonPidfile(locs)
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 			defer func() { _ = client.Close() }()
@@ -140,9 +140,9 @@ func newDaemonRestartCmd(ctx *CLIContext) *cobra.Command {
 			}
 
 			if restartServices {
-				ctx.Errorln("local-compose: daemon and services restarted")
+				ctx.Errorln("devyard: daemon and services restarted")
 			} else {
-				ctx.Errorln("local-compose: daemon restarted (running services adopted)")
+				ctx.Errorln("devyard: daemon restarted (running services adopted)")
 			}
 			return nil
 		},

@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
-	"github.com/blesswinsamuel/local-compose/internal/proxy"
-	"github.com/blesswinsamuel/local-compose/internal/supervisor"
-	"github.com/blesswinsamuel/local-compose/internal/ui"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/globalconfig"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/proxy"
+	"github.com/blesswinsamuel/devyard/internal/supervisor"
+	"github.com/blesswinsamuel/devyard/internal/ui"
 )
 
 type logEntry struct {
@@ -202,9 +202,9 @@ func runKillHelper(ctx *CLIContext, client *control.Client, projName, target, si
 		return err
 	}
 	if target == "" {
-		ctx.Errorf("local-compose: killed all services (%s)\n", signal)
+		ctx.Errorf("devyard: killed all services (%s)\n", signal)
 	} else {
-		ctx.Errorf("local-compose: killed %q (%s)\n", target, signal)
+		ctx.Errorf("devyard: killed %q (%s)\n", target, signal)
 	}
 	return nil
 }
@@ -213,23 +213,23 @@ func runKillHelper(ctx *CLIContext, client *control.Client, projName, target, si
 func runStopHelper(ctx *CLIContext, client *control.Client, projName, target string, isTask bool) error {
 	if target == "" {
 		if err := client.StopProject(projName); err != nil {
-			ctx.Errorln("local-compose: stopped")
+			ctx.Errorln("devyard: stopped")
 			return nil
 		}
-		ctx.Errorln("local-compose: stopped")
+		ctx.Errorln("devyard: stopped")
 		return nil
 	}
 	if isTask {
 		if err := client.StopTask(projName, target); err != nil {
 			return err
 		}
-		ctx.Errorf("local-compose: stopped task %q\n", target)
+		ctx.Errorf("devyard: stopped task %q\n", target)
 		return nil
 	}
 	if err := client.StopService(projName, target); err != nil {
 		return err
 	}
-	ctx.Errorf("local-compose: stopped service %q\n", target)
+	ctx.Errorf("devyard: stopped service %q\n", target)
 	return nil
 }
 

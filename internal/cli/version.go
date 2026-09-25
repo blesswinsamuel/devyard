@@ -16,7 +16,7 @@ var (
 func newVersionCmd(ctx *CLIContext) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the local-compose version, commit, and build date",
+		Short: "Print the devyard version, commit, and build date",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if ctx.IsJSON() {
 				return ctx.PrintJSON(map[string]string{
@@ -25,7 +25,7 @@ func newVersionCmd(ctx *CLIContext) *cobra.Command {
 					"date":    Date,
 				})
 			}
-			_, _ = fmt.Fprintf(ctx.Out, "local-compose version %s\n", Version)
+			_, _ = fmt.Fprintf(ctx.Out, "devyard version %s\n", Version)
 			if Commit != "" {
 				_, _ = fmt.Fprintf(ctx.Out, "commit: %s\n", Commit)
 			}

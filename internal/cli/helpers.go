@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/daemon"
-	"github.com/blesswinsamuel/local-compose/internal/dag"
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/daemon"
+	"github.com/blesswinsamuel/devyard/internal/dag"
+	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 // loadedConfig bundles everything the CLI commands need after parsing the
@@ -53,7 +53,7 @@ func loadConfigWith(configPath, projectName, envFilePath string) (*loadedConfig,
 			var err error
 			configPath, err = config.FindConfig(cwd())
 			if err != nil {
-				return nil, fmt.Errorf("local-compose.yml not found; pass -f <path>: %w", err)
+				return nil, fmt.Errorf("devyard.yml not found; pass -f <path>: %w", err)
 			}
 		}
 	}
@@ -132,7 +132,7 @@ func ensureDaemonTo(w io.Writer) (string, error) {
 			return "", err
 		}
 		if w != nil {
-			_, _ = fmt.Fprintf(w, "local-compose: daemon started (pid %d)\n", pid)
+			_, _ = fmt.Fprintf(w, "devyard: daemon started (pid %d)\n", pid)
 		}
 		_ = control.WaitForSocket(locs.Socket, 3*time.Second)
 	}
@@ -148,7 +148,7 @@ func dialDaemon() (string, error) {
 		return "", err
 	}
 	if !daemon.IsSocketResponsive(sock, 200*time.Millisecond) {
-		return "", fmt.Errorf("no daemon running; use `local-compose up` to start")
+		return "", fmt.Errorf("no daemon running; use `devyard up` to start")
 	}
 	return sock, nil
 }

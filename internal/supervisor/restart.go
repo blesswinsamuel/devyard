@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 // BackoffConfig tunes restart backoff.

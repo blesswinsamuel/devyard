@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/procstat"
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/procstat"
+	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 // ServiceStateSnapshot is the JSON-serializable snapshot of a running service.

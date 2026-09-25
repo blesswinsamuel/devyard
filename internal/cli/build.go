@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
-	"github.com/blesswinsamuel/local-compose/internal/ui"
+	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/ui"
 )
 
 func newBuildCmd(ctx *CLIContext) *cobra.Command {
@@ -61,7 +61,7 @@ func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
 		dir = filepath.Join(cfg.BaseDir, dir)
 	}
 
-	fmt.Fprintf(os.Stderr, "local-compose: building %q\n", name)
+	fmt.Fprintf(os.Stderr, "devyard: building %q\n", name)
 	stdout := prefixWriter(name, os.Stdout)
 	_, _ = fmt.Fprintf(stdout, "$ %s\n", spec.Command)
 	cmd := exec.Command(shell, "-c", spec.Command)

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "local-compose-web",
+      "name": "devyard-web",
       "dependencies": {
         "@bufbuild/protobuf": "^1.10.0",
         "@connectrpc/connect": "^1.6.1",

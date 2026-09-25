@@ -221,7 +221,7 @@ func Run(cfg *Config) error {
 		} else {
 			exitCode = 1
 		}
-		writeLine(fmt.Sprintf("local-compose: exited with exit code %d", exitCode))
+		writeLine(fmt.Sprintf("devyard: exited with exit code %d", exitCode))
 	}
 
 	state.Status = "exited"

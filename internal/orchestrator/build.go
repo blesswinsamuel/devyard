@@ -4,7 +4,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 // runBuildCommand executes a build command via the given shell, with the

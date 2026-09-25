@@ -12,14 +12,14 @@ What's done, what's planned, and where each item lives in the code.
 - **Global daemon** — a single daemon process owns multiple project
   supervisors (`map[string]*supervisor.Supervisor`). All CLI commands and the
   web UI are thin clients over one Unix socket at
-  `$XDG_RUNTIME_DIR/local-compose/daemon.sock`. (`internal/orchestrator`,
+  `$XDG_RUNTIME_DIR/devyard/daemon.sock`. (`internal/orchestrator`,
   `internal/daemon`, `internal/cli/daemon_run.go`)
 - **Autostart** — on daemon startup, every registered project is started
   automatically **unless** a project-level `.stopped` marker exists (written by
   `down` / `stop`). (`internal/orchestrator` `Autostart()`)
 - **Process-group safety** — each service in its own `setpgid` group; teardown
   via `killpg` so no orphans. (`internal/supervisor/proc_unix.go`)
-- **`top` resource view** — `local-compose top [service]` aggregates CPU and
+- **`top` resource view** — `devyard top [service]` aggregates CPU and
   memory across each service's process group (procfs on Linux, libproc on
   macOS), sampled over a 1s interval for a live CPU%. (`internal/procstat`,
   `internal/supervisor`)
@@ -38,12 +38,12 @@ What's done, what's planned, and where each item lives in the code.
   error pages; URL column in `ps`. (`internal/proxy`, `internal/config`,
   `internal/cli`, `internal/orchestrator`)
 - **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Start with
-  `local-compose web` (proxies to the daemon socket). Loopback-only by default.
+  `devyard web` (proxies to the daemon socket). Loopback-only by default.
   (`internal/web`, `web/`)
-- **Global config** — `$XDG_CONFIG_HOME/local-compose/config.yml` with
-  `web.host`, `web.port` defaults for `local-compose web`. (`internal/globalconfig`)
+- **Global config** — `$XDG_CONFIG_HOME/devyard/config.yml` with
+  `web.host`, `web.port` defaults for `devyard web`. (`internal/globalconfig`)
 - **Config discovery** — `-f`/`-p` flags; walk-up discovery of
-  `local-compose.yml`. (`internal/config`, `internal/cli`)
+  `devyard.yml`. (`internal/config`, `internal/cli`)
 - **Env files + interpolation** — `.env` next to the config (or `--env-file`)
   feeds child-process env and `${VAR}` / `${VAR:-default}` config
   interpolation. (`internal/config/envfile.go`, `internal/cli`)
@@ -58,7 +58,7 @@ What's done, what's planned, and where each item lives in the code.
       fixed at 10s in `Supervisor`).
 - [ ] **`on-failure` autostart** — currently autostart resumes every project
       regardless of restart policy; a future refinement could gate it on policy.
-- [ ] **Shell completions** (cobra `__complete`) and `local-compose version`.
+- [ ] **Shell completions** (cobra `__complete`) and `devyard version`.
 - [ ] **Strict config mode** that warns on unknown fields (today `yaml.v3`
       silently ignores them).
 - [ ] **Prebuilt release binaries** (GoReleaser).

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 // Route is a single host→upstream mapping with the service's live status,
@@ -138,7 +138,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		writeErrorPage(w, http.StatusServiceUnavailable,
 			fmt.Sprintf("Service %s is %s", route.Service, status),
-			fmt.Sprintf("The service behind %s is not running (status: %s). Start it with `local-compose start %s`.", host, status, route.Service))
+			fmt.Sprintf("The service behind %s is not running (status: %s). Start it with `devyard start %s`.", host, status, route.Service))
 		return
 	}
 	s.proxyFor(route).ServeHTTP(w, r)
@@ -209,13 +209,13 @@ func writeErrorPage(w http.ResponseWriter, status int, title, detail string) {
 	w.WriteHeader(status)
 	body := fmt.Sprintf(`<!doctype html>
 <html>
-<head><meta charset="utf-8"><title>%s — local-compose</title></head>
+<head><meta charset="utf-8"><title>%s — devyard</title></head>
 <body style="font-family: ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #111; color: #eee;">
   <div style="text-align: center; padding: 2rem;">
     <div style="font-size: 48px; margin-bottom: 8px;">%d</div>
     <h1 style="font-size: 20px; font-weight: 600; margin: 0 0 8px;">%s</h1>
     <p style="color: #999; margin: 0; font-size: 14px;">%s</p>
-    <p style="color: #666; margin-top: 24px; font-size: 12px;">local-compose proxy</p>
+    <p style="color: #666; margin-top: 24px; font-size: 12px;">devyard proxy</p>
   </div>
 </body>
 </html>

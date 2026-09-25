@@ -8,18 +8,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/daemon"
-	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
-	"github.com/blesswinsamuel/local-compose/internal/orchestrator"
-	"github.com/blesswinsamuel/local-compose/internal/project"
-	"github.com/blesswinsamuel/local-compose/internal/proxy"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/daemon"
+	"github.com/blesswinsamuel/devyard/internal/globalconfig"
+	"github.com/blesswinsamuel/devyard/internal/orchestrator"
+	"github.com/blesswinsamuel/devyard/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/proxy"
 )
 
 // runDaemonChild is the entry point for the daemonized global daemon. It
 // creates the orchestrator, starts the control server on the daemon socket,
 // installs a signal handler, and blocks until StopDaemon is called or a
-// signal is received. The web UI is a separate process (`local-compose web`).
+// signal is received. The web UI is a separate process (`devyard web`).
 func runDaemonChild() error {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 
@@ -33,7 +33,7 @@ func runDaemonChild() error {
 
 	lockFile, err := daemon.LockDaemon(locs)
 	if err != nil {
-		return fmt.Errorf("local-compose daemon: %w", err)
+		return fmt.Errorf("devyard daemon: %w", err)
 	}
 	pid := os.Getpid()
 	defer func() {

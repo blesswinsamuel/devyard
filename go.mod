@@ -1,4 +1,4 @@
-module github.com/blesswinsamuel/local-compose
+module github.com/blesswinsamuel/devyard
 
 go 1.26
 

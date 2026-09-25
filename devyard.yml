@@ -4,21 +4,21 @@
 #   - Go toolchain
 #   - gow (for live reload on file changes)
 #   - bun (see web/bun.lock)
-#   - A running local-compose daemon (started automatically by `up`)
+#   - A running devyard daemon (started automatically by `up`)
 #
 # Usage (from repo root):
 #
-#   local-compose up          # foreground; Ctrl-C stops both
-#   local-compose up -d       # detached
-#   local-compose logs -f
-#   local-compose down
+#   devyard up          # foreground; Ctrl-C stops both
+#   devyard up -d       # detached
+#   devyard logs -f
+#   devyard down
 #
 # Then open the Vite app at http://127.0.0.1:5173 (proxies /ws to the Go
-# server on :9090). The `web` service below is `local-compose web` — if you
+# server on :9090). The `web` service below is `devyard web` — if you
 # already have another instance on :9090, stop it or pass --port.
 
 version: "1"
-name: local-compose
+name: devyard
 
 services:
   web:
@@ -40,5 +40,5 @@ services:
     restart: always
 
 tasks:
-  install-daemon: go install ./cmd/local-compose
-  restart-daemon: bash -c 'local-compose daemon restart >/dev/null 2>&1 &'
+  install-daemon: go install ./cmd/devyard
+  restart-daemon: bash -c 'devyard daemon restart >/dev/null 2>&1 &'

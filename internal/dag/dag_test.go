@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/blesswinsamuel/local-compose/internal/dag"
+	"github.com/blesswinsamuel/devyard/internal/dag"
 )
 
 func TestOrderSimpleChain(t *testing.T) {

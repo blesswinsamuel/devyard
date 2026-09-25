@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/gitlog"
+	"github.com/blesswinsamuel/devyard/internal/gitlog"
 )
 
 func TestRepoWatcher(t *testing.T) {

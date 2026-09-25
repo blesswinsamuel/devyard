@@ -13,16 +13,16 @@ import (
 	"connectrpc.com/connect"
 	"golang.org/x/net/http2"
 
-	localcomposev1 "github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1"
-	"github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1/localcomposev1connect"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	devyardv1 "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
+	"github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1/devyardv1connect"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 // Client is a typed ConnectRPC client connecting over Unix domain sockets.
 type Client struct {
 	socket     string
 	httpClient *http.Client
-	rpcClient  localcomposev1connect.DaemonServiceClient
+	rpcClient  devyardv1connect.DaemonServiceClient
 }
 
 // Dial connects to the supervisor's control socket over HTTP/2.
@@ -37,7 +37,7 @@ func Dial(socket string) (*Client, error) {
 	httpClient := &http.Client{
 		Transport: transport,
 	}
-	rpcClient := localcomposev1connect.NewDaemonServiceClient(httpClient, "http://localhost")
+	rpcClient := devyardv1connect.NewDaemonServiceClient(httpClient, "http://localhost")
 	return &Client{
 		socket:     socket,
 		httpClient: httpClient,
@@ -79,7 +79,7 @@ func (c *Client) Close() error {
 }
 
 // RPCClient returns the underlying ConnectRPC DaemonServiceClient.
-func (c *Client) RPCClient() localcomposev1connect.DaemonServiceClient {
+func (c *Client) RPCClient() devyardv1connect.DaemonServiceClient {
 	return c.rpcClient
 }
 
@@ -96,7 +96,7 @@ func unwrapError(err error) error {
 
 // List sends a ListServices request for the given project.
 func (c *Client) List(project string) ([]*protocol.ServiceState, error) {
-	resp, err := c.rpcClient.ListServices(context.Background(), connect.NewRequest(&localcomposev1.ListServicesRequest{
+	resp, err := c.rpcClient.ListServices(context.Background(), connect.NewRequest(&devyardv1.ListServicesRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -107,7 +107,7 @@ func (c *Client) List(project string) ([]*protocol.ServiceState, error) {
 
 // ListProjects sends a ListProjects request and returns all known projects.
 func (c *Client) ListProjects() ([]*protocol.ProjectInfo, error) {
-	resp, err := c.rpcClient.ListProjects(context.Background(), connect.NewRequest(&localcomposev1.ListProjectsRequest{}))
+	resp, err := c.rpcClient.ListProjects(context.Background(), connect.NewRequest(&devyardv1.ListProjectsRequest{}))
 	if err != nil {
 		return nil, unwrapError(err)
 	}
@@ -120,7 +120,7 @@ func (c *Client) StartProject(configPath string, build bool, envFile string, rem
 	if len(removeOrphans) > 0 {
 		ro = &removeOrphans[0]
 	}
-	_, err := c.rpcClient.StartProject(context.Background(), connect.NewRequest(&localcomposev1.StartProjectRequest{
+	_, err := c.rpcClient.StartProject(context.Background(), connect.NewRequest(&devyardv1.StartProjectRequest{
 		ConfigPath:    configPath,
 		Build:         build,
 		EnvFile:       envFile,
@@ -131,7 +131,7 @@ func (c *Client) StartProject(configPath string, build bool, envFile string, rem
 
 // StopProject stops a project's services.
 func (c *Client) StopProject(project string) error {
-	_, err := c.rpcClient.StopProject(context.Background(), connect.NewRequest(&localcomposev1.StopProjectRequest{
+	_, err := c.rpcClient.StopProject(context.Background(), connect.NewRequest(&devyardv1.StopProjectRequest{
 		Project: project,
 	}))
 	return unwrapError(err)
@@ -139,7 +139,7 @@ func (c *Client) StopProject(project string) error {
 
 // RemoveProject stops and removes a project from the daemon.
 func (c *Client) RemoveProject(project string) error {
-	_, err := c.rpcClient.RemoveProject(context.Background(), connect.NewRequest(&localcomposev1.RemoveProjectRequest{
+	_, err := c.rpcClient.RemoveProject(context.Background(), connect.NewRequest(&devyardv1.RemoveProjectRequest{
 		Project: project,
 	}))
 	return unwrapError(err)
@@ -147,7 +147,7 @@ func (c *Client) RemoveProject(project string) error {
 
 // StopDaemon stops all projects and shuts down the daemon.
 func (c *Client) StopDaemon() error {
-	_, err := c.rpcClient.StopDaemon(context.Background(), connect.NewRequest(&localcomposev1.StopDaemonRequest{}))
+	_, err := c.rpcClient.StopDaemon(context.Background(), connect.NewRequest(&devyardv1.StopDaemonRequest{}))
 	return unwrapError(err)
 }
 
@@ -155,7 +155,7 @@ func (c *Client) StopDaemon() error {
 // all managed project services are stopped and restarted as well. Returns the
 // replacement daemon's pid (0 when unknown).
 func (c *Client) RestartDaemon(restartServices bool) (int32, error) {
-	resp, err := c.rpcClient.RestartDaemon(context.Background(), connect.NewRequest(&localcomposev1.RestartDaemonRequest{
+	resp, err := c.rpcClient.RestartDaemon(context.Background(), connect.NewRequest(&devyardv1.RestartDaemonRequest{
 		RestartServices: restartServices,
 	}))
 	if err != nil {
@@ -166,7 +166,7 @@ func (c *Client) RestartDaemon(restartServices bool) (int32, error) {
 
 // DaemonStatus returns daemon metrics and status.
 func (c *Client) DaemonStatus() (*protocol.DaemonInfo, error) {
-	resp, err := c.rpcClient.DaemonStatus(context.Background(), connect.NewRequest(&localcomposev1.DaemonStatusRequest{}))
+	resp, err := c.rpcClient.DaemonStatus(context.Background(), connect.NewRequest(&devyardv1.DaemonStatusRequest{}))
 	if err != nil {
 		return nil, unwrapError(err)
 	}
@@ -175,7 +175,7 @@ func (c *Client) DaemonStatus() (*protocol.DaemonInfo, error) {
 
 // StartService starts one service in a project.
 func (c *Client) StartService(project, service string) error {
-	_, err := c.rpcClient.StartService(context.Background(), connect.NewRequest(&localcomposev1.StartServiceRequest{
+	_, err := c.rpcClient.StartService(context.Background(), connect.NewRequest(&devyardv1.StartServiceRequest{
 		Project: project,
 		Service: service,
 	}))
@@ -184,7 +184,7 @@ func (c *Client) StartService(project, service string) error {
 
 // StopService stops one service in a project.
 func (c *Client) StopService(project, service string) error {
-	_, err := c.rpcClient.StopService(context.Background(), connect.NewRequest(&localcomposev1.StopServiceRequest{
+	_, err := c.rpcClient.StopService(context.Background(), connect.NewRequest(&devyardv1.StopServiceRequest{
 		Project: project,
 		Service: service,
 	}))
@@ -193,7 +193,7 @@ func (c *Client) StopService(project, service string) error {
 
 // KillService signals one service (or all services) with signal.
 func (c *Client) KillService(project, service, signal string) error {
-	_, err := c.rpcClient.KillService(context.Background(), connect.NewRequest(&localcomposev1.KillServiceRequest{
+	_, err := c.rpcClient.KillService(context.Background(), connect.NewRequest(&devyardv1.KillServiceRequest{
 		Project: project,
 		Service: service,
 		Signal:  signal,
@@ -203,7 +203,7 @@ func (c *Client) KillService(project, service, signal string) error {
 
 // Restart restarts one service (or all services) in a project.
 func (c *Client) Restart(project, service string) error {
-	_, err := c.rpcClient.Restart(context.Background(), connect.NewRequest(&localcomposev1.RestartRequest{
+	_, err := c.rpcClient.Restart(context.Background(), connect.NewRequest(&devyardv1.RestartRequest{
 		Project: project,
 		Service: service,
 	}))
@@ -212,7 +212,7 @@ func (c *Client) Restart(project, service string) error {
 
 // Top samples CPU and memory usage.
 func (c *Client) Top(project, service string) ([]*protocol.ServiceStat, error) {
-	resp, err := c.rpcClient.Top(context.Background(), connect.NewRequest(&localcomposev1.TopRequest{
+	resp, err := c.rpcClient.Top(context.Background(), connect.NewRequest(&devyardv1.TopRequest{
 		Project: project,
 		Service: service,
 	}))
@@ -224,7 +224,7 @@ func (c *Client) Top(project, service string) ([]*protocol.ServiceStat, error) {
 
 // ListPorts returns listening sockets for a project (or all projects).
 func (c *Client) ListPorts(project string) ([]*protocol.PortBinding, error) {
-	resp, err := c.rpcClient.ListPorts(context.Background(), connect.NewRequest(&localcomposev1.ListPortsRequest{
+	resp, err := c.rpcClient.ListPorts(context.Background(), connect.NewRequest(&devyardv1.ListPortsRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -240,7 +240,7 @@ func (c *Client) Logs(project, service string, follow, previous bool, tail int, 
 
 // LogsCtx streams logs with a caller-provided context.
 func (c *Client) LogsCtx(ctx context.Context, project, service string, follow, previous bool, tail int, onLine func(string), onRotate ...func()) error {
-	return c.streamLogs(ctx, &localcomposev1.LogsRequest{
+	return c.streamLogs(ctx, &devyardv1.LogsRequest{
 		Project:  project,
 		Service:  service,
 		Follow:   follow,
@@ -256,7 +256,7 @@ func (c *Client) TaskLogs(project, task string, follow, previous bool, tail int,
 
 // TaskLogsCtx streams task logs with a caller-provided context.
 func (c *Client) TaskLogsCtx(ctx context.Context, project, task string, follow, previous bool, tail int, onLine func(string), onRotate ...func()) error {
-	return c.streamLogs(ctx, &localcomposev1.LogsRequest{
+	return c.streamLogs(ctx, &devyardv1.LogsRequest{
 		Project:  project,
 		Task:     task,
 		Follow:   follow,
@@ -265,7 +265,7 @@ func (c *Client) TaskLogsCtx(ctx context.Context, project, task string, follow, 
 	}, onLine, onRotate...)
 }
 
-func (c *Client) streamLogs(ctx context.Context, req *localcomposev1.LogsRequest, onLine func(string), onRotate ...func()) error {
+func (c *Client) streamLogs(ctx context.Context, req *devyardv1.LogsRequest, onLine func(string), onRotate ...func()) error {
 	stream, err := c.rpcClient.Logs(ctx, connect.NewRequest(req))
 	if err != nil {
 		return unwrapError(err)
@@ -296,7 +296,7 @@ func (c *Client) streamLogs(ctx context.Context, req *localcomposev1.LogsRequest
 
 // ListTasks returns tasks with metadata and runtime states for a project.
 func (c *Client) ListTasks(project string) ([]*protocol.TaskState, error) {
-	resp, err := c.rpcClient.ListTasks(context.Background(), connect.NewRequest(&localcomposev1.ListTasksRequest{
+	resp, err := c.rpcClient.ListTasks(context.Background(), connect.NewRequest(&devyardv1.ListTasksRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -307,7 +307,7 @@ func (c *Client) ListTasks(project string) ([]*protocol.TaskState, error) {
 
 // RunTask executes a task and streams output lines.
 func (c *Client) RunTask(ctx context.Context, project, task string, args []string, onLine func(string)) (int, error) {
-	stream, err := c.rpcClient.RunTask(ctx, connect.NewRequest(&localcomposev1.RunTaskRequest{
+	stream, err := c.rpcClient.RunTask(ctx, connect.NewRequest(&devyardv1.RunTaskRequest{
 		Project: project,
 		Task:    task,
 		Args:    args,
@@ -335,7 +335,7 @@ func (c *Client) RunTask(ctx context.Context, project, task string, args []strin
 
 // StopTask stops a running task in a project.
 func (c *Client) StopTask(project, task string) error {
-	_, err := c.rpcClient.StopTask(context.Background(), connect.NewRequest(&localcomposev1.StopTaskRequest{
+	_, err := c.rpcClient.StopTask(context.Background(), connect.NewRequest(&devyardv1.StopTaskRequest{
 		Project: project,
 		Task:    task,
 	}))
@@ -344,7 +344,7 @@ func (c *Client) StopTask(project, task string) error {
 
 // GitLog returns the commit log, branches, tags, and stashes for a project.
 func (c *Client) GitLog(project string) ([]*protocol.GitCommit, []*protocol.GitBranch, []*protocol.GitTag, []*protocol.GitStash, error) {
-	resp, err := c.rpcClient.GitLog(context.Background(), connect.NewRequest(&localcomposev1.GitLogRequest{
+	resp, err := c.rpcClient.GitLog(context.Background(), connect.NewRequest(&devyardv1.GitLogRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -359,7 +359,7 @@ func (c *Client) GitDiff(project, hash, path string, contextLines ...int) (*prot
 	if len(contextLines) > 0 && contextLines[0] > 0 {
 		ctxLines = int32(contextLines[0])
 	}
-	resp, err := c.rpcClient.GitDiff(context.Background(), connect.NewRequest(&localcomposev1.GitDiffRequest{
+	resp, err := c.rpcClient.GitDiff(context.Background(), connect.NewRequest(&devyardv1.GitDiffRequest{
 		Project:      project,
 		Hash:         hash,
 		Path:         path,
@@ -373,7 +373,7 @@ func (c *Client) GitDiff(project, hash, path string, contextLines ...int) (*prot
 
 // GitCommit creates a new git commit.
 func (c *Client) GitCommit(project, message string) error {
-	_, err := c.rpcClient.GitCommit(context.Background(), connect.NewRequest(&localcomposev1.GitCommitRequest{
+	_, err := c.rpcClient.GitCommit(context.Background(), connect.NewRequest(&devyardv1.GitCommitRequest{
 		Project: project,
 		Message: message,
 	}))
@@ -382,7 +382,7 @@ func (c *Client) GitCommit(project, message string) error {
 
 // GitStage stages or unstages files.
 func (c *Client) GitStage(project, path string, stageAll, unstage bool) error {
-	_, err := c.rpcClient.GitStage(context.Background(), connect.NewRequest(&localcomposev1.GitStageRequest{
+	_, err := c.rpcClient.GitStage(context.Background(), connect.NewRequest(&devyardv1.GitStageRequest{
 		Project:  project,
 		Path:     path,
 		StageAll: stageAll,
@@ -393,7 +393,7 @@ func (c *Client) GitStage(project, path string, stageAll, unstage bool) error {
 
 // GitPush pushes the current branch to its upstream remote.
 func (c *Client) GitPush(project string) (string, error) {
-	resp, err := c.rpcClient.GitPush(context.Background(), connect.NewRequest(&localcomposev1.GitPushRequest{
+	resp, err := c.rpcClient.GitPush(context.Background(), connect.NewRequest(&devyardv1.GitPushRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -404,7 +404,7 @@ func (c *Client) GitPush(project string) (string, error) {
 
 // GitPull pulls changes from the upstream remote.
 func (c *Client) GitPull(project string) (string, error) {
-	resp, err := c.rpcClient.GitPull(context.Background(), connect.NewRequest(&localcomposev1.GitPullRequest{
+	resp, err := c.rpcClient.GitPull(context.Background(), connect.NewRequest(&devyardv1.GitPullRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -415,7 +415,7 @@ func (c *Client) GitPull(project string) (string, error) {
 
 // GitFetch fetches remote refs.
 func (c *Client) GitFetch(project string) (string, error) {
-	resp, err := c.rpcClient.GitFetch(context.Background(), connect.NewRequest(&localcomposev1.GitFetchRequest{
+	resp, err := c.rpcClient.GitFetch(context.Background(), connect.NewRequest(&devyardv1.GitFetchRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -426,7 +426,7 @@ func (c *Client) GitFetch(project string) (string, error) {
 
 // GitStatus gets the working tree and branch status summary.
 func (c *Client) GitStatus(project string) (*protocol.GitStatus, error) {
-	resp, err := c.rpcClient.GitStatus(context.Background(), connect.NewRequest(&localcomposev1.GitStatusRequest{
+	resp, err := c.rpcClient.GitStatus(context.Background(), connect.NewRequest(&devyardv1.GitStatusRequest{
 		Project: project,
 	}))
 	if err != nil {
@@ -437,7 +437,7 @@ func (c *Client) GitStatus(project string) (*protocol.GitStatus, error) {
 
 // SubscribeEvents streams real-time state and git event changes.
 func (c *Client) SubscribeEvents(ctx context.Context, onEvent func(*protocol.Event)) error {
-	stream, err := c.rpcClient.SubscribeEvents(ctx, connect.NewRequest(&localcomposev1.SubscribeEventsRequest{}))
+	stream, err := c.rpcClient.SubscribeEvents(ctx, connect.NewRequest(&devyardv1.SubscribeEventsRequest{}))
 	if err != nil {
 		return unwrapError(err)
 	}

@@ -187,7 +187,7 @@ func (c *Checker) probeOnce(ctx context.Context) {
 		c.consecutive = 0
 		c.state = StateHealthy
 		if recovered {
-			logMsg = "local-compose: healthcheck recovered: healthy"
+			logMsg = "devyard: healthcheck recovered: healthy"
 		}
 	} else {
 		c.consecutive++
@@ -196,7 +196,7 @@ func (c *Checker) probeOnce(ctx context.Context) {
 		if failed {
 			c.state = StateUnhealthy
 			if !wasUnhealthy {
-				logMsg = fmt.Sprintf("local-compose: healthcheck unhealthy after %d consecutive failures: %v", c.consecutive, err)
+				logMsg = fmt.Sprintf("devyard: healthcheck unhealthy after %d consecutive failures: %v", c.consecutive, err)
 			}
 		}
 	}

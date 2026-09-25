@@ -1,7 +1,7 @@
 # https://taskfile.dev
 #
-# Same workflow as the root local-compose.yml (preferred):
-#   local-compose up
+# Same workflow as the root devyard.yml (preferred):
+#   devyard up
 
 version: "3"
 
@@ -13,9 +13,9 @@ tasks:
       - frontend
 
   web:
-    desc: Start the local-compose web UI proxy (needs a running daemon)
+    desc: Start the devyard web UI proxy (needs a running daemon)
     cmds:
-      - gow run ./cmd/local-compose web --host 127.0.0.1 --port 9090
+      - gow run ./cmd/devyard web --host 127.0.0.1 --port 9090
 
   frontend:
     desc: Start the Vite frontend (bun)

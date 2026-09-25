@@ -4,7 +4,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 // Internal test helpers that re-export unexported package functions to the

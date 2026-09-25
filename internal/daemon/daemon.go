@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 // DaemonFlag is the hidden flag the global daemon child is invoked with. The

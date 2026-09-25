@@ -15,7 +15,7 @@ export type {
   GitStatus,
   LogChunk,
   Event,
-} from "~/gen/localcompose/v1/control_pb";
+} from "~/gen/devyard/v1/control_pb";
 
 export type ViewMode = "logs" | "shell" | "git";
 

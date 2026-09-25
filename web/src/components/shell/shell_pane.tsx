@@ -79,7 +79,7 @@ export function ShellPane(props: {
   });
 
   const handleDragOver = (e: DragEvent) => {
-    if (!e.dataTransfer?.types.includes("application/x-local-compose-pane")) return;
+    if (!e.dataTransfer?.types.includes("application/x-devyard-pane")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -93,7 +93,7 @@ export function ShellPane(props: {
   };
 
   const handleDrop = (e: DragEvent) => {
-    const sourceId = e.dataTransfer?.getData("application/x-local-compose-pane");
+    const sourceId = e.dataTransfer?.getData("application/x-devyard-pane");
     const zone = dropZone();
     setDropZone(null);
     if (!sourceId || !zone || sourceId === props.id) return;
@@ -127,7 +127,7 @@ export function ShellPane(props: {
         <div
           class="flex select-none items-center gap-1"
           draggable="true"
-          onDragStart={(e) => e.dataTransfer?.setData("application/x-local-compose-pane", props.id)}
+          onDragStart={(e) => e.dataTransfer?.setData("application/x-devyard-pane", props.id)}
           title="Drag to move or split pane"
         >
           <GripVertical class="size-3 cursor-grab active:cursor-grabbing" />

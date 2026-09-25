@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 // CommitLimit caps how many commits are returned per request so a large

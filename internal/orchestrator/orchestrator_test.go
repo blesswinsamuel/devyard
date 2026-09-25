@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/orchestrator"
+	"github.com/blesswinsamuel/devyard/internal/orchestrator"
 )
 
 // setupEnv sets isolated XDG dirs for the test so the orchestrator's
@@ -28,12 +28,12 @@ func setupEnv(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", st)
 }
 
-// writeConfig writes a local-compose.yml with the given content to a temp dir
+// writeConfig writes a devyard.yml with the given content to a temp dir
 // and returns the config path.
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "local-compose.yml")
+	path := filepath.Join(dir, "devyard.yml")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}

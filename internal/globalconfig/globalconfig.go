@@ -1,7 +1,7 @@
 // Package globalconfig loads and saves the user-level config file at
-// $XDG_CONFIG_HOME/local-compose/config.yml (default
-// ~/.config/local-compose/config.yml). It holds settings that apply across
-// all projects, such as the web UI host/port defaults for `local-compose web`.
+// $XDG_CONFIG_HOME/devyard/config.yml (default
+// ~/.config/devyard/config.yml). It holds settings that apply across
+// all projects, such as the web UI host/port defaults for `devyard web`.
 package globalconfig
 
 import (
@@ -13,7 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 // DefaultHost is the default bind address for the web UI. Loopback only for
@@ -23,7 +23,7 @@ const DefaultHost = "127.0.0.1"
 // DefaultPort is the default port for the web UI.
 const DefaultPort = 9090
 
-// WebConfig holds default bind settings for `local-compose web`.
+// WebConfig holds default bind settings for `devyard web`.
 type WebConfig struct {
 	// Host is the bind address. Defaults to 127.0.0.1 (loopback only).
 	Host string `yaml:"host"`
@@ -82,8 +82,8 @@ func Defaults() Config {
 }
 
 // ConfigPath returns the absolute path to the global config file, using
-// $XDG_CONFIG_HOME/local-compose/config.yml (default
-// ~/.config/local-compose/config.yml).
+// $XDG_CONFIG_HOME/devyard/config.yml (default
+// ~/.config/devyard/config.yml).
 func ConfigPath() (string, error) {
 	return configPath(os.Getenv, homeDir)
 }
@@ -116,7 +116,7 @@ func configPath(getenv envGetter, home func() (string, error)) (string, error) {
 
 // Load reads the global config file. If the file does not exist, it returns
 // Defaults. Unknown fields produce a warning (printed to stderr) but do not
-// error, matching the convention for local-compose.yml.
+// error, matching the convention for devyard.yml.
 func Load() (*Config, error) {
 	path, err := ConfigPath()
 	if err != nil {
@@ -151,7 +151,7 @@ func loadFile(path string, read readerFunc, errOut io.Writer) (*Config, error) {
 
 	for key := range raw {
 		if !knownTopLevel[key] {
-			_, _ = fmt.Fprintf(errOut, "local-compose: warning: unknown field %q in global config\n", key)
+			_, _ = fmt.Fprintf(errOut, "devyard: warning: unknown field %q in global config\n", key)
 		}
 	}
 

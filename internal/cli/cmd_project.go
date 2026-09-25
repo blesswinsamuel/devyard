@@ -36,7 +36,7 @@ func newProjectListCmd(ctx *CLIContext) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				ctx.Errorln("devyard: no daemon running (is it up?)")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -80,7 +80,7 @@ func newProjectAddCmd(ctx *CLIContext) *cobra.Command {
 				}
 			}
 
-			ctx.Errorf("local-compose: registered project from %s\n", cfgPath)
+			ctx.Errorf("devyard: registered project from %s\n", cfgPath)
 			return nil
 		},
 	}
@@ -107,7 +107,7 @@ func newProjectReloadCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -116,7 +116,7 @@ func newProjectReloadCmd(ctx *CLIContext) *cobra.Command {
 				return fmt.Errorf("reload project: %w", err)
 			}
 
-			ctx.Errorf("local-compose: reloaded project %q\n", cfg.Project)
+			ctx.Errorf("devyard: reloaded project %q\n", cfg.Project)
 			return nil
 		},
 	}
@@ -147,7 +147,7 @@ func newProjectStartCmd(ctx *CLIContext) *cobra.Command {
 			if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, true); err != nil {
 				return err
 			}
-			ctx.Errorf("local-compose: project %q started\n", cfg.Project)
+			ctx.Errorf("devyard: project %q started\n", cfg.Project)
 			return nil
 		},
 	}
@@ -170,7 +170,7 @@ func newProjectStopCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 			defer func() { _ = client.Close() }()
@@ -197,7 +197,7 @@ func newProjectRestartCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -205,7 +205,7 @@ func newProjectRestartCmd(ctx *CLIContext) *cobra.Command {
 			if err := client.Restart(projName, ""); err != nil {
 				return err
 			}
-			ctx.Errorf("local-compose: restarted project %q\n", projName)
+			ctx.Errorf("devyard: restarted project %q\n", projName)
 			return nil
 		},
 	}
@@ -229,16 +229,16 @@ func newProjectRemoveCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 			defer func() { _ = client.Close() }()
 
 			if err := client.RemoveProject(projName); err != nil {
-				ctx.Errorln("local-compose: removed")
+				ctx.Errorln("devyard: removed")
 				return nil
 			}
-			ctx.Errorln("local-compose: removed")
+			ctx.Errorln("devyard: removed")
 			return nil
 		},
 	}
@@ -265,7 +265,7 @@ func newProjectLogsCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return err
 			}
 			defer func() { _ = client.Close() }()

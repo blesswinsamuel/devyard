@@ -94,7 +94,7 @@ async function main() {
   // Server answers with one project.
   sock.receive({
     type: "projects",
-    data: [{ name: "demo", status: "running", config_path: "/tmp/demo/local-compose.yml" }],
+    data: [{ name: "demo", status: "running", config_path: "/tmp/demo/devyard.yml" }],
   });
 
   // The response MUST land in the reactive store (regression guard for

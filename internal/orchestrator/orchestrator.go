@@ -18,17 +18,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/daemon"
-	"github.com/blesswinsamuel/local-compose/internal/dag"
-	"github.com/blesswinsamuel/local-compose/internal/gitlog"
-	"github.com/blesswinsamuel/local-compose/internal/gitwatcher"
-	"github.com/blesswinsamuel/local-compose/internal/procstat"
-	"github.com/blesswinsamuel/local-compose/internal/project"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
-	"github.com/blesswinsamuel/local-compose/internal/proxy"
-	"github.com/blesswinsamuel/local-compose/internal/supervisor"
+	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/daemon"
+	"github.com/blesswinsamuel/devyard/internal/dag"
+	"github.com/blesswinsamuel/devyard/internal/gitlog"
+	"github.com/blesswinsamuel/devyard/internal/gitwatcher"
+	"github.com/blesswinsamuel/devyard/internal/procstat"
+	"github.com/blesswinsamuel/devyard/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/proxy"
+	"github.com/blesswinsamuel/devyard/internal/supervisor"
 )
 
 // Project is one project managed by the daemon. It holds the supervisor, the

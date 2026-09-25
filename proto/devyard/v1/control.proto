@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package localcompose.v1;
+package devyard.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1;localcomposev1";
+option go_package = "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1;devyardv1";
 
 service DaemonService {
   // Project Lifecycle

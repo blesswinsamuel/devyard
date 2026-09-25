@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
-	"github.com/blesswinsamuel/local-compose/internal/project"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
-	"github.com/blesswinsamuel/local-compose/internal/supervisor"
+	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/supervisor"
 )
 
 // startOrphanGroup spawns `sh -c 'sleep 60'` in its own process group,

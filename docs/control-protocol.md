@@ -1,23 +1,23 @@
 # Control Protocol (ConnectRPC)
 
-The communication between the global daemon and its clients (`local-compose ps`/`logs`/`restart`/`down`/`top`, CLI commands, and the web UI) is powered by **ConnectRPC** over HTTP/2 on Unix domain sockets and TCP.
+The communication between the global daemon and its clients (`devyard ps`/`logs`/`restart`/`down`/`top`, CLI commands, and the web UI) is powered by **ConnectRPC** over HTTP/2 on Unix domain sockets and TCP.
 
 Implementation:
-- Protobuf schema: `proto/localcompose/v1/control.proto`
-- Go code generation: `internal/gen/proto/localcompose/v1/`
-- TypeScript code generation: `web/src/gen/localcompose/v1/`
+- Protobuf schema: `proto/devyard/v1/control.proto`
+- Go code generation: `internal/gen/proto/devyard/v1/`
+- TypeScript code generation: `web/src/gen/devyard/v1/`
 - Server: `internal/control/server.go`
 - Client: `internal/control/client.go`
 
 ## Transport
 
-- **Daemon Socket**: Unix domain socket at `$XDG_RUNTIME_DIR/local-compose/daemon.sock` (or `~/.local/state/local-compose/run/daemon.sock`).
+- **Daemon Socket**: Unix domain socket at `$XDG_RUNTIME_DIR/devyard/daemon.sock` (or `~/.local/state/devyard/run/daemon.sock`).
 - **HTTP/2 Transport**: Client and server communicate using HTTP/2 cleartext (h2c) over the Unix socket.
 - **Multiplexing**: A single connection can serve multiple parallel requests and streams concurrently.
 
 ## Schema & Service Definition
 
-The protocol is defined in `proto/localcompose/v1/control.proto` under the `localcompose.v1` package:
+The protocol is defined in `proto/devyard/v1/control.proto` under the `devyard.v1` package:
 
 ```protobuf
 service DaemonService {
@@ -104,4 +104,4 @@ The `SubscribeEvents` server-streaming RPC streams real-time updates for:
 
 ## Web UI Integration
 
-The embedded web UI server reverse-proxies `/localcompose.v1.DaemonService/` directly to the daemon's Unix socket over HTTP/2, enabling native Connect-ES / Connect-Web clients in the browser with full streaming and bidirectional capabilities.
+The embedded web UI server reverse-proxies `/devyard.v1.DaemonService/` directly to the daemon's Unix socket over HTTP/2, enabling native Connect-ES / Connect-Web clients in the browser with full streaming and bidirectional capabilities.

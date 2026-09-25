@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
-	"github.com/blesswinsamuel/local-compose/internal/web"
+	"github.com/blesswinsamuel/devyard/internal/globalconfig"
+	"github.com/blesswinsamuel/devyard/internal/web"
 )
 
 func newUICmd(ctx *CLIContext) *cobra.Command {
@@ -34,7 +34,7 @@ func newUICmd(ctx *CLIContext) *cobra.Command {
 
 			socket, err := dialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				ctx.Errorln("devyard: no daemon running (is it up?)")
 				return err
 			}
 
@@ -43,7 +43,7 @@ func newUICmd(ctx *CLIContext) *cobra.Command {
 			if err := srv.ListenAndServe(); err != nil {
 				return err
 			}
-			ctx.Errorf("local-compose: dashboard at http://%s\n", srv.Addr())
+			ctx.Errorf("devyard: dashboard at http://%s\n", srv.Addr())
 
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

@@ -73,7 +73,7 @@ func (e *ExitCodeError) Error() string {
 func newTaskRunCmd(ctx *CLIContext) *cobra.Command {
 	return &cobra.Command{
 		Use:   "run <task> [args...]",
-		Short: "Run a one-off task defined in local-compose.yml",
+		Short: "Run a one-off task defined in devyard.yml",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			taskName := args[0]
@@ -122,7 +122,7 @@ func newTaskStopCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 			defer func() { _ = client.Close() }()
@@ -148,7 +148,7 @@ func newTaskKillCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 			defer func() { _ = client.Close() }()
@@ -179,7 +179,7 @@ func newTaskLogsCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -212,7 +212,7 @@ func newTaskTopCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return err
 			}
 			defer func() { _ = client.Close() }()

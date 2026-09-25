@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/blesswinsamuel/local-compose/internal/shim"
+	"github.com/blesswinsamuel/devyard/internal/shim"
 )
 
 // isShimChild reports whether the binary was invoked with the hidden --shim flag.

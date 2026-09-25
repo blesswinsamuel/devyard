@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/health"
+	"github.com/blesswinsamuel/devyard/internal/health"
 )
 
 func newChecker(t *testing.T, cfg health.Config) *health.Checker {

@@ -1,5 +1,5 @@
 // Package integration contains black-box end-to-end tests that build the
-// real local-compose binary and drive it through the full CLI lifecycle
+// real devyard binary and drive it through the full CLI lifecycle
 // (up -d, ps, logs, restart, down, build, up --build) against isolated XDG
 // runtime/state dirs, plus the negative config paths.
 //
@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-// binPath is the path to the local-compose binary built once in TestMain.
+// binPath is the path to the devyard binary built once in TestMain.
 var binPath string
 
 // repoRoot is the absolute path to the repository root (used for `go build`).
@@ -43,11 +43,11 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	defer func() { _ = os.RemoveAll(binDir) }()
-	binPath = filepath.Join(binDir, "local-compose")
+	binPath = filepath.Join(binDir, "devyard")
 
 	buildCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	build := exec.CommandContext(buildCtx, "go", "build", "-o", binPath, "./cmd/local-compose")
+	build := exec.CommandContext(buildCtx, "go", "build", "-o", binPath, "./cmd/devyard")
 	build.Dir = repoRoot
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "go build failed: %v\n%s\n", err, out)
@@ -57,7 +57,7 @@ func TestMain(m *testing.M) {
 }
 
 // env holds the per-test environment: a config dir (cwd) and isolated XDG
-// runtime/state dirs so tests never touch the user's real local-compose state.
+// runtime/state dirs so tests never touch the user's real devyard state.
 type env struct {
 	cfgDir     string
 	runtime    string
@@ -74,7 +74,7 @@ func newEnv(t *testing.T, configContents string) *env {
 		t.Skip("unix-only")
 	}
 	cfgDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(cfgDir, "local-compose.yml"), []byte(configContents), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfgDir, "devyard.yml"), []byte(configContents), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	e := &env{
@@ -86,14 +86,14 @@ func newEnv(t *testing.T, configContents string) *env {
 		state:      t.TempDir(),
 		config:     t.TempDir(),
 		projName:   "lc-test",
-		configPath: filepath.Join(cfgDir, "local-compose.yml"),
+		configPath: filepath.Join(cfgDir, "devyard.yml"),
 	}
 	// Best-effort teardown: down is idempotent and safe even if nothing is up.
 	// Also stop the daemon so tests don't leak processes.
 	t.Cleanup(func() {
 		_, _, _ = e.run(t, context.Background(), "down")
 		_, _, _ = e.run(t, context.Background(), "daemon", "stop")
-		if data, err := os.ReadFile(filepath.Join(e.runtime, "local-compose", "daemon.pid")); err == nil {
+		if data, err := os.ReadFile(filepath.Join(e.runtime, "devyard", "daemon.pid")); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
 				_ = syscall.Kill(pid, syscall.SIGKILL)
 			}
@@ -157,7 +157,7 @@ func (e *env) environ() []string {
 	out = override(out, "XDG_RUNTIME_DIR", e.runtime)
 	out = override(out, "XDG_STATE_HOME", e.state)
 	out = override(out, "XDG_CONFIG_HOME", e.config)
-	out = override(out, "LOCAL_COMPOSE_TOP_INTERVAL", "50ms")
+	out = override(out, "DEVYARD_TOP_INTERVAL", "50ms")
 	return out
 }
 

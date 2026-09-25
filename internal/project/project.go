@@ -12,7 +12,7 @@ import (
 const DefaultStateBase = ".local/state"
 
 // AppDir is the per-application segment appended to the XDG base dirs.
-const AppDir = "local-compose"
+const AppDir = "devyard"
 
 // Locations holds the resolved runtime and state paths for one project.
 //

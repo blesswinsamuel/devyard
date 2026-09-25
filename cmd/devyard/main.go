@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/blesswinsamuel/local-compose/internal/cli"
+	"github.com/blesswinsamuel/devyard/internal/cli"
 )
 
 func main() {

@@ -5,9 +5,9 @@ Read this before making changes.
 
 ## What this project is
 
-`local-compose` is a docker-compose-style CLI that orchestrates **local processes**
+`devyard` is a docker-compose-style CLI that orchestrates **local processes**
 (no Docker). macOS + Linux only. Written in Go 1.26. Module:
-`github.com/blesswinsamuel/local-compose`. See [README.md](README.md) for the user
+`github.com/blesswinsamuel/devyard`. See [README.md](README.md) for the user
 pitch and [docs/architecture.md](docs/architecture.md) for how it works inside.
 
 ## Greenfield Project & Compatibility Strategy
@@ -20,7 +20,7 @@ This is an early-stage **greenfield project**.
 
 ```bash
 go build ./...                      # build everything
-go build -o local-compose ./cmd/local-compose   # build the binary
+go build -o devyard ./cmd/devyard   # build the binary
 go vet ./...                        # vet
 gofmt -l .                          # must print nothing
 go test ./...                       # all unit + integration tests
@@ -36,8 +36,8 @@ Vite, built with `bun`). It is embedded into the Go binary via
 in `internal/web/dist/` are gitignored (except `.gitkeep` so Go builds and
 linters work on clean checkouts) — CI builds it in the "build & test" job
 (`bun install && bun run build`, which outputs to `../internal/web/dist`)
-before `go build ./...`. For local development, `local-compose up` (see
-`local-compose.yml`) runs `bun run dev` (a Vite server on :5173 proxying to the
+before `go build ./...`. For local development, `devyard up` (see
+`devyard.yml`) runs `bun run dev` (a Vite server on :5173 proxying to the
 Go web proxy on :9090), so you can edit `web/src/**` and see changes live with
 no rebuild. When changing web source, always verify the build still compiles:
 `cd web && bun install && bun run build`.
@@ -52,10 +52,10 @@ user's real state.
 ## Repo layout
 
 ```
-cmd/local-compose/main.go   # entrypoint -> cli.Execute()
+cmd/devyard/main.go   # entrypoint -> cli.Execute()
 internal/
   cli/         # cobra commands + flag wiring + the daemon re-exec handler (root.go)
-  config/      # local-compose.yml schema, parsing, validation, defaults
+  config/      # devyard.yml schema, parsing, validation, defaults
   project/     # project name + XDG runtime/state dir resolution (per-project + daemon)
   dag/         # depends_on graph, cycle detection, topo order
   procstat/    # process-group CPU/memory sampling for `top` (procfs + libproc)
@@ -67,16 +67,16 @@ internal/
   health/      # per-service healthcheck state machine (starting -> healthy | unhealthy)
   ui/          # shared status color/label helpers used by cli and web
   web/         # WS server + embedded SolidJS SPA (xterm.js logs)
-  globalconfig/ # user-level config ($XDG_CONFIG_HOME/local-compose/config.yml)
+  globalconfig/ # user-level config ($XDG_CONFIG_HOME/devyard/config.yml)
 test/integration/  # black-box e2e tests
 ```
 
 ## Architecture in one paragraph
 
-A single **global daemon** process (`local-compose --daemon`, spawned by `up`
+A single **global daemon** process (`devyard --daemon`, spawned by `up`
 or `start-daemon`) owns a `map[string]*supervisor.Supervisor` — one supervisor
 per project. It serves one **Unix-socket control protocol** at
-`$XDG_RUNTIME_DIR/local-compose/daemon.sock`. Every CLI command (`ps`, `logs`,
+`$XDG_RUNTIME_DIR/devyard/daemon.sock`. Every CLI command (`ps`, `logs`,
 `restart`, `down`), and the web UI are thin **Client** connections over
 that socket. The daemon autostarts every registered project on startup unless a
 project-level `.stopped` marker exists. See
@@ -99,7 +99,7 @@ project-level `.stopped` marker exists. See
   Unknown fields should warn, not error.
 - **Global config changes**: update `internal/globalconfig/globalconfig.go` and
   its tests. The global config lives at
-  `$XDG_CONFIG_HOME/local-compose/config.yml`.
+  `$XDG_CONFIG_HOME/devyard/config.yml`.
 - **Protocol changes**: update `internal/protocol/protocol.go`, both sides in
   `internal/control`, and [docs/control-protocol.md](docs/control-protocol.md).
   The protocol is shared by the CLI and web UI — keep messages
@@ -119,13 +119,13 @@ project-level `.stopped` marker exists. See
   Foreground `up` then follows logs from all services via `followForeground`.
   `up -d` just sends `start_project` and returns.
 - **Autostart**: on daemon startup, `Autostart()` scans
-  `$XDG_STATE_HOME/local-compose/*/` for `config-path` files, reads each
+  `$XDG_STATE_HOME/devyard/*/` for `config-path` files, reads each
   project's config, and starts every project **unless** a project-level
   `.stopped` marker exists. Skipped projects are still registered in
   memory as stopped so list commands stay complete. Restart policy does not
   gate autostart.
 - **Project-level `.stopped` marker**: `StopProject` writes a
-  project-level `$XDG_STATE_HOME/local-compose/<project>/.stopped` marker (so
+  project-level `$XDG_STATE_HOME/devyard/<project>/.stopped` marker (so
   autostart won't resume the project) and keeps the project in the daemon map
   (closed supervisor retained for `ps`). Explicit `up`/`start`/`start <svc>`
   removes the marker.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blesswinsamuel/local-compose/internal/globalconfig"
+	"github.com/blesswinsamuel/devyard/internal/globalconfig"
 )
 
 func TestLoadMissingFileReturnsDefaults(t *testing.T) {
@@ -137,8 +137,8 @@ func TestConfigPathUsesXDGConfigHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigPath: %v", err)
 	}
-	if path != "/custom/config/local-compose/config.yml" {
-		t.Errorf("path = %q, want /custom/config/local-compose/config.yml", path)
+	if path != "/custom/config/devyard/config.yml" {
+		t.Errorf("path = %q, want /custom/config/devyard/config.yml", path)
 	}
 }
 
@@ -149,7 +149,7 @@ func TestConfigPathDefaultsToHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigPath: %v", err)
 	}
-	want := "/tmp/fakehome/.config/local-compose/config.yml"
+	want := "/tmp/fakehome/.config/devyard/config.yml"
 	if path != want {
 		t.Errorf("path = %q, want %q", path, want)
 	}

@@ -7,7 +7,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/control"
 )
 
 // CLIContext encapsulates standard I/O streams, flags, and dependency clients

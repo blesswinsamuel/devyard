@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blesswinsamuel/local-compose/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 // fakeResolver serves a canned route list; it implements Resolver.

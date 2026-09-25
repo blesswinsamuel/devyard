@@ -262,7 +262,7 @@ func (t *Task) UnmarshalYAML(value *yaml.Node) error {
 	}
 }
 
-// File is the top-level local-compose.yml schema.
+// File is the top-level devyard.yml schema.
 type File struct {
 	Version  string             `yaml:"version"`
 	Name     string             `yaml:"name,omitempty"`
@@ -288,7 +288,7 @@ func LoadWithEnv(path string, dotenv map[string]string) (*File, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 	text := Interpolate(string(data), interpolateEnv(dotenv), func(msg string) {
-		fmt.Fprintf(os.Stderr, "local-compose: warning: %s\n", msg)
+		fmt.Fprintf(os.Stderr, "devyard: warning: %s\n", msg)
 	})
 	var file File
 	if err := yaml.Unmarshal([]byte(text), &file); err != nil {
@@ -499,14 +499,14 @@ func validateHostLabel(name string) error {
 	return nil
 }
 
-// FindConfig walks up from cwd looking for local-compose.yml.
+// FindConfig walks up from cwd looking for devyard.yml.
 func FindConfig(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
 		return "", err
 	}
 	for {
-		candidate := filepath.Join(dir, "local-compose.yml")
+		candidate := filepath.Join(dir, "devyard.yml")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
@@ -516,7 +516,7 @@ func FindConfig(startDir string) (string, error) {
 		}
 		dir = parent
 	}
-	return "", fmt.Errorf("local-compose.yml not found")
+	return "", fmt.Errorf("devyard.yml not found")
 }
 
 // BuildEnvOver returns base with svcEnv overlaid (additive, matching the

@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 func newServiceCmd(ctx *CLIContext) *cobra.Command {
@@ -45,7 +45,7 @@ func newServiceListCmd(ctx *CLIContext) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				ctx.Errorln("devyard: no daemon running (is it up?)")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -107,7 +107,7 @@ func newServiceStartCmd(ctx *CLIContext) *cobra.Command {
 				if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, true); err != nil {
 					return err
 				}
-				ctx.Errorf("local-compose: project %q started\n", cfg.Project)
+				ctx.Errorf("devyard: project %q started\n", cfg.Project)
 				if !follow {
 					return nil
 				}
@@ -118,7 +118,7 @@ func newServiceStartCmd(ctx *CLIContext) *cobra.Command {
 				if err := client.StartService(cfg.Project, svc); err != nil {
 					return err
 				}
-				ctx.Errorf("local-compose: started %q\n", svc)
+				ctx.Errorf("devyard: started %q\n", svc)
 			}
 			return nil
 		},
@@ -141,7 +141,7 @@ func newServiceStopCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running")
+				ctx.Errorln("devyard: no daemon running")
 				return nil
 			}
 			defer func() { _ = client.Close() }()
@@ -171,7 +171,7 @@ func newServiceRestartCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				ctx.Errorln("devyard: no daemon running (is it up?)")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -180,7 +180,7 @@ func newServiceRestartCmd(ctx *CLIContext) *cobra.Command {
 				if err := client.Restart(projName, ""); err != nil {
 					return err
 				}
-				ctx.Errorln("local-compose: restarted all services")
+				ctx.Errorln("devyard: restarted all services")
 				return nil
 			}
 
@@ -188,7 +188,7 @@ func newServiceRestartCmd(ctx *CLIContext) *cobra.Command {
 				if err := client.Restart(projName, svc); err != nil {
 					return err
 				}
-				ctx.Errorf("local-compose: restarted %q\n", svc)
+				ctx.Errorf("devyard: restarted %q\n", svc)
 			}
 			return nil
 		},
@@ -209,7 +209,7 @@ func newServiceKillCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				ctx.Errorln("devyard: no daemon running (is it up?)")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -253,7 +253,7 @@ func newServiceLogsCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				ctx.Errorln("devyard: no daemon running (is it up?)")
 				return err
 			}
 			defer func() { _ = client.Close() }()
@@ -286,7 +286,7 @@ func newServiceTopCmd(ctx *CLIContext) *cobra.Command {
 
 			client, err := ctx.DialDaemon()
 			if err != nil {
-				ctx.Errorln("local-compose: no daemon running (is it up?)")
+				ctx.Errorln("devyard: no daemon running (is it up?)")
 				return err
 			}
 			defer func() { _ = client.Close() }()

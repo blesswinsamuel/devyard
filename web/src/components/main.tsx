@@ -111,7 +111,7 @@ export function Main() {
               <>
                 <span class="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
                   <SquareTerminal class="size-4 text-primary" />
-                  local-compose
+                  devyard
                 </span>
                 <Button
                   variant="ghost"

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/ui"
+	"github.com/blesswinsamuel/devyard/internal/ui"
 )
 
 // LogTimestampFormat is the fixed format used for timestamps in log files.

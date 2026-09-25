@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/gitlog"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/gitlog"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 // Backend is the surface the control server needs from the supervisor.

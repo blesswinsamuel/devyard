@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	localcomposev1 "github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1"
+	devyardv1 "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
 )
 
 // DefaultLogTail is the history window interactive frontends (web) and
@@ -15,23 +15,23 @@ const DefaultLogTail = 5000
 
 // Type aliases to generated Protobuf types for convenience across the codebase.
 type (
-	DaemonInfo      = localcomposev1.DaemonInfo
-	ServiceState    = localcomposev1.ServiceState
-	TaskState       = localcomposev1.TaskState
-	ProjectInfo     = localcomposev1.ProjectInfo
-	ServiceStat     = localcomposev1.ServiceStat
-	PortBinding     = localcomposev1.PortBinding
-	GitRef          = localcomposev1.GitRef
-	GitBranch       = localcomposev1.GitBranch
-	GitTag          = localcomposev1.GitTag
-	GitStash        = localcomposev1.GitStash
-	GitCommit       = localcomposev1.GitCommit
-	GitFileChange   = localcomposev1.GitFileChange
-	GitDiffResult   = localcomposev1.GitDiffResult
-	GitStatus       = localcomposev1.GitStatus
-	LogChunk        = localcomposev1.LogChunk
-	TaskOutputChunk = localcomposev1.TaskOutputChunk
-	Event           = localcomposev1.Event
+	DaemonInfo      = devyardv1.DaemonInfo
+	ServiceState    = devyardv1.ServiceState
+	TaskState       = devyardv1.TaskState
+	ProjectInfo     = devyardv1.ProjectInfo
+	ServiceStat     = devyardv1.ServiceStat
+	PortBinding     = devyardv1.PortBinding
+	GitRef          = devyardv1.GitRef
+	GitBranch       = devyardv1.GitBranch
+	GitTag          = devyardv1.GitTag
+	GitStash        = devyardv1.GitStash
+	GitCommit       = devyardv1.GitCommit
+	GitFileChange   = devyardv1.GitFileChange
+	GitDiffResult   = devyardv1.GitDiffResult
+	GitStatus       = devyardv1.GitStatus
+	LogChunk        = devyardv1.LogChunk
+	TaskOutputChunk = devyardv1.TaskOutputChunk
+	Event           = devyardv1.Event
 )
 
 // TimeToProto converts a Go time.Time to a protobuf Timestamp. Returns nil if zero.

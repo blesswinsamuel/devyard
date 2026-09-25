@@ -1,4 +1,4 @@
-# Smoke-test config for local-compose.
+# Smoke-test config for devyard.
 #
 # Uses only POSIX tools (sh, printf, test, tail, sleep) so it runs on macOS and
 # Linux without any external dependencies. Exercises: env, working_dir,
@@ -7,12 +7,12 @@
 #
 # Run from this directory:
 #
-#   local-compose up          # foreground, Ctrl-C to stop
-#   local-compose up -d       # detached
-#   local-compose ps          # status
-#   local-compose logs --follow
-#   local-compose restart worker
-#   local-compose down
+#   devyard up          # foreground, Ctrl-C to stop
+#   devyard up -d       # detached
+#   devyard ps          # status
+#   devyard logs --follow
+#   devyard restart worker
+#   devyard down
 #
 # Expected behavior:
 #   - api starts, writes ./api.ready, then idles forever; healthcheck flips to

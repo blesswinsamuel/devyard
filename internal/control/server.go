@@ -18,9 +18,9 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c" //nolint:staticcheck // h2c is standard for cleartext HTTP/2 on unix sockets
 
-	localcomposev1 "github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1"
-	"github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1/localcomposev1connect"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	devyardv1 "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
+	"github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1/devyardv1connect"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 // Server is the Unix-socket control server powered by ConnectRPC.
@@ -32,7 +32,7 @@ type Server struct {
 	ln          net.Listener
 	httpServer  *http.Server
 	closed      bool
-	subscribers map[chan *localcomposev1.Event]struct{}
+	subscribers map[chan *devyardv1.Event]struct{}
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -44,14 +44,14 @@ func NewServer(socket string, backend MultiBackend) *Server {
 	srv := &Server{
 		socket:      socket,
 		backend:     backend,
-		subscribers: make(map[chan *localcomposev1.Event]struct{}),
+		subscribers: make(map[chan *devyardv1.Event]struct{}),
 		stopCh:      make(chan struct{}),
 	}
 	if backend != nil {
 		backend.SetOnStateChange(func(project string, state *protocol.ServiceState) {
-			srv.broadcastEvent(&localcomposev1.Event{
-				Event: &localcomposev1.Event_ServiceStateChanged{
-					ServiceStateChanged: &localcomposev1.ServiceStateChangedEvent{
+			srv.broadcastEvent(&devyardv1.Event{
+				Event: &devyardv1.Event_ServiceStateChanged{
+					ServiceStateChanged: &devyardv1.ServiceStateChangedEvent{
 						Project: project,
 						State:   state,
 					},
@@ -59,9 +59,9 @@ func NewServer(socket string, backend MultiBackend) *Server {
 			})
 		})
 		backend.SetOnTaskStateChange(func(project string, state *protocol.TaskState) {
-			srv.broadcastEvent(&localcomposev1.Event{
-				Event: &localcomposev1.Event_TaskStateChanged{
-					TaskStateChanged: &localcomposev1.TaskStateChangedEvent{
+			srv.broadcastEvent(&devyardv1.Event{
+				Event: &devyardv1.Event_TaskStateChanged{
+					TaskStateChanged: &devyardv1.TaskStateChangedEvent{
 						Project: project,
 						State:   state,
 					},
@@ -69,18 +69,18 @@ func NewServer(socket string, backend MultiBackend) *Server {
 			})
 		})
 		backend.SetOnGitChange(func(project string) {
-			srv.broadcastEvent(&localcomposev1.Event{
-				Event: &localcomposev1.Event_GitChanged{
-					GitChanged: &localcomposev1.GitChangedEvent{
+			srv.broadcastEvent(&devyardv1.Event{
+				Event: &devyardv1.Event_GitChanged{
+					GitChanged: &devyardv1.GitChangedEvent{
 						Project: project,
 					},
 				},
 			})
 		})
 		backend.SetOnProjectsChange(func() {
-			srv.broadcastEvent(&localcomposev1.Event{
-				Event: &localcomposev1.Event_ProjectsChanged{
-					ProjectsChanged: &localcomposev1.ProjectsChangedEvent{},
+			srv.broadcastEvent(&devyardv1.Event{
+				Event: &devyardv1.Event_ProjectsChanged{
+					ProjectsChanged: &devyardv1.ProjectsChangedEvent{},
 				},
 			})
 		})
@@ -88,7 +88,7 @@ func NewServer(socket string, backend MultiBackend) *Server {
 	return srv
 }
 
-func (s *Server) broadcastEvent(event *localcomposev1.Event) {
+func (s *Server) broadcastEvent(event *devyardv1.Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for sub := range s.subscribers {
@@ -108,7 +108,7 @@ func (s *Server) ListenAndServe() error {
 	}
 
 	mux := http.NewServeMux()
-	path, handler := localcomposev1connect.NewDaemonServiceHandler(s)
+	path, handler := devyardv1connect.NewDaemonServiceHandler(s)
 	mux.Handle(path, handler)
 
 	//nolint:staticcheck // h2c is standard for cleartext HTTP/2 on unix sockets
@@ -166,7 +166,7 @@ func (s *Server) Close() error {
 	for sub := range s.subscribers {
 		close(sub)
 	}
-	s.subscribers = make(map[chan *localcomposev1.Event]struct{})
+	s.subscribers = make(map[chan *devyardv1.Event]struct{})
 	s.mu.Unlock()
 
 	_ = os.Remove(s.socket)
@@ -175,21 +175,21 @@ func (s *Server) Close() error {
 
 // Handler returns the HTTP handler path and handler for mounting on external HTTP servers (e.g. web UI server).
 func (s *Server) Handler() (string, http.Handler) {
-	return localcomposev1connect.NewDaemonServiceHandler(s)
+	return devyardv1connect.NewDaemonServiceHandler(s)
 }
 
 // -----------------------------------------------------------------------------
 // DaemonServiceHandler Implementation
 // -----------------------------------------------------------------------------
 
-func (s *Server) ListProjects(ctx context.Context, req *connect.Request[localcomposev1.ListProjectsRequest]) (*connect.Response[localcomposev1.ListProjectsResponse], error) {
+func (s *Server) ListProjects(ctx context.Context, req *connect.Request[devyardv1.ListProjectsRequest]) (*connect.Response[devyardv1.ListProjectsResponse], error) {
 	projects := s.backend.ListProjects()
-	return connect.NewResponse(&localcomposev1.ListProjectsResponse{
+	return connect.NewResponse(&devyardv1.ListProjectsResponse{
 		Projects: projects,
 	}), nil
 }
 
-func (s *Server) StartProject(ctx context.Context, req *connect.Request[localcomposev1.StartProjectRequest]) (*connect.Response[localcomposev1.StartProjectResponse], error) {
+func (s *Server) StartProject(ctx context.Context, req *connect.Request[devyardv1.StartProjectRequest]) (*connect.Response[devyardv1.StartProjectResponse], error) {
 	configPath := req.Msg.ConfigPath
 	if configPath == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("start_project: config_path is required"))
@@ -201,69 +201,69 @@ func (s *Server) StartProject(ctx context.Context, req *connect.Request[localcom
 	if err := s.backend.StartProject(configPath, req.Msg.Build, req.Msg.EnvFile, removeOrphans); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.StartProjectResponse{}), nil
+	return connect.NewResponse(&devyardv1.StartProjectResponse{}), nil
 }
 
-func (s *Server) StopProject(ctx context.Context, req *connect.Request[localcomposev1.StopProjectRequest]) (*connect.Response[localcomposev1.StopProjectResponse], error) {
+func (s *Server) StopProject(ctx context.Context, req *connect.Request[devyardv1.StopProjectRequest]) (*connect.Response[devyardv1.StopProjectResponse], error) {
 	if err := s.backend.StopProject(req.Msg.Project); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.StopProjectResponse{}), nil
+	return connect.NewResponse(&devyardv1.StopProjectResponse{}), nil
 }
 
-func (s *Server) RemoveProject(ctx context.Context, req *connect.Request[localcomposev1.RemoveProjectRequest]) (*connect.Response[localcomposev1.RemoveProjectResponse], error) {
+func (s *Server) RemoveProject(ctx context.Context, req *connect.Request[devyardv1.RemoveProjectRequest]) (*connect.Response[devyardv1.RemoveProjectResponse], error) {
 	if err := s.backend.RemoveProject(req.Msg.Project); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.RemoveProjectResponse{}), nil
+	return connect.NewResponse(&devyardv1.RemoveProjectResponse{}), nil
 }
 
-func (s *Server) DaemonStatus(ctx context.Context, req *connect.Request[localcomposev1.DaemonStatusRequest]) (*connect.Response[localcomposev1.DaemonStatusResponse], error) {
+func (s *Server) DaemonStatus(ctx context.Context, req *connect.Request[devyardv1.DaemonStatusRequest]) (*connect.Response[devyardv1.DaemonStatusResponse], error) {
 	info, err := s.backend.DaemonStatus()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.DaemonStatusResponse{
+	return connect.NewResponse(&devyardv1.DaemonStatusResponse{
 		Info: info,
 	}), nil
 }
 
-func (s *Server) StopDaemon(ctx context.Context, req *connect.Request[localcomposev1.StopDaemonRequest]) (*connect.Response[localcomposev1.StopDaemonResponse], error) {
+func (s *Server) StopDaemon(ctx context.Context, req *connect.Request[devyardv1.StopDaemonRequest]) (*connect.Response[devyardv1.StopDaemonResponse], error) {
 	if err := s.backend.StopDaemon(); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.StopDaemonResponse{}), nil
+	return connect.NewResponse(&devyardv1.StopDaemonResponse{}), nil
 }
 
-func (s *Server) RestartDaemon(ctx context.Context, req *connect.Request[localcomposev1.RestartDaemonRequest]) (*connect.Response[localcomposev1.RestartDaemonResponse], error) {
+func (s *Server) RestartDaemon(ctx context.Context, req *connect.Request[devyardv1.RestartDaemonRequest]) (*connect.Response[devyardv1.RestartDaemonResponse], error) {
 	pid, err := s.backend.RestartDaemon(req.Msg.RestartServices)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.RestartDaemonResponse{Pid: pid}), nil
+	return connect.NewResponse(&devyardv1.RestartDaemonResponse{Pid: pid}), nil
 }
 
-func (s *Server) ListServices(ctx context.Context, req *connect.Request[localcomposev1.ListServicesRequest]) (*connect.Response[localcomposev1.ListServicesResponse], error) {
+func (s *Server) ListServices(ctx context.Context, req *connect.Request[devyardv1.ListServicesRequest]) (*connect.Response[devyardv1.ListServicesResponse], error) {
 	states, err := s.backend.ListServices(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&localcomposev1.ListServicesResponse{
+	return connect.NewResponse(&devyardv1.ListServicesResponse{
 		States: states,
 	}), nil
 }
 
-func (s *Server) StartService(ctx context.Context, req *connect.Request[localcomposev1.StartServiceRequest]) (*connect.Response[localcomposev1.StartServiceResponse], error) {
+func (s *Server) StartService(ctx context.Context, req *connect.Request[devyardv1.StartServiceRequest]) (*connect.Response[devyardv1.StartServiceResponse], error) {
 	if req.Msg.Service == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service is required"))
 	}
 	if err := s.backend.StartService(req.Msg.Project, req.Msg.Service); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.StartServiceResponse{}), nil
+	return connect.NewResponse(&devyardv1.StartServiceResponse{}), nil
 }
 
-func (s *Server) StopService(ctx context.Context, req *connect.Request[localcomposev1.StopServiceRequest]) (*connect.Response[localcomposev1.StopServiceResponse], error) {
+func (s *Server) StopService(ctx context.Context, req *connect.Request[devyardv1.StopServiceRequest]) (*connect.Response[devyardv1.StopServiceResponse], error) {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
@@ -274,10 +274,10 @@ func (s *Server) StopService(ctx context.Context, req *connect.Request[localcomp
 	if err := b.StopService(req.Msg.Service); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.StopServiceResponse{}), nil
+	return connect.NewResponse(&devyardv1.StopServiceResponse{}), nil
 }
 
-func (s *Server) KillService(ctx context.Context, req *connect.Request[localcomposev1.KillServiceRequest]) (*connect.Response[localcomposev1.KillServiceResponse], error) {
+func (s *Server) KillService(ctx context.Context, req *connect.Request[devyardv1.KillServiceRequest]) (*connect.Response[devyardv1.KillServiceResponse], error) {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
@@ -295,10 +295,10 @@ func (s *Server) KillService(ctx context.Context, req *connect.Request[localcomp
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 	}
-	return connect.NewResponse(&localcomposev1.KillServiceResponse{}), nil
+	return connect.NewResponse(&devyardv1.KillServiceResponse{}), nil
 }
 
-func (s *Server) Restart(ctx context.Context, req *connect.Request[localcomposev1.RestartRequest]) (*connect.Response[localcomposev1.RestartResponse], error) {
+func (s *Server) Restart(ctx context.Context, req *connect.Request[devyardv1.RestartRequest]) (*connect.Response[devyardv1.RestartResponse], error) {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
@@ -314,10 +314,10 @@ func (s *Server) Restart(ctx context.Context, req *connect.Request[localcomposev
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 	}
-	return connect.NewResponse(&localcomposev1.RestartResponse{}), nil
+	return connect.NewResponse(&devyardv1.RestartResponse{}), nil
 }
 
-func (s *Server) Top(ctx context.Context, req *connect.Request[localcomposev1.TopRequest]) (*connect.Response[localcomposev1.TopResponse], error) {
+func (s *Server) Top(ctx context.Context, req *connect.Request[devyardv1.TopRequest]) (*connect.Response[devyardv1.TopResponse], error) {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
@@ -326,32 +326,32 @@ func (s *Server) Top(ctx context.Context, req *connect.Request[localcomposev1.To
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.TopResponse{
+	return connect.NewResponse(&devyardv1.TopResponse{
 		Stats: stats,
 	}), nil
 }
 
-func (s *Server) ListPorts(ctx context.Context, req *connect.Request[localcomposev1.ListPortsRequest]) (*connect.Response[localcomposev1.ListPortsResponse], error) {
+func (s *Server) ListPorts(ctx context.Context, req *connect.Request[devyardv1.ListPortsRequest]) (*connect.Response[devyardv1.ListPortsResponse], error) {
 	ports, err := s.backend.ListPorts(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.ListPortsResponse{
+	return connect.NewResponse(&devyardv1.ListPortsResponse{
 		Ports: ports,
 	}), nil
 }
 
-func (s *Server) ListTasks(ctx context.Context, req *connect.Request[localcomposev1.ListTasksRequest]) (*connect.Response[localcomposev1.ListTasksResponse], error) {
+func (s *Server) ListTasks(ctx context.Context, req *connect.Request[devyardv1.ListTasksRequest]) (*connect.Response[devyardv1.ListTasksResponse], error) {
 	tasks, err := s.backend.ListTasks(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewResponse(&localcomposev1.ListTasksResponse{
+	return connect.NewResponse(&devyardv1.ListTasksResponse{
 		Tasks: tasks,
 	}), nil
 }
 
-func (s *Server) Logs(ctx context.Context, req *connect.Request[localcomposev1.LogsRequest], stream *connect.ServerStream[localcomposev1.LogChunk]) error {
+func (s *Server) Logs(ctx context.Context, req *connect.Request[devyardv1.LogsRequest], stream *connect.ServerStream[devyardv1.LogChunk]) error {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return connect.NewError(connect.CodeNotFound, err)
@@ -395,7 +395,7 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[localcomposev1.L
 
 const followPollInterval = 100 * time.Millisecond
 
-func streamLogsConnect(ctx context.Context, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service, task string, stream *connect.ServerStream[localcomposev1.LogChunk]) error {
+func streamLogsConnect(ctx context.Context, path string, follow, trackRotation bool, tail int, stop <-chan struct{}, project, service, task string, stream *connect.ServerStream[devyardv1.LogChunk]) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -406,7 +406,7 @@ func streamLogsConnect(ctx context.Context, path string, follow, trackRotation b
 	if err != nil {
 		return err
 	}
-	if err := stream.Send(&localcomposev1.LogChunk{
+	if err := stream.Send(&devyardv1.LogChunk{
 		Project: project,
 		Service: service,
 		Task:    task,
@@ -437,7 +437,7 @@ func streamLogsConnect(ctx context.Context, path string, follow, trackRotation b
 			lines = append(lines, line)
 		}
 		if len(lines) > 0 {
-			return stream.Send(&localcomposev1.LogChunk{
+			return stream.Send(&devyardv1.LogChunk{
 				Project: project,
 				Service: service,
 				Task:    task,
@@ -464,7 +464,7 @@ func streamLogsConnect(ctx context.Context, path string, follow, trackRotation b
 				if nf != f {
 					f = nf
 					leftover = leftover[:0]
-					if err := stream.Send(&localcomposev1.LogChunk{
+					if err := stream.Send(&devyardv1.LogChunk{
 						Project: project,
 						Service: service,
 						Task:    task,
@@ -565,7 +565,7 @@ func WaitForTaskLog(ctx context.Context, b Backend, task string) (string, error)
 type taskConnectWriter struct {
 	project string
 	task    string
-	stream  *connect.ServerStream[localcomposev1.TaskOutputChunk]
+	stream  *connect.ServerStream[devyardv1.TaskOutputChunk]
 	buf     bytes.Buffer
 	mu      sync.Mutex
 }
@@ -582,7 +582,7 @@ func (l *taskConnectWriter) Write(p []byte) (int, error) {
 			break
 		}
 		line = strings.TrimRight(line, "\r\n")
-		_ = l.stream.Send(&localcomposev1.TaskOutputChunk{
+		_ = l.stream.Send(&devyardv1.TaskOutputChunk{
 			Project: l.project,
 			Task:    l.task,
 			Line:    line,
@@ -598,7 +598,7 @@ func (l *taskConnectWriter) Flush() {
 		line := strings.TrimRight(l.buf.String(), "\r\n")
 		l.buf.Reset()
 		if line != "" {
-			_ = l.stream.Send(&localcomposev1.TaskOutputChunk{
+			_ = l.stream.Send(&devyardv1.TaskOutputChunk{
 				Project: l.project,
 				Task:    l.task,
 				Line:    line,
@@ -607,7 +607,7 @@ func (l *taskConnectWriter) Flush() {
 	}
 }
 
-func (s *Server) RunTask(ctx context.Context, req *connect.Request[localcomposev1.RunTaskRequest], stream *connect.ServerStream[localcomposev1.TaskOutputChunk]) error {
+func (s *Server) RunTask(ctx context.Context, req *connect.Request[devyardv1.RunTaskRequest], stream *connect.ServerStream[devyardv1.TaskOutputChunk]) error {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return connect.NewError(connect.CodeNotFound, err)
@@ -623,14 +623,14 @@ func (s *Server) RunTask(ctx context.Context, req *connect.Request[localcomposev
 		return connect.NewError(connect.CodeInternal, err)
 	}
 	ec := int32(exitCode)
-	return stream.Send(&localcomposev1.TaskOutputChunk{
+	return stream.Send(&devyardv1.TaskOutputChunk{
 		Project:  req.Msg.Project,
 		Task:     req.Msg.Task,
 		ExitCode: &ec,
 	})
 }
 
-func (s *Server) StopTask(ctx context.Context, req *connect.Request[localcomposev1.StopTaskRequest]) (*connect.Response[localcomposev1.StopTaskResponse], error) {
+func (s *Server) StopTask(ctx context.Context, req *connect.Request[devyardv1.StopTaskRequest]) (*connect.Response[devyardv1.StopTaskResponse], error) {
 	b, err := s.backend.ProjectBackend(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
@@ -641,15 +641,15 @@ func (s *Server) StopTask(ctx context.Context, req *connect.Request[localcompose
 	if err := b.StopTask(req.Msg.Task); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.StopTaskResponse{}), nil
+	return connect.NewResponse(&devyardv1.StopTaskResponse{}), nil
 }
 
-func (s *Server) GitLog(ctx context.Context, req *connect.Request[localcomposev1.GitLogRequest]) (*connect.Response[localcomposev1.GitLogResponse], error) {
+func (s *Server) GitLog(ctx context.Context, req *connect.Request[devyardv1.GitLogRequest]) (*connect.Response[devyardv1.GitLogResponse], error) {
 	commits, branches, tags, stashes, err := s.backend.GitLog(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitLogResponse{
+	return connect.NewResponse(&devyardv1.GitLogResponse{
 		Commits:  commits,
 		Branches: branches,
 		Tags:     tags,
@@ -657,62 +657,62 @@ func (s *Server) GitLog(ctx context.Context, req *connect.Request[localcomposev1
 	}), nil
 }
 
-func (s *Server) GitDiff(ctx context.Context, req *connect.Request[localcomposev1.GitDiffRequest]) (*connect.Response[localcomposev1.GitDiffResponse], error) {
+func (s *Server) GitDiff(ctx context.Context, req *connect.Request[devyardv1.GitDiffRequest]) (*connect.Response[devyardv1.GitDiffResponse], error) {
 	diffRes, err := s.backend.GitDiff(req.Msg.Project, req.Msg.Hash, req.Msg.Path, int(req.Msg.ContextLines))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitDiffResponse{
+	return connect.NewResponse(&devyardv1.GitDiffResponse{
 		Result: diffRes,
 	}), nil
 }
 
-func (s *Server) GitCommit(ctx context.Context, req *connect.Request[localcomposev1.GitCommitRequest]) (*connect.Response[localcomposev1.GitCommitResponse], error) {
+func (s *Server) GitCommit(ctx context.Context, req *connect.Request[devyardv1.GitCommitRequest]) (*connect.Response[devyardv1.GitCommitResponse], error) {
 	if err := s.backend.GitCommit(req.Msg.Project, req.Msg.Message); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitCommitResponse{}), nil
+	return connect.NewResponse(&devyardv1.GitCommitResponse{}), nil
 }
 
-func (s *Server) GitStage(ctx context.Context, req *connect.Request[localcomposev1.GitStageRequest]) (*connect.Response[localcomposev1.GitStageResponse], error) {
+func (s *Server) GitStage(ctx context.Context, req *connect.Request[devyardv1.GitStageRequest]) (*connect.Response[devyardv1.GitStageResponse], error) {
 	if err := s.backend.GitStage(req.Msg.Project, req.Msg.Path, req.Msg.StageAll, req.Msg.Unstage); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitStageResponse{}), nil
+	return connect.NewResponse(&devyardv1.GitStageResponse{}), nil
 }
 
-func (s *Server) GitPush(ctx context.Context, req *connect.Request[localcomposev1.GitPushRequest]) (*connect.Response[localcomposev1.GitPushResponse], error) {
+func (s *Server) GitPush(ctx context.Context, req *connect.Request[devyardv1.GitPushRequest]) (*connect.Response[devyardv1.GitPushResponse], error) {
 	output, err := s.withGitSyncEvent(req.Msg.Project, "push", func() (string, error) {
 		return s.backend.GitPush(req.Msg.Project)
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitPushResponse{
+	return connect.NewResponse(&devyardv1.GitPushResponse{
 		Output: output,
 	}), nil
 }
 
-func (s *Server) GitPull(ctx context.Context, req *connect.Request[localcomposev1.GitPullRequest]) (*connect.Response[localcomposev1.GitPullResponse], error) {
+func (s *Server) GitPull(ctx context.Context, req *connect.Request[devyardv1.GitPullRequest]) (*connect.Response[devyardv1.GitPullResponse], error) {
 	output, err := s.withGitSyncEvent(req.Msg.Project, "pull", func() (string, error) {
 		return s.backend.GitPull(req.Msg.Project)
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitPullResponse{
+	return connect.NewResponse(&devyardv1.GitPullResponse{
 		Output: output,
 	}), nil
 }
 
-func (s *Server) GitFetch(ctx context.Context, req *connect.Request[localcomposev1.GitFetchRequest]) (*connect.Response[localcomposev1.GitFetchResponse], error) {
+func (s *Server) GitFetch(ctx context.Context, req *connect.Request[devyardv1.GitFetchRequest]) (*connect.Response[devyardv1.GitFetchResponse], error) {
 	output, err := s.withGitSyncEvent(req.Msg.Project, "fetch", func() (string, error) {
 		return s.backend.GitFetch(req.Msg.Project)
 	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitFetchResponse{
+	return connect.NewResponse(&devyardv1.GitFetchResponse{
 		Output: output,
 	}), nil
 }
@@ -721,9 +721,9 @@ func (s *Server) GitFetch(ctx context.Context, req *connect.Request[localcompose
 // before and after, so every connected client (including other web UI tabs)
 // can show progress for the remote git operation.
 func (s *Server) withGitSyncEvent(project, operation string, fn func() (string, error)) (string, error) {
-	s.broadcastEvent(&localcomposev1.Event{
-		Event: &localcomposev1.Event_GitSync{
-			GitSync: &localcomposev1.GitSyncEvent{
+	s.broadcastEvent(&devyardv1.Event{
+		Event: &devyardv1.Event_GitSync{
+			GitSync: &devyardv1.GitSyncEvent{
 				Project:   project,
 				Operation: operation,
 				Running:   true,
@@ -731,9 +731,9 @@ func (s *Server) withGitSyncEvent(project, operation string, fn func() (string, 
 		},
 	})
 	output, err := fn()
-	s.broadcastEvent(&localcomposev1.Event{
-		Event: &localcomposev1.Event_GitSync{
-			GitSync: &localcomposev1.GitSyncEvent{
+	s.broadcastEvent(&devyardv1.Event{
+		Event: &devyardv1.Event_GitSync{
+			GitSync: &devyardv1.GitSyncEvent{
 				Project:   project,
 				Operation: operation,
 				Running:   false,
@@ -743,27 +743,27 @@ func (s *Server) withGitSyncEvent(project, operation string, fn func() (string, 
 	return output, err
 }
 
-func (s *Server) GitStatus(ctx context.Context, req *connect.Request[localcomposev1.GitStatusRequest]) (*connect.Response[localcomposev1.GitStatusResponse], error) {
+func (s *Server) GitStatus(ctx context.Context, req *connect.Request[devyardv1.GitStatusRequest]) (*connect.Response[devyardv1.GitStatusResponse], error) {
 	status, err := s.backend.GitStatus(req.Msg.Project)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&localcomposev1.GitStatusResponse{
+	return connect.NewResponse(&devyardv1.GitStatusResponse{
 		Status: status,
 	}), nil
 }
 
-func (s *Server) SubscribeEvents(ctx context.Context, req *connect.Request[localcomposev1.SubscribeEventsRequest], stream *connect.ServerStream[localcomposev1.Event]) error {
+func (s *Server) SubscribeEvents(ctx context.Context, req *connect.Request[devyardv1.SubscribeEventsRequest], stream *connect.ServerStream[devyardv1.Event]) error {
 	// Immediately send a heartbeat event to flush HTTP response headers to the client.
-	if err := stream.Send(&localcomposev1.Event{
-		Event: &localcomposev1.Event_Heartbeat{
-			Heartbeat: &localcomposev1.HeartbeatEvent{},
+	if err := stream.Send(&devyardv1.Event{
+		Event: &devyardv1.Event_Heartbeat{
+			Heartbeat: &devyardv1.HeartbeatEvent{},
 		},
 	}); err != nil {
 		return err
 	}
 
-	ch := make(chan *localcomposev1.Event, 64)
+	ch := make(chan *devyardv1.Event, 64)
 	s.mu.Lock()
 	s.subscribers[ch] = struct{}{}
 	s.mu.Unlock()
@@ -784,9 +784,9 @@ func (s *Server) SubscribeEvents(ctx context.Context, req *connect.Request[local
 		case <-s.stopCh:
 			return nil
 		case <-ticker.C:
-			if err := stream.Send(&localcomposev1.Event{
-				Event: &localcomposev1.Event_Heartbeat{
-					Heartbeat: &localcomposev1.HeartbeatEvent{},
+			if err := stream.Send(&devyardv1.Event{
+				Event: &devyardv1.Event_Heartbeat{
+					Heartbeat: &devyardv1.HeartbeatEvent{},
 				},
 			}); err != nil {
 				return err

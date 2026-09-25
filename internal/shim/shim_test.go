@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/shim"
+	"github.com/blesswinsamuel/devyard/internal/shim"
 )
 
 func TestShimRunBasic(t *testing.T) {

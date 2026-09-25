@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/blesswinsamuel/local-compose/internal/daemon"
+	"github.com/blesswinsamuel/devyard/internal/daemon"
 )
 
 // Execute runs the root command using standard OS streams and environment.
@@ -47,16 +47,16 @@ func ExecuteContext(ctx context.Context, args []string, cliCtx *CLIContext) erro
 // NewRootCommand creates the root cobra command tree bound to the given CLIContext.
 func NewRootCommand(ctx *CLIContext) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:           "local-compose",
+		Use:           "devyard",
 		Short:         "Orchestrate local processes with a compose-style config (no Docker)",
-		Long:          "local-compose is a CLI that orchestrates local processes, services, tasks, and multi-project daemons.",
+		Long:          "devyard is a CLI that orchestrates local processes, services, tasks, and multi-project daemons.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       Version,
 	}
 
 	// Global persistent flags
-	rootCmd.PersistentFlags().StringVar(&ctx.ConfigPath, "file", "", "Path to local-compose.yml (default: walk up from cwd)")
+	rootCmd.PersistentFlags().StringVar(&ctx.ConfigPath, "file", "", "Path to devyard.yml (default: walk up from cwd)")
 	rootCmd.PersistentFlags().StringVarP(&ctx.Project, "project", "p", "", "Resolve a registered project by name when no config file is found (default: config name)")
 	rootCmd.PersistentFlags().StringVar(&ctx.EnvFile, "env-file", "", "Path to an env file for variables and config interpolation (default: .env next to the config file)")
 	rootCmd.PersistentFlags().StringVarP(&ctx.Format, "format", "o", "table", "Output format (table, json)")
@@ -156,7 +156,7 @@ func NewRootCommand(ctx *CLIContext) *cobra.Command {
 }
 
 // isDaemonChild reports whether the binary was invoked as
-// `local-compose --daemon` (the daemonized global daemon child).
+// `devyard --daemon` (the daemonized global daemon child).
 func isDaemonChild(args []string) bool {
 	for _, a := range args {
 		if a == daemon.DaemonFlag {
@@ -173,7 +173,7 @@ func newUpCmd(ctx *CLIContext) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:    "up",
-		Short:  "Start services defined in local-compose.yml",
+		Short:  "Start services defined in devyard.yml",
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := ctx.LoadConfig()
@@ -196,7 +196,7 @@ func newUpCmd(ctx *CLIContext) *cobra.Command {
 			if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, removeOrphans); err != nil {
 				return err
 			}
-			ctx.Errorf("local-compose: project %q started\n", cfg.Project)
+			ctx.Errorf("devyard: project %q started\n", cfg.Project)
 
 			if detach {
 				return nil

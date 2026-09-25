@@ -29,7 +29,7 @@ export function AddProjectModal() {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Project</DialogTitle>
-          <DialogDescription class="sr-only">Register a new local-compose project from a config path.</DialogDescription>
+          <DialogDescription class="sr-only">Register a new devyard project from a config path.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} class="space-y-4">
           <div class="space-y-1.5">
@@ -42,7 +42,7 @@ export function AddProjectModal() {
               required
               value={configPath()}
               onInput={(e) => setConfigPath(e.currentTarget.value)}
-              placeholder="/path/to/local-compose.yml"
+              placeholder="/path/to/devyard.yml"
               autofocus
               class="rounded-md px-3 font-mono text-xs md:text-xs"
             />

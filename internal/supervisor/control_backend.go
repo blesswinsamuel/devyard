@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
 )
 
 // ControlBackend adapts a *Supervisor to the control.Backend interface so a

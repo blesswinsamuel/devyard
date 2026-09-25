@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/daemon"
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/daemon"
+	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 // TestReadPidfileMalformed exercises the parser edge cases.

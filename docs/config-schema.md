@@ -1,6 +1,6 @@
 # Config schema reference
 
-The shape of `local-compose.yml`, with the exact validation rules enforced by
+The shape of `devyard.yml`, with the exact validation rules enforced by
 `internal/config/config.go`. Update this doc whenever you change the schema.
 
 For the user-level global config (`web.host`, `web.port`), see
@@ -26,7 +26,7 @@ tasks:                # optional
 
 A docker-compose-style env file supplies variables for two purposes:
 
-1. **Config interpolation** — `local-compose.yml` may reference
+1. **Config interpolation** — `devyard.yml` may reference
    `${VAR}` / `${VAR:-default}` anywhere in its text (command, env values,
    working_dir, ...). References are expanded from the env file variables
    overlaid on the process environment (the process environment wins for
@@ -37,7 +37,7 @@ A docker-compose-style env file supplies variables for two purposes:
 
 The env file is located by default at `.env` next to the config file (optional;
 a missing default `.env` is not an error). Override it with
-`local-compose --env-file <path>` — an explicit path must exist.
+`devyard --env-file <path>` — an explicit path must exist.
 
 Supported env file syntax: `KEY=VALUE` lines, blank lines, `#` comments,
 optional `export ` prefix, and single/double-quoted values.
@@ -178,7 +178,7 @@ build:                                       # object form
 ```
 
 - Runs once before the service starts on `up`.
-- `local-compose build [service...]` runs the build step for the named services
+- `devyard build [service...]` runs the build step for the named services
   (or all, in start order, when none are named). Services without a `build`
   are skipped.
 - `up --build` forces a rebuild before starting.
@@ -247,7 +247,7 @@ non-loopback address exposes your dev services to the network.
 
 ## Tasks
 
-Tasks define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `local-compose task run <task>` (or shortcut `local-compose run <task>`) or the Web UI.
+Tasks define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `devyard task run <task>` (or shortcut `devyard run <task>`) or the Web UI.
 
 ```yaml
 tasks:
@@ -267,7 +267,7 @@ tasks:
 
 | Field | Required | Default | Notes |
 | --- | :-: | --- | --- |
-| `command` | yes | — | Command to run. Can be extended via CLI args (`local-compose run <task> -- <args>`). |
+| `command` | yes | — | Command to run. Can be extended via CLI args (`devyard run <task> -- <args>`). |
 | `working_dir` | no | config dir | Relative path resolved against config file directory. |
 | `env` | no | — | Map of environment variables for the task process. |
 | `shell` | no | `sh` | Shell used to run command. |
@@ -278,7 +278,7 @@ tasks:
 `image`, `build:` (Docker context), `volumes`, and `networks` are **not** part
 of the schema. Processes bind ports and read the filesystem directly —
 there's nothing to map. Adding shims for these would mislead users about what
-`local-compose` does.
+`devyard` does.
 
 Note: the service-level `port`/`ports` fields described above are **not**
 Docker's `ports:` mapping (host↔container forwarding) — they declare the
@@ -293,9 +293,9 @@ editing configs. (A future strict mode + warning pass is on the roadmap.)
 
 ## Global config
 
-In addition to the per-project `local-compose.yml`, `local-compose web` reads a
-user-level global config at `$XDG_CONFIG_HOME/local-compose/config.yml`
-(default `~/.config/local-compose/config.yml`) for default bind settings:
+In addition to the per-project `devyard.yml`, `devyard web` reads a
+user-level global config at `$XDG_CONFIG_HOME/devyard/config.yml`
+(default `~/.config/devyard/config.yml`) for default bind settings:
 
 ```yaml
 web:
@@ -309,7 +309,7 @@ proxy:
 
 | Field | Default | Notes |
 | --- | --- | --- |
-| `web.host` | `127.0.0.1` | Bind address for `local-compose web`. Set to `0.0.0.0` for remote access. |
+| `web.host` | `127.0.0.1` | Bind address for `devyard web`. Set to `0.0.0.0` for remote access. |
 | `web.port` | `9090` | TCP port for the web UI. |
 | `proxy.host` | `127.0.0.1` | Bind address for the daemon's reverse proxy. Set to `0.0.0.0` for LAN access. |
 | `proxy.port` | `8080` | TCP port for the reverse proxy. |
@@ -318,7 +318,7 @@ proxy:
 CLI flags `--host` / `--port` override these defaults.
 
 Unknown fields in the global config produce a warning (printed to stderr) but
-do not error, matching the convention for `local-compose.yml`.
+do not error, matching the convention for `devyard.yml`.
 
 Implementation: `internal/globalconfig/globalconfig.go`. Tests:
 `internal/globalconfig/globalconfig_test.go`.

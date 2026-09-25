@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/blesswinsamuel/local-compose/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 func TestResolveDefaults(t *testing.T) {
@@ -21,7 +21,7 @@ func TestResolveDefaults(t *testing.T) {
 	if loc.Name != "myapp" {
 		t.Fatalf("name: %q", loc.Name)
 	}
-	wantState := filepath.Join(home, ".local", "state", "local-compose", "myapp")
+	wantState := filepath.Join(home, ".local", "state", "devyard", "myapp")
 	if loc.State != wantState {
 		t.Fatalf("state: got %q want %q", loc.State, wantState)
 	}
@@ -44,7 +44,7 @@ func TestResolveDaemonDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveDaemon: %v", err)
 	}
-	wantState := filepath.Join(home, ".local", "state", "local-compose")
+	wantState := filepath.Join(home, ".local", "state", "devyard")
 	if loc.State != wantState {
 		t.Fatalf("state: got %q want %q", loc.State, wantState)
 	}
@@ -74,10 +74,10 @@ func TestResolveXDGHonored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if loc.Runtime != filepath.Join(rt, "local-compose", "api") {
+	if loc.Runtime != filepath.Join(rt, "devyard", "api") {
 		t.Fatalf("runtime: %q", loc.Runtime)
 	}
-	if loc.State != filepath.Join(st, "local-compose", "api") {
+	if loc.State != filepath.Join(st, "devyard", "api") {
 		t.Fatalf("state: %q", loc.State)
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blesswinsamuel/local-compose/internal/procstat"
+	"github.com/blesswinsamuel/devyard/internal/procstat"
 )
 
 // startGrouped spawns `sh -c 'sleep 30'` in its own process group (matching how

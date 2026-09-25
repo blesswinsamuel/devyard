@@ -16,11 +16,11 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coder/websocket"
 
-	"github.com/blesswinsamuel/local-compose/internal/control"
-	localcomposev1 "github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1"
-	"github.com/blesswinsamuel/local-compose/internal/gen/proto/localcompose/v1/localcomposev1connect"
-	"github.com/blesswinsamuel/local-compose/internal/protocol"
-	"github.com/blesswinsamuel/local-compose/internal/web"
+	"github.com/blesswinsamuel/devyard/internal/control"
+	devyardv1 "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
+	"github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1/devyardv1connect"
+	"github.com/blesswinsamuel/devyard/internal/protocol"
+	"github.com/blesswinsamuel/devyard/internal/web"
 )
 
 // fakeBackend is an in-memory control.Backend for exercising the daemon-side
@@ -177,7 +177,7 @@ func newFakeMulti() *fakeMultiBackend {
 func (m *fakeMultiBackend) addProject(t *testing.T, name, configPath string, b *fakeBackend) {
 	t.Helper()
 	if configPath == "" {
-		configPath = filepath.Join(t.TempDir(), "local-compose.yml")
+		configPath = filepath.Join(t.TempDir(), "devyard.yml")
 	}
 	m.mu.Lock()
 	m.projects[name] = &projectEntry{backend: b, configPath: configPath}
@@ -563,12 +563,12 @@ func TestConnectRPCProxy(t *testing.T) {
 	m.addProject(t, "api", "", b)
 	srv := startStack(t, m)
 
-	rpcClient := localcomposev1connect.NewDaemonServiceClient(http.DefaultClient, "http://"+srv.Addr())
+	rpcClient := devyardv1connect.NewDaemonServiceClient(http.DefaultClient, "http://"+srv.Addr())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	// 1. ListProjects
-	res, err := rpcClient.ListProjects(ctx, connect.NewRequest(&localcomposev1.ListProjectsRequest{}))
+	res, err := rpcClient.ListProjects(ctx, connect.NewRequest(&devyardv1.ListProjectsRequest{}))
 	if err != nil {
 		t.Fatalf("ListProjects: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestConnectRPCProxy(t *testing.T) {
 	}
 
 	// 2. StartService
-	_, err = rpcClient.StartService(ctx, connect.NewRequest(&localcomposev1.StartServiceRequest{
+	_, err = rpcClient.StartService(ctx, connect.NewRequest(&devyardv1.StartServiceRequest{
 		Project: "api",
 		Service: "web",
 	}))
@@ -597,7 +597,7 @@ func TestConnectRPCProxy(t *testing.T) {
 		m.fireState("api", &protocol.ServiceState{Name: "web", Status: "running"})
 	}()
 
-	stream, err := rpcClient.SubscribeEvents(streamCtx, connect.NewRequest(&localcomposev1.SubscribeEventsRequest{}))
+	stream, err := rpcClient.SubscribeEvents(streamCtx, connect.NewRequest(&devyardv1.SubscribeEventsRequest{}))
 	if err != nil {
 		t.Fatalf("SubscribeEvents: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestConnectRPCProxy(t *testing.T) {
 func TestWSSpawnTerminalRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	m := newFakeMulti()
-	m.addProject(t, "api", filepath.Join(dir, "local-compose.yml"), newFakeBackend())
+	m.addProject(t, "api", filepath.Join(dir, "devyard.yml"), newFakeBackend())
 	srv := startStack(t, m)
 
 	c := dialWS(t, srv.Addr())
@@ -687,7 +687,7 @@ func TestWSTerminalInputUnknownSessionErrors(t *testing.T) {
 func TestWSSpawnTerminalReattachAndHistory(t *testing.T) {
 	dir := t.TempDir()
 	m := newFakeMulti()
-	m.addProject(t, "api", filepath.Join(dir, "local-compose.yml"), newFakeBackend())
+	m.addProject(t, "api", filepath.Join(dir, "devyard.yml"), newFakeBackend())
 	srv := startStack(t, m)
 
 	c := dialWS(t, srv.Addr())

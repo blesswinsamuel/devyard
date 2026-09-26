@@ -57,3 +57,34 @@ export function formatRelativeTime(time: Timestamp | string | Date | undefined):
   if (diffSec < 2592000) return `${Math.floor(diffSec / 86400)}d ago`;
   return d.toLocaleDateString();
 }
+
+export function portUrl(binding: { ip: string; port: number }): string {
+  const host =
+    binding.ip === "0.0.0.0" || binding.ip === "::" || binding.ip === "*" || binding.ip === ""
+      ? "localhost"
+      : binding.ip;
+  if (binding.port === 80) return `http://${host}`;
+  if (binding.port === 443) return `https://${host}`;
+  return `http://${host}:${binding.port}`;
+}
+
+export function portDisplay(binding: { ip: string; port: number }): string {
+  const host =
+    binding.ip === "0.0.0.0" || binding.ip === "::" || binding.ip === "*" || binding.ip === ""
+      ? "localhost"
+      : binding.ip;
+  return `${host}:${binding.port}`;
+}
+
+export function distinctServicePorts<T extends { port: number }>(bindings: T[]): T[] {
+  const seen = new Set<number>();
+  const res: T[] = [];
+  for (const b of bindings) {
+    if (!seen.has(b.port)) {
+      seen.add(b.port);
+      res.push(b);
+    }
+  }
+  return res;
+}
+

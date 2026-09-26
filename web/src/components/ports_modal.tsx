@@ -19,14 +19,8 @@ import {
 } from "~/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
+import { portUrl } from "~/lib/format";
 
-function makeUrl(binding: PortBinding): string {
-  const host =
-    binding.ip === "0.0.0.0" || binding.ip === "::" || binding.ip === "*" || binding.ip === "0.0.0.0"
-      ? "localhost"
-      : binding.ip;
-  return `http://${host}:${binding.port}`;
-}
 
 type ProjectPortGroup = {
   project: string;
@@ -101,7 +95,7 @@ export function PortsModal() {
   });
 
   const handleCopy = (binding: PortBinding) => {
-    void navigator.clipboard.writeText(makeUrl(binding));
+    void navigator.clipboard.writeText(portUrl(binding));
     const key = `${binding.project}:${binding.service}:${binding.port}`;
     setCopiedPort(key);
     setTimeout(() => setCopiedPort(null), 1500);
@@ -244,7 +238,7 @@ export function PortsModal() {
                                       {isCopied() ? "Copied" : "Copy"}
                                     </Button>
                                     <a
-                                      href={makeUrl(item)}
+                                      href={portUrl(item)}
                                       target="_blank"
                                       rel="noreferrer"
                                       class={cn(

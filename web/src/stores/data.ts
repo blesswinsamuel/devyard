@@ -427,6 +427,7 @@ export async function restartService(project: string, service: string) {
   try {
     await rpcClient.restart({ project, service });
     refreshServices(project);
+    fetchPorts(project);
   } catch (err: any) {
     pushToast(err.message || `Failed to restart service ${service}`, "error");
   }
@@ -436,6 +437,7 @@ export async function startService(project: string, service: string) {
   try {
     await rpcClient.startService({ project, service });
     refreshServices(project);
+    fetchPorts(project);
   } catch (err: any) {
     pushToast(err.message || `Failed to start service ${service}`, "error");
   }
@@ -445,6 +447,7 @@ export async function stopService(project: string, service: string) {
   try {
     await rpcClient.stopService({ project, service });
     refreshServices(project);
+    fetchPorts(project);
   } catch (err: any) {
     pushToast(err.message || `Failed to stop service ${service}`, "error");
   }
@@ -454,6 +457,7 @@ export async function killService(project: string, service: string, signal = "SI
   try {
     await rpcClient.killService({ project, service, signal });
     refreshServices(project);
+    fetchPorts(project);
   } catch (err: any) {
     pushToast(err.message || `Failed to kill service ${service}`, "error");
   }

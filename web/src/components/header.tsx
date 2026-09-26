@@ -1,5 +1,6 @@
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createEffect, createMemo } from "solid-js";
 import {
+  ExternalLink,
   Globe,
   History,
   Play,
@@ -42,9 +43,12 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "~/components/ui/breadcrumb";
-import { Button } from "~/components/ui/button";
+import { Button, buttonVariants } from "~/components/ui/button";
 import { Separator } from "~/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
+import { cn } from "~/lib/utils";
+import { distinctServicePorts, portUrl } from "~/lib/format";
+
 
 /** Buttons shared by every header variant. */
 function HeaderButtons(props: { project: string }) {
@@ -141,6 +145,18 @@ export function ServiceHeader() {
   const state = createMemo<ServiceState | undefined>(() =>
     (servicesMap()[project()] ?? []).find((s) => s.name === service())
   );
+  const servicePorts = createMemo(() =>
+    distinctServicePorts(
+      (ports()[project()] ?? []).filter((p) => p.service === service())
+    )
+  );
+
+  createEffect(() => {
+    const proj = project();
+    if (proj && !ports()[proj]) {
+      fetchPorts(proj);
+    }
+  });
 
   return (
     <>
@@ -159,6 +175,29 @@ export function ServiceHeader() {
                 health: {s().health}
               </Badge>
             </Show>
+            <For each={servicePorts()}>
+              {(p) => (
+                <Tooltip>
+                  <TooltipTrigger
+                    as="a"
+                    href={portUrl(p)}
+                    target="_blank"
+                    rel="noreferrer"
+                    class={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                      "h-6 gap-1 px-2 font-mono text-xs text-primary hover:text-primary transition-colors"
+                    )}
+                  >
+                    <span class="hidden sm:inline">
+                      {p.ip === "0.0.0.0" || p.ip === "::" || p.ip === "*" || p.ip === "" ? "localhost" : p.ip}:
+                    </span>
+                    <span>{p.port}</span>
+                    <ExternalLink class="!size-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Open {portUrl(p)} in browser</TooltipContent>
+                </Tooltip>
+              )}
+            </For>
             <span data-tabular class="hidden truncate font-mono text-[11px] text-muted-foreground lg:inline">
               {serviceMeta(s())}
             </span>

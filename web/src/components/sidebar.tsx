@@ -59,7 +59,8 @@ import { eventStatus } from "~/lib/events";
 import { healthDot, statusDot } from "~/lib/status";
 import { cn } from "~/lib/utils";
 import { Kbd } from "~/components/ui/kbd";
-import { Button } from "~/components/ui/button";
+import { Button, buttonVariants } from "~/components/ui/button";
+import { portUrl } from "~/lib/format";
 import { Switch } from "~/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
@@ -157,6 +158,11 @@ function ServiceRow(props: { project: string; name: string }) {
                     <TooltipContent>health: {s().health}</TooltipContent>
                   </Tooltip>
                 </Show>
+                <Show when={portBinding()}>
+                  {(p) => (
+                    <span class="font-mono tabular text-primary/80">:{p().port}</span>
+                  )}
+                </Show>
                 <Show when={s().pid > 0}>
                   <span class="font-mono tabular opacity-70">{s().pid}</span>
                 </Show>
@@ -165,12 +171,33 @@ function ServiceRow(props: { project: string; name: string }) {
 
             <div
               class={cn(
-                "absolute right-1 top-1/2 flex -translate-y-1/2 items-center transition-opacity duration-100",
+                "absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 transition-opacity duration-100",
                 selected()
                   ? "opacity-100"
                   : "pointer-events-none opacity-0 group-hover/svc:pointer-events-auto group-hover/svc:opacity-100"
               )}
             >
+              <Show when={portBinding()}>
+                {(p) => (
+                  <Tooltip>
+                    <TooltipTrigger
+                      as="a"
+                      href={portUrl(p())}
+                      target="_blank"
+                      rel="noreferrer"
+                      class={cn(
+                        buttonVariants({ variant: "secondary", size: "icon-sm" }),
+                        "border border-border shadow-sm text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={(e: MouseEvent) => e.stopPropagation()}
+                    >
+                      <ExternalLink class="!size-3" />
+                      <span class="sr-only">Open in browser</span>
+                    </TooltipTrigger>
+                    <TooltipContent>Open {portUrl(p())}</TooltipContent>
+                  </Tooltip>
+                )}
+              </Show>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   as={Button}
@@ -203,6 +230,21 @@ function ServiceRow(props: { project: string; name: string }) {
                       <Play />
                       Start
                     </DropdownMenuItem>
+                  </Show>
+                  <Show when={portBinding()}>
+                    {(p) => (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => window.open(portUrl(p()), "_blank")}>
+                          <ExternalLink />
+                          Open :{p().port} in Browser
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => copyToClipboard(portUrl(p()), "port URL")}>
+                          <Copy />
+                          Copy URL (:{p().port})
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </Show>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -256,8 +298,7 @@ function ServiceRow(props: { project: string; name: string }) {
             </ContextMenuItem>
             <Show when={portBinding()}>
               {(p) => {
-                const url = () =>
-                  `http://${p().ip === "0.0.0.0" || p().ip === "" ? "localhost" : p().ip}:${p().port}`;
+                const url = () => portUrl(p());
                 return (
                   <>
                     <ContextMenuSeparator />

@@ -91,7 +91,54 @@ type Daemon struct {
 	onGitChange       func(project string)
 	onProjectsChange  func()
 
+	proxyPort         int
+	proxyDomainSuffix string
+
 	watcher *gitwatcher.RepoWatcher
+}
+
+// SetProxyInfo configures the active reverse proxy port and domain suffix.
+// When set, services exposing ports will report their proxy URLs.
+func (d *Daemon) SetProxyInfo(port int, domainSuffix string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.proxyPort = port
+	d.proxyDomainSuffix = domainSuffix
+}
+
+// ProxyInfo returns the active reverse proxy port and domain suffix.
+func (d *Daemon) ProxyInfo() (int, string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.proxyPort, d.proxyDomainSuffix
+}
+
+func (d *Daemon) serviceProxyURLsLocked(project, serviceName string) []string {
+	if d.proxyPort == 0 || d.proxyDomainSuffix == "" {
+		return nil
+	}
+	p, ok := d.projects[project]
+	if !ok || p.File == nil {
+		return nil
+	}
+	svc, ok := p.File.Services[serviceName]
+	if !ok || svc.Ports == nil || len(svc.Ports.Entries) == 0 {
+		return nil
+	}
+	isDefault := p.File.Proxy != nil && p.File.Proxy.DefaultService == serviceName
+	hosts := proxy.ServiceHosts(project, serviceName, svc, isDefault, d.proxyDomainSuffix)
+	if len(hosts) == 0 {
+		return nil
+	}
+	urls := make([]string, 0, len(hosts))
+	for _, host := range hosts {
+		if d.proxyPort == 80 {
+			urls = append(urls, fmt.Sprintf("http://%s", host))
+		} else {
+			urls = append(urls, fmt.Sprintf("http://%s:%d", host, d.proxyPort))
+		}
+	}
+	return urls
 }
 
 // New creates a Daemon with no projects. Call StartProject to add projects.
@@ -349,6 +396,7 @@ func (d *Daemon) createAndStartProject(cfg *loadedConfig, configPath string, bui
 		OnStateChange: func(svc string, state *protocol.ServiceState) {
 			state.Project = name
 			d.mu.Lock()
+			state.ProxyUrls = d.serviceProxyURLsLocked(name, svc)
 			fn := d.onStateChange
 			d.mu.Unlock()
 			if fn != nil {
@@ -1273,9 +1321,12 @@ func (d *Daemon) ListServices(project string) ([]*protocol.ServiceState, error) 
 			return nil, err
 		}
 		states := b.States()
+		d.mu.Lock()
 		for _, st := range states {
 			st.Project = project
+			st.ProxyUrls = d.serviceProxyURLsLocked(project, st.Name)
 		}
+		d.mu.Unlock()
 		return states, nil
 	}
 
@@ -1294,9 +1345,12 @@ func (d *Daemon) ListServices(project string) ([]*protocol.ServiceState, error) 
 			continue
 		}
 		states := b.States()
+		d.mu.Lock()
 		for _, st := range states {
 			st.Project = name
+			st.ProxyUrls = d.serviceProxyURLsLocked(name, st.Name)
 		}
+		d.mu.Unlock()
 		all = append(all, states...)
 	}
 	return all, nil

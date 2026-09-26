@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -74,6 +76,13 @@ func runDaemonChild() error {
 			slog.Error("reverse proxy disabled; listen failed", "addr", psrv.Addr(), "error", err)
 		} else {
 			defer func() { _ = psrv.Close() }()
+			port := gcfg.Proxy.Port
+			if _, portStr, err := net.SplitHostPort(psrv.Addr()); err == nil {
+				if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+					port = p
+				}
+			}
+			d.SetProxyInfo(port, gcfg.Proxy.DomainSuffix)
 		}
 	}
 

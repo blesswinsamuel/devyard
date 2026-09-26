@@ -133,6 +133,11 @@ export class ServiceState extends Message<ServiceState> {
    */
   project = "";
 
+  /**
+   * @generated from field: repeated string proxy_urls = 11;
+   */
+  proxyUrls: string[] = [];
+
   constructor(data?: PartialMessage<ServiceState>) {
     super();
     proto3.util.initPartial(data, this);
@@ -151,6 +156,7 @@ export class ServiceState extends Message<ServiceState> {
     { no: 8, name: "has_health", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 9, name: "health", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 10, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 11, name: "proxy_urls", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ServiceState {

@@ -60,7 +60,7 @@ import { healthDot, statusDot } from "~/lib/status";
 import { cn } from "~/lib/utils";
 import { Kbd } from "~/components/ui/kbd";
 import { Button, buttonVariants } from "~/components/ui/button";
-import { portUrl } from "~/lib/format";
+import { cleanProxyUrl } from "~/lib/format";
 import { Switch } from "~/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
@@ -117,9 +117,6 @@ function ServiceRow(props: { project: string; name: string }) {
     selectedService() === props.name && selectedProject() === props.project;
   const cursor = () =>
     sameNavItem(keyboardCursor(), { kind: "service", project: props.project, service: props.name });
-  const portBinding = createMemo(() =>
-    (ports()[props.project] ?? []).find((p) => p.service === props.name)
-  );
   const showingPrevLogs = () =>
     isPreviousLogs(tabKey(props.project, "service", props.name));
 
@@ -158,11 +155,6 @@ function ServiceRow(props: { project: string; name: string }) {
                     <TooltipContent>health: {s().health}</TooltipContent>
                   </Tooltip>
                 </Show>
-                <Show when={portBinding()}>
-                  {(p) => (
-                    <span class="font-mono tabular text-primary/80">:{p().port}</span>
-                  )}
-                </Show>
                 <Show when={s().pid > 0}>
                   <span class="font-mono tabular opacity-70">{s().pid}</span>
                 </Show>
@@ -177,12 +169,12 @@ function ServiceRow(props: { project: string; name: string }) {
                   : "pointer-events-none opacity-0 group-hover/svc:pointer-events-auto group-hover/svc:opacity-100"
               )}
             >
-              <Show when={portBinding()}>
-                {(p) => (
+              <Show when={(s().proxyUrls?.length ?? 0) > 0}>
+                {() => (
                   <Tooltip>
                     <TooltipTrigger
                       as="a"
-                      href={portUrl(p())}
+                      href={s().proxyUrls[0]}
                       target="_blank"
                       rel="noreferrer"
                       class={cn(
@@ -194,7 +186,7 @@ function ServiceRow(props: { project: string; name: string }) {
                       <ExternalLink class="!size-3" />
                       <span class="sr-only">Open in browser</span>
                     </TooltipTrigger>
-                    <TooltipContent>Open {portUrl(p())}</TooltipContent>
+                    <TooltipContent>Open {s().proxyUrls[0]}</TooltipContent>
                   </Tooltip>
                 )}
               </Show>
@@ -231,20 +223,22 @@ function ServiceRow(props: { project: string; name: string }) {
                       Start
                     </DropdownMenuItem>
                   </Show>
-                  <Show when={portBinding()}>
-                    {(p) => (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => window.open(portUrl(p()), "_blank")}>
-                          <ExternalLink />
-                          Open :{p().port} in Browser
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => copyToClipboard(portUrl(p()), "port URL")}>
-                          <Copy />
-                          Copy URL (:{p().port})
-                        </DropdownMenuItem>
-                      </>
-                    )}
+                  <Show when={(s().proxyUrls?.length ?? 0) > 0}>
+                    <DropdownMenuSeparator />
+                    <For each={s().proxyUrls}>
+                      {(url) => (
+                        <>
+                          <DropdownMenuItem onSelect={() => window.open(url, "_blank")}>
+                            <ExternalLink />
+                            Open {cleanProxyUrl(url)} in Browser
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => copyToClipboard(url, "proxy URL")}>
+                            <Copy />
+                            Copy URL ({cleanProxyUrl(url)})
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </For>
                   </Show>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -296,23 +290,22 @@ function ServiceRow(props: { project: string; name: string }) {
               Kill
               <ContextMenuShortcut>k k</ContextMenuShortcut>
             </ContextMenuItem>
-            <Show when={portBinding()}>
-              {(p) => {
-                const url = () => portUrl(p());
-                return (
+            <Show when={(s().proxyUrls?.length ?? 0) > 0}>
+              <ContextMenuSeparator />
+              <For each={s().proxyUrls}>
+                {(url) => (
                   <>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem onSelect={() => window.open(url(), "_blank")}>
+                    <ContextMenuItem onSelect={() => window.open(url, "_blank")}>
                       <ExternalLink />
-                      Open :{p().port} in Browser
+                      Open {cleanProxyUrl(url)} in Browser
                     </ContextMenuItem>
-                    <ContextMenuItem onSelect={() => copyToClipboard(url(), "port URL")}>
+                    <ContextMenuItem onSelect={() => copyToClipboard(url, "proxy URL")}>
                       <Copy />
-                      Copy URL (:{p().port})
+                      Copy URL ({cleanProxyUrl(url)})
                     </ContextMenuItem>
                   </>
-                );
-              }}
+                )}
+              </For>
             </Show>
             <ContextMenuSeparator />
             <ContextMenuItem

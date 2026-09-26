@@ -76,6 +76,7 @@ message ServiceState {
   bool has_health = 8;
   string health = 9;
   string project = 10;
+  repeated string proxy_urls = 11;
 }
 
 message TaskState {

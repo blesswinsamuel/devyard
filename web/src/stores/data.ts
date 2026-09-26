@@ -90,7 +90,8 @@ function sameService(a: ServiceState, b: ServiceState): boolean {
     a.exitCode === b.exitCode &&
     a.restarts === b.restarts &&
     a.hasHealth === b.hasHealth &&
-    a.health === b.health
+    a.health === b.health &&
+    (a.proxyUrls?.join(",") ?? "") === (b.proxyUrls?.join(",") ?? "")
   );
 }
 

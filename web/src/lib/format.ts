@@ -76,15 +76,8 @@ export function portDisplay(binding: { ip: string; port: number }): string {
   return `${host}:${binding.port}`;
 }
 
-export function distinctServicePorts<T extends { port: number }>(bindings: T[]): T[] {
-  const seen = new Set<number>();
-  const res: T[] = [];
-  for (const b of bindings) {
-    if (!seen.has(b.port)) {
-      seen.add(b.port);
-      res.push(b);
-    }
-  }
-  return res;
+export function cleanProxyUrl(url: string): string {
+  return url.replace(/^https?:\/\//, "");
 }
+
 

@@ -43,6 +43,20 @@ func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showPr
 	if ctx.IsJSON() {
 		return ctx.PrintJSON(states)
 	}
+	if urls == nil {
+		for _, st := range states {
+			if len(st.ProxyUrls) > 0 {
+				if urls == nil {
+					urls = make(map[string][]string)
+				}
+				clean := make([]string, len(st.ProxyUrls))
+				for i, u := range st.ProxyUrls {
+					clean[i] = strings.TrimPrefix(u, "http://")
+				}
+				urls[st.Name] = clean
+			}
+		}
+	}
 	w := ctx.NewTabWriter()
 	showURLs := len(urls) > 0
 	if showProject {

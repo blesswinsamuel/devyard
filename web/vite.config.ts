@@ -29,6 +29,10 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 19095,
     strictPort: true,
+    allowedHosts: [
+      "devyard.mac-studio.dev.bless.win",
+      ".devyard.mac-studio.dev.bless.win",
+    ],
     proxy: {
       "/devyard.v1.DaemonService": {
         target: backend,

@@ -43,22 +43,16 @@ func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showPr
 	if ctx.IsJSON() {
 		return ctx.PrintJSON(states)
 	}
-	if urls == nil {
+	showURLs := len(urls) > 0
+	if !showURLs {
 		for _, st := range states {
 			if len(st.ProxyUrls) > 0 {
-				if urls == nil {
-					urls = make(map[string][]string)
-				}
-				clean := make([]string, len(st.ProxyUrls))
-				for i, u := range st.ProxyUrls {
-					clean[i] = strings.TrimPrefix(u, "http://")
-				}
-				urls[st.Name] = clean
+				showURLs = true
+				break
 			}
 		}
 	}
 	w := ctx.NewTabWriter()
-	showURLs := len(urls) > 0
 	if showProject {
 		if showURLs {
 			_, _ = fmt.Fprintln(w, "PROJECT\tNAME\tSTATUS\tPID\tRESTARTS\tHEALTH\tURLS")
@@ -90,11 +84,19 @@ func renderStatesHelper(ctx *CLIContext, states []*protocol.ServiceState, showPr
 			status = fmt.Sprintf("exited (%d)", st.ExitCode)
 		}
 		if showURLs {
-			urls := strings.Join(urls[st.Name], ", ")
+			var uList []string
+			if len(st.ProxyUrls) > 0 {
+				for _, u := range st.ProxyUrls {
+					uList = append(uList, strings.TrimPrefix(u, "http://"))
+				}
+			} else if urls != nil {
+				uList = urls[st.Name]
+			}
+			urlStr := strings.Join(uList, ", ")
 			if showProject {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n", st.Project, st.Name, status, pid, st.Restarts, health, urls)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n", st.Project, st.Name, status, pid, st.Restarts, health, urlStr)
 			} else {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n", st.Name, status, pid, st.Restarts, health, urls)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n", st.Name, status, pid, st.Restarts, health, urlStr)
 			}
 			continue
 		}

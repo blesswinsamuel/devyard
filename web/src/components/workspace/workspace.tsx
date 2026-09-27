@@ -179,8 +179,16 @@ function SplitView(props: { node: SplitNode }) {
 }
 
 function NodeView(props: { node: WorkspaceNode }): JSX.Element {
-  if (props.node.type === "pane") return <WorkspacePane pane={props.node} />;
-  return <SplitView node={props.node} />;
+  // Reactive: the node type can change in place (pane → split when a lone
+  // pane is split), so the branch must be a tracked Show, not an if.
+  return (
+    <Show
+      when={props.node.type === "pane"}
+      fallback={<SplitView node={props.node as SplitNode} />}
+    >
+      <WorkspacePane pane={props.node as PaneNode} />
+    </Show>
+  );
 }
 
 // --- panes ---------------------------------------------------------------------
@@ -210,19 +218,20 @@ function PaneEmptyState(props: { paneId: string }) {
 
 function WorkspacePane(props: { pane: PaneNode }) {
   const paneId = () => props.pane.id;
-  const items = createMemo(() => props.pane.tabs.map(toStripItem));
+  const tabs = () => props.pane.tabs ?? [];
+  const items = createMemo(() => tabs().map(toStripItem));
 
   // Splitting seeds the sibling pane with a fresh terminal when the active tab
   // is a terminal (mirrors the old shell pane behavior); otherwise it is empty.
   const splitSeed = (): WorkspaceTab | undefined => {
-    const active = props.pane.tabs.find((t) => t.id === props.pane.activeTabId);
+    const active = props.pane.tabs?.find((t) => t.id === props.pane.activeTabId);
     return active?.kind === "terminal" ? newTerminalTab(active.project) : undefined;
   };
   const splitRight = () => splitPane(paneId(), "vertical", splitSeed());
   const splitDown = () => splitPane(paneId(), "horizontal", splitSeed());
 
   const activeProject = () =>
-    props.pane.tabs.find((t) => t.id === props.pane.activeTabId)?.project ?? selectedProject();
+    props.pane.tabs?.find((t) => t.id === props.pane.activeTabId)?.project ?? selectedProject();
 
   return (
     <div
@@ -255,7 +264,7 @@ function WorkspacePane(props: { pane: PaneNode }) {
                 size="icon-sm"
                 class="text-muted-foreground"
                 title="New terminal tab"
-                onClick={() => newTerminalTab(props.pane.tabs.find((t) => t.id === props.pane.activeTabId)?.project ?? selectedProject() ?? "")}
+                onClick={() => newTerminalTab(props.pane.tabs?.find((t) => t.id === props.pane.activeTabId)?.project ?? selectedProject() ?? "")}
               >
                 <Plus class="!size-3.5" />
               </Button>
@@ -270,8 +279,8 @@ function WorkspacePane(props: { pane: PaneNode }) {
         />
       </div>
       <div class="relative min-h-0 flex-1">
-        <Show when={props.pane.tabs.length > 0} fallback={<PaneEmptyState paneId={paneId()} />}>
-          <For each={props.pane.tabs}>
+        <Show when={(props.pane.tabs?.length ?? 0) > 0} fallback={<PaneEmptyState paneId={paneId()} />}>
+          <For each={tabs()}>
             {(tab) => <TabContent tab={tab} active={tab.id === props.pane.activeTabId} />}
           </For>
         </Show>

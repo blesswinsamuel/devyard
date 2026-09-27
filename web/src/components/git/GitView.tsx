@@ -1,7 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import {
   Archive,
-  ArrowLeft,
   Check,
   ChevronDown,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   FileText,
   GitBranch,
   GitCommitHorizontal,
-  Menu,
   Minus,
   MoreHorizontal,
   PanelLeft,
@@ -50,8 +48,7 @@ import {
   selectedFilePath,
   stageGitFile,
 } from "~/stores/data";
-import { setSidebarOpen } from "~/stores/app";
-import { closeGitView, selectedProject } from "~/stores/nav";
+import { selectedProject } from "~/stores/nav";
 import type { GitBranch as GitBranchType, GitFileChange } from "~/lib/types";
 import { computeGitGraph } from "~/lib/git_graph";
 import { CommitListRow } from "~/components/git/CommitListRow";
@@ -63,7 +60,6 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
-import { Separator } from "~/components/ui/separator";
 import { Spinner } from "~/components/ui/spinner";
 import { Textarea } from "~/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip";
@@ -786,33 +782,10 @@ export function GitView() {
 
   return (
     <div class="flex h-full min-w-0 flex-col overflow-hidden bg-background">
-      {/* Top bar */}
-      <div class="flex h-11 shrink-0 items-center justify-between gap-1.5 border-b bg-card/50 px-2 sm:px-3 backdrop-blur">
+      {/* Git actions bar */}
+      <div class="flex h-9 shrink-0 items-center justify-between gap-1.5 border-b bg-muted/20 px-2 sm:px-3">
         <div class="flex min-w-0 items-center gap-1 sm:gap-1.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            class="shrink-0 text-muted-foreground md:hidden"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open menu"
-          >
-            <Menu class="!size-4" />
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="xs"
-            class="shrink-0 text-muted-foreground"
-            onClick={() => closeGitView()}
-            aria-label="Back to logs"
-          >
-            <ArrowLeft class="!size-3.5" />
-            <span class="hidden xs:inline sm:inline">Back</span>
-          </Button>
-
-          <Separator orientation="vertical" class="mx-0.5 sm:mx-1 h-4" />
           <GitBranch class="size-3.5 shrink-0 text-primary" />
-          <span class="truncate text-[13px] font-semibold">{project()}</span>
 
           <Show when={activeBranch()}>
             {(b) => (

@@ -1,11 +1,12 @@
 import { Show } from "solid-js";
-import { Globe, Menu, PackageOpen, Play, Square, SquareTerminal } from "lucide-solid";
+import { GitBranch, Globe, Menu, PackageOpen, Play, ScrollText, Square, SquareTerminal } from "lucide-solid";
 import { fetchPorts, runTask, stopTask, tasks as tasksMap } from "~/stores/data";
-import { activeView, selectedProject, selectedService, selectedTask } from "~/stores/nav";
+import { activeView, closeGitView, openGitView, selectedProject, selectedService, selectedTask } from "~/stores/nav";
 import { openPortsModal, setSidebarOpen } from "~/stores/app";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
+import { cn } from "~/lib/utils";
 import { ProjectHeader, ServiceHeader, TaskHeader } from "~/components/header";
 import { LogView } from "~/components/logs";
 import { GitView } from "~/components/git/GitView";
@@ -90,63 +91,101 @@ function EmptyState() {
   );
 }
 
+/** Logs/Git tab strip shown in the context header when a project is selected. */
+function ViewTabs() {
+  const view = () => activeView();
+  const tabClass = (active: boolean) =>
+    cn(
+      "flex h-6 items-center gap-1 rounded-md px-2 text-xs transition-colors",
+      active
+        ? "bg-background font-medium text-foreground shadow-sm"
+        : "text-muted-foreground hover:text-foreground"
+    );
+  return (
+    <div class="ml-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+      <button
+        type="button"
+        class={tabClass(view() === "logs")}
+        onClick={() => {
+          if (view() === "git") closeGitView();
+        }}
+      >
+        <ScrollText class="!size-3" />
+        Logs
+      </button>
+      <button
+        type="button"
+        class={tabClass(view() === "git")}
+        onClick={() => {
+          const p = selectedProject();
+          if (p && view() !== "git") openGitView(p);
+        }}
+      >
+        <GitBranch class="!size-3" />
+        Git
+      </button>
+    </div>
+  );
+}
+
 export function Main() {
   return (
     <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Context header */}
-      <Show when={activeView() !== "git"}>
-        <header class="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b bg-card/50 px-3 backdrop-blur">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            class="shrink-0 text-muted-foreground md:hidden"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open menu"
-          >
-            <Menu class="!size-4" />
-          </Button>
+      <header class="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b bg-card/50 px-3 backdrop-blur">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class="shrink-0 text-muted-foreground md:hidden"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu class="!size-4" />
+        </Button>
+        <Show
+          when={selectedProject()}
+          fallback={
+            <>
+              <span class="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
+                <SquareTerminal class="size-4 text-primary" />
+                devyard
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="ml-auto mr-1 text-muted-foreground"
+                onClick={() => {
+                  fetchPorts();
+                  openPortsModal("all");
+                }}
+              >
+                <Globe class="!size-3.5" />
+                <span class="hidden sm:inline">Open ports</span>
+              </Button>
+            </>
+          }
+        >
           <Show
-            when={selectedProject()}
-            fallback={
-              <>
-                <span class="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
-                  <SquareTerminal class="size-4 text-primary" />
-                  devyard
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="ml-auto mr-1 text-muted-foreground"
-                  onClick={() => {
-                    fetchPorts();
-                    openPortsModal("all");
-                  }}
-                >
-                  <Globe class="!size-3.5" />
-                  <span class="hidden sm:inline">Open ports</span>
-                </Button>
-              </>
-            }
+            when={selectedService()}
+            fallback={<Show when={selectedTask()} fallback={<ProjectHeader />}><TaskHeader /></Show>}
           >
-            <Show
-              when={selectedService()}
-              fallback={<Show when={selectedTask()} fallback={<ProjectHeader />}><TaskHeader /></Show>}
-            >
-              <ServiceHeader />
-            </Show>
+            <ServiceHeader />
           </Show>
-        </header>
-      </Show>
+          <ViewTabs />
+        </Show>
+      </header>
 
       {/* Content */}
       <div class="relative min-h-0 flex-1 overflow-hidden">
-        <Show when={activeView() !== "git"} fallback={<GitView />}>
+        <Show when={activeView() === "git"} fallback={
           <Show
             when={selectedService() || selectedTask()}
             fallback={<EmptyState />}
           >
             <LogView />
           </Show>
+        }>
+          <GitView />
         </Show>
       </div>
 

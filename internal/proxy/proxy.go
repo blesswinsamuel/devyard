@@ -291,6 +291,13 @@ func (s *Server) proxyFor(route Route) *httputil.ReverseProxy {
 			// Preserve the original Host header so applications that route on
 			// it (virtual hosts, URL generation) still see the named URL.
 			pr.Out.Host = pr.In.Host
+			// Rewrite strips inbound X-Forwarded-* headers. Re-add Proto and
+			// Host so upstreams can reconstruct the client-facing URL (e.g.
+			// OAuth callback URLs) instead of seeing plain local HTTP.
+			if pr.In.TLS != nil {
+				pr.Out.Header.Set("X-Forwarded-Proto", "https")
+				pr.Out.Header.Set("X-Forwarded-Host", pr.In.Host)
+			}
 		},
 		FlushInterval: -1, // flush immediately so streaming responses work
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

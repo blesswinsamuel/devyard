@@ -1,5 +1,5 @@
 import { toast } from "solid-sonner";
-import { batch, createEffect, createRoot, createSignal } from "solid-js";
+import { createEffect, createRoot, createSignal } from "solid-js";
 
 export type Theme = "dark" | "light";
 
@@ -45,7 +45,7 @@ export function pushToast(message: string, kind: ToastKind = "error") {
 /** Mobile-only: whether the project sidebar drawer is slid in. */
 const [sidebarOpen, setSidebarOpen] = createSignal(false);
 
-export { sidebarOpen, setSidebarOpen };
+export { sidebarOpen, setSidebarOpen, theme, setTheme };
 
 const [showPortsDialog, setShowPortsDialog] = createSignal(false);
 const [showAddProject, setShowAddProject] = createSignal(false);
@@ -81,35 +81,4 @@ export function closeHelp() {
 
 export function anyOverlayOpen(): boolean {
   return showPortsDialog() || showAddProject() || showDaemonModal() || showSettingsModal() || showHelp();
-}
-
-// --- bottom terminal panel --------------------------------------------------
-
-const storedHeight = Number(localStorage.getItem("lc-panel-height")) || 320;
-
-const [panelOpen, setPanelOpen] = createSignal(false);
-const [panelHeight, setPanelHeightRaw] = createSignal(storedHeight);
-const [panelMaximized, setPanelMaximized] = createSignal(false);
-
-export { panelOpen, setPanelOpen, panelHeight, panelMaximized, theme, setTheme };
-
-export function setPanelHeight(px: number) {
-  setPanelHeightRaw(px);
-  localStorage.setItem("lc-panel-height", String(Math.round(px)));
-}
-
-export function togglePanel() {
-  setPanelOpen((open) => !open);
-}
-
-export function togglePanelMaximized() {
-  setPanelMaximized((m) => !m);
-}
-
-/** Open the terminal panel for the currently selected project. */
-export function openTerminalPanel() {
-  batch(() => {
-    setPanelOpen(true);
-    setPanelMaximized(false);
-  });
 }

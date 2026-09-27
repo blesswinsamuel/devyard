@@ -1,17 +1,19 @@
-import { Show } from "solid-js";
-import { GitBranch, Globe, Menu, PackageOpen, Play, ScrollText, Square, SquareTerminal } from "lucide-solid";
-import { runTask, stopTask, tasks as tasksMap } from "~/stores/data";
-import { activeView, closeGitView, openGitView, selectedProject, selectedService, selectedTask } from "~/stores/nav";
+import { Show, createEffect, createMemo } from "solid-js";
+import { GitBranch, Globe, Menu, SquareTerminal } from "lucide-solid";
+import { projects as projectsList, services as servicesMap, tasks as tasksMap } from "~/stores/data";
+import { selectedProject, openGitTab } from "~/stores/nav";
 import { openPortsDialog, setSidebarOpen } from "~/stores/app";
+import {
+  focusedPaneActiveTab,
+  panesIn,
+  pruneWorkspace,
+  root,
+} from "~/stores/workspace";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
-import { cn } from "~/lib/utils";
 import { ProjectHeader, ServiceHeader, TaskHeader } from "~/components/header";
-import { LogView } from "~/components/logs";
-import { GitView } from "~/components/git/GitView";
-import { BottomPanel } from "~/components/bottom_panel";
-import { PortsDialog, PortsPanel } from "~/components/ports_panel";
+import { WorkspaceView } from "~/components/workspace/workspace";
+import { PortsDialog } from "~/components/ports_panel";
 
 function NoProjectState() {
   return (
@@ -19,11 +21,12 @@ function NoProjectState() {
       <Empty class="border-0">
         <EmptyHeader>
           <EmptyMedia>
-            <PackageOpen class="size-9 stroke-1 text-muted-foreground" />
+            <GitBranch class="size-9 stroke-1 text-muted-foreground" />
           </EmptyMedia>
-          <EmptyTitle>No project selected</EmptyTitle>
-          <EmptyDescription>
-            Select a project to get started.
+          <EmptyTitle>No tabs open</EmptyTitle>
+          <EmptyDescription class="max-w-xs">
+            Select a project or service in the sidebar to get started. Tabs stay
+            open across projects — split panes to see several at once.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -31,118 +34,55 @@ function NoProjectState() {
   );
 }
 
-/** Project landing page: pointers, ports & URLs, and project tasks. */
-function ProjectOverview() {
-  const project = () => selectedProject()!;
-  const taskList = () => tasksMap()[project()] ?? [];
-
+/** Git button: focuses the project's git tab, opening it in the focused pane. */
+function GitButton() {
   return (
-    <div class="h-full overflow-y-auto">
-      <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6">
-        <p class="text-[13px] leading-relaxed text-muted-foreground">
-          Select a service under{" "}
-          <span class="font-semibold text-foreground">{project()}</span> to follow its logs.
-        </p>
-
-        <Card class="shadow-sm">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Ports & URLs
-            </CardTitle>
-          </CardHeader>
-          <CardContent class="pt-0">
-            <PortsPanel project={project()} />
-          </CardContent>
-        </Card>
-
-        <Show when={taskList().length > 0}>
-          <Card class="shadow-sm">
-            <CardHeader class="pb-2">
-              <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Project tasks
-              </CardTitle>
-            </CardHeader>
-            <CardContent class="grid gap-1.5 pt-0">
-              {taskList().map((act) => (
-                <div class="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-2.5 py-2 transition-colors hover:bg-muted/60">
-                  <div class="min-w-0 pr-2">
-                    <div class="truncate text-[13px] font-medium text-foreground">{act.name}</div>
-                    <div class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                      {act.command}
-                    </div>
-                  </div>
-                  <Show
-                    when={act.status === "running" || act.status === "starting"}
-                    fallback={
-                      <Button
-                        size="xs"
-                        variant="secondary"
-                        class="shrink-0"
-                        onClick={() => runTask(project(), act.name)}
-                      >
-                        <Play class="!size-3 text-primary" />
-                        Run
-                      </Button>
-                    }
-                  >
-                    <Button
-                      size="xs"
-                      variant="secondary"
-                      class="shrink-0"
-                      onClick={() => stopTask(project(), act.name)}
-                    >
-                      <Square class="!size-3 text-destructive" />
-                      Stop
-                    </Button>
-                  </Show>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </Show>
-      </div>
-    </div>
-  );
-}
-
-/** Logs/Git tab strip shown in the context header when a project is selected. */
-function ViewTabs() {
-  const view = () => activeView();
-  const tabClass = (active: boolean) =>
-    cn(
-      "flex h-6 items-center gap-1 rounded-md px-2 text-xs transition-colors",
-      active
-        ? "bg-background font-medium text-foreground shadow-sm"
-        : "text-muted-foreground hover:text-foreground"
-    );
-  return (
-    <div class="ml-1 flex shrink-0 items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
-      <button
-        type="button"
-        class={tabClass(view() === "logs")}
-        onClick={() => {
-          if (view() === "git") closeGitView();
-        }}
-      >
-        <ScrollText class="!size-3" />
-        Logs
-      </button>
-      <button
-        type="button"
-        class={tabClass(view() === "git")}
-        onClick={() => {
-          const p = selectedProject();
-          if (p && view() !== "git") openGitView(p);
-        }}
-      >
-        <GitBranch class="!size-3" />
-        Git
-      </button>
-    </div>
+    <Button
+      variant="ghost"
+      size="sm"
+      class="text-muted-foreground"
+      title="Open git view (g)"
+      onClick={() => {
+        const project = selectedProject();
+        if (project) openGitTab(project);
+      }}
+    >
+      <GitBranch class="!size-3.5" />
+      <span class="hidden sm:inline">Git</span>
+    </Button>
   );
 }
 
 export function Main() {
+  // Prune tabs whose targets vanished (project removed / service deleted).
+  createEffect(() => {
+    const projs = projectsList();
+    const svcs = servicesMap();
+    const tasks = tasksMap();
+
+    pruneWorkspace((tab) => {
+      if (projs.length > 0 && !projs.some((p) => p.name === tab.project)) {
+        return false;
+      }
+      if (tab.kind === "log-service") {
+        const list = svcs[tab.project];
+        if (list !== undefined && !list.some((s) => s.name === tab.service)) {
+          return false;
+        }
+      }
+      if (tab.kind === "log-task") {
+        const list = tasks[tab.project];
+        if (list !== undefined && !list.some((a) => a.name === tab.task)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  });
+
+  const tabCount = createMemo(() => panesIn(root()).reduce((n, p) => n + p.tabs.length, 0));
+  const activeTab = focusedPaneActiveTab;
+
   return (
     <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
       {/* Context header */}
@@ -177,34 +117,33 @@ export function Main() {
           }
         >
           <Show
-            when={selectedService()}
-            fallback={<Show when={selectedTask()} fallback={<ProjectHeader />}><TaskHeader /></Show>}
-          >
-            <ServiceHeader />
-          </Show>
-          <ViewTabs />
-        </Show>
-      </header>
-
-      {/* Content */}
-      <div class="relative min-h-0 flex-1 overflow-hidden">
-        <Show when={activeView() === "git"} fallback={
-          <Show
-            when={selectedService() || selectedTask()}
+            when={activeTab()?.kind === "log-service"}
             fallback={
-              <Show when={selectedProject()} fallback={<NoProjectState />}>
-                <ProjectOverview />
+              <Show
+                when={activeTab()?.kind === "log-task"}
+                fallback={
+                  <>
+                    <ProjectHeader />
+                    <GitButton />
+                  </>
+                }
+              >
+                <TaskHeader tab={activeTab()!} />
               </Show>
             }
           >
-            <LogView />
+            <ServiceHeader tab={activeTab()!} />
           </Show>
-        }>
-          <GitView />
+        </Show>
+      </header>
+
+      {/* Unified workspace: pane tree of tab strips */}
+      <div class="relative min-h-0 flex-1 overflow-hidden">
+        <Show when={tabCount() > 0} fallback={<NoProjectState />}>
+          <WorkspaceView />
         </Show>
       </div>
 
-      <BottomPanel />
       <PortsDialog />
     </main>
   );

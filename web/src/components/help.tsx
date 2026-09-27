@@ -29,8 +29,8 @@ const SECTIONS: { title: string; rows: { keys: string; label: string }[] }[] = [
     title: "General",
     rows: [
       { keys: "?", label: "Toggle this overlay" },
-      { keys: "g", label: "Open git view for selected project" },
-      { keys: "t", label: "Toggle terminal panel" },
+      { keys: "g", label: "Open git tab for selected project" },
+      { keys: "t", label: "Open a terminal tab" },
     ],
   },
 ];

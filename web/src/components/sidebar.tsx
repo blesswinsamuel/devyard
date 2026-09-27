@@ -52,10 +52,10 @@ import {
   stopTask,
   tasks as tasksMap,
 } from "~/stores/data";
-import { isPreviousLogs, tabKey, togglePreviousLogs } from "~/stores/logs";
+import { isPreviousLogs, serviceLogTabId, taskLogTabId, togglePreviousLogs } from "~/stores/workspace";
 import { pushToast, openPortsDialog, setShowAddProject, setShowDaemonModal, setShowSettingsModal, theme, setTheme } from "~/stores/app";
 import { toggleHelp, sidebarOpen, setSidebarOpen } from "~/stores/app";
-import { openGitView } from "~/stores/nav";
+import { openGitTab } from "~/stores/nav";
 import { eventStatus } from "~/lib/events";
 import { healthDot, statusDot } from "~/lib/status";
 import { cn } from "~/lib/utils";
@@ -119,7 +119,7 @@ function ServiceRow(props: { project: string; name: string }) {
   const cursor = () =>
     sameNavItem(keyboardCursor(), { kind: "service", project: props.project, service: props.name });
   const showingPrevLogs = () =>
-    isPreviousLogs(tabKey(props.project, "service", props.name));
+    isPreviousLogs(serviceLogTabId(props.project, props.name));
 
   return (
     <Show when={service()}>
@@ -310,7 +310,7 @@ function ServiceRow(props: { project: string; name: string }) {
             </Show>
             <ContextMenuSeparator />
             <ContextMenuItem
-              onSelect={() => togglePreviousLogs(tabKey(props.project, "service", props.name))}
+              onSelect={() => togglePreviousLogs(serviceLogTabId(props.project, props.name))}
             >
               <History />
               {showingPrevLogs() ? "Show Live Logs" : "Show Previous Run"}
@@ -337,7 +337,7 @@ function TaskRow(props: { project: string; name: string }) {
     sameNavItem(keyboardCursor(), { kind: "task", project: props.project, task: props.name });
   const status = () => task()?.status ?? "idle";
   const showingPrevLogs = () =>
-    isPreviousLogs(tabKey(props.project, "task", props.name));
+    isPreviousLogs(taskLogTabId(props.project, props.name));
 
   return (
     <ContextMenu>
@@ -451,7 +451,7 @@ function TaskRow(props: { project: string; name: string }) {
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
-          onSelect={() => togglePreviousLogs(tabKey(props.project, "task", props.name))}
+          onSelect={() => togglePreviousLogs(taskLogTabId(props.project, props.name))}
         >
           <History />
           {showingPrevLogs() ? "Show Live Logs" : "Show Previous Run"}
@@ -511,7 +511,7 @@ function GitPromptBadge(props: { project: string }) {
           aria-label={`Git status for ${props.project}`}
           onClick={(e: MouseEvent) => {
             e.stopPropagation();
-            openGitView(props.project);
+            openGitTab(props.project);
           }}
           class={cn(
             "h-5 !cursor-default gap-1 rounded px-1.5 py-0 font-mono text-[11px] leading-none transition-colors select-none",
@@ -730,7 +730,7 @@ function ProjectItem(props: { name: string }) {
                 <Boxes />
                 View Logs
               </ContextMenuItem>
-              <ContextMenuItem onSelect={() => openGitView(props.name)}>
+              <ContextMenuItem onSelect={() => openGitTab(props.name)}>
                 <GitBranch />
                 Git History
                 <ContextMenuShortcut>g</ContextMenuShortcut>

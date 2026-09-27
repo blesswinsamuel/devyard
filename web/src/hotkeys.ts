@@ -5,12 +5,17 @@ import {
   moveKeyboardCursor,
   moveKeyboardCursorToEnd,
   navigateKeyboardHorizontal,
-  openGitView,
+  openGitTab,
   previousTarget,
 } from "~/stores/nav";
 import { killService, restartService, startProject, stopProject, stopService } from "~/stores/data";
-import { anyOverlayOpen, closeHelp, pushToast, showHelp, toggleHelp, togglePanel } from "~/stores/app";
-import { tabKey, togglePreviousLogs } from "~/stores/logs";
+import { anyOverlayOpen, closeHelp, pushToast, showHelp, toggleHelp } from "~/stores/app";
+import { focusedPaneActiveTab, openTerminalTab, togglePreviousLogs, serviceLogTabId, taskLogTabId } from "~/stores/workspace";
+
+function activeTabIsLog(): boolean {
+  const tab = focusedPaneActiveTab();
+  return tab?.kind === "log-service" || tab?.kind === "log-task";
+}
 
 /**
  * Destructive keys require a second press within CONFIRM_WINDOW to fire.
@@ -137,14 +142,17 @@ async function handleKeyDown(e: KeyboardEvent): Promise<void> {
       const project = actionProject();
       if (!project) return;
       e.preventDefault();
-      openGitView(project);
+      openGitTab(project);
       break;
     }
     case "t":
-    case "T":
+    case "T": {
+      const project = actionProject();
+      if (!project) return;
       e.preventDefault();
-      togglePanel();
+      openTerminalTab(project);
       break;
+    }
     case "r":
     case "R": {
       const t = actionService();
@@ -191,11 +199,22 @@ async function handleKeyDown(e: KeyboardEvent): Promise<void> {
     }
     case "p":
     case "P": {
+      // Toggle previous-run mode on the focused pane's active log tab; when the
+      // cursor sits on a service/task whose tab is open elsewhere, target that.
+      const active = focusedPaneActiveTab();
+      if (activeTabIsLog()) {
+        e.preventDefault();
+        togglePreviousLogs(active!.id);
+        break;
+      }
       const t = previousTarget();
       if (!t || t.kind === "project") return;
       e.preventDefault();
-      const name = t.kind === "service" ? t.service : t.task;
-      togglePreviousLogs(tabKey(t.project, t.kind, name));
+      const id =
+        t.kind === "service"
+          ? serviceLogTabId(t.project, t.service)
+          : taskLogTabId(t.project, t.task);
+      togglePreviousLogs(id);
       break;
     }
     default:

@@ -19,7 +19,7 @@ import { onConnectionOpen, onDaemonEvent } from "~/lib/events";
 import { pushRoute } from "~/lib/router";
 import { sameArray } from "~/lib/utils";
 import { pushToast, setShowAddProject } from "~/stores/app";
-import { activeView, selectedProject } from "~/stores/nav";
+import { focusedPaneActiveTab } from "~/stores/workspace";
 
 // --- data signals -----------------------------------------------------------
 
@@ -744,7 +744,8 @@ export function initDataHandlers() {
       if (!project) return;
       fetchGitStatus(project);
       clearWorkdirCache(project);
-      if (untrack(activeView) === "git" && untrack(selectedProject) === project) {
+      const focused = untrack(focusedPaneActiveTab);
+      if (focused?.kind === "git" && focused.project === project) {
         loadGitLog(project);
         const selCommit = untrack(selectedCommitHash)[project];
         if (selCommit) {

@@ -107,8 +107,8 @@ function AheadBehindPill(props: { kind: "ahead" | "behind"; count?: number; upst
   );
 }
 
-export function GitView() {
-  const project = () => selectedProject();
+export function GitView(props: { project?: string }) {
+  const project = () => props.project ?? selectedProject();
   const commits = createMemo(() => (project() ? gitCommits()[project()!] ?? [] : []));
   const branches = createMemo(() => (project() ? gitBranches()[project()!] ?? [] : []));
   const tags = createMemo(() => (project() ? gitTags()[project()!] ?? [] : []));

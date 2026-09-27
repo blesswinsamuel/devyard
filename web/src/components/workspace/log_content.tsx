@@ -1,44 +1,23 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { ArrowDownToLine, History, Play, RadioTower, X } from "lucide-solid";
-import {
-  activeKey,
-  closeLogTab,
-  isPreviousLogs,
-  openLogTab,
-  pruneLogTabs,
-  tabs,
-  tabKey,
-  togglePreviousLogs,
-} from "~/stores/logs";
-import { projects as projectsList, runTask, services as servicesMap, tasks as tasksMap } from "~/stores/data";
-import {
-  selectedProject,
-  selectedService,
-  selectedTask,
-  selectService,
-  selectTask,
-} from "~/stores/nav";
-import { theme } from "~/stores/app";
+import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { ArrowDownToLine, History, Play, RadioTower } from "lucide-solid";
+import { runTask, services as servicesMap, tasks as tasksMap } from "~/stores/data";
 import { subscribeLogs, subscribeTaskLogs } from "~/stores/logs";
+import { theme } from "~/stores/app";
 import { formatLogLine } from "~/lib/ansi";
-import { cn } from "~/lib/utils";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
+import { togglePreviousLogs } from "~/stores/workspace";
 import { Button } from "~/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { Spinner } from "~/components/ui/spinner";
+import type { ServiceLogTab, TaskLogTab } from "~/lib/types";
+
+export type LogTab = ServiceLogTab | TaskLogTab;
 
 /**
  * One log stream rendered into an xterm instance. Follow-tail behavior:
  * auto-scrolls while pinned to the bottom; scrolling up unpins and shows a
  * jump-to-latest affordance until the user returns.
  */
-function LogTerminal(props: {
-  project: string;
-  kind: "service" | "task";
-  target: string;
-  active: boolean;
-  keyId: string;
-}) {
+export function LogContent(props: { tab: LogTab; active: boolean }) {
   let container!: HTMLDivElement;
   let term: AppTerminal | null = null;
 
@@ -46,17 +25,26 @@ function LogTerminal(props: {
   const [following, setFollowing] = createSignal(true);
   const [notFound, setNotFound] = createSignal(false);
 
+  const kind = () => (props.tab.kind === "log-service" ? "service" : "task");
+  const target = () =>
+    props.tab.kind === "log-service"
+      ? (props.tab as ServiceLogTab).service
+      : (props.tab as TaskLogTab).task;
+  const isPrevious = () => !!props.tab.previous;
+
   const task = createMemo(() =>
-    props.kind === "task"
-      ? (tasksMap()[props.project] ?? []).find((t) => t.name === props.target)
+    props.tab.kind === "log-task"
+      ? (tasksMap()[props.tab.project] ?? []).find((t) => t.name === (props.tab as TaskLogTab).task)
       : undefined
   );
   const isRunning = createMemo(() => {
-    if (props.kind === "task") {
+    if (props.tab.kind === "log-task") {
       const s = task()?.status;
       return s === "running" || s === "starting";
     }
-    const svc = (servicesMap()[props.project] ?? []).find((s) => s.name === props.target);
+    const svc = (servicesMap()[props.tab.project] ?? []).find(
+      (s) => s.name === (props.tab as ServiceLogTab).service
+    );
     return svc?.status === "running" || svc?.status === "starting";
   });
 
@@ -117,11 +105,12 @@ function LogTerminal(props: {
     const startStream = () => {
       unsub?.();
       resetView();
-      const prev = isPreviousLogs(props.keyId);
-      const subscribe = props.kind === "service" ? subscribeLogs : subscribeTaskLogs;
+      const prev = isPrevious();
+      const subscribe = props.tab.kind === "log-service" ? subscribeLogs : subscribeTaskLogs;
+      const name = target();
       unsub = subscribe(
-        props.project,
-        props.target,
+        props.tab.project,
+        name,
         (line) => {
           setReceivedAny(true);
           buffer.push("\x1b[0m" + formatLogLine(line));
@@ -143,7 +132,7 @@ function LogTerminal(props: {
         resetView();
         return;
       }
-      isPreviousLogs(props.keyId);
+      isPrevious();
       startStream();
     });
 
@@ -185,13 +174,13 @@ function LogTerminal(props: {
       <Show when={!receivedAny()}>
         <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-muted-foreground">
           <Show
-            when={isPreviousLogs(props.keyId)}
+            when={isPrevious()}
             fallback={
               <Show
-                when={notFound() && props.kind === "task" && !isRunning()}
+                when={notFound() && kind() === "task" && !isRunning()}
                 fallback={
                   <Show
-                    when={notFound() && props.kind === "service"}
+                    when={notFound() && kind() === "service"}
                     fallback={
                       <div class="flex flex-col items-center gap-2">
                         <Spinner class="opacity-60" />
@@ -205,9 +194,11 @@ function LogTerminal(props: {
                       </div>
                       <div class="flex flex-col gap-1">
                         <p class="text-sm font-medium text-foreground">No logs available</p>
-                        <p class="max-w-xs text-xs text-muted-foreground">
-                          No logs found for service &ldquo;{props.target}&rdquo;.
-                        </p>
+                        <div class="flex max-w-xs flex-col gap-1">
+                          <p class="text-xs text-muted-foreground">
+                            No logs found for service &ldquo;{target()}&rdquo;.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </Show>
@@ -230,7 +221,7 @@ function LogTerminal(props: {
                   </Show>
                   <Button
                     size="sm"
-                    onClick={() => runTask(props.project, props.target)}
+                    onClick={() => runTask(props.tab.project, target())}
                     class="mt-1 gap-1.5"
                   >
                     <Play class="!size-3.5" />
@@ -256,13 +247,13 @@ function LogTerminal(props: {
                 <div class="flex flex-col gap-1">
                   <p class="text-sm font-medium text-foreground">No previous run logs</p>
                   <p class="max-w-xs text-xs text-muted-foreground">
-                    There are no archived logs from an earlier run of {props.kind} &ldquo;{props.target}&rdquo;.
+                    There are no archived logs from an earlier run of {kind()} &ldquo;{target()}&rdquo;.
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => togglePreviousLogs(props.keyId)}
+                  onClick={() => togglePreviousLogs(props.tab.id)}
                   class="mt-1"
                 >
                   Switch to live logs
@@ -284,157 +275,5 @@ function LogTerminal(props: {
         </Button>
       </Show>
     </div>
-  );
-}
-
-export function LogView() {
-  // Open/focus a tab whenever the selection targets a service or task.
-  createEffect(() => {
-    const p = selectedProject();
-    const svc = selectedService();
-    const task = selectedTask();
-    if (p && svc) openLogTab(p, "service", svc);
-    else if (p && task) openLogTab(p, "task", task);
-  });
-
-  // Prune tabs whose targets vanished.
-  createEffect(() => {
-    const projs = projectsList();
-    const svcs = servicesMap();
-    const tasks = tasksMap();
-
-    pruneLogTabs((tab) => {
-      if (projs.length > 0 && !projs.some((p) => p.name === tab.project)) {
-        return false;
-      }
-      if (tab.kind === "service") {
-        const list = svcs[tab.project];
-        if (list !== undefined && !list.some((s) => s.name === tab.name)) {
-          return false;
-        }
-      }
-      if (tab.kind === "task") {
-        const list = tasks[tab.project];
-        if (list !== undefined && !list.some((a) => a.name === tab.name)) {
-          return false;
-        }
-      }
-      return true;
-    });
-  });
-
-  return (
-    <div class="flex h-full min-w-0 flex-col">
-      <Show when={tabs().length > 0}>
-        <div class="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b bg-card px-2">
-          <For each={tabs()}>
-            {(tab) => {
-              const isActive = () => activeKey() === tab.key;
-              return (
-                <div
-                  class={cn(
-                    "group flex h-6 shrink-0 items-stretch overflow-hidden rounded-md border text-xs transition-colors",
-                    isActive()
-                      ? "border-accent-foreground/10 bg-accent text-accent-foreground"
-                      : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => focusTab(tab)}
-                    class="flex min-w-0 items-center gap-1.5 px-2 focus-visible:outline-none"
-                    title={tab.kind === "task" ? `${tab.project} · task` : `${tab.project} · service`}
-                  >
-                    <span
-                      class={cn("size-1.5 shrink-0 rounded-full", tab.kind === "service" ? "bg-primary" : "bg-warning")}
-                    />
-                    <span class="truncate">
-                      <Show when={selectedProject() !== tab.project}>
-                        <span class="text-muted-foreground/70">{tab.project}/</span>
-                      </Show>
-                      {tab.name}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Close ${tab.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeLogTab(tab.key);
-                    }}
-                    class={cn(
-                      "flex w-5 items-center justify-center text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground",
-                      !isActive() && "opacity-0 group-hover:opacity-100"
-                    )}
-                  >
-                    <X class="size-3" />
-                  </button>
-                </div>
-              );
-            }}
-          </For>
-
-          {/* Active-tab previous/live switch */}
-          <Show when={activeKey()} keyed>
-            {(key: string) => (
-              <button
-                type="button"
-                onClick={() => togglePreviousLogs(key)}
-                class={cn(
-                  "ml-auto flex h-6 shrink-0 items-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                  isPreviousLogs(key)
-                    ? "border-warning/50 bg-warning/10 text-warning"
-                    : "border-input text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-                title="Toggle previous run's logs (p)"
-              >
-                <History class="size-3" />
-                {isPreviousLogs(key) ? "previous run" : "live"}
-              </button>
-            )}
-          </Show>
-        </div>
-      </Show>
-
-      <div class="relative min-h-0 flex-1">
-        <Show when={tabs().length > 0} fallback={<LogEmptyState />}>
-          <For each={tabs()}>
-            {(tab) => (
-              <LogTerminal
-                project={tab.project}
-                kind={tab.kind}
-                target={tab.name}
-                keyId={tab.key}
-                active={activeKey() === tab.key}
-              />
-            )}
-          </For>
-        </Show>
-      </div>
-    </div>
-  );
-}
-
-/** Clicking a tab re-selects that service/task everywhere (sidebar + route). */
-function focusTab(tab: { project: string; kind: "service" | "task"; name: string }) {
-  if (tab.kind === "service") selectService(tab.project, tab.name);
-  else selectTask(tab.project, tab.name);
-}
-
-function LogEmptyState() {
-  return (
-    <Empty class="h-full border-0">
-      <EmptyHeader>
-        <EmptyMedia>
-          <RadioTower class="size-8 stroke-1 text-muted-foreground" />
-        </EmptyMedia>
-        <EmptyTitle>No log streams open</EmptyTitle>
-        <EmptyDescription class="max-w-xs">
-          Select a service in the sidebar to follow its logs. Tabs stay open across
-          projects — close them with ×.
-        </EmptyDescription>
-      </EmptyHeader>
-    </Empty>
   );
 }

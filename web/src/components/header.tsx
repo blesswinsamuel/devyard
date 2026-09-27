@@ -25,12 +25,8 @@ import {
   tasks as tasksMap,
 } from "~/stores/data";
 import { selectedProject, selectedService, selectedTask } from "~/stores/nav";
-import {
-  isPreviousLogs,
-  tabKey,
-  togglePreviousLogs,
-} from "~/stores/logs";
-import { openTerminalPanel, panelOpen } from "~/stores/app";
+import { isPreviousLogs, openTerminalTab, togglePreviousLogs } from "~/stores/workspace";
+import type { WorkspaceTab } from "~/lib/types";
 import { healthTone, serviceMeta, statusLabel, statusTone } from "~/lib/status";
 import { Badge } from "~/components/ui/badge";
 import {
@@ -55,36 +51,41 @@ function HeaderButtons() {
       <Tooltip>
         <TooltipTrigger
           as={Button}
-          variant={panelOpen() ? "secondary" : "ghost"}
+          variant="ghost"
           size="sm"
-          class={panelOpen() ? "" : "text-muted-foreground"}
-          onClick={() => openTerminalPanel()}
+          class="text-muted-foreground"
+          onClick={() => {
+            const project = selectedProject();
+            if (project) openTerminalTab(project);
+          }}
         >
           <SquareTerminal class="!size-3.5" />
           <span class="hidden md:inline">Terminal</span>
         </TooltipTrigger>
-        <TooltipContent>Toggle terminal panel (t)</TooltipContent>
+        <TooltipContent>Open a terminal tab (t)</TooltipContent>
       </Tooltip>
     </>
   );
 }
 
-function PrevRunButton(props: { project: string; kind: "service" | "task"; name: string }) {
-  const key = () => tabKey(props.project, props.kind, props.name);
+function PrevRunButton(props: { tab: WorkspaceTab }) {
+  const isLog = () => props.tab.kind === "log-service" || props.tab.kind === "log-task";
   return (
-    <Tooltip>
-      <TooltipTrigger
-        as={Button}
-        variant="ghost"
-        size="sm"
-        class={isPreviousLogs(key()) ? "text-warning" : "text-muted-foreground"}
-        onClick={() => togglePreviousLogs(key())}
-      >
-        <History class="!size-3.5" />
-        <span class="hidden md:inline">{isPreviousLogs(key()) ? "Previous run" : "Live"}</span>
-      </TooltipTrigger>
-      <TooltipContent>Show previous run's logs (p)</TooltipContent>
-    </Tooltip>
+    <Show when={isLog()}>
+      <Tooltip>
+        <TooltipTrigger
+          as={Button}
+          variant="ghost"
+          size="sm"
+          class={isPreviousLogs(props.tab.id) ? "text-warning" : "text-muted-foreground"}
+          onClick={() => togglePreviousLogs(props.tab.id)}
+        >
+          <History class="!size-3.5" />
+          <span class="hidden md:inline">{isPreviousLogs(props.tab.id) ? "Previous run" : "Live"}</span>
+        </TooltipTrigger>
+        <TooltipContent>Show previous run's logs (p)</TooltipContent>
+      </Tooltip>
+    </Show>
   );
 }
 
@@ -115,7 +116,7 @@ function HeaderBreadcrumb(props: { parts: { label: string; strong?: boolean; mon
   );
 }
 
-export function ServiceHeader() {
+export function ServiceHeader(props: { tab: WorkspaceTab }) {
   const project = () => selectedProject()!;
   const service = () => selectedService()!;
   const state = createMemo<ServiceState | undefined>(() =>
@@ -169,7 +170,7 @@ export function ServiceHeader() {
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <HeaderButtons />
         <Separator orientation="vertical" class="mx-1 h-4" />
-        <PrevRunButton project={project()} kind="service" name={service()} />
+        <PrevRunButton tab={props.tab} />
         <Show
           when={state()?.status !== "stopped" && state()?.status !== "exited"}
           fallback={
@@ -244,7 +245,7 @@ export function ProjectHeader() {
   );
 }
 
-export function TaskHeader() {
+export function TaskHeader(props: { tab: WorkspaceTab }) {
   const project = () => selectedProject()!;
   const taskName = () => selectedTask()!;
   const task = createMemo(() => (tasksMap()[project()] ?? []).find((t) => t.name === taskName()));
@@ -273,7 +274,7 @@ export function TaskHeader() {
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <HeaderButtons />
         <Separator orientation="vertical" class="mx-1 h-4" />
-        <PrevRunButton project={project()} kind="task" name={taskName()} />
+        <PrevRunButton tab={props.tab} />
         <Show
           when={status() === "running" || status() === "starting"}
           fallback={

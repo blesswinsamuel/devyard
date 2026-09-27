@@ -1,4 +1,4 @@
-import { batch, createEffect, createSignal, untrack } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { connectWS } from "~/lib/ws";
 import { onDaemonEvent, startEvents, stopEvents } from "~/lib/events";
 import { listenPopState, parseRoute, pushRoute, replaceRoute, type RouteState } from "~/lib/router";
@@ -14,11 +14,21 @@ import {
   selectedCommitHash,
   tasks as tasksData,
 } from "~/stores/data";
-import { ensureShellWorkspace } from "~/stores/shells";
+import {
+  gitTabId,
+  openTab,
+  overviewTabId,
+  serviceLogTabId,
+  taskLogTabId,
+} from "~/stores/workspace";
 import { setSidebarOpen } from "~/stores/app";
 import { isMobile } from "~/lib/is-mobile";
 
 // --- navigation model -------------------------------------------------------
+//
+// "Selection" is derived from the unified workspace: the focused pane's active
+// tab decides what the header shows and which sidebar row is highlighted.
+// Sidebar clicks open-or-focus the matching tab.
 
 export type NavItem =
   | { kind: "project"; project: string }
@@ -28,26 +38,25 @@ export type NavItem =
 const [selectedProject, setSelectedProject] = createSignal<string | null>(null);
 const [selectedService, setSelectedService] = createSignal<string | null>(null);
 const [selectedTask, setSelectedTask] = createSignal<string | null>(null);
-/** Which main view is shown: logs or the full-page git view. */
-const [activeView, setActiveView] = createSignal<"logs" | "git">("logs");
 /** Projects the user has collapsed; everything else is expanded by default. */
 const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set());
 /**
  * Keyboard focus in the sidebar (visual highlight). Arrow keys move it
- * without committing; Enter commits it to the selection. Single highlight
- * system — no parallel ring.
+ * without committing; Enter commits it to the selection.
  */
 const [keyboardCursor, setKeyboardCursor] = createSignal<NavItem | null>(null);
 
-export {
-  selectedProject,
-  selectedService,
-  selectedTask,
-  activeView,
-  setActiveView,
-  keyboardCursor,
-};
+export { selectedProject, selectedService, selectedTask, keyboardCursor };
 
+function applySelection(project: string | null, service: string | null, task: string | null) {
+  batch(() => {
+    setSelectedProject(project);
+    setSelectedService(service);
+    setSelectedTask(task);
+  });
+}
+
+/** The workspace tab currently under the keyboard cursor, for actions. */
 export function sameNavItem(a: NavItem | null, b: NavItem | null): boolean {
   if (!a || !b) return a === b;
   if (a.kind !== b.kind || a.project !== b.project) return false;
@@ -212,49 +221,57 @@ export function setProjectExpanded(name: string, open: boolean) {
   });
 }
 
-function applySelection(
-  project: string | null,
-  service: string | null,
-  task: string | null,
-  view: "logs" | "git"
-) {
-  batch(() => {
-    setSelectedProject(project);
-    setSelectedService(service);
-    setSelectedTask(task);
-    setActiveView(view);
-  });
+function pushProjectRoute(project: string | null) {
+  pushRoute({ project, service: null, task: null });
+}
+
+function closeMobileSidebar() {
   // On phones the sidebar is a drawer; picking a target slides it away.
-  if (project && isMobile()) setSidebarOpen(false);
-  // Shell workspaces are created eagerly so getters never mutate during render.
-  if (project) ensureShellWorkspace(project);
+  if (isMobile()) setSidebarOpen(false);
 }
 
 export function selectProject(name: string, opts?: { skipPush?: boolean }) {
-  applySelection(name, null, null, "logs");
+  batch(() => {
+    applySelection(name, null, null);
+    openTab({ kind: "overview", id: overviewTabId(name), project: name });
+  });
   setProjectExpanded(name, true);
   setKeyboardCursor({ kind: "project", project: name });
-  if (!opts?.skipPush) pushRoute({ project: name, service: null, task: null });
+  closeMobileSidebar();
+  if (!opts?.skipPush) pushProjectRoute(name);
 }
 
 export function selectService(project: string, service: string, opts?: { skipPush?: boolean }) {
-  applySelection(project, service, null, "logs");
+  batch(() => {
+    applySelection(project, service, null);
+    openTab({ kind: "log-service", id: serviceLogTabId(project, service), project, service });
+  });
   setProjectExpanded(project, true);
   setKeyboardCursor({ kind: "service", project, service });
-  if (!opts?.skipPush) pushRoute({ project, service, task: null });
+  closeMobileSidebar();
+  if (!opts?.skipPush) pushProjectRoute(project);
 }
 
 export function selectTask(project: string, taskName: string, opts?: { skipPush?: boolean }) {
-  applySelection(project, null, taskName, "logs");
+  batch(() => {
+    applySelection(project, null, taskName);
+    openTab({ kind: "log-task", id: taskLogTabId(project, taskName), project, task: taskName });
+  });
   setProjectExpanded(project, true);
   setKeyboardCursor({ kind: "task", project, task: taskName });
-  if (!opts?.skipPush) pushRoute({ project, service: null, task: taskName });
+  closeMobileSidebar();
+  if (!opts?.skipPush) pushProjectRoute(project);
 }
 
-/** Open the full-page git view for a project. */
-export function openGitView(name: string, commitHash?: string) {
-  applySelection(name, null, null, "git");
+/** Opens (or focuses) the git tab for a project, optionally at a commit. */
+export function openGitTab(name: string, commitHash?: string) {
+  batch(() => {
+    applySelection(name, null, null);
+    openTab({ kind: "git", id: gitTabId(name), project: name });
+  });
+  setProjectExpanded(name, true);
   setKeyboardCursor({ kind: "project", project: name });
+  closeMobileSidebar();
   loadGitLog(name);
   if (commitHash) {
     selectCommit(name, commitHash, { skipPush: true });
@@ -263,43 +280,19 @@ export function openGitView(name: string, commitHash?: string) {
   pushRoute({ project: name, service: null, task: null, view: "git", commit });
 }
 
-/** Close the git view, returning to the project's log view. */
-export function closeGitView() {
-  const p = selectedProject();
-  applySelection(p, p ? untrack(selectedService) : null, p ? untrack(selectedTask) : null, "logs");
-  if (p) {
-    pushRoute({ project: p, service: selectedService(), task: selectedTask(), view: "logs" });
-  } else {
-    pushRoute({ project: null, service: null, task: null });
-  }
-}
-
 // --- pruning ----------------------------------------------------------------
 
 function pruneSelection() {
   const projList = untrack(projectsData);
   const names = new Set(projList.map((p) => p.name));
   const sel = untrack(selectedProject);
+  // Tab pruning (including the derived selection) happens in Main via
+  // pruneWorkspace; here we only fix the sidebar cursor and URL.
   if (projList.length > 0 && sel && !names.has(sel)) {
-    applySelection(null, null, null, "logs");
+    applySelection(null, null, null);
     pruneCursor();
     replaceRoute({ project: null, service: null, task: null });
     return;
-  }
-  if (sel) {
-    const svc = untrack(selectedService);
-    const svcList = untrack(servicesData)[sel];
-    if (svc && svcList !== undefined && !svcList.some((s) => s.name === svc)) {
-      applySelection(sel, null, null, untrack(activeView));
-      replaceRoute({ project: sel, service: null, task: null });
-    }
-    const task = untrack(selectedTask);
-    if (!task) return;
-    const taskList = untrack(tasksData)[sel];
-    if (taskList !== undefined && !taskList.some((a) => a.name === task)) {
-      applySelection(sel, null, null, untrack(activeView));
-      replaceRoute({ project: sel, service: null, task: null });
-    }
   }
   pruneCursor();
 }
@@ -322,30 +315,18 @@ export function start(): () => void {
   startEvents();
   connectWS();
 
-  // Seed selection from the initial URL.
+  // Seed selection from the initial URL and open the matching tabs.
   const initRoute = parseRoute();
   if (initRoute.project) {
-    applySelection(
-      initRoute.project,
-      initRoute.service ?? null,
-      initRoute.task ?? null,
-      initRoute.view === "git" ? "git" : "logs"
-    );
-    setProjectExpanded(initRoute.project, true);
     if (initRoute.view === "git") {
-      loadGitLog(initRoute.project);
-      if (initRoute.commit) {
-        selectCommit(initRoute.project, initRoute.commit, { skipPush: true });
-      }
+      openGitTab(initRoute.project, initRoute.commit ?? undefined);
+    } else if (initRoute.service) {
+      selectService(initRoute.project, initRoute.service, { skipPush: true });
+    } else if (initRoute.task) {
+      selectTask(initRoute.project, initRoute.task, { skipPush: true });
+    } else {
+      selectProject(initRoute.project, { skipPush: true });
     }
-    const { service, task, project } = initRoute;
-    setKeyboardCursor(
-      service
-        ? { kind: "service", project, service }
-        : task
-          ? { kind: "task", project, task }
-          : { kind: "project", project: project! }
-    );
   } else if (isMobile()) {
     // Nothing selected yet: lead phone users straight to the project list.
     setSidebarOpen(true);
@@ -353,18 +334,12 @@ export function start(): () => void {
 
   const stopPopState = listenPopState((route: RouteState) => {
     if (!route.project) {
-      applySelection(null, null, null, "logs");
+      applySelection(null, null, null);
       setKeyboardCursor(null);
       return;
     }
     if (route.view === "git") {
-      applySelection(route.project, null, null, "git");
-      loadGitLog(route.project);
-      if (route.commit) {
-        selectCommit(route.project, route.commit, { skipPush: true });
-      } else {
-        clearSelectedCommit(route.project);
-      }
+      openGitTab(route.project, route.commit ?? undefined);
     } else if (route.service) {
       selectService(route.project, route.service, { skipPush: true });
     } else if (route.task) {

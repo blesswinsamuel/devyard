@@ -1,18 +1,5 @@
 import { toast } from "solid-sonner";
-import { createEffect, createRoot, createSignal } from "solid-js";
-
-export type Theme = "dark" | "light";
-
-const storedTheme = (localStorage.getItem("lc-theme") as Theme | null) ?? "dark";
-const [theme, setTheme] = createSignal<Theme>(storedTheme);
-
-createRoot(() => {
-  createEffect(() => {
-    const t = theme();
-    document.documentElement.classList.toggle("dark", t === "dark");
-    localStorage.setItem("lc-theme", t);
-  });
-});
+import { createSignal } from "solid-js";
 
 // --- toasts ---------------------------------------------------------------
 
@@ -45,7 +32,7 @@ export function pushToast(message: string, kind: ToastKind = "error") {
 /** Mobile-only: whether the project sidebar drawer is slid in. */
 const [sidebarOpen, setSidebarOpen] = createSignal(false);
 
-export { sidebarOpen, setSidebarOpen, theme, setTheme };
+export { sidebarOpen, setSidebarOpen };
 
 const [showPortsDialog, setShowPortsDialog] = createSignal(false);
 const [showAddProject, setShowAddProject] = createSignal(false);

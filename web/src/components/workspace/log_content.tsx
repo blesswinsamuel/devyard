@@ -2,7 +2,7 @@ import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from
 import { ArrowDownToLine, History, Play, RadioTower } from "lucide-solid";
 import { runTask, services as servicesMap, tasks as tasksMap } from "~/stores/data";
 import { subscribeLogs, subscribeTaskLogs } from "~/stores/logs";
-import { theme } from "~/stores/app";
+import { useColorMode } from "~/components/color-mode";
 import { formatLogLine } from "~/lib/ansi";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
 import { togglePreviousLogs } from "~/stores/workspace";
@@ -48,8 +48,10 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
     return svc?.status === "running" || svc?.status === "starting";
   });
 
+  const { colorMode } = useColorMode();
+
   onMount(() => {
-    const t = createTerminal(container, theme(), {
+    const t = createTerminal(container, colorMode(), {
       convertEol: true,
       disableStdin: true,
       cursorBlink: false,
@@ -101,7 +103,7 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
     container.addEventListener("scroll", handleScroll, true);
 
     createEffect(() => {
-      t.options.theme = terminalTheme(theme());
+      t.options.theme = terminalTheme(colorMode());
     });
 
     let unsub: (() => void) | null = null;

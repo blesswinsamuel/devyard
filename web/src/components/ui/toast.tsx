@@ -1,23 +1,22 @@
-import { AlertTriangle, CheckCircle2, Info, LoaderCircle, OctagonX } from "lucide-solid";
+import { CircleCheck, Info, LoaderCircle, OctagonX, TriangleAlert } from "lucide-solid";
 import type { Component, ComponentProps, JSX } from "solid-js";
 import { Toaster as Sonner } from "solid-sonner";
-import { theme } from "~/stores/app";
+import { useColorMode } from "~/components/color-mode";
 
 type ToasterProps = ComponentProps<typeof Sonner>;
 
 const Toaster: Component<ToasterProps> = (props) => {
+  const { colorMode } = useColorMode();
   return (
     <Sonner
-      theme={theme()}
+      theme={colorMode()}
       class="toaster group"
-      position="top-right"
-      visibleToasts={5}
-      duration={5000}
+      position="top-center"
       icons={{
-        success: <CheckCircle2 class="size-4 text-success" />,
-        info: <Info class="size-4 text-info" />,
-        warning: <AlertTriangle class="size-4 text-warning" />,
-        error: <OctagonX class="size-4 text-destructive" />,
+        success: <CircleCheck class="size-4" />,
+        info: <Info class="size-4" />,
+        warning: <TriangleAlert class="size-4" />,
+        error: <OctagonX class="size-4" />,
         loading: <LoaderCircle class="size-4 animate-spin" />,
       }}
       style={

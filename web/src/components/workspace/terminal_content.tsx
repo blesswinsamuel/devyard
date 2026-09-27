@@ -1,7 +1,7 @@
 import { Show, createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { RotateCcw } from "lucide-solid";
 import { type AppTerminal, createTerminal, terminalTheme } from "~/terminal";
-import { theme } from "~/stores/app";
+import { useColorMode } from "~/components/color-mode";
 import {
   closeTerminal,
   resizeTerminal,
@@ -33,8 +33,10 @@ export function TerminalContent(props: { project: string; termId: string; active
     term.focus();
   };
 
+  const { colorMode } = useColorMode();
+
   onMount(() => {
-    const t = createTerminal(container, theme());
+    const t = createTerminal(container, colorMode());
     term = t;
 
     const dataSub = t.onData((data) => sendTerminalInput(props.termId, data));
@@ -58,7 +60,7 @@ export function TerminalContent(props: { project: string; termId: string; active
     if (props.active) requestAnimationFrame(() => t.focus());
 
     createEffect(() => {
-      t.options.theme = terminalTheme(theme());
+      t.options.theme = terminalTheme(colorMode());
     });
 
     onCleanup(() => {

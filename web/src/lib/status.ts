@@ -1,36 +1,34 @@
 import type { ServiceState } from "~/lib/types";
 
-export type StatusTone = "success" | "warning" | "destructive" | "info" | "muted";
+export type StatusTone = "success-light" | "warning-light" | "destructive" | "secondary";
 
 export function statusTone(status: string): StatusTone {
   switch (status) {
     case "running":
-      return "success";
+      return "success-light";
     case "starting":
     case "stopping":
     case "backoff":
-      return "warning";
+      return "warning-light";
     case "exited":
       return statusExitedTone();
     default:
-      return "muted";
+      return "secondary";
   }
 }
 
 function statusExitedTone(): StatusTone {
-  return "muted";
+  return "secondary";
 }
 
 export function statusDot(status: string): string {
   switch (statusTone(status)) {
-    case "success":
+    case "success-light":
       return "bg-success shadow-[0_0_6px_var(--success)]";
-    case "warning":
+    case "warning-light":
       return "bg-warning animate-pulse";
     case "destructive":
       return "bg-destructive";
-    case "info":
-      return "bg-info animate-pulse";
     default:
       return "bg-muted-foreground/50";
   }
@@ -47,26 +45,26 @@ export function statusLabel(status: string, exitCode: number): string {
 }
 
 export function healthTone(hasHealth: boolean, health: string): StatusTone {
-  if (!hasHealth) return "muted";
+  if (!hasHealth) return "secondary";
   switch (health) {
     case "healthy":
-      return "success";
+      return "success-light";
     case "unhealthy":
       return "destructive";
     case "starting":
     case "starting_healthy":
-      return "warning";
+      return "warning-light";
     default:
-      return "muted";
+      return "secondary";
   }
 }
 
 export function healthDot(hasHealth: boolean, health: string): string {
   if (!hasHealth) return "";
   switch (healthTone(hasHealth, health)) {
-    case "success":
+    case "success-light":
       return "bg-success";
-    case "warning":
+    case "warning-light":
       return "bg-warning animate-pulse";
     case "destructive":
       return "bg-destructive animate-pulse";

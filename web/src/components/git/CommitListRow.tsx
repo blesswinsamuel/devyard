@@ -2,7 +2,7 @@ import { For, Show } from "solid-js";
 import { Archive, Check, GitBranch, Tag } from "lucide-solid";
 import type { GitCommit } from "~/lib/types";
 import { formatRelativeTime } from "~/lib/format";
-import { Badge } from "~/components/badge";
+import { Badge } from "~/components/ui/badge";
 import { cn } from "~/lib/utils";
 import type { CommitGraphInfo } from "~/lib/git_graph";
 import { CommitGraphCell } from "./CommitGraphCell";

@@ -2,12 +2,12 @@ import { Terminal, type ITerminalOptions, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import type { Theme } from "~/stores/app";
+import type { ColorMode } from "~/components/color-mode";
 
 // Catppuccin ANSI 16-color palettes (Mocha / Latte) for terminal *content*,
 // with backgrounds tuned to match the app's surface tokens so panes blend
 // into the chrome.
-const themes: Record<Theme, ITheme> = {
+const themes: Record<ColorMode, ITheme> = {
   dark: {
     background: "#101014",
     foreground: "#d5d6dd",
@@ -56,7 +56,7 @@ const themes: Record<Theme, ITheme> = {
   },
 };
 
-export function terminalTheme(t: Theme): ITheme {
+export function terminalTheme(t: ColorMode): ITheme {
   return themes[t];
 }
 
@@ -66,7 +66,7 @@ export interface AppTerminal extends Terminal {
 
 export function createTerminal(
   container: HTMLElement,
-  initialTheme: Theme,
+  initialTheme: ColorMode,
   options?: Partial<ITerminalOptions>
 ): AppTerminal {
   const term = new Terminal({

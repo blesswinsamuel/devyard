@@ -53,7 +53,8 @@ import {
   tasks as tasksMap,
 } from "~/stores/data";
 import { isPreviousLogs, serviceLogTabId, taskLogTabId, togglePreviousLogs } from "~/stores/workspace";
-import { pushToast, openPortsDialog, setShowAddProject, setShowDaemonModal, setShowSettingsModal, theme, setTheme } from "~/stores/app";
+import { useColorMode } from "~/components/color-mode";
+import { pushToast, openPortsDialog, setShowAddProject, setShowDaemonModal, setShowSettingsModal } from "~/stores/app";
 import { toggleHelp, sidebarOpen, setSidebarOpen } from "~/stores/app";
 import { openGitTab } from "~/stores/nav";
 import { eventStatus } from "~/lib/events";
@@ -982,15 +983,14 @@ export function Sidebar() {
           <Kbd>?</Kbd>
           <span>shortcuts</span>
         </Button>
-        <ThemeToggle />
+        <ThemeSwitch />
       </footer>
       </aside>
     </>
   );
 }
 
-function ThemeToggle() {
-  return (
-    <Switch checked={theme() === "dark"} onChange={(v) => setTheme(v ? "dark" : "light")} aria-label="Dark mode" />
-  );
+function ThemeSwitch() {
+  const { colorMode, toggleColorMode } = useColorMode();
+  return <Switch checked={colorMode() === "dark"} onChange={toggleColorMode} aria-label="Dark mode" />;
 }

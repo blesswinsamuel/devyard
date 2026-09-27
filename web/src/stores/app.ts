@@ -47,18 +47,15 @@ const [sidebarOpen, setSidebarOpen] = createSignal(false);
 
 export { sidebarOpen, setSidebarOpen };
 
-const [showPortsModal, setShowPortsModal] = createSignal(false);
-/** Which scope the ports dialog was opened in: current project or all projects. */
-const [portsScope, setPortsScope] = createSignal<"project" | "all">("project");
+const [showPortsDialog, setShowPortsDialog] = createSignal(false);
 const [showAddProject, setShowAddProject] = createSignal(false);
 const [showDaemonModal, setShowDaemonModal] = createSignal(false);
 const [showSettingsModal, setShowSettingsModal] = createSignal(false);
 const [showHelp, setShowHelp] = createSignal(false);
 
 export {
-  showPortsModal,
-  setShowPortsModal,
-  portsScope,
+  showPortsDialog,
+  setShowPortsDialog,
   showAddProject,
   setShowAddProject,
   showDaemonModal,
@@ -69,12 +66,9 @@ export {
   setShowHelp,
 };
 
-/** Opens the ports dialog pre-scoped to one project or to every project. */
-export function openPortsModal(scope: "project" | "all") {
-  batch(() => {
-    setPortsScope(scope);
-    setShowPortsModal(true);
-  });
+/** Opens the global ports & URLs dialog. */
+export function openPortsDialog() {
+  setShowPortsDialog(true);
 }
 
 export function toggleHelp() {
@@ -86,7 +80,7 @@ export function closeHelp() {
 }
 
 export function anyOverlayOpen(): boolean {
-  return showPortsModal() || showAddProject() || showDaemonModal() || showSettingsModal() || showHelp();
+  return showPortsDialog() || showAddProject() || showDaemonModal() || showSettingsModal() || showHelp();
 }
 
 // --- bottom terminal panel --------------------------------------------------

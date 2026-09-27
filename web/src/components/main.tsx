@@ -1,8 +1,8 @@
 import { Show } from "solid-js";
 import { GitBranch, Globe, Menu, PackageOpen, Play, ScrollText, Square, SquareTerminal } from "lucide-solid";
-import { fetchPorts, runTask, stopTask, tasks as tasksMap } from "~/stores/data";
+import { runTask, stopTask, tasks as tasksMap } from "~/stores/data";
 import { activeView, closeGitView, openGitView, selectedProject, selectedService, selectedTask } from "~/stores/nav";
-import { openPortsModal, setSidebarOpen } from "~/stores/app";
+import { openPortsDialog, setSidebarOpen } from "~/stores/app";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
@@ -11,82 +11,96 @@ import { ProjectHeader, ServiceHeader, TaskHeader } from "~/components/header";
 import { LogView } from "~/components/logs";
 import { GitView } from "~/components/git/GitView";
 import { BottomPanel } from "~/components/bottom_panel";
-import { PortsModal } from "~/components/ports_modal";
+import { PortsDialog, PortsPanel } from "~/components/ports_panel";
 
-function EmptyState() {
-  const project = () => selectedProject();
-  const taskList = () => (project() ? tasksMap()[project()!] ?? [] : []);
-
+function NoProjectState() {
   return (
     <div class="flex h-full flex-col items-center justify-center p-6 text-muted-foreground">
-      <Show
-        when={project()}
-        fallback={
-          <Empty class="border-0">
-            <EmptyHeader>
-              <EmptyMedia>
-                <PackageOpen class="size-9 stroke-1 text-muted-foreground" />
-              </EmptyMedia>
-              <EmptyTitle>No project selected</EmptyTitle>
-              <EmptyDescription>
-                Select a project to get started.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        }
-      >
-        <div class="w-full max-w-md text-center">
-          <p class="mb-4 text-[13px] leading-relaxed">
-            Select a service under{" "}
-            <span class="font-semibold text-foreground">{project()}</span> to follow its logs.
-          </p>
-          <Show when={taskList().length > 0}>
-            <Card class="shadow-sm">
-              <CardHeader class="pb-2">
-                <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Project tasks
-                </CardTitle>
-              </CardHeader>
-              <CardContent class="grid gap-1.5 pt-0">
-                {taskList().map((act) => (
-                  <div class="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-2.5 py-2 transition-colors hover:bg-muted/60">
-                    <div class="min-w-0 pr-2">
-                      <div class="truncate text-[13px] font-medium text-foreground">{act.name}</div>
-                      <div class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                        {act.command}
-                      </div>
+      <Empty class="border-0">
+        <EmptyHeader>
+          <EmptyMedia>
+            <PackageOpen class="size-9 stroke-1 text-muted-foreground" />
+          </EmptyMedia>
+          <EmptyTitle>No project selected</EmptyTitle>
+          <EmptyDescription>
+            Select a project to get started.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    </div>
+  );
+}
+
+/** Project landing page: pointers, ports & URLs, and project tasks. */
+function ProjectOverview() {
+  const project = () => selectedProject()!;
+  const taskList = () => tasksMap()[project()] ?? [];
+
+  return (
+    <div class="h-full overflow-y-auto">
+      <div class="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6">
+        <p class="text-[13px] leading-relaxed text-muted-foreground">
+          Select a service under{" "}
+          <span class="font-semibold text-foreground">{project()}</span> to follow its logs.
+        </p>
+
+        <Card class="shadow-sm">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Ports & URLs
+            </CardTitle>
+          </CardHeader>
+          <CardContent class="pt-0">
+            <PortsPanel project={project()} />
+          </CardContent>
+        </Card>
+
+        <Show when={taskList().length > 0}>
+          <Card class="shadow-sm">
+            <CardHeader class="pb-2">
+              <CardTitle class="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Project tasks
+              </CardTitle>
+            </CardHeader>
+            <CardContent class="grid gap-1.5 pt-0">
+              {taskList().map((act) => (
+                <div class="flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-2.5 py-2 transition-colors hover:bg-muted/60">
+                  <div class="min-w-0 pr-2">
+                    <div class="truncate text-[13px] font-medium text-foreground">{act.name}</div>
+                    <div class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+                      {act.command}
                     </div>
-                    <Show
-                      when={act.status === "running" || act.status === "starting"}
-                      fallback={
-                        <Button
-                          size="xs"
-                          variant="secondary"
-                          class="shrink-0"
-                          onClick={() => runTask(project()!, act.name)}
-                        >
-                          <Play class="!size-3 text-primary" />
-                          Run
-                        </Button>
-                      }
-                    >
+                  </div>
+                  <Show
+                    when={act.status === "running" || act.status === "starting"}
+                    fallback={
                       <Button
                         size="xs"
                         variant="secondary"
                         class="shrink-0"
-                        onClick={() => stopTask(project()!, act.name)}
+                        onClick={() => runTask(project(), act.name)}
                       >
-                        <Square class="!size-3 text-destructive" />
-                        Stop
+                        <Play class="!size-3 text-primary" />
+                        Run
                       </Button>
-                    </Show>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </Show>
-        </div>
-      </Show>
+                    }
+                  >
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      class="shrink-0"
+                      onClick={() => stopTask(project(), act.name)}
+                    >
+                      <Square class="!size-3 text-destructive" />
+                      Stop
+                    </Button>
+                  </Show>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </Show>
+      </div>
     </div>
   );
 }
@@ -154,13 +168,10 @@ export function Main() {
                 variant="ghost"
                 size="sm"
                 class="ml-auto mr-1 text-muted-foreground"
-                onClick={() => {
-                  fetchPorts();
-                  openPortsModal("all");
-                }}
+                onClick={() => openPortsDialog()}
               >
                 <Globe class="!size-3.5" />
-                <span class="hidden sm:inline">Open ports</span>
+                <span class="hidden sm:inline">Ports</span>
               </Button>
             </>
           }
@@ -180,7 +191,11 @@ export function Main() {
         <Show when={activeView() === "git"} fallback={
           <Show
             when={selectedService() || selectedTask()}
-            fallback={<EmptyState />}
+            fallback={
+              <Show when={selectedProject()} fallback={<NoProjectState />}>
+                <ProjectOverview />
+              </Show>
+            }
           >
             <LogView />
           </Show>
@@ -190,7 +205,7 @@ export function Main() {
       </div>
 
       <BottomPanel />
-      <PortsModal />
+      <PortsDialog />
     </main>
   );
 }

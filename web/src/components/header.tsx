@@ -1,7 +1,6 @@
 import { For, Show, createMemo } from "solid-js";
 import {
   ExternalLink,
-  Globe,
   History,
   Play,
   Power,
@@ -13,9 +12,7 @@ import {
 } from "lucide-solid";
 import type { ServiceState } from "~/lib/types";
 import {
-  fetchPorts,
   killService,
-  ports,
   projects as projectsList,
   restartService,
   runTask,
@@ -33,7 +30,7 @@ import {
   tabKey,
   togglePreviousLogs,
 } from "~/stores/logs";
-import { openPortsModal, openTerminalPanel, panelOpen } from "~/stores/app";
+import { openTerminalPanel, panelOpen } from "~/stores/app";
 import { healthTone, serviceMeta, statusLabel, statusTone } from "~/lib/status";
 import { Badge } from "~/components/ui/badge";
 import {
@@ -52,31 +49,9 @@ import { cleanProxyUrl } from "~/lib/format";
 
 
 /** Buttons shared by every header variant. */
-function HeaderButtons(props: { project: string }) {
-  const count = () => (ports()[props.project] ?? []).length;
+function HeaderButtons() {
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          as={Button}
-          variant="ghost"
-          size="sm"
-          class="text-muted-foreground"
-          onClick={() => {
-            fetchPorts(props.project);
-            openPortsModal("project");
-          }}
-        >
-          <Globe class="!size-3.5" />
-          <span class="hidden md:inline">Ports</span>
-          <Show when={count() > 0}>
-            <span class="rounded-full bg-primary/12 px-1.5 font-mono text-[10px] tabular text-primary">
-              {count()}
-            </span>
-          </Show>
-        </TooltipTrigger>
-        <TooltipContent>Open ports</TooltipContent>
-      </Tooltip>
       <Tooltip>
         <TooltipTrigger
           as={Button}
@@ -192,7 +167,7 @@ export function ServiceHeader() {
       </Show>
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
-        <HeaderButtons project={project()} />
+        <HeaderButtons />
         <Separator orientation="vertical" class="mx-1 h-4" />
         <PrevRunButton project={project()} kind="service" name={service()} />
         <Show
@@ -244,7 +219,7 @@ export function ProjectHeader() {
       </Show>
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
-        <HeaderButtons project={project()} />
+        <HeaderButtons />
         <Separator orientation="vertical" class="mx-1 h-4" />
         <Show
           when={!isStopped()}
@@ -296,7 +271,7 @@ export function TaskHeader() {
       </Show>
 
       <div class="ml-auto flex shrink-0 items-center gap-1">
-        <HeaderButtons project={project()} />
+        <HeaderButtons />
         <Separator orientation="vertical" class="mx-1 h-4" />
         <PrevRunButton project={project()} kind="task" name={taskName()} />
         <Show

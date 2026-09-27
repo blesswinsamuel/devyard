@@ -81,6 +81,7 @@ func newServiceListCmd(ctx *CLIContext) *cobra.Command {
 func newServiceStartCmd(ctx *CLIContext) *cobra.Command {
 	var build bool
 	var follow bool
+	var removeOrphans = true
 
 	cmd := &cobra.Command{
 		Use:   "start [service...]",
@@ -104,7 +105,7 @@ func newServiceStartCmd(ctx *CLIContext) *cobra.Command {
 			defer func() { _ = client.Close() }()
 
 			if len(args) == 0 {
-				if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, true); err != nil {
+				if err := client.StartProject(cfg.ConfigPath, false, cfg.EnvFile, removeOrphans); err != nil {
 					return err
 				}
 				ctx.Errorf("devyard: project %q started\n", cfg.Project)
@@ -120,12 +121,16 @@ func newServiceStartCmd(ctx *CLIContext) *cobra.Command {
 				}
 				ctx.Errorf("devyard: started %q\n", svc)
 			}
-			return nil
+			if !follow {
+				return nil
+			}
+			return followForegroundTo(ctx, cfg.Project, args)
 		},
 	}
 
 	cmd.Flags().BoolVar(&build, "build", false, "Run build commands before starting")
-	cmd.Flags().BoolVar(&follow, "follow", false, "Follow logs in real time after starting")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow logs in real time after starting")
+	cmd.Flags().BoolVar(&removeOrphans, "remove-orphans", true, "Stop orphan services not declared in config")
 	return cmd
 }
 

@@ -1,6 +1,6 @@
 # Control Protocol (ConnectRPC)
 
-The communication between the global daemon and its clients (`devyard ps`/`logs`/`restart`/`down`/`top`, CLI commands, and the web UI) is powered by **ConnectRPC** over HTTP/2 on Unix domain sockets and TCP.
+The communication between the global daemon and its clients (`devyard ps`/`logs`/`restart`/`stop`/`top`, CLI commands, and the web UI) is powered by **ConnectRPC** over HTTP/2 on Unix domain sockets and TCP.
 
 Implementation:
 - Protobuf schema: `proto/devyard/v1/control.proto`

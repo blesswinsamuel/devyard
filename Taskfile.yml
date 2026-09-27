@@ -1,21 +1,15 @@
 # https://taskfile.dev
 #
 # Same workflow as the root devyard.yml (preferred):
-#   devyard up
+#   devyard start -f
 
 version: "3"
 
 tasks:
   default:
-    desc: Run Go web proxy and Vite frontend for local development
+    desc: Start the Vite frontend for local development (needs a running daemon)
     deps:
-      - web
       - frontend
-
-  web:
-    desc: Start the devyard web UI proxy (needs a running daemon)
-    cmds:
-      - gow run ./cmd/devyard web --host 127.0.0.1 --port 9090
 
   frontend:
     desc: Start the Vite frontend (bun)

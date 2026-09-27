@@ -7,12 +7,12 @@
 #
 # Run from this directory:
 #
-#   devyard up          # foreground, Ctrl-C to stop
-#   devyard up -d       # detached
+#   devyard start -f    # foreground, Ctrl-C to stop
+#   devyard start       # detached
 #   devyard ps          # status
 #   devyard logs --follow
 #   devyard restart worker
-#   devyard down
+#   devyard stop
 #
 # Expected behavior:
 #   - api starts, writes ./api.ready, then idles forever; healthcheck flips to
@@ -22,10 +22,10 @@
 #     on-failure policy until the backoff cap is hit.
 #
 # Note: the smoke project deliberately has no project-level .stopped marker
-# written by `down` during testing, so a hard daemon kill (no `down`) brings
+# written by `stop` during testing, so a hard daemon kill (no `stop`) brings
 # api back on the next daemon autostart. `restart: always` keeps api running
-# in place after unexpected exits. A project-level `down` writes a `.stopped`
-# marker that suppresses autostart; the next explicit `up` / `start` clears
+# in place after unexpected exits. A project-level `stop` writes a `.stopped`
+# marker that suppresses autostart; the next explicit `start` clears
 # that marker and starts the project again.
 
 version: "1"

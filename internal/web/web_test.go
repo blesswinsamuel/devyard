@@ -438,7 +438,8 @@ func startStack(t *testing.T, m *fakeMultiBackend) *web.Server {
 	}
 	t.Cleanup(func() { _ = ctrlSrv.Close() })
 
-	webSrv := web.NewServer("127.0.0.1:0", sock)
+	_, rpcHandler := ctrlSrv.Handler()
+	webSrv := web.NewServer("127.0.0.1:0", rpcHandler, m)
 	if err := webSrv.ListenAndServe(); err != nil {
 		t.Fatalf("web.ListenAndServe: %v", err)
 	}

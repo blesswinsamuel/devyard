@@ -613,7 +613,7 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*protocol.GitDiff
 		stX := rawLine[0]
 		stY := rawLine[1]
 		rest := strings.TrimSpace(rawLine[3:])
-		path := rest
+		var path string
 		oldPath := ""
 		if strings.Contains(rest, " -> ") {
 			parts := strings.Split(rest, " -> ")

@@ -36,7 +36,7 @@ Vite, built with `bun`). It is embedded into the Go binary via
 in `internal/web/dist/` are gitignored (except `.gitkeep` so Go builds and
 linters work on clean checkouts) — CI builds it in the "build & test" job
 (`bun install && bun run build`, which outputs to `../internal/web/dist`)
-before `go build ./...`. For local development, `devyard up` (see
+before `go build ./...`. For local development, `devyard start` (see
 `devyard.yml`) runs `bun run dev` (a Vite server on :5173 proxying to the
 Go web proxy on :9090), so you can edit `web/src/**` and see changes live with
 no rebuild. When changing web source, always verify the build still compiles:
@@ -45,7 +45,7 @@ no rebuild. When changing web source, always verify the build still compiles:
 Tests and lint must stay green. CI (`.github/workflows/ci.yml`) runs `go vet`,
 `gofmt`, `golangci-lint`, `go build`, and `go test -race` on Ubuntu and macOS.
 The integration suite builds the actual binary and drives the full CLI lifecycle
-(`up -d`, `ps`, `logs`, `restart`, `down`, `build`, `up --build`,
+(`start`, `start -f`, `ps`, `logs`, `restart`, `stop`, `build`,
 `daemon start`, `daemon stop`) against isolated XDG dirs — it never touches the
 user's real state.
 
@@ -77,8 +77,9 @@ A single **global daemon** process (`devyard --daemon`, spawned by `up`
 or `start-daemon`) owns a `map[string]*supervisor.Supervisor` — one supervisor
 per project. It serves one **Unix-socket control protocol** at
 `$XDG_RUNTIME_DIR/devyard/daemon.sock`. Every CLI command (`ps`, `logs`,
-`restart`, `down`), and the web UI are thin **Client** connections over
-that socket. The daemon autostarts every registered project on startup unless a
+`restart`, `down`) is a thin **Client** connection over that socket. The daemon
+also serves the web UI dashboard (HTTP / ConnectRPC / WebSocket) and reverse proxy.
+The daemon autostarts every registered project on startup unless a
 project-level `.stopped` marker exists. See
 [docs/architecture.md](docs/architecture.md) and
 [docs/control-protocol.md](docs/control-protocol.md).
@@ -114,10 +115,10 @@ project-level `.stopped` marker exists. See
   `runDaemonChild` (`internal/cli/daemon_run.go`), not a cobra command. If you
   add root-level flags that the daemon child must inherit, handle them in
   `runDaemonChild`, not just in cobra.
-- **`up` auto-starts the daemon**: `up` calls `ensureDaemon()` which spawns
+- **`start` auto-starts the daemon**: `start` calls `ensureDaemon()` which spawns
   the daemon if it's not running, then sends `start_project` over the socket.
-  Foreground `up` then follows logs from all services via `followForeground`.
-  `up -d` just sends `start_project` and returns.
+  Foreground `start -f` / `--follow` then follows logs from all services via `followForeground`.
+  `start` (detached) just sends `start_project` and returns.
 - **Autostart**: on daemon startup, `Autostart()` scans
   `$XDG_STATE_HOME/devyard/*/` for `config-path` files, reads each
   project's config, and starts every project **unless** a project-level
@@ -127,7 +128,7 @@ project-level `.stopped` marker exists. See
 - **Project-level `.stopped` marker**: `StopProject` writes a
   project-level `$XDG_STATE_HOME/devyard/<project>/.stopped` marker (so
   autostart won't resume the project) and keeps the project in the daemon map
-  (closed supervisor retained for `ps`). Explicit `up`/`start`/`start <svc>`
+  (closed supervisor retained for `ps`). Explicit `start`/`start <svc>`
   removes the marker.
 - **`start <svc>` on a stopped project** lazily starts just that service plus
   its transitive `depends_on` chain: the supervisor is materialized with a
@@ -148,8 +149,8 @@ project-level `.stopped` marker exists. See
 - **Add a CLI command**: see [docs/adding-a-command.md](docs/adding-a-command.md).
 - **Add a config field**: see [docs/config-schema.md](docs/config-schema.md).
 - **Change the wire protocol**: see [docs/control-protocol.md](docs/control-protocol.md).
-- **Implement the web UI**: the web UI is a WS frontend over the same control
-  socket. See `internal/web/server.go` and the roadmap for remaining items.
+- **Implement the web UI**: the web UI is embedded in the binary and served directly
+  by the daemon. See `internal/web/server.go` and the roadmap for remaining items.
 
 ## Roadmap
 

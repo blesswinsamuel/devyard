@@ -55,10 +55,11 @@ type Resolver interface {
 
 // ServerOptions configures the reverse proxy server.
 type ServerOptions struct {
-	Addr         string
-	DomainSuffix string
-	Resolver     Resolver
-	TLS          TLSOptions
+	Addr             string
+	DomainSuffix     string
+	Resolver         Resolver
+	TLS              TLSOptions
+	DashboardHandler http.Handler
 }
 
 // TLSOptions configures TLS on the reverse proxy server.
@@ -82,10 +83,11 @@ type Server struct {
 func NewServer(opts ServerOptions) *Server {
 	return &Server{
 		opts: ServerOptions{
-			Addr:         opts.Addr,
-			DomainSuffix: strings.ToLower(opts.DomainSuffix),
-			Resolver:     opts.Resolver,
-			TLS:          opts.TLS,
+			Addr:             opts.Addr,
+			DomainSuffix:     strings.ToLower(opts.DomainSuffix),
+			Resolver:         opts.Resolver,
+			TLS:              opts.TLS,
+			DashboardHandler: opts.DashboardHandler,
 		},
 	}
 }
@@ -217,6 +219,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErrorPage(w, http.StatusNotFound, "Unknown service",
 			"Request has no Host header.")
 		return
+	}
+
+	if s.opts.DashboardHandler != nil {
+		if host == "localhost" || host == "127.0.0.1" || host == "devyard" || (s.opts.DomainSuffix != "" && host == "devyard."+s.opts.DomainSuffix) {
+			s.opts.DashboardHandler.ServeHTTP(w, r)
+			return
+		}
 	}
 
 	route, ok := s.routeIndex()[host]

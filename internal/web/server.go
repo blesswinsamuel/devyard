@@ -1,11 +1,10 @@
 // Package web serves the embedded SPA and provides access to the daemon
-// control socket (via ConnectRPC HTTP/2 reverse proxy and a WebSocket endpoint
+// control service (via in-process ConnectRPC handler and a WebSocket endpoint
 // for interactive terminal PTY sessions).
 package web
 
 import (
 	"context"
-	"crypto/tls"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -14,14 +13,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/coder/websocket"
-	"golang.org/x/net/http2"
 
 	"github.com/blesswinsamuel/devyard/internal/control"
 )
@@ -38,11 +35,12 @@ const (
 )
 
 // Server is the HTTP + WebSocket server for the web UI. It serves the
-// embedded SPA at /, proxies ConnectRPC calls to the daemon over its Unix
-// control socket, and handles interactive terminal PTY sessions at /ws.
+// embedded SPA at /, mounts the ConnectRPC DaemonService handler,
+// and handles interactive terminal PTY sessions at /ws.
 type Server struct {
-	addr       string
-	socketPath string
+	addr    string
+	backend control.MultiBackend
+	mux     http.Handler
 
 	mu       sync.Mutex
 	listener net.Listener
@@ -53,15 +51,31 @@ type Server struct {
 	clients   map[*client]struct{}
 }
 
-// NewServer creates a web server bound to addr that forwards browser traffic
-// to the daemon listening on socketPath.
-func NewServer(addr, socketPath string) *Server {
-	return &Server{
-		addr:       addr,
-		socketPath: socketPath,
-		done:       make(chan struct{}),
-		clients:    make(map[*client]struct{}),
+// NewServer creates a web server bound to addr that serves the embedded SPA,
+// handles ConnectRPC calls via rpcHandler, and terminal PTY sessions via backend.
+func NewServer(addr string, rpcHandler http.Handler, backend control.MultiBackend) *Server {
+	s := &Server{
+		addr:    addr,
+		backend: backend,
+		done:    make(chan struct{}),
+		clients: make(map[*client]struct{}),
 	}
+
+	mux := http.NewServeMux()
+	if rpcHandler != nil {
+		mux.Handle("/devyard.v1.DaemonService/", rpcHandler)
+	}
+	mux.HandleFunc("/ws", s.handleWS)
+	mux.Handle("/", s.spaHandler())
+	s.mux = mux
+
+	return s
+}
+
+// Handler returns the HTTP handler (mux) for the web server, allowing it to be
+// mounted directly in another HTTP server (such as the daemon's reverse proxy).
+func (s *Server) Handler() http.Handler {
+	return s.mux
 }
 
 // ListenAndServe starts serving HTTP and ConnectRPC proxying. It returns
@@ -80,30 +94,8 @@ func (s *Server) ListenAndServe() error {
 	s.listener = ln
 	s.mu.Unlock()
 
-	mux := http.NewServeMux()
-
-	// Reverse proxy for direct ConnectRPC calls from browser to Unix socket
-	transport := &http2.Transport{
-		AllowHTTP: true,
-		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", s.socketPath)
-		},
-	}
-	proxy := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = "http"
-			req.URL.Host = "localhost"
-		},
-		Transport:     transport,
-		FlushInterval: -1, // flush streaming RPCs immediately
-	}
-	mux.Handle("/devyard.v1.DaemonService/", proxy)
-
-	mux.HandleFunc("/ws", s.handleWS)
-	mux.Handle("/", s.spaHandler())
-	httpSrv := &http.Server{Handler: mux}
-	slog.Info("web server listening", "addr", s.Addr(), "socket", s.socketPath)
+	httpSrv := &http.Server{Handler: s.mux}
+	slog.Info("web server listening", "addr", s.Addr())
 	go func() { _ = httpSrv.Serve(ln) }()
 	return nil
 }
@@ -352,16 +344,10 @@ func (s *Server) projectDir(project string) (string, error) {
 	if project == "" {
 		return "", errors.New("web: project is required to spawn a terminal")
 	}
-	c, err := control.Dial(s.socketPath)
-	if err != nil {
-		return "", fmt.Errorf("web: cannot reach daemon: %w", err)
+	if s.backend == nil {
+		return "", errors.New("web: backend is not configured")
 	}
-	defer func() { _ = c.Close() }()
-
-	projects, err := c.ListProjects()
-	if err != nil {
-		return "", err
-	}
+	projects := s.backend.ListProjects()
 	for _, p := range projects {
 		if p.Name == project && p.ConfigPath != "" {
 			return filepath.Dir(p.ConfigPath), nil

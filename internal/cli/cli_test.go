@@ -51,11 +51,11 @@ func TestCommandTreeStructure(t *testing.T) {
 
 	expectedCommands := []string{
 		// Resource commands
-		"project", "service", "task", "daemon", "ui", "version",
+		"project", "service", "task", "daemon", "version",
 		// Daily shortcuts
 		"start", "stop", "restart", "reload", "status", "logs", "top", "kill", "run", "build",
-		// Transition aliases
-		"up", "down", "ps", "ls",
+		// Common alias
+		"ps",
 	}
 
 	for _, name := range expectedCommands {
@@ -83,9 +83,9 @@ func TestSubcommandAliases(t *testing.T) {
 		{[]string{"t", "list"}, "list"},
 		{[]string{"t", "ls"}, "list"},
 		{[]string{"d", "status"}, "status"},
-		{[]string{"web"}, "ui"},
 		{[]string{"ps"}, "status"},
-		{[]string{"ls"}, "ls"},
+		{[]string{"start"}, "start"},
+		{[]string{"stop"}, "stop"},
 	}
 
 	for _, c := range checks {

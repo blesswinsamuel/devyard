@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/blesswinsamuel/devyard/internal/config"
@@ -134,9 +135,64 @@ func ensureDaemonTo(w io.Writer) (string, error) {
 		if w != nil {
 			_, _ = fmt.Fprintf(w, "devyard: daemon started (pid %d)\n", pid)
 		}
-		_ = control.WaitForSocket(locs.Socket, 3*time.Second)
+		if err := waitForDaemonStartup(locs, pid, 3*time.Second); err != nil {
+			return "", err
+		}
 	}
 	return locs.Socket, nil
+}
+
+func waitForDaemonStartup(locs *project.DaemonLocations, pid int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c, err := control.Dial(locs.Socket)
+		if err == nil {
+			_, err := c.DaemonStatus()
+			_ = c.Close()
+			if err == nil {
+				return nil
+			}
+		}
+		if !daemon.IsAlive(pid) {
+			if errMsg := readLastDaemonError(locs.LogFile); errMsg != "" {
+				return fmt.Errorf("daemon failed to start: %s", errMsg)
+			}
+			return fmt.Errorf("daemon (pid %d) exited unexpectedly during startup", pid)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if errMsg := readLastDaemonError(locs.LogFile); errMsg != "" {
+		return fmt.Errorf("daemon failed to start: %s", errMsg)
+	}
+	return fmt.Errorf("timed out waiting for daemon (pid %d) socket to become ready", pid)
+}
+
+func readLastDaemonError(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\r\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if idx := strings.Index(line, `level=ERROR`); idx >= 0 {
+			if errIdx := strings.Index(line, `error="`); errIdx >= 0 {
+				errPart := line[errIdx+len(`error="`):]
+				if endIdx := strings.LastIndex(errPart, `"`); endIdx >= 0 {
+					return errPart[:endIdx]
+				}
+				return errPart
+			}
+			return line[idx:]
+		}
+		if strings.HasPrefix(line, "Error:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Error:"))
+		}
+	}
+	return ""
 }
 
 // dialDaemon dials the global daemon's control socket. It returns an error if
@@ -148,7 +204,7 @@ func dialDaemon() (string, error) {
 		return "", err
 	}
 	if !daemon.IsSocketResponsive(sock, 200*time.Millisecond) {
-		return "", fmt.Errorf("no daemon running; use `devyard up` to start")
+		return "", fmt.Errorf("no daemon running; use `devyard start` to start")
 	}
 	return sock, nil
 }

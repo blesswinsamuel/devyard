@@ -1,21 +1,19 @@
-# Local development for the web UI: Go proxy + Vite (SolidJS) frontend.
+# Local development for the web UI: Vite (SolidJS) frontend with running daemon.
 #
 # Prerequisites:
 #   - Go toolchain
-#   - gow (for live reload on file changes)
 #   - bun (see web/bun.lock)
-#   - A running devyard daemon (started automatically by `up`)
+#   - A running devyard daemon (started automatically by `start` or `up`)
 #
 # Usage (from repo root):
 #
-#   devyard up          # foreground; Ctrl-C stops both
-#   devyard up -d       # detached
+#   devyard start -f    # foreground; Ctrl-C stops
+#   devyard start       # detached
 #   devyard logs -f
-#   devyard down
+#   devyard stop
 #
-# Then open the Vite app at http://127.0.0.1:5173 (proxies /ws to the Go
-# server on :9090). The `web` service below is `devyard web` — if you
-# already have another instance on :9090, stop it or pass --port.
+# Then open the Vite app at http://127.0.0.1:19095 (proxies /ws and RPC
+# to the daemon on :9090).
 
 version: "1"
 name: devyard
@@ -24,23 +22,10 @@ proxy:
   default_service: frontend
 
 services:
-  web:
-    command: task web
-    working_dir: .
-    port: 9090
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9090/ >/dev/null"]
-      interval: 1s
-      timeout: 2s
-      retries: 60
-    restart: always
-
   frontend:
     command: bun run dev
     working_dir: ./web
     port: 19095
-    depends_on:
-      web: { condition: service_healthy }
     build: bun install
     restart: always
 

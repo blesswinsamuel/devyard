@@ -1,7 +1,7 @@
 // Package globalconfig loads and saves the user-level config file at
 // $XDG_CONFIG_HOME/devyard/config.yml (default
 // ~/.config/devyard/config.yml). It holds settings that apply across
-// all projects, such as the web UI host/port defaults for `devyard web`.
+// all projects, such as the web UI host/port defaults for the daemon dashboard.
 package globalconfig
 
 import (
@@ -23,7 +23,7 @@ const DefaultHost = "127.0.0.1"
 // DefaultPort is the default port for the web UI.
 const DefaultPort = 9090
 
-// WebConfig holds default bind settings for `devyard web`.
+// WebConfig holds default bind settings for the daemon's web dashboard.
 type WebConfig struct {
 	// Host is the bind address. Defaults to 127.0.0.1 (loopback only).
 	Host string `yaml:"host"`

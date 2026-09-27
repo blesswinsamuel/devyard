@@ -6,7 +6,7 @@ the existing commands are wired. Use this as a checklist.
 ## Decide what kind of command it is
 
 - **Control command** (talks to a running daemon): `ps`, `logs`, `restart`,
-  `down` — these dial the daemon's control socket and send a request. You'll
+  `stop` — these dial the daemon's control socket and send a request. You'll
   need a new protocol kind; see [control-protocol.md](control-protocol.md) >
   "Adding a new request kind".
 - **Local command** (no daemon needed): `build` — runs against the config

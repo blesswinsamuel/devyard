@@ -7,29 +7,29 @@ How `devyard` works internally. Start here before touching
 ## Big picture
 
 ```
-devyard up  ──►  ensureDaemon() ──►  global Daemon (setsid, backgrounded)
+devyard start ──►  ensureDaemon() ──►  global Daemon (setsid, backgrounded)
                                             │  owns map[string]*supervisor.Supervisor
                                             │  serves one Unix-socket control protocol
                                             │  optionally serves web UI (WS + SPA)
                                             ▼
                           $XDG_RUNTIME_DIR/devyard/daemon.sock
 
-devyard ps / logs / restart / down / web  ──►  control.Client (socket)
+devyard ps / logs / restart / stop / web  ──►  control.Client (socket)
 ```
 
 There is exactly one **global daemon** process. It owns one
 `*supervisor.Supervisor` per project and serves a single **Unix-socket control
 protocol** at `$XDG_RUNTIME_DIR/devyard/daemon.sock`. Every CLI command
-(`ps`, `logs`, `restart`, `down`) and the web UI are thin **Client**
+(`ps`, `logs`, `restart`, `stop`) and the web UI are thin **Client**
 connections over that socket. The daemon autostarts every registered project
 on startup unless it carries a project-level `.stopped` marker (written by
-`down` / `stop`). See
+`stop`). See
 [control-protocol.md](control-protocol.md) for the wire format.
 
 ## The global daemon
 
-The daemon is a single process (`devyard --daemon`, spawned by `up` or
-`start-daemon`) that owns an `orchestrator.Daemon` (`internal/orchestrator`)
+The daemon is a single process (`devyard --daemon`, spawned by `start` or
+`daemon start`) that owns an `orchestrator.Daemon` (`internal/orchestrator`)
 which in turn owns a `map[string]*supervisor.Supervisor`. The daemon child is
 created via `setsid` re-exec (`internal/daemon`): the CLI re-execs **the same
 binary** as a new session leader (`SysProcAttr{Setsid: true}`), with stdio
@@ -39,9 +39,9 @@ repointed at `$XDG_STATE_HOME/devyard/daemon.log`, writes a pidfile at
 The daemon child is detected in `cli.Execute()` (`internal/cli/root.go`)
 *before* cobra runs, via the hidden `--daemon` flag (`daemon.DaemonFlag`). It
 runs `runDaemonChild` (`internal/cli/daemon_run.go`), not a cobra command.
-`runDaemonChild` creates the orchestrator, starts the control server, runs
-`Autostart()`, and blocks on a signal or `StopDaemon`. The web UI is started
-separately with `devyard web`.
+`runDaemonChild` creates the orchestrator, starts the control server, starts
+the web dashboard server and reverse proxy, runs `Autostart()`, and blocks on
+a signal or `StopDaemon`.
 
 Go has no `fork(2)` binding, so we use the re-exec-then-`setsid` idiom instead
 of a double-fork. `setsid` + `cmd.Process.Release()` is sufficient on modern
@@ -63,7 +63,7 @@ Key methods:
   `Supervisor`, starts it, and adds it to the map. Writes a `config-path` file
   in the project's state dir (for autostart discovery). Removes the
   project-level `.stopped` marker so
-  explicit `up`/`start` resumes previously stopped projects. If the project is
+  explicit `start` resumes previously stopped projects. If the project is
   already running, resumes stopped/exited services without recreating the
   supervisor. If a stop is in progress, waits for it then recreates.
 - **`StartService(project, service)`** — lazily starts a single service on a
@@ -112,7 +112,7 @@ Per-service run loop (`runService`):
    retries indefinitely; `on-failure` retries up to `Backoff.MaxAttempts`. Backoff
    is exponential with jitter (`sleepBackoff`). `stopped`/stopping short-circuits.
 
-`Stop` (used by `down`/`StopProject`): marks every service stopped,
+`Stop` (used by `stop`/`StopProject`): marks every service stopped,
 `SIGTERM`s every group, waits up to
 `GracefulStopTimeout` (default 10s), then `SIGKILL`s survivors.
 
@@ -126,7 +126,7 @@ A supervisor can be materialized with a `Selected` set of service names (from
 selected service and its `depends_on` chain launch. Skips are logged
 (`skipping service <name>`) and are not failures — `Failed()` stays false.
 Only a dependency that genuinely exits or goes unhealthy before satisfying its
-condition sets `Failed()` (non-zero `up`); a user-initiated shutdown during
+condition sets `Failed()` (non-zero exit); a user-initiated shutdown during
 startup (`errSupervisorStopping`) is not a failure.
 
 Process groups are mandatory and non-negotiable: `launch` calls
@@ -184,14 +184,12 @@ Wire format and message kinds are documented in
 
 ## Web UI (`internal/web`)
 
-The web UI is a WebSocket frontend over the same control socket. Start it with
-`devyard web`: it dials the daemon socket and serves an embedded SolidJS
-SPA (built with bun + Vite, using xterm.js for log rendering) from
-`internal/web/dist/` via `go:embed`. The WS endpoint is a pure bridge: browser
-JSON messages are translated to control-protocol frames on short-lived
-connections, daemon events are fanned out to every browser from one persistent
-`subscribe_events` connection, log tailing lives entirely in the daemon, and
-interactive terminals are spawned locally via `creack/pty`.
+The web UI is served directly by the daemon on its configured host and port
+(default `127.0.0.1:9090`), as well as via the reverse proxy (`localhost:8080`
+and `devyard.<suffix>:8080`). It serves an embedded SolidJS SPA (built with bun + Vite,
+using xterm.js for log rendering) from `internal/web/dist/` via `go:embed`.
+The ConnectRPC handler is mounted directly in-process, and interactive terminal
+sessions are managed over `/ws` via `creack/pty`.
 
 Every message sent to a browser goes through a per-connection outbound queue
 drained by a single writer goroutine: enqueueing never blocks, so a dead or
@@ -281,7 +279,7 @@ web:
   port: 9090
 ```
 
-These are default bind settings for `devyard web`. Unknown fields
+These are default bind settings for the daemon's web dashboard. Unknown fields
 produce a warning but don't error.
 
 ## Concurrency model

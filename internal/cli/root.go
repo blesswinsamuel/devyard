@@ -64,7 +64,7 @@ func NewRootCommand(ctx *CLIContext) *cobra.Command {
 	// Define command groups
 	shortcutGroup := &cobra.Group{ID: "shortcuts", Title: "Daily Shortcuts:"}
 	resourceGroup := &cobra.Group{ID: "resources", Title: "Resource Management:"}
-	daemonGroup := &cobra.Group{ID: "daemon", Title: "Daemon & Dashboard:"}
+	daemonGroup := &cobra.Group{ID: "daemon", Title: "Daemon:"}
 
 	rootCmd.AddGroup(shortcutGroup, resourceGroup, daemonGroup)
 
@@ -81,12 +81,9 @@ func NewRootCommand(ctx *CLIContext) *cobra.Command {
 	daemonCmd := newDaemonCmd(ctx)
 	daemonCmd.GroupID = daemonGroup.ID
 
-	uiCmd := newUICmd(ctx)
-	uiCmd.GroupID = daemonGroup.ID
-
 	versionCmd := newVersionCmd(ctx)
 
-	rootCmd.AddCommand(projectCmd, serviceCmd, taskCmd, daemonCmd, uiCmd, versionCmd)
+	rootCmd.AddCommand(projectCmd, serviceCmd, taskCmd, daemonCmd, versionCmd)
 
 	// Top-Level Shortcuts
 	startShortcut := newServiceStartCmd(ctx)

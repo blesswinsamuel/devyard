@@ -4,9 +4,9 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Done
 
-- **Core lifecycle** — `up`, `up -d`, `down`, `ps`, `top`, `logs [service] [--follow] [--tail N] [--previous]`,
+- **Core lifecycle** — `start`, `stop`, `ps`, `top`, `logs [service] [--follow] [--tail N] [--previous]`,
   `restart [service]`, `kill [service] [--signal]`, `build [service...]`,
-  `up --build`. Size-based log rotation (10 MiB soft cap per current run file)
+  `start --build`. Size-based log rotation (10 MiB soft cap per current run file)
   and server-side history tailing keep huge logs from flooding clients.
   (`internal/cli`, `internal/supervisor`, `internal/control`)
 - **Global daemon** — a single daemon process owns multiple project
@@ -16,7 +16,7 @@ What's done, what's planned, and where each item lives in the code.
   `internal/daemon`, `internal/cli/daemon_run.go`)
 - **Autostart** — on daemon startup, every registered project is started
   automatically **unless** a project-level `.stopped` marker exists (written by
-  `down` / `stop`). (`internal/orchestrator` `Autostart()`)
+  `stop`). (`internal/orchestrator` `Autostart()`)
 - **Process-group safety** — each service in its own `setpgid` group; teardown
   via `killpg` so no orphans. (`internal/supervisor/proc_unix.go`)
 - **`top` resource view** — `devyard top [service]` aggregates CPU and
@@ -37,11 +37,10 @@ What's done, what's planned, and where each item lives in the code.
   service label). Live route resolution from the orchestrator; styled 502/503
   error pages; URL column in `ps`. (`internal/proxy`, `internal/config`,
   `internal/cli`, `internal/orchestrator`)
-- **Web UI** — WS server + embedded SolidJS SPA (xterm.js logs). Start with
-  `devyard web` (proxies to the daemon socket). Loopback-only by default.
-  (`internal/web`, `web/`)
+- **Web UI** — embedded SolidJS SPA (xterm.js logs) served directly by the
+  daemon. Loopback-only by default. (`internal/web`, `web/`)
 - **Global config** — `$XDG_CONFIG_HOME/devyard/config.yml` with
-  `web.host`, `web.port` defaults for `devyard web`. (`internal/globalconfig`)
+  `web.host`, `web.port` defaults for the web dashboard. (`internal/globalconfig`)
 - **Config discovery** — `-f`/`-p` flags; walk-up discovery of
   `devyard.yml`. (`internal/config`, `internal/cli`)
 - **Env files + interpolation** — `.env` next to the config (or `--env-file`)

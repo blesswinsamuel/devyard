@@ -7,7 +7,7 @@
 > One dev hub for all your projects and services — instead of processes scattered across a pile of terminal tabs.
 
 `devyard` is a developer hub: register as many projects as you like, each with its own set
-of services, and run them all from one place on your own machine — `up`, `down`, `ps`, `top`,
+of services, and run them all from one place on your own machine — `start`, `stop`, `ps`, `top`,
 `logs`, `restart`, `build`, and a browser-based web UI. Instead of processes scattered across
 terminal tabs, every project and service lives in one place: a single static binary, built for
 macOS and Linux, that supervises your dev services, streams their output, restarts them on
@@ -24,7 +24,7 @@ dev server, a local DB, a worker — without spinning up a container runtime.
 container runtime, images, builds, volumes, and a network — when all you really want is "start
 these three commands and show me their logs together." Existing lightweight tools (`mprocs`,
 `overmind`, `hivemind`, `foreman`) cover pieces of this, but none combine a compose-style config,
-a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a web UI in one tool.
+a detached lifecycle (`start` / `ps` / `stop`), health-gated dependencies, and a web UI in one tool.
 
 `devyard` fills that gap:
 
@@ -32,15 +32,15 @@ a detached lifecycle (`up -d` / `ps` / `down`), health-gated dependencies, and a
 - **Developer hub** — add multiple projects, each with multiple services, and manage them
   all from one place: `project add`, one dashboard, one log stream per service. No more
   juggling terminal tabs.
-- **Detached lifecycle** — `up -d` runs a background supervisor you can talk back to with `ps`,
-  `top`, `logs`, `restart`, and `down`.
-- **Process-group safety** — each service runs in its own process group, so `down` never leaves
+- **Detached lifecycle** — `start` runs a background supervisor by default (or `start -f` for
+  foreground) you can talk back to with `ps`, `top`, `logs`, `restart`, and `stop`.
+- **Process-group safety** — each service runs in its own process group, so `stop` never leaves
   orphans behind (the bug most lightweight supervisors have).
 - **Health-gated dependencies** — `depends_on: { condition: service_healthy }` waits for a
   healthcheck to pass before starting dependents.
 - **Web UI** — a browser dashboard over the same control protocol, with xterm.js log streaming.
 - **Multi-project daemon** — a single daemon manages multiple projects; autostarts every
-  registered project on daemon startup (unless stopped with `down`).
+  registered project on daemon startup (unless stopped with `stop`).
 - **One static binary** — no runtime, no daemon-on-a-daemon, no container engine.
 
 ## Installation
@@ -83,7 +83,7 @@ services:
   api:
     command: cargo run --bin api
     working_dir: ./api
-    build: cargo build --bin api          # run once before first up; --build forces
+    build: cargo build --bin api          # run once before first start; --build forces
     depends_on:
       db: { condition: service_healthy }  # wait for db's healthcheck to pass
     restart: always
@@ -113,13 +113,13 @@ services:
 Then:
 
 ```bash
-devyard up -d        # start everything in the background
+devyard start        # start everything in the background
 devyard ps           # see status, pids, health
 devyard logs -f api        # tail the api's output
 devyard logs --tail 100 api # last 100 lines only
 devyard logs --previous api # inspect the previous run's logs
 devyard restart web  # restart one service
-devyard down         # stop the current project
+devyard stop         # stop the current project
 devyard daemon stop  # stop all projects and the daemon
 ```
 
@@ -131,7 +131,7 @@ devyard daemon stop  # stop all projects and the daemon
 
 | Shortcut | Description | Target Resource |
 | --- | --- | --- |
-| `start [service...]` | Start services (or all services in the project). Auto-starts daemon. | `service start` |
+| `start [service...]` | Start services (or all services in the project). Auto-starts daemon. (`-f` to follow). | `service start` |
 | `stop [service...]` | Stop services (or all services in the project). | `service stop` |
 | `restart [service...]` | Restart services (or all services in the project). | `service restart` |
 | `reload [project]` | Re-read config from disk and reconcile running services in place. | `project reload` |
@@ -192,9 +192,9 @@ devyard daemon stop  # stop all projects and the daemon
 
 ### The Web UI
 
-The web UI is a browser-based dashboard over the same control protocol — project/service
-listing, live xterm.js logs, and start/stop/restart actions. Start it with `devyard ui`
-(or `devyard web`) and open the printed URL (loopback-only by default).
+The web UI is a browser-based dashboard served automatically by the daemon — project/service
+listing, live xterm.js logs, and start/stop/restart actions. Access it at `http://127.0.0.1:9090`,
+or via the reverse proxy at `http://localhost:8080` or `http://devyard.localhost:8080` (loopback-only by default).
 
 ## Config reference
 
@@ -231,8 +231,8 @@ build:
   shell: bash                  # optional, default sh
 ```
 
-`build` runs once before the service starts on `up`. `devyard build` runs every service's
-declared build step; `up --build` forces a rebuild. A failed build aborts `up` so services never
+`build` runs once before the service starts on `start`. `devyard build` runs every service's
+declared build step; `devyard start --build` forces a rebuild. A failed build aborts `start` so services never
 start on top of a broken build.
 
 ### Env files and interpolation
@@ -278,27 +278,27 @@ config honest about what `devyard` actually does.
 
 `devyard` has a small, focused architecture: one **global daemon** process owns a
 supervisor per project, and exposes a single **Unix socket** control protocol; every other
-command (`ps`, `logs`, `restart`, `down`) and the web UI are thin clients over that
+command (`ps`, `logs`, `restart`, `stop`) and the web UI are thin clients over that
 socket.
 
 ```
-devyard up  ──►  ensureDaemon()  ──►  Global Daemon (setsid, backgrounded)
+devyard start ──►  ensureDaemon()  ──►  Global Daemon (setsid, backgrounded)
                                               │  owns one Supervisor per project
                                               │  serves one Unix socket
                                               │  optionally serves web UI
                                               ▼
                             $XDG_RUNTIME_DIR/devyard/daemon.sock
 
-devyard ps / logs / restart / down / web  ──►  socket client
+devyard ps / logs / restart / stop / web  ──►  socket client
 ```
 
-- **`up`** auto-starts the daemon if it's not running, sends `start_project` over the socket,
-  and (in foreground mode) follows logs from all services. `up -d` just starts the project and
+- **`start`** auto-starts the daemon if it's not running, sends `start_project` over the socket,
+  and (with `-f` / `--follow`) follows logs from all services. Detached `start` just starts the project and
   returns.
 - **Autostart**: on daemon startup, every registered project is started automatically
-  (unless explicitly stopped with `down` / `stop`, which writes a project `.stopped` marker).
+  (unless explicitly stopped with `stop`, which writes a project `.stopped` marker).
   `start <svc>` on a stopped project lazily starts just that service (plus its `depends_on` chain).
-- **Process groups**: each service is started with `Setpgid`, so `down`/`stop` uses `killpg` to
+- **Process groups**: each service is started with `Setpgid`, so `stop` uses `killpg` to
   tear down the whole tree — no orphaned children, even when `command` is a shell pipeline.
 - **Restart policy**: `on-failure` only restarts non-zero exits (capped); `always` restarts
   indefinitely. `stop <svc>` is ephemeral — the running supervisor honors it, but the next
@@ -318,16 +318,10 @@ Each project is namespaced by project name, so multiple projects can run side by
 daemon.
 
 ### Web UI
-
-Start a browser-based dashboard (SolidJS SPA with xterm.js log streaming) with
-`devyard web`. It connects to a running daemon over the control socket.
-
-```bash
-devyard web                  # http://127.0.0.1:9090
-devyard web --port 8080
-```
-
-Optional defaults in the global config:
+ 
+The browser dashboard (SolidJS SPA with xterm.js log streaming) is served directly by the daemon at `http://127.0.0.1:9090` (and through the reverse proxy at `http://localhost:8080` and `http://devyard.localhost:8080`).
+ 
+Optional bind defaults in the global config:
 
 ```yaml
 # ~/.config/devyard/config.yml
@@ -342,7 +336,7 @@ web:
 | --- | :-: | :-: | :-: | :-: | :-: |
 | Compose-style YAML config | ✅ | ✅ | — | — | Procfile |
 | Runs locally (no engine) | ✅ | — | ✅ | ✅ | ✅ |
-| Detached `up -d` + `ps`/`top`/`down` | ✅ | ✅ | — | — | partial |
+| Detached `start` + `ps`/`top`/`stop` | ✅ | ✅ | — | — | partial |
 | Multi-project daemon | ✅ | ✅ | — | — | — |
 | Health-gated `depends_on` | ✅ | ✅ | — | — | — |
 | Web UI | ✅ | — | — | — | — |
@@ -351,12 +345,12 @@ web:
 
 ## Roadmap
 
-- [x] Core: `up`, `down`, `ps`, `top`, `logs`, `restart`, `build`, detached `up -d`
+- [x] Core: `start`, `stop`, `ps`, `top`, `logs`, `restart`, `build`
 - [x] Healthchecks + `depends_on` conditions
 - [x] Global daemon with multi-project orchestrator
 - [x] Autostart projects based on service restart policies
 - [x] Web UI — browser dashboard (WS + embedded SolidJS SPA with xterm.js logs)
-- [x] Global config (`web.host`, `web.port` for `devyard web`)
+- [x] Global config (`web.host`, `web.port`)
 - [x] Log rotation (current + previous run per service, `logs --previous`; size-based soft cap)
 - [ ] `.env` / `--env-file` loading and `${VAR}` interpolation in config
 - [x] `logs --tail N` (server-side; web default to 5000)

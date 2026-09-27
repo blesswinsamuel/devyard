@@ -88,10 +88,23 @@ func newEnv(t *testing.T, configContents string) *env {
 		projName:   "lc-test",
 		configPath: filepath.Join(cfgDir, "devyard.yml"),
 	}
+
+	// Write an isolated global config allocating free ephemeral ports for the daemon's
+	// web dashboard and reverse proxy so parallel integration tests don't collide.
+	dir := filepath.Join(e.config, "devyard")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir config: %v", err)
+	}
+	ports := freePorts(t, 2)
+	cfgContent := fmt.Sprintf("web:\n  host: 127.0.0.1\n  port: %d\nproxy:\n  host: 127.0.0.1\n  port: %d\n", ports[0], ports[1])
+	if err := os.WriteFile(filepath.Join(dir, "config.yml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+
 	// Best-effort teardown: down is idempotent and safe even if nothing is up.
 	// Also stop the daemon so tests don't leak processes.
 	t.Cleanup(func() {
-		_, _, _ = e.run(t, context.Background(), "down")
+		_, _, _ = e.run(t, context.Background(), "stop")
 		_, _, _ = e.run(t, context.Background(), "daemon", "stop")
 		if data, err := os.ReadFile(filepath.Join(e.runtime, "devyard", "daemon.pid")); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
@@ -279,14 +292,14 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
 
-	// up -d: supervisor daemonizes and returns 0. The "supervisor started"
+	// start: supervisor starts project and returns 0. The "project started"
 	// notice is written to stderr.
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 	if !strings.Contains(errOut, "project \"lc-test\" started") {
-		t.Fatalf("up -d stderr missing project-started message: %q", errOut)
+		t.Fatalf("start stderr missing project-started message: %q", errOut)
 	}
 
 	// ps: all three services running in topo order. depends_on: service_started
@@ -378,25 +391,25 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 		pidFromPS(t, finalPS, "gamma"),
 	}
 
-	// down: supervisor and all services stop, but project stays in daemon.
-	_, downErr, rc := e.run(t, context.Background(), "down")
+	// stop: supervisor and all services stop, but project stays in daemon.
+	_, stopErr, rc := e.run(t, context.Background(), "stop")
 	if rc != 0 {
-		t.Fatalf("down: exit %d, err=%q", rc, downErr)
+		t.Fatalf("stop: exit %d, err=%q", rc, stopErr)
 	}
 
 	// ps should succeed (exit 0) and report all services as exited/stopped
-	psAfterDown, psErr, rc := e.run(t, context.Background(), "ps")
+	psAfterStop, psErr, rc := e.run(t, context.Background(), "ps")
 	if rc != 0 {
-		t.Fatalf("ps after down: exit %d, err=%q, out=%q", rc, psErr, psAfterDown)
+		t.Fatalf("ps after stop: exit %d, err=%q, out=%q", rc, psErr, psAfterStop)
 	}
-	if !strings.Contains(psAfterDown, "exited") && !strings.Contains(psAfterDown, "stopped") {
-		t.Fatalf("expected services to be exited/stopped after down, got: %q", psAfterDown)
+	if !strings.Contains(psAfterStop, "exited") && !strings.Contains(psAfterStop, "stopped") {
+		t.Fatalf("expected services to be exited/stopped after stop, got: %q", psAfterStop)
 	}
 
-	// remove: stops and completely removes the project from the daemon.
-	_, removeErr, rc := e.run(t, context.Background(), "remove")
+	// project remove: stops and completely removes the project from the daemon.
+	_, removeErr, rc := e.run(t, context.Background(), "project", "remove")
 	if rc != 0 {
-		t.Fatalf("remove: exit %d, err=%q", rc, removeErr)
+		t.Fatalf("project remove: exit %d, err=%q", rc, removeErr)
 	}
 
 	waitForCond(t, 3*time.Second, func() bool {
@@ -406,7 +419,7 @@ func TestE2E_LifecycleUpDetachPSLogsRestartDown(t *testing.T) {
 	assertNoOrphans(t, pids...)
 }
 
-func TestE2E_ForegroundUpShortLived(t *testing.T) {
+func TestE2E_ForegroundStartShortLived(t *testing.T) {
 	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
@@ -419,16 +432,16 @@ services:
 	e := newEnv(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	out, errOut, code := e.run(t, ctx, "up")
+	out, errOut, code := e.run(t, ctx, "start", "-f")
 	if code != 0 {
-		t.Fatalf("up: exit %d, out=%q err=%q", code, out, errOut)
+		t.Fatalf("start -f: exit %d, out=%q err=%q", code, out, errOut)
 	}
 	if !strings.Contains(out, "maker-running") || !strings.Contains(out, "shaper-running") {
-		t.Fatalf("foreground up missing service output: %q", out)
+		t.Fatalf("foreground start missing service output: %q", out)
 	}
-	// Foreground up should exit on its own once services finish.
+	// Foreground start should exit on its own once services finish.
 	if ctx.Err() != nil {
-		t.Fatalf("foreground up did not self-exit before context deadline")
+		t.Fatalf("foreground start did not self-exit before context deadline")
 	}
 }
 
@@ -464,7 +477,7 @@ services:
 	}
 }
 
-func TestE2E_UpWithBuild(t *testing.T) {
+func TestE2E_StartWithBuild(t *testing.T) {
 	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
@@ -476,15 +489,15 @@ services:
 	e := newEnv(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	out, _, code := e.run(t, ctx, "up", "--build")
+	out, _, code := e.run(t, ctx, "start", "-f", "--build")
 	if code != 0 {
-		t.Fatalf("up --build: exit %d, out=%q", code, out)
+		t.Fatalf("start -f --build: exit %d, out=%q", code, out)
 	}
 	if !strings.Contains(out, "svc-built") {
-		t.Errorf("up --build did not run build step first: %q", out)
+		t.Errorf("start -f --build did not run build step first: %q", out)
 	}
 	if !strings.Contains(out, "svc-run") {
-		t.Errorf("up --build did not start service: %q", out)
+		t.Errorf("start -f --build did not start service: %q", out)
 	}
 }
 
@@ -501,9 +514,9 @@ services:
     depends_on: [a]
 `
 	e := newEnv(t, cfg)
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code == 0 {
-		t.Fatalf("up -d on cyclic config: expected non-zero exit, got 0")
+		t.Fatalf("start on cyclic config: expected non-zero exit, got 0")
 	}
 	if !strings.Contains(errOut, "cycle detected") {
 		t.Fatalf("cyclic config error missing 'cycle detected': %q", errOut)
@@ -519,9 +532,9 @@ services:
     command: ""
 `
 	e := newEnv(t, cfg)
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code == 0 {
-		t.Fatalf("up -d with empty command: expected non-zero exit, got 0")
+		t.Fatalf("start with empty command: expected non-zero exit, got 0")
 	}
 	if !strings.Contains(errOut, "command is required") {
 		t.Fatalf("empty command error missing 'command is required': %q", errOut)
@@ -533,14 +546,14 @@ func TestE2E_MissingConfigFile(t *testing.T) {
 	e := newEnv(t, threeServiceLoopConfig)
 	// Point -f at a non-existent file.
 	ctx := context.Background()
-	cmd := exec.CommandContext(ctx, binPath, "-p", e.projName, "--file", filepath.Join(e.cfgDir, "nope.yml"), "up", "-d")
+	cmd := exec.CommandContext(ctx, binPath, "-p", e.projName, "--file", filepath.Join(e.cfgDir, "nope.yml"), "start")
 	cmd.Dir = e.cfgDir
 	cmd.Env = e.environ()
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err == nil {
-		t.Fatalf("up -d with missing config: expected non-zero exit, got 0")
+		t.Fatalf("start with missing config: expected non-zero exit, got 0")
 	}
 	if !strings.Contains(stderr.String(), "no such file or directory") {
 		t.Fatalf("missing config error unexpected: %q", stderr.String())
@@ -559,17 +572,17 @@ func TestE2E_PSWithNoSupervisorErrors(t *testing.T) {
 	}
 }
 
-// TestE2E_DownIsIdempotent verifies `down` with nothing running succeeds and
+// TestE2E_StopIsIdempotent verifies `stop` with nothing running succeeds and
 // reports the no-supervisor case rather than erroring.
-func TestE2E_DownIsIdempotent(t *testing.T) {
+func TestE2E_StopIsIdempotent(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
-	_, errOut, code := e.run(t, context.Background(), "down")
+	_, errOut, code := e.run(t, context.Background(), "stop")
 	if code != 0 {
-		t.Fatalf("down with no supervisor: expected exit 0, got %d (err=%q)", code, errOut)
+		t.Fatalf("stop with no supervisor: expected exit 0, got %d (err=%q)", code, errOut)
 	}
 	if !strings.Contains(errOut, "no daemon running") {
-		t.Fatalf("idempotent down missing no-daemon message: %q", errOut)
+		t.Fatalf("idempotent stop missing no-daemon message: %q", errOut)
 	}
 }
 
@@ -593,9 +606,9 @@ services:
     depends_on:
       db: { condition: service_healthy }`
 	e := newEnv(t, cfg)
-	_, _, code := e.run(t, context.Background(), "up", "-d")
+	_, _, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d", code)
+		t.Fatalf("start: exit %d", code)
 	}
 
 	// Eventually both run and db reports healthy.
@@ -608,8 +621,7 @@ services:
 }
 
 // TestE2E_UnhealthyDependencyFailsDependent verifies that when a dependency's
-// healthcheck exhausts retries, the dependent never starts and a subsequent
-// foreground `up` reports failure.
+// healthcheck exhausts retries, the dependent never starts and ps reports unhealthy.
 func TestE2E_UnhealthyDependencyFailsDependent(t *testing.T) {
 	t.Parallel()
 	const cfg = `version: "1"
@@ -627,14 +639,9 @@ services:
     depends_on:
       db: { condition: service_healthy }`
 	e := newEnv(t, cfg)
-	// Foreground up: the dependent can't start (db unhealthy), and once db's
-	// own process is the only thing left the supervisor winds down. The run
-	// must surface a failure via non-zero exit OR report the unhealthy state
-	// in `ps`. Daemonize and inspect ps instead, since the foreground path
-	// keeps db running (sleep 30) so `up` won't return on its own quickly.
-	_, _, code := e.run(t, context.Background(), "up", "-d")
+	_, _, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d", code)
+		t.Fatalf("start: exit %d", code)
 	}
 	// db must eventually report unhealthy; api must never reach running.
 	waitForCond(t, 5*time.Second, func() bool {
@@ -668,9 +675,9 @@ services:
     restart: always
 `
 	e := newEnv(t, cfg)
-	_, _, code := e.run(t, context.Background(), "up", "-d")
+	_, _, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d", code)
+		t.Fatalf("start: exit %d", code)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, _ := e.run(t, context.Background(), "ps")
@@ -700,10 +707,10 @@ services:
 	assertNoOrphans(t, alphaPID, betaPID)
 }
 
-// TestE2E_DownThenUpAndStart verifies that explicit up/start after down clear
+// TestE2E_StopThenStart verifies that explicit start after stop clears
 // the project-level stopped marker (which suppresses daemon autostart only)
-// and resume the project's services.
-func TestE2E_DownThenUpAndStart(t *testing.T) {
+// and resumes the project's services.
+func TestE2E_StopThenStart(t *testing.T) {
 	t.Parallel()
 	const cfg = `version: "1"
 name: lc-test
@@ -716,54 +723,41 @@ services:
     restart: always
 `
 	e := newEnv(t, cfg)
-	_, _, code := e.run(t, context.Background(), "up", "-d")
+	_, _, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d", code)
+		t.Fatalf("start: exit %d", code)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, _ := e.run(t, context.Background(), "ps")
 		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") != 0
 	}, "ps shows both services running")
 
-	_, downErr, rc := e.run(t, context.Background(), "down")
+	_, stopErr, rc := e.run(t, context.Background(), "stop")
 	if rc != 0 {
-		t.Fatalf("down: exit %d, err=%q", rc, downErr)
+		t.Fatalf("stop: exit %d, err=%q", rc, stopErr)
 	}
 	waitForCond(t, 3*time.Second, func() bool {
 		psOut, _, _ := e.run(t, context.Background(), "ps")
 		return pidFromPS(t, psOut, "alpha") == 0 && pidFromPS(t, psOut, "beta") == 0
-	}, "ps shows both stopped after down")
+	}, "ps shows both stopped after stop")
 
-	// ls / project list should still know about the project.
-	lsOut, _, lsCode := e.run(t, context.Background(), "ls")
+	// project list should still know about the project.
+	lsOut, _, lsCode := e.run(t, context.Background(), "project", "list")
 	if lsCode != 0 {
-		t.Fatalf("ls after down: exit %d", lsCode)
+		t.Fatalf("project list after stop: exit %d", lsCode)
 	}
 	if !strings.Contains(lsOut, "lc-test") {
-		t.Fatalf("ls after down missing project: %q", lsOut)
+		t.Fatalf("project list after stop missing project: %q", lsOut)
 	}
 
-	_, upErr, rc := e.run(t, context.Background(), "up", "-d")
-	if rc != 0 {
-		t.Fatalf("up -d after down: exit %d, err=%q", rc, upErr)
-	}
-	waitForCond(t, 5*time.Second, func() bool {
-		psOut, _, _ := e.run(t, context.Background(), "ps")
-		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") != 0
-	}, "up after down resumes both services")
-
-	_, _, rc = e.run(t, context.Background(), "down")
-	if rc != 0 {
-		t.Fatalf("second down: exit %d", rc)
-	}
 	_, startErr, rc := e.run(t, context.Background(), "start")
 	if rc != 0 {
-		t.Fatalf("start after down: exit %d, err=%q", rc, startErr)
+		t.Fatalf("start after stop: exit %d, err=%q", rc, startErr)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, _ := e.run(t, context.Background(), "ps")
 		return pidFromPS(t, psOut, "alpha") != 0 && pidFromPS(t, psOut, "beta") != 0
-	}, "start after down resumes both services")
+	}, "start after stop resumes both services")
 }
 
 // TestE2E_Top verifies `top` renders CPU/memory usage for every running
@@ -772,9 +766,9 @@ services:
 func TestE2E_Top(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, threeServiceLoopConfig)
-	_, _, code := e.run(t, context.Background(), "up", "-d")
+	_, _, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d", code)
+		t.Fatalf("start: exit %d", code)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, _ := e.run(t, context.Background(), "ps")
@@ -829,9 +823,9 @@ services:
 		t.Fatalf("write .env: %v", err)
 	}
 
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, _ := e.run(t, context.Background(), "ps")
@@ -866,9 +860,9 @@ services:
 	}
 	e2.envFile = other
 
-	_, errOut, code = e2.run(t, context.Background(), "up", "-d")
+	_, errOut, code = e2.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d (--env-file): exit %d, err=%q", code, errOut)
+		t.Fatalf("start (--env-file): exit %d, err=%q", code, errOut)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, _ := e2.run(t, context.Background(), "ps")
@@ -891,10 +885,10 @@ services:
     command: "sleep 60"
 `
 	e := newEnv(t, cfg)
-	// 1. up -d to register project
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	// 1. start to register project
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 
 	waitForCond(t, 5*time.Second, func() bool {
@@ -945,9 +939,9 @@ services:
     command: "sleep 60"
 `
 	e := newEnv(t, cfg)
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 
 	outsideDir := t.TempDir()
@@ -965,7 +959,7 @@ services:
 	}, "ps outside dir auto-fallback shows srv1 under ps-all-test")
 }
 
-func TestE2E_UpRemoveOrphans(t *testing.T) {
+func TestE2E_StartRemoveOrphans(t *testing.T) {
 	t.Parallel()
 	cfg1 := `
 version: "1"
@@ -978,10 +972,10 @@ services:
 `
 	e := newEnv(t, cfg1)
 
-	// 1. up -d with 2 services
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	// 1. start with 2 services
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 
 	var betaPID int
@@ -1007,10 +1001,10 @@ services:
 		t.Fatalf("write updated config: %v", err)
 	}
 
-	// 3. Run up -d again (remove-orphans is true by default)
-	_, errOut, code = e.run(t, context.Background(), "up", "-d")
+	// 3. Run start again (remove-orphans is true by default)
+	_, errOut, code = e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d after removing service: exit %d, err=%q", code, errOut)
+		t.Fatalf("start after removing service: exit %d, err=%q", code, errOut)
 	}
 
 	// 4. Verify beta is stopped and unregistered from ps
@@ -1025,7 +1019,7 @@ services:
 
 // TestE2E_AutostartResumesProjectWithoutRestartPolicy verifies that a fresh
 // daemon autostarts every registered project — even one whose services have no
-// restart policy — unless a project-level .stopped marker (written by `down`)
+// restart policy — unless a project-level .stopped marker (written by `stop`)
 // suppresses it.
 func TestE2E_AutostartResumesProjectWithoutRestartPolicy(t *testing.T) {
 	t.Parallel()
@@ -1039,9 +1033,9 @@ services:
 `
 	e := newEnv(t, cfg)
 
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, rc := e.run(t, context.Background(), "ps")
@@ -1058,9 +1052,9 @@ services:
 	if code != 0 {
 		t.Fatalf("daemon stop: exit %d", code)
 	}
-	_, _, code = e.run(t, context.Background(), "daemon", "start")
+	out, errOut, code := e.run(t, context.Background(), "daemon", "start")
 	if code != 0 {
-		t.Fatalf("daemon start: exit %d", code)
+		t.Fatalf("daemon start: exit %d, out=%s, err=%s", code, out, errOut)
 	}
 
 	// The services must be running again after the daemon restart.
@@ -1073,10 +1067,10 @@ services:
 	}, "ps shows both services running after daemon restart")
 }
 
-// TestE2E_AutostartHonorsDownMarker verifies a project explicitly stopped with
-// `down` stays stopped across a daemon restart (project .stopped marker) but is
+// TestE2E_AutostartHonorsStopMarker verifies a project explicitly stopped with
+// `stop` stays stopped across a daemon restart (project .stopped marker) but is
 // still listed so `ps` reports every service as stopped and logs stay readable.
-func TestE2E_AutostartHonorsDownMarker(t *testing.T) {
+func TestE2E_AutostartHonorsStopMarker(t *testing.T) {
 	t.Parallel()
 	cfg := `version: "1"
 name: down-marker-test
@@ -1088,9 +1082,9 @@ services:
 `
 	e := newEnv(t, cfg)
 
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, rc := e.run(t, context.Background(), "ps")
@@ -1100,8 +1094,8 @@ services:
 		return pidFromPS(t, psOut, "web") != 0 && pidFromPS(t, psOut, "worker") != 0
 	}, "ps shows web and worker running")
 
-	// `down` writes the project .stopped marker that suppresses autostart.
-	_, _, code = e.run(t, context.Background(), "down")
+	// `stop` writes the project .stopped marker that suppresses autostart.
+	_, _, code = e.run(t, context.Background(), "stop")
 	if code != 0 {
 		t.Fatalf("down: exit %d", code)
 	}
@@ -1138,7 +1132,7 @@ services:
 // TestE2E_StartServiceOnDownedProject verifies `start <service>` on a stopped
 // project lazily starts just that service (and its depends_on chain) instead
 // of the whole project, and re-arms autostart by clearing the stopped marker.
-func TestE2E_StartServiceOnDownedProject(t *testing.T) {
+func TestE2E_StartServiceOnStoppedProject(t *testing.T) {
 	t.Parallel()
 	cfg := `version: "1"
 name: lazy-start-test
@@ -1155,9 +1149,9 @@ services:
 `
 	e := newEnv(t, cfg)
 
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 	waitForCond(t, 5*time.Second, func() bool {
 		psOut, _, rc := e.run(t, context.Background(), "ps")
@@ -1168,9 +1162,9 @@ services:
 			pidFromPS(t, psOut, "beta") != 0 &&
 			pidFromPS(t, psOut, "gamma") != 0
 	}, "ps shows all three services running")
-	_, _, code = e.run(t, context.Background(), "down")
+	_, _, code = e.run(t, context.Background(), "stop")
 	if code != 0 {
-		t.Fatalf("down: exit %d", code)
+		t.Fatalf("stop: exit %d", code)
 	}
 
 	// start beta on the stopped project: beta and its dependency alpha run,
@@ -1222,9 +1216,9 @@ services:
 `
 	e := newEnv(t, cfg)
 
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 
 	var origPid int
@@ -1284,9 +1278,9 @@ services:
 `
 	e := newEnv(t, cfg)
 
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
 
 	var origPid int
@@ -1331,9 +1325,9 @@ services:
 		t.Fatalf("daemon crashed after adopted service exit/restart (ps exit %d)", code)
 	}
 
-	_, _, code = e.run(t, context.Background(), "down")
+	_, _, code = e.run(t, context.Background(), "stop")
 	if code != 0 {
-		t.Fatalf("down: exit %d", code)
+		t.Fatalf("stop: exit %d", code)
 	}
 }
 
@@ -1353,13 +1347,13 @@ services:
 `
 	e := newEnv(t, cfg)
 
-	_, errOut, code := e.run(t, context.Background(), "up", "-d")
+	_, errOut, code := e.run(t, context.Background(), "start")
 	if code != 0 {
-		t.Fatalf("up -d: exit %d, err=%q", code, errOut)
+		t.Fatalf("start: exit %d, err=%q", code, errOut)
 	}
-	_, _, code = e.run(t, context.Background(), "down")
+	_, _, code = e.run(t, context.Background(), "stop")
 	if code != 0 {
-		t.Fatalf("down: exit %d", code)
+		t.Fatalf("stop: exit %d", code)
 	}
 
 	// Lazy start: only alpha runs, beta stays stopped.

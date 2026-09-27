@@ -17,14 +17,20 @@ import (
 	"github.com/blesswinsamuel/devyard/internal/orchestrator"
 	"github.com/blesswinsamuel/devyard/internal/project"
 	"github.com/blesswinsamuel/devyard/internal/proxy"
+	"github.com/blesswinsamuel/devyard/internal/web"
 )
 
 // runDaemonChild is the entry point for the daemonized global daemon. It
 // creates the orchestrator, starts the control server on the daemon socket,
-// installs a signal handler, and blocks until StopDaemon is called or a
-// signal is received. The web UI is a separate process (`devyard web`).
-func runDaemonChild() error {
+// starts the web dashboard server and reverse proxy, installs a signal handler,
+// and blocks until StopDaemon is called or a signal is received.
+func runDaemonChild() (err error) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	defer func() {
+		if err != nil {
+			slog.Error("daemon startup failed", "error", err)
+		}
+	}()
 
 	locs, err := project.ResolveDaemon()
 	if err != nil {
@@ -59,64 +65,69 @@ func runDaemonChild() error {
 	if err := srv.ListenAndServe(); err != nil {
 		return err
 	}
+	defer func() { _ = srv.Close() }()
 
-	// Reverse proxy exposing services that declare port(s) at named URLs
-	// (<service>.<project>.<suffix>). Settings come from the global config;
-	// loopback-only by default. A failed listen (e.g. port in use) disables
-	// the proxy but does not take the daemon down.
 	gcfg, err := globalconfig.Load()
 	if err != nil {
-		slog.Warn("global config unavailable, reverse proxy disabled", "error", err)
-	} else {
-		serverOpts := proxy.ServerOptions{
-			Addr:         fmt.Sprintf("%s:%d", gcfg.Proxy.Host, gcfg.Proxy.Port),
-			DomainSuffix: gcfg.Proxy.DomainSuffix,
-			Resolver:     d,
-		}
+		return fmt.Errorf("global config: %w", err)
+	}
 
-		if gcfg.Proxy.TLS.Enabled {
-			tlsPort := gcfg.Proxy.EffectiveTLSPort()
-			tlsAddr := fmt.Sprintf("%s:%d", gcfg.Proxy.Host, tlsPort)
-			cm, err := proxy.NewCertManager(proxy.CertManagerOptions{
-				CertFile: gcfg.Proxy.TLS.CertFile,
-				KeyFile:  gcfg.Proxy.TLS.KeyFile,
-				CADir:    filepath.Join(locs.State, "ca"),
-			})
-			if err != nil {
-				slog.Error("failed to initialize proxy tls cert manager", "error", err)
-			} else {
-				serverOpts.TLS = proxy.TLSOptions{
-					Enabled:      true,
-					Addr:         tlsAddr,
-					TLSConfig:    cm.TLSConfig(),
-					HTTPRedirect: gcfg.Proxy.TLS.HTTPRedirect,
-				}
-			}
-		}
+	// Web dashboard server
+	_, rpcHandler := srv.Handler()
+	wsrv := web.NewServer(fmt.Sprintf("%s:%d", gcfg.Web.Host, gcfg.Web.Port), rpcHandler, d)
+	if err := wsrv.ListenAndServe(); err != nil {
+		return fmt.Errorf("web server: %w", err)
+	}
+	defer func() { _ = wsrv.Close() }()
 
-		psrv := proxy.NewServer(serverOpts)
-		if err := psrv.ListenAndServe(); err != nil {
-			slog.Error("reverse proxy disabled; listen failed", "addr", psrv.Addr(), "error", err)
-		} else {
-			defer func() { _ = psrv.Close() }()
-			port := gcfg.Proxy.Port
-			if _, portStr, err := net.SplitHostPort(psrv.Addr()); err == nil {
-				if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
-					port = p
-				}
-			}
-			tlsPort := 0
-			if gcfg.Proxy.TLS.Enabled {
-				tlsPort = gcfg.Proxy.EffectiveTLSPort()
-				if _, portStr, err := net.SplitHostPort(psrv.TLSAddr()); err == nil {
-					if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
-						tlsPort = p
-					}
-				}
-			}
-			d.SetProxyInfo(port, tlsPort, gcfg.Proxy.DomainSuffix, gcfg.Proxy.TLS.Enabled)
+	serverOpts := proxy.ServerOptions{
+		Addr:             fmt.Sprintf("%s:%d", gcfg.Proxy.Host, gcfg.Proxy.Port),
+		DomainSuffix:     gcfg.Proxy.DomainSuffix,
+		Resolver:         d,
+		DashboardHandler: wsrv.Handler(),
+	}
+
+	if gcfg.Proxy.TLS.Enabled {
+		tlsPort := gcfg.Proxy.EffectiveTLSPort()
+		tlsAddr := fmt.Sprintf("%s:%d", gcfg.Proxy.Host, tlsPort)
+		cm, err := proxy.NewCertManager(proxy.CertManagerOptions{
+			CertFile: gcfg.Proxy.TLS.CertFile,
+			KeyFile:  gcfg.Proxy.TLS.KeyFile,
+			CADir:    filepath.Join(locs.State, "ca"),
+		})
+		if err != nil {
+			return fmt.Errorf("proxy tls cert manager: %w", err)
+		}
+		serverOpts.TLS = proxy.TLSOptions{
+			Enabled:      true,
+			Addr:         tlsAddr,
+			TLSConfig:    cm.TLSConfig(),
+			HTTPRedirect: gcfg.Proxy.TLS.HTTPRedirect,
 		}
 	}
+
+	psrv := proxy.NewServer(serverOpts)
+	if err := psrv.ListenAndServe(); err != nil {
+		return fmt.Errorf("reverse proxy: %w", err)
+	}
+	defer func() { _ = psrv.Close() }()
+
+	port := gcfg.Proxy.Port
+	if _, portStr, err := net.SplitHostPort(psrv.Addr()); err == nil {
+		if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+			port = p
+		}
+	}
+	tlsPort := 0
+	if gcfg.Proxy.TLS.Enabled {
+		tlsPort = gcfg.Proxy.EffectiveTLSPort()
+		if _, portStr, err := net.SplitHostPort(psrv.TLSAddr()); err == nil {
+			if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+				tlsPort = p
+			}
+		}
+	}
+	d.SetProxyInfo(port, tlsPort, gcfg.Proxy.DomainSuffix, gcfg.Proxy.TLS.Enabled)
 
 	// Autostart all registered projects unless a project-level .stopped
 	// marker exists (explicit down/stop).
@@ -140,7 +151,6 @@ func runDaemonChild() error {
 		_ = d.StopDaemon()
 	}
 
-	_ = srv.Close()
 	_ = daemon.RemoveDaemonPidfile(locs)
 	slog.Info("daemon exited")
 	return nil

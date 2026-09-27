@@ -150,11 +150,11 @@ The probe inherits the service's `shell`, `working_dir`, and `env`, so a
 `stop <svc>` is ephemeral: an explicitly stopped service is not restarted by the
 running supervisor, but **daemon autostart** starts every registered project
 again (regardless of restart policy), so a service with `always` resumes on the
-next daemon boot unless the whole project was stopped with `down` / `stop`.
+next daemon boot unless the whole project was stopped with `stop`.
 
-Note: a **project-level** `.stopped` marker (written by `down` / `stop` with no
+Note: a **project-level** `.stopped` marker (written by `stop` with no
 service) suppresses **daemon autostart** for the whole project. Explicit
-`up`/`start`/`start <svc>` clears it. Stopped projects remain listed in `ls` /
+`start`/`start <svc>` clears it. Stopped projects remain listed in `project list` /
 the web UI, and `start <svc>` lazily starts just that service (plus its
 `depends_on` chain) instead of the whole project.
 
@@ -177,12 +177,12 @@ build:                                       # object form
   shell: bash                                # optional, default "sh"
 ```
 
-- Runs once before the service starts on `up`.
+- Runs once before the service starts on `start`.
 - `devyard build [service...]` runs the build step for the named services
   (or all, in start order, when none are named). Services without a `build`
   are skipped.
-- `up --build` forces a rebuild before starting.
-- A failed build aborts `up`/`up --build` so services never start on top of a
+- `devyard start --build` forces a rebuild before starting.
+- A failed build aborts `start`/`start --build` so services never start on top of a
   broken build.
 - `command` is required in the object form (validation rejects an empty
   command). `env` is additive over the parent env, same rule as service `env`.
@@ -293,7 +293,7 @@ editing configs. (A future strict mode + warning pass is on the roadmap.)
 
 ## Global config
 
-In addition to the per-project `devyard.yml`, `devyard web` reads a
+In addition to the per-project `devyard.yml`, the daemon reads a
 user-level global config at `$XDG_CONFIG_HOME/devyard/config.yml`
 (default `~/.config/devyard/config.yml`) for default bind settings:
 
@@ -315,7 +315,7 @@ proxy:
 
 | Field | Default | Notes |
 | --- | --- | --- |
-| `web.host` | `127.0.0.1` | Bind address for `devyard web`. Set to `0.0.0.0` for remote access. |
+| `web.host` | `127.0.0.1` | Bind address for the daemon's web dashboard. Set to `0.0.0.0` for remote access. |
 | `web.port` | `9090` | TCP port for the web UI. |
 | `proxy.host` | `127.0.0.1` | Bind address for the daemon's reverse proxy. Set to `0.0.0.0` for LAN access. |
 | `proxy.port` | `8080` | TCP port for the reverse proxy. |

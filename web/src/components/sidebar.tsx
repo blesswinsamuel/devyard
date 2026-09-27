@@ -913,7 +913,7 @@ export function Sidebar() {
           <Show when={projectNames().length === 0}>
             <p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
               No projects yet. Add one above or start with{" "}
-              <code class="rounded bg-muted px-1 font-mono text-foreground">devyard up</code>.
+              <code class="rounded bg-muted px-1 font-mono text-foreground">devyard start</code>.
             </p>
           </Show>
         </ContextMenuTrigger>

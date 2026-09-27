@@ -52,9 +52,8 @@ func newDaemonStartCmd(ctx *CLIContext) *cobra.Command {
 			}
 			ctx.Errorf("devyard: daemon started (pid %d)\n", pid)
 
-			if err := control.WaitForSocket(locs.Socket, 3*time.Second); err != nil {
-				ctx.Errorf("devyard: %v\n", err)
-				return nil
+			if err := waitForDaemonStartup(locs, pid, 3*time.Second); err != nil {
+				return err
 			}
 			return nil
 		},
@@ -193,15 +192,27 @@ func newDaemonStatusCmd(ctx *CLIContext) *cobra.Command {
 				return nil
 			}
 
+			dashboardURL := ""
+			if cfg, err := c.GetGlobalConfig(); err == nil && cfg != nil && cfg.Web != nil {
+				dashboardURL = fmt.Sprintf("http://%s:%d", cfg.Web.Host, cfg.Web.Port)
+			}
+
 			if ctx.IsJSON() {
-				return ctx.PrintJSON(map[string]any{
+				res := map[string]any{
 					"status":   "running",
 					"pid":      pid,
 					"projects": projects,
-				})
+				}
+				if dashboardURL != "" {
+					res["dashboard"] = dashboardURL
+				}
+				return ctx.PrintJSON(res)
 			}
 
 			_, _ = fmt.Fprintf(ctx.Out, "Daemon status: running (pid %d)\n", pid)
+			if dashboardURL != "" {
+				_, _ = fmt.Fprintf(ctx.Out, "Dashboard:     %s\n", dashboardURL)
+			}
 			_, _ = fmt.Fprintf(ctx.Out, "Active projects: %d\n", len(projects))
 			for _, p := range projects {
 				_, _ = fmt.Fprintf(ctx.Out, "  - %s (%s) [%s]\n", p.Name, p.Status, p.ConfigPath)
@@ -215,6 +226,9 @@ func waitForDaemonHandover(locs *project.DaemonLocations, newPid int32, timeout 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if newPid > 0 && !daemon.IsAlive(int(newPid)) {
+			if errMsg := readLastDaemonError(locs.LogFile); errMsg != "" {
+				return fmt.Errorf("replacement daemon (pid %d) exited: %s", newPid, errMsg)
+			}
 			return fmt.Errorf("replacement daemon (pid %d) exited during restart", newPid)
 		}
 		client, err := control.Dial(locs.Socket)

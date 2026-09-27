@@ -17,14 +17,26 @@ import (
 
 // freePort reserves an ephemeral port and releases it.
 func freePort(t *testing.T) int {
+	return freePorts(t, 1)[0]
+}
+
+// freePorts reserves n distinct ephemeral ports and releases them together.
+func freePorts(t *testing.T, n int) []int {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
+	lns := make([]net.Listener, n)
+	ports := make([]int, n)
+	for i := 0; i < n; i++ {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		lns[i] = ln
+		ports[i] = ln.Addr().(*net.TCPAddr).Port
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
-	_ = ln.Close()
-	return port
+	for _, ln := range lns {
+		_ = ln.Close()
+	}
+	return ports
 }
 
 // proxyTestConfig exposes two services: web (scalar port, project default)
@@ -94,8 +106,8 @@ func TestE2E_Proxy(t *testing.T) {
 	e := newEnv(t, proxyTestConfig())
 	writeGlobalProxyConfig(t, e.config, proxyPort)
 
-	if _, _, code := e.run(t, context.Background(), "up", "-d"); code != 0 {
-		t.Fatalf("up -d failed")
+	if _, _, code := e.run(t, context.Background(), "start"); code != 0 {
+		t.Fatalf("start failed")
 	}
 	baseURL := "http://127.0.0.1:" + strconv.Itoa(proxyPort)
 

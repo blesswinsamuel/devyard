@@ -375,3 +375,47 @@ func TestCertManagerCustomCert(t *testing.T) {
 		t.Fatalf("expected valid certificate, got nil/empty")
 	}
 }
+
+func TestProxyDashboardRouting(t *testing.T) {
+	t.Parallel()
+
+	dashboardCalled := false
+	dashboardHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dashboardCalled = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("dashboard response"))
+	})
+
+	srv := NewServer(ServerOptions{
+		Addr:             "127.0.0.1:0",
+		DomainSuffix:     "localhost",
+		Resolver:         &fakeResolver{},
+		DashboardHandler: dashboardHandler,
+	})
+	if err := srv.ListenAndServe(); err != nil {
+		t.Fatalf("ListenAndServe: %v", err)
+	}
+	defer func() { _ = srv.Close() }()
+
+	testHosts := []string{
+		"localhost",
+		"127.0.0.1",
+		"devyard.localhost",
+		"devyard",
+		"DEVYARD.localhost",
+	}
+
+	for _, host := range testHosts {
+		dashboardCalled = false
+		resp, body := getWithHost(t, "http://"+srv.Addr()+"/", host)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("host %s: status = %d, want 200", host, resp.StatusCode)
+		}
+		if !dashboardCalled {
+			t.Errorf("host %s: DashboardHandler was not called", host)
+		}
+		if body != "dashboard response" {
+			t.Errorf("host %s: body = %q, want 'dashboard response'", host, body)
+		}
+	}
+}

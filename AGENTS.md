@@ -42,6 +42,14 @@ Go web proxy on :9090), so you can edit `web/src/**` and see changes live with
 no rebuild. When changing web source, always verify the build still compiles:
 `cd web && bun install && bun run build`.
 
+**Zaidan-generated UI components (do not edit).** Everything in
+`web/src/components/ui/` is generated from the [zaidan](https://zaidan.carere.dev)
+registry (config in `web/components.json`) and must never be hand-modified —
+edits would be silently overwritten by regeneration. To customize or extend a
+component, create a wrapper in `web/src/components/` (e.g. `badge.tsx`,
+`toaster.tsx`, `tab-strip.tsx`) that composes the generated primitive, and point
+consumers at the wrapper.
+
 Tests and lint must stay green. CI (`.github/workflows/ci.yml`) runs `go vet`,
 `gofmt`, `golangci-lint`, `go build`, and `go test -race` on Ubuntu and macOS.
 The integration suite builds the actual binary and drives the full CLI lifecycle

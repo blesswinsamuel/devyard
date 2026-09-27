@@ -3,7 +3,7 @@ import { Check, Copy, ExternalLink, Globe, RefreshCw, Search } from "lucide-soli
 import { fetchPorts, ports as portsMap, projects as projectsList, services as servicesMap } from "~/stores/data";
 import { setShowPortsDialog, showPortsDialog } from "~/stores/app";
 import type { PortBinding } from "~/lib/types";
-import { Badge } from "~/components/ui/badge";
+import { Badge } from "~/components/badge";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";

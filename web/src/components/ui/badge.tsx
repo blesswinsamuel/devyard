@@ -11,10 +11,6 @@ const badgeVariants = cva(
       variant: {
         default: "z-badge-variant-default",
         secondary: "z-badge-variant-secondary",
-        muted: "z-badge-variant-secondary",
-        success: "z-badge-variant-success-light",
-        warning: "z-badge-variant-warning-light",
-        info: "z-badge-variant-info-light",
         destructive: "z-badge-variant-destructive",
         outline: "z-badge-variant-outline",
         ghost: "z-badge-variant-ghost",

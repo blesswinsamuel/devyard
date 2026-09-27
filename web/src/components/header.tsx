@@ -28,7 +28,7 @@ import { selectedProject, selectedService, selectedTask } from "~/stores/nav";
 import { isPreviousLogs, openTerminalTab, togglePreviousLogs } from "~/stores/workspace";
 import type { WorkspaceTab } from "~/lib/types";
 import { healthTone, serviceMeta, statusLabel, statusTone } from "~/lib/status";
-import { Badge } from "~/components/ui/badge";
+import { Badge } from "~/components/badge";
 import {
   Breadcrumb,
   BreadcrumbItem,

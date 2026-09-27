@@ -1,27 +1,26 @@
 import * as ContextMenuPrimitive from "@kobalte/core/context-menu";
 import type { PolymorphicProps } from "@kobalte/core/polymorphic";
 import { Check, ChevronRight } from "lucide-solid";
-import type { ComponentProps, ValidComponent } from "solid-js";
-import { mergeProps, splitProps } from "solid-js";
+import type { ComponentProps, JSX, ValidComponent } from "solid-js";
+import { splitProps } from "solid-js";
 import { cn } from "~/lib/utils";
 
-type ContextMenuProps = ContextMenuPrimitive.ContextMenuRootProps;
+type ContextMenuProps<T extends ValidComponent = "div"> = PolymorphicProps<
+  T,
+  ContextMenuPrimitive.ContextMenuRootProps
+> &
+  Pick<ComponentProps<T>, "class">;
 
-const ContextMenu = (props: ContextMenuProps) => {
-  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />;
-};
-
-type ContextMenuPortalProps = ContextMenuPrimitive.ContextMenuPortalProps;
-
-const ContextMenuPortal = (props: ContextMenuPortalProps) => {
-  return <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />;
+const ContextMenu = <T extends ValidComponent = "div">(props: ContextMenuProps<T>) => {
+  return <ContextMenuPrimitive.Root {...props} />;
 };
 
 type ContextMenuTriggerProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuTriggerProps<T>
-> &
-  Pick<ComponentProps<T>, "class">;
+> & {
+  class?: string | undefined;
+};
 
 const ContextMenuTrigger = <T extends ValidComponent = "div">(
   props: ContextMenuTriggerProps<T>,
@@ -29,18 +28,25 @@ const ContextMenuTrigger = <T extends ValidComponent = "div">(
   const [local, others] = splitProps(props as ContextMenuTriggerProps, ["class"]);
   return (
     <ContextMenuPrimitive.Trigger
-      class={local.class}
+      class={cn("z-context-menu-trigger select-none", local.class)}
       data-slot="context-menu-trigger"
       {...others}
     />
   );
 };
 
+type ContextMenuPortalProps = ContextMenuPrimitive.ContextMenuPortalProps;
+
+const ContextMenuPortal = (props: ContextMenuPortalProps) => {
+  return <ContextMenuPrimitive.Portal {...props} />;
+};
+
 type ContextMenuContentProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuContentProps<T>
-> &
-  Pick<ComponentProps<T>, "class">;
+> & {
+  class?: string | undefined;
+};
 
 const ContextMenuContent = <T extends ValidComponent = "div">(
   props: ContextMenuContentProps<T>,
@@ -49,11 +55,11 @@ const ContextMenuContent = <T extends ValidComponent = "div">(
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
-        data-slot="context-menu-content"
         class={cn(
-          "z-50 z-context-menu-content z-menu-target max-h-(--kb-popper-available-height) min-w-36 origin-(--kb-menu-content-transform-origin) overflow-y-auto overflow-x-hidden outline-none data-closed:overflow-hidden",
+          "z-50 z-context-menu-content z-menu-target max-h-(--kb-popper-available-height) origin-(--kb-menu-content-transform-origin) overflow-y-auto overflow-x-hidden outline-none",
           local.class,
         )}
+        data-slot="context-menu-content"
         {...others}
       />
     </ContextMenuPrimitive.Portal>
@@ -63,8 +69,9 @@ const ContextMenuContent = <T extends ValidComponent = "div">(
 type ContextMenuGroupProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuGroupProps<T>
-> &
-  Pick<ComponentProps<T>, "class">;
+> & {
+  class?: string | undefined;
+};
 
 const ContextMenuGroup = <T extends ValidComponent = "div">(props: ContextMenuGroupProps<T>) => {
   const [local, others] = splitProps(props as ContextMenuGroupProps, ["class"]);
@@ -73,21 +80,21 @@ const ContextMenuGroup = <T extends ValidComponent = "div">(props: ContextMenuGr
   );
 };
 
-type ContextMenuLabelProps<T extends ValidComponent = "span"> = PolymorphicProps<
+type ContextMenuLabelProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuGroupLabelProps<T>
-> &
-  Pick<ComponentProps<T>, "class"> & {
-    inset?: boolean;
-  };
+> & {
+  class?: string | undefined;
+  inset?: boolean;
+};
 
-const ContextMenuLabel = <T extends ValidComponent = "span">(props: ContextMenuLabelProps<T>) => {
+const ContextMenuLabel = <T extends ValidComponent = "div">(props: ContextMenuLabelProps<T>) => {
   const [local, others] = splitProps(props as ContextMenuLabelProps, ["class", "inset"]);
   return (
     <ContextMenuPrimitive.GroupLabel
+      class={cn("z-context-menu-label data-inset:pl-8", local.class)}
       data-slot="context-menu-label"
       data-inset={local.inset}
-      class={cn("z-context-menu-label data-inset:pl-8", local.class)}
       {...others}
     />
   );
@@ -96,24 +103,23 @@ const ContextMenuLabel = <T extends ValidComponent = "span">(props: ContextMenuL
 type ContextMenuItemProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuItemProps<T>
-> &
-  Pick<ComponentProps<T>, "class"> & {
-    inset?: boolean;
-    variant?: "default" | "destructive";
-  };
+> & {
+  class?: string | undefined;
+  inset?: boolean;
+  variant?: "default" | "destructive";
+};
 
-const ContextMenuItem = <T extends ValidComponent = "div">(rawProps: ContextMenuItemProps<T>) => {
-  const props = mergeProps({ variant: "default" } as ContextMenuItemProps<T>, rawProps);
+const ContextMenuItem = <T extends ValidComponent = "div">(props: ContextMenuItemProps<T>) => {
   const [local, others] = splitProps(props as ContextMenuItemProps, ["class", "inset", "variant"]);
   return (
     <ContextMenuPrimitive.Item
-      data-slot="context-menu-item"
-      data-inset={local.inset}
-      data-variant={local.variant}
       class={cn(
         "group/context-menu-item relative z-context-menu-item flex cursor-default select-none items-center outline-hidden data-disabled:pointer-events-none data-inset:pl-8 data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         local.class,
       )}
+      data-slot="context-menu-item"
+      data-inset={local.inset}
+      data-variant={local.variant ?? "default"}
       {...others}
     />
   );
@@ -122,33 +128,34 @@ const ContextMenuItem = <T extends ValidComponent = "div">(rawProps: ContextMenu
 type ContextMenuSubProps = ContextMenuPrimitive.ContextMenuSubProps;
 
 const ContextMenuSub = (props: ContextMenuSubProps) => {
-  return <ContextMenuPrimitive.Sub data-slot="context-menu-sub" {...props} />;
+  return <ContextMenuPrimitive.Sub {...props} />;
 };
 
 type ContextMenuSubTriggerProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuSubTriggerProps<T>
-> &
-  Pick<ComponentProps<T>, "class" | "children"> & {
-    inset?: boolean;
-  };
+> & {
+  class?: string | undefined;
+  children?: JSX.Element;
+  inset?: boolean;
+};
 
 const ContextMenuSubTrigger = <T extends ValidComponent = "div">(
   props: ContextMenuSubTriggerProps<T>,
 ) => {
   const [local, others] = splitProps(props as ContextMenuSubTriggerProps, [
     "class",
-    "inset",
     "children",
+    "inset",
   ]);
   return (
     <ContextMenuPrimitive.SubTrigger
-      data-slot="context-menu-sub-trigger"
-      data-inset={local.inset}
       class={cn(
         "z-context-menu-sub-trigger flex cursor-default select-none items-center outline-hidden data-inset:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         local.class,
       )}
+      data-slot="context-menu-sub-trigger"
+      data-inset={local.inset}
       {...others}
     >
       {local.children}
@@ -160,8 +167,9 @@ const ContextMenuSubTrigger = <T extends ValidComponent = "div">(
 type ContextMenuSubContentProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuSubContentProps<T>
-> &
-  Pick<ComponentProps<T>, "class">;
+> & {
+  class?: string | undefined;
+};
 
 const ContextMenuSubContent = <T extends ValidComponent = "div">(
   props: ContextMenuSubContentProps<T>,
@@ -170,11 +178,11 @@ const ContextMenuSubContent = <T extends ValidComponent = "div">(
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.SubContent
-        data-slot="context-menu-sub-content"
         class={cn(
-          "z-50 z-context-menu-sub-content z-menu-target max-h-(--kb-popper-available-height) min-w-32 origin-(--kb-menu-content-transform-origin) overflow-y-auto overflow-x-hidden outline-none data-closed:overflow-hidden",
+          "z-50 z-context-menu-content z-context-menu-subcontent z-menu-target max-h-(--kb-popper-available-height) origin-(--kb-menu-content-transform-origin) overflow-y-auto overflow-x-hidden outline-none",
           local.class,
         )}
+        data-slot="context-menu-sub-content"
         {...others}
       />
     </ContextMenuPrimitive.Portal>
@@ -184,8 +192,10 @@ const ContextMenuSubContent = <T extends ValidComponent = "div">(
 type ContextMenuCheckboxItemProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuCheckboxItemProps<T>
-> &
-  Pick<ComponentProps<T>, "class" | "children">;
+> & {
+  class?: string | undefined;
+  children?: JSX.Element;
+};
 
 const ContextMenuCheckboxItem = <T extends ValidComponent = "div">(
   props: ContextMenuCheckboxItemProps<T>,
@@ -193,17 +203,14 @@ const ContextMenuCheckboxItem = <T extends ValidComponent = "div">(
   const [local, others] = splitProps(props as ContextMenuCheckboxItemProps, ["class", "children"]);
   return (
     <ContextMenuPrimitive.CheckboxItem
-      data-slot="context-menu-checkbox-item"
       class={cn(
         "relative z-context-menu-checkbox-item flex cursor-default select-none items-center outline-hidden data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         local.class,
       )}
+      data-slot="context-menu-checkbox-item"
       {...others}
     >
-      <span
-        class="pointer-events-none z-context-menu-item-indicator"
-        data-slot="context-menu-checkbox-item-indicator"
-      >
+      <span class="pointer-events-none z-context-menu-item-indicator">
         <ContextMenuPrimitive.ItemIndicator>
           <Check />
         </ContextMenuPrimitive.ItemIndicator>
@@ -216,8 +223,9 @@ const ContextMenuCheckboxItem = <T extends ValidComponent = "div">(
 type ContextMenuRadioGroupProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuRadioGroupProps<T>
-> &
-  Pick<ComponentProps<T>, "class">;
+> & {
+  class?: string | undefined;
+};
 
 const ContextMenuRadioGroup = <T extends ValidComponent = "div">(
   props: ContextMenuRadioGroupProps<T>,
@@ -235,8 +243,10 @@ const ContextMenuRadioGroup = <T extends ValidComponent = "div">(
 type ContextMenuRadioItemProps<T extends ValidComponent = "div"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuRadioItemProps<T>
-> &
-  Pick<ComponentProps<T>, "class" | "children">;
+> & {
+  class?: string | undefined;
+  children?: JSX.Element;
+};
 
 const ContextMenuRadioItem = <T extends ValidComponent = "div">(
   props: ContextMenuRadioItemProps<T>,
@@ -244,17 +254,14 @@ const ContextMenuRadioItem = <T extends ValidComponent = "div">(
   const [local, others] = splitProps(props as ContextMenuRadioItemProps, ["class", "children"]);
   return (
     <ContextMenuPrimitive.RadioItem
-      data-slot="context-menu-radio-item"
       class={cn(
         "relative z-context-menu-radio-item flex cursor-default select-none items-center outline-hidden data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         local.class,
       )}
+      data-slot="context-menu-radio-item"
       {...others}
     >
-      <span
-        class="pointer-events-none z-context-menu-item-indicator"
-        data-slot="context-menu-radio-item-indicator"
-      >
+      <span class="pointer-events-none z-context-menu-item-indicator">
         <ContextMenuPrimitive.ItemIndicator>
           <Check />
         </ContextMenuPrimitive.ItemIndicator>
@@ -267,8 +274,9 @@ const ContextMenuRadioItem = <T extends ValidComponent = "div">(
 type ContextMenuSeparatorProps<T extends ValidComponent = "hr"> = PolymorphicProps<
   T,
   ContextMenuPrimitive.ContextMenuSeparatorProps<T>
-> &
-  Pick<ComponentProps<T>, "class">;
+> & {
+  class?: string | undefined;
+};
 
 const ContextMenuSeparator = <T extends ValidComponent = "hr">(
   props: ContextMenuSeparatorProps<T>,
@@ -276,21 +284,23 @@ const ContextMenuSeparator = <T extends ValidComponent = "hr">(
   const [local, others] = splitProps(props as ContextMenuSeparatorProps, ["class"]);
   return (
     <ContextMenuPrimitive.Separator
-      data-slot="context-menu-separator"
       class={cn("z-context-menu-separator", local.class)}
+      data-slot="context-menu-separator"
       {...others}
     />
   );
 };
 
-type ContextMenuShortcutProps = ComponentProps<"span">;
+type ContextMenuShortcutProps = ComponentProps<"span"> & {
+  class?: string | undefined;
+};
 
 const ContextMenuShortcut = (props: ContextMenuShortcutProps) => {
   const [local, others] = splitProps(props, ["class"]);
   return (
     <span
-      data-slot="context-menu-shortcut"
       class={cn("z-context-menu-shortcut", local.class)}
+      data-slot="context-menu-shortcut"
       {...others}
     />
   );

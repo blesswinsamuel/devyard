@@ -17,7 +17,7 @@ import {
 import { selectedProject } from "~/stores/nav";
 import { isMobile } from "~/lib/is-mobile";
 import { cn } from "~/lib/utils";
-import { TAB_DRAG_MIME, TabStrip, readTabDragData, type TabStripItem } from "~/components/ui/tabs";
+import { TAB_DRAG_MIME, TabStrip, readTabDragData, type TabStripItem } from "~/components/tab-strip";
 import { Button } from "~/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";
 import { LogContent } from "~/components/workspace/log_content";

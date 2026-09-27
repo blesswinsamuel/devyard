@@ -55,7 +55,7 @@ import { CommitListRow } from "~/components/git/CommitListRow";
 import { parseDiff, parseGitMeta } from "~/lib/diff";
 import { formatAuthorTime, formatRelativeTime } from "~/lib/format";
 import { Alert, AlertDescription } from "~/components/ui/alert";
-import { Badge } from "~/components/ui/badge";
+import { Badge } from "~/components/badge";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "~/components/ui/empty";

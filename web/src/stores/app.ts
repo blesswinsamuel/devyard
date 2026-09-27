@@ -1,3 +1,4 @@
+import { toast } from "solid-sonner";
 import { batch, createEffect, createRoot, createSignal } from "solid-js";
 
 export type Theme = "dark" | "light";
@@ -15,56 +16,29 @@ createRoot(() => {
 
 // --- toasts ---------------------------------------------------------------
 
-export interface Toast {
-  id: number;
-  message: string;
-  kind: "error" | "info" | "success";
-}
+export type ToastKind = "error" | "info" | "success";
 
-const [toasts, setToasts] = createSignal<Toast[]>([]);
-export { toasts };
-
-let nextToastId = 0;
-const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
-const TOAST_MAX = 5;
 const TOAST_TTL = 5000;
 
-function disarm(id: number) {
-  const t = toastTimers.get(id);
-  if (t !== undefined) {
-    clearTimeout(t);
-    toastTimers.delete(id);
-  }
-}
-
-function dismiss(id: number) {
-  disarm(id);
-  setToasts((list) => list.filter((x) => x.id !== id));
-}
+const activeToastIds = new Map<string, string | number>();
 
 /**
- * Pushes a toast, collapsing repeats of the same message into the existing
- * entry (re-arming its timer) so a failing poll can't flood the screen.
+ * Pushes a toast, collapsing repeats of the same message into a fresh entry
+ * (sonner can't re-arm a live toast) so a failing poll can't flood the screen.
  */
-export function pushToast(message: string, kind: Toast["kind"] = "error") {
-  const existing = toasts().find((t) => t.message === message);
-  if (existing) {
-    disarm(existing.id);
-    toastTimers.set(
-      existing.id,
-      setTimeout(() => dismiss(existing.id), TOAST_TTL)
-    );
-    return;
+export function pushToast(message: string, kind: ToastKind = "error") {
+  const previous = activeToastIds.get(message);
+  if (previous !== undefined) {
+    toast.dismiss(previous);
+    activeToastIds.delete(message);
   }
-  const id = ++nextToastId;
-  setToasts((list) => {
-    const trimmed = list.length >= TOAST_MAX ? list.slice(list.length - TOAST_MAX + 1) : list;
-    return [...trimmed, { id, message, kind }];
+  const id = toast[kind](message, {
+    duration: TOAST_TTL,
+    onDismiss: () => activeToastIds.delete(message),
+    onAutoClose: () => activeToastIds.delete(message),
   });
-  toastTimers.set(id, setTimeout(() => dismiss(id), TOAST_TTL));
+  activeToastIds.set(message, id);
 }
-
-export { dismiss as dismissToast };
 
 // --- overlays -------------------------------------------------------------
 

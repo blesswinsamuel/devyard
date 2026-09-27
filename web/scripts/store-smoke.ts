@@ -15,14 +15,22 @@ const storage = new Map<string, string>();
   setItem: (k: string, v: string) => void storage.set(k, String(v)),
   removeItem: (k: string) => void storage.delete(k),
 };
-(globalThis as Record<string, unknown>).document = {
+const docStub: Record<string, unknown> = {
   documentElement: { classList: { toggle: () => {} } },
+  querySelector: () => null,
+  createElement: () => ({ style: {}, setAttribute: () => {} }),
+  head: { appendChild: () => {} },
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  _$DX_DELEGATE: new Set(),
 };
+(globalThis as Record<string, unknown>).document = docStub;
 (globalThis as Record<string, unknown>).location = {
   protocol: "http:",
   host: "smoke.test",
 };
 (globalThis as Record<string, unknown>).window = {
+  document: docStub,
   location: { pathname: "/", href: "http://smoke.test/" },
   history: { pushState: () => {}, replaceState: () => {} },
   addEventListener: () => {},
@@ -33,6 +41,9 @@ const storage = new Map<string, string>();
   pushState: () => {},
   replaceState: () => {},
 };
+(globalThis as Record<string, unknown>).requestAnimationFrame = (fn: FrameRequestCallback) =>
+  setTimeout(() => fn(performance.now()), 16);
+(globalThis as Record<string, unknown>).cancelAnimationFrame = (id: number) => clearTimeout(id);
 
 let activeSocket: FakeWebSocket | null = null;
 

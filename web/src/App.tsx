@@ -7,7 +7,7 @@ import { HelpOverlay } from "~/components/help";
 import { AddProjectModal } from "~/components/add_project_modal";
 import { DaemonStatusModal } from "~/components/daemon_modal";
 import { SettingsModal } from "~/components/settings_modal";
-import { Toasts } from "~/components/toasts";
+import { Toaster } from "~/components/ui/toast";
 import { ReconnectBanner } from "~/components/reconnect_banner";
 
 export function App() {
@@ -27,7 +27,7 @@ export function App() {
       <DaemonStatusModal />
       <SettingsModal />
       <ReconnectBanner />
-      <Toasts />
+      <Toaster />
       <Show when={false}>{null}</Show>
     </div>
   );

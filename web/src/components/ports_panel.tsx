@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { cleanProxyUrl, portDisplay, portUrl } from "~/lib/format";
+import { cleanProxyUrl } from "~/lib/format";
 
 type UrlItem = { label: string; href: string };
 
@@ -43,9 +43,7 @@ function buildServiceRows(project: string, bindings: PortBinding[], proxyUrls: M
     row(service).urls.push(...urls.map((url) => ({ label: cleanProxyUrl(url), href: url })));
   }
   for (const b of bindings) {
-    const r = row(b.service || project);
-    r.ports.push(b);
-    r.urls.push({ label: portDisplay(b), href: portUrl(b) });
+    row(b.service || project).ports.push(b);
   }
   return [...rows.values()];
 }
@@ -123,7 +121,7 @@ export function PortsPanel(props: { project?: string }) {
         </div>
       </Show>
 
-      <div class="max-h-[420px] overflow-y-auto rounded-lg border bg-background">
+      <div class="max-h-[420px] overflow-auto rounded-lg border bg-background">
         <Show
           when={rows().length > 0}
           fallback={
@@ -229,7 +227,7 @@ export function PortsPanel(props: { project?: string }) {
 export function PortsDialog() {
   return (
     <Dialog open={showPortsDialog()} onOpenChange={setShowPortsDialog}>
-      <DialogContent class="sm:max-w-2xl">
+      <DialogContent class="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Ports & URLs</DialogTitle>
           <DialogDescription class="sr-only">

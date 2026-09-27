@@ -319,11 +319,30 @@ func (d *Daemon) StartService(projectName, serviceName string) error {
 			continue
 		case "running":
 			sup := p.Sup
+			configPath := p.ConfigPath
 			d.mu.Unlock()
 			if sup == nil {
 				return fmt.Errorf("project %q is running but has no supervisor", projectName)
 			}
-			return sup.StartService(serviceName)
+			// Reload config so services added to devyard.yml since the
+			// project started (or since the daemon launched) are picked up
+			// without a daemon restart. Orphans are not removed here; an
+			// explicit full `start` handles that.
+			cfg, err := loadConfig(configPath, "")
+			if err != nil {
+				return err
+			}
+			if err := sup.Reconcile(cfg.File, cfg.Order, false); err != nil {
+				return err
+			}
+			d.mu.Lock()
+			p.File = cfg.File
+			p.Order = cfg.Order
+			p.TotalServices = len(cfg.File.Services)
+			d.mu.Unlock()
+			err = sup.StartService(serviceName)
+			d.notifyProjectsChanged()
+			return err
 		default: // stopped
 			configPath := p.ConfigPath
 			old := p

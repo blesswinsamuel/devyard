@@ -59,12 +59,15 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
 
     let buffer: string[] = [];
     let rafId: number | null = null;
+    // xterm throws if written to or scrolled after dispose; tab rows remount
+    // when their tab object is replaced, so pending callbacks must no-op.
+    let disposed = false;
 
     const flush = () => {
-      if (buffer.length > 0) {
+      if (buffer.length > 0 && !disposed) {
         const atBottom = following();
         t.write(buffer.join("\r\n") + "\r\n", () => {
-          if (atBottom) t.scrollToBottom();
+          if (atBottom && !disposed) t.scrollToBottom();
         });
         buffer = [];
       }
@@ -83,6 +86,7 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
       setReceivedAny(false);
       setNotFound(false);
       setFollowing(true);
+      if (disposed) return;
       t.reset();
       t.clear();
       t.write("\x1b[2J\x1b[3J\x1b[H");
@@ -146,6 +150,7 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
     });
 
     onCleanup(() => {
+      disposed = true;
       unsub?.();
       unsub = null;
       container.removeEventListener("scroll", handleScroll, true);

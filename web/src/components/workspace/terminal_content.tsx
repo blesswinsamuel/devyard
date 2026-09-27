@@ -20,9 +20,12 @@ export function TerminalContent(props: { project: string; termId: string; active
   let container!: HTMLDivElement;
   let term: AppTerminal | null = null;
   const [exited, setExited] = createSignal(false);
+  // Tab rows remount when their tab object is replaced; pending pty output
+  // must not be written after dispose.
+  let disposed = false;
 
   const handleRestart = () => {
-    if (!term) return;
+    if (!term || disposed) return;
     setExited(false);
     term.clear();
     term.write("\x1b[2J\x1b[3J\x1b[H");
@@ -39,10 +42,12 @@ export function TerminalContent(props: { project: string; termId: string; active
     const unsubWS = subscribeTerminal(
       props.termId,
       (output) => {
+        if (disposed) return;
         t.write(output);
         setExited(false);
       },
       () => {
+        if (disposed) return;
         setExited(true);
         t.write("\r\n\x1b[33m[Process exited — restart?]\x1b[0m\r\n");
       }
@@ -57,6 +62,7 @@ export function TerminalContent(props: { project: string; termId: string; active
     });
 
     onCleanup(() => {
+      disposed = true;
       dataSub.dispose();
       resizeSub.dispose();
       unsubWS();

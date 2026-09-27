@@ -392,12 +392,13 @@ export function togglePreviousLogs(tabId: string) {
 
 /** Drops tabs whose target no longer exists (project removed / service deleted). */
 export function pruneWorkspace(keepTab: (tab: WorkspaceTab) => boolean) {
+  const closingTerminals: string[] = [];
   updateTree((node) =>
     mapPanes(node, (p) => {
       const tabs = p.tabs.filter(keepTab);
       if (tabs.length === p.tabs.length) return p;
       for (const t of p.tabs) {
-        if (t.kind === "terminal" && !keepTab(t)) closeTerminal(t.termId);
+        if (t.kind === "terminal" && !keepTab(t)) closingTerminals.push(t.termId);
       }
       const activeKept = tabs.some((t) => t.id === p.activeTabId);
       return tabs.length === 0
@@ -405,6 +406,8 @@ export function pruneWorkspace(keepTab: (tab: WorkspaceTab) => boolean) {
         : { ...p, tabs, activeTabId: activeKept ? p.activeTabId : tabs[0]!.id };
     })
   );
+  // Side effects (WS closes) stay out of the reactive updater.
+  for (const termId of closingTerminals) closeTerminal(termId);
   // Focus fallback if the focused pane vanished.
   if (!findPane(untrack(focusedPaneId))) {
     const first = panesIn(untrack(root))[0];

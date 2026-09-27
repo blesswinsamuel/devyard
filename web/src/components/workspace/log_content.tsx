@@ -128,14 +128,11 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
       );
     };
 
-    // Re-subscribe reactively when active or previous/live mode changes.
+    // Keep the stream subscribed for the tab's lifetime (like terminals do),
+    // so switching tabs or moving them between panes never shows a
+    // "waiting for output" gap. Re-subscribe only when the source changes:
+    // previous/live mode, or a task transitioning to running.
     createEffect(() => {
-      if (!props.active) {
-        unsub?.();
-        unsub = null;
-        resetView();
-        return;
-      }
       isPrevious();
       startStream();
     });
@@ -143,7 +140,7 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
     // Re-subscribe when an idle/unrun task transitions to running.
     createEffect((prevRunning?: boolean) => {
       const running = isRunning();
-      if (props.active && prevRunning === false && running === true) {
+      if (prevRunning === false && running === true) {
         startStream();
       }
       return running;
@@ -162,7 +159,11 @@ export function LogContent(props: { tab: LogTab; active: boolean }) {
 
   createEffect(() => {
     if (props.active && term) {
-      requestAnimationFrame(() => term?.fit());
+      requestAnimationFrame(() => {
+        term?.fit();
+        // Streams may have written while the tab was hidden; force a repaint.
+        term?.refresh(0, term.rows - 1);
+      });
     }
   });
 

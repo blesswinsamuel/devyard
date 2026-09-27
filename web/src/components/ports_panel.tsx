@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { cleanProxyUrl } from "~/lib/format";
+import { cleanProxyUrl, portDisplay } from "~/lib/format";
 
 type UrlItem = { label: string; href: string };
 

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -67,11 +68,33 @@ func runDaemonChild() error {
 	if err != nil {
 		slog.Warn("global config unavailable, reverse proxy disabled", "error", err)
 	} else {
-		psrv := proxy.NewServer(
-			fmt.Sprintf("%s:%d", gcfg.Proxy.Host, gcfg.Proxy.Port),
-			gcfg.Proxy.DomainSuffix,
-			d,
-		)
+		serverOpts := proxy.ServerOptions{
+			Addr:         fmt.Sprintf("%s:%d", gcfg.Proxy.Host, gcfg.Proxy.Port),
+			DomainSuffix: gcfg.Proxy.DomainSuffix,
+			Resolver:     d,
+		}
+
+		if gcfg.Proxy.TLS.Enabled {
+			tlsPort := gcfg.Proxy.EffectiveTLSPort()
+			tlsAddr := fmt.Sprintf("%s:%d", gcfg.Proxy.Host, tlsPort)
+			cm, err := proxy.NewCertManager(proxy.CertManagerOptions{
+				CertFile: gcfg.Proxy.TLS.CertFile,
+				KeyFile:  gcfg.Proxy.TLS.KeyFile,
+				CADir:    filepath.Join(locs.State, "ca"),
+			})
+			if err != nil {
+				slog.Error("failed to initialize proxy tls cert manager", "error", err)
+			} else {
+				serverOpts.TLS = proxy.TLSOptions{
+					Enabled:      true,
+					Addr:         tlsAddr,
+					TLSConfig:    cm.TLSConfig(),
+					HTTPRedirect: gcfg.Proxy.TLS.HTTPRedirect,
+				}
+			}
+		}
+
+		psrv := proxy.NewServer(serverOpts)
 		if err := psrv.ListenAndServe(); err != nil {
 			slog.Error("reverse proxy disabled; listen failed", "addr", psrv.Addr(), "error", err)
 		} else {
@@ -82,7 +105,16 @@ func runDaemonChild() error {
 					port = p
 				}
 			}
-			d.SetProxyInfo(port, gcfg.Proxy.DomainSuffix)
+			tlsPort := 0
+			if gcfg.Proxy.TLS.Enabled {
+				tlsPort = gcfg.Proxy.EffectiveTLSPort()
+				if _, portStr, err := net.SplitHostPort(psrv.TLSAddr()); err == nil {
+					if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+						tlsPort = p
+					}
+				}
+			}
+			d.SetProxyInfo(port, tlsPort, gcfg.Proxy.DomainSuffix, gcfg.Proxy.TLS.Enabled)
 		}
 	}
 

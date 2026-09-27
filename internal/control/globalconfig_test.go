@@ -30,6 +30,9 @@ func TestValidateGlobalConfigRejects(t *testing.T) {
 		"empty proxy host": {Web: validGlobalConfig().Web, Proxy: &protocol.GlobalProxyConfig{Host: "", Port: 8080, DomainSuffix: "localhost"}},
 		"bad proxy port":   {Web: validGlobalConfig().Web, Proxy: &protocol.GlobalProxyConfig{Host: "h", Port: 70000, DomainSuffix: "localhost"}},
 		"empty suffix":     {Web: validGlobalConfig().Web, Proxy: &protocol.GlobalProxyConfig{Host: "h", Port: 8080, DomainSuffix: ""}},
+		"bad tls port":     {Web: validGlobalConfig().Web, Proxy: &protocol.GlobalProxyConfig{Host: "h", Port: 8080, DomainSuffix: "localhost", Tls: &protocol.GlobalProxyTLSConfig{Enabled: true, Port: 70000}}},
+		"cert without key": {Web: validGlobalConfig().Web, Proxy: &protocol.GlobalProxyConfig{Host: "h", Port: 8080, DomainSuffix: "localhost", Tls: &protocol.GlobalProxyTLSConfig{Enabled: true, CertFile: "c.pem"}}},
+		"key without cert": {Web: validGlobalConfig().Web, Proxy: &protocol.GlobalProxyConfig{Host: "h", Port: 8080, DomainSuffix: "localhost", Tls: &protocol.GlobalProxyTLSConfig{Enabled: true, KeyFile: "k.pem"}}},
 	}
 	for name, cfg := range cases {
 		if err := control.ValidateGlobalConfig(cfg); err == nil {
@@ -40,8 +43,19 @@ func TestValidateGlobalConfigRejects(t *testing.T) {
 
 func TestGlobalConfigProtoRoundTrip(t *testing.T) {
 	orig := &protocol.GlobalConfig{
-		Web:   &protocol.GlobalWebConfig{Host: "0.0.0.0", Port: 8081},
-		Proxy: &protocol.GlobalProxyConfig{Host: "0.0.0.0", Port: 9091, DomainSuffix: "nip.io"},
+		Web: &protocol.GlobalWebConfig{Host: "0.0.0.0", Port: 8081},
+		Proxy: &protocol.GlobalProxyConfig{
+			Host:         "0.0.0.0",
+			Port:         9091,
+			DomainSuffix: "nip.io",
+			Tls: &protocol.GlobalProxyTLSConfig{
+				Enabled:      true,
+				Port:         9443,
+				CertFile:     "c.pem",
+				KeyFile:      "k.pem",
+				HttpRedirect: true,
+			},
+		},
 	}
 	got := control.GlobalConfigToProto(control.ProtoToGlobalConfig(orig))
 	if got.Web.Host != orig.Web.Host || got.Web.Port != orig.Web.Port {
@@ -49,5 +63,13 @@ func TestGlobalConfigProtoRoundTrip(t *testing.T) {
 	}
 	if got.Proxy.Host != orig.Proxy.Host || got.Proxy.Port != orig.Proxy.Port || got.Proxy.DomainSuffix != orig.Proxy.DomainSuffix {
 		t.Errorf("proxy round-trip mismatch: got %+v want %+v", got.Proxy, orig.Proxy)
+	}
+	if got.Proxy.Tls == nil ||
+		got.Proxy.Tls.Enabled != orig.Proxy.Tls.Enabled ||
+		got.Proxy.Tls.Port != orig.Proxy.Tls.Port ||
+		got.Proxy.Tls.CertFile != orig.Proxy.Tls.CertFile ||
+		got.Proxy.Tls.KeyFile != orig.Proxy.Tls.KeyFile ||
+		got.Proxy.Tls.HttpRedirect != orig.Proxy.Tls.HttpRedirect {
+		t.Errorf("proxy tls round-trip mismatch: got %+v want %+v", got.Proxy.Tls, orig.Proxy.Tls)
 	}
 }

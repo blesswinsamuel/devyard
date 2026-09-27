@@ -2009,6 +2009,67 @@ export class GlobalWebConfig extends Message<GlobalWebConfig> {
 }
 
 /**
+ * @generated from message devyard.v1.GlobalProxyTLSConfig
+ */
+export class GlobalProxyTLSConfig extends Message<GlobalProxyTLSConfig> {
+  /**
+   * @generated from field: bool enabled = 1;
+   */
+  enabled = false;
+
+  /**
+   * @generated from field: int32 port = 2;
+   */
+  port = 0;
+
+  /**
+   * @generated from field: string cert_file = 3;
+   */
+  certFile = "";
+
+  /**
+   * @generated from field: string key_file = 4;
+   */
+  keyFile = "";
+
+  /**
+   * @generated from field: bool http_redirect = 5;
+   */
+  httpRedirect = false;
+
+  constructor(data?: PartialMessage<GlobalProxyTLSConfig>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GlobalProxyTLSConfig";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "enabled", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 2, name: "port", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 3, name: "cert_file", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "key_file", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "http_redirect", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalProxyTLSConfig {
+    return new GlobalProxyTLSConfig().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GlobalProxyTLSConfig {
+    return new GlobalProxyTLSConfig().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GlobalProxyTLSConfig {
+    return new GlobalProxyTLSConfig().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GlobalProxyTLSConfig | PlainMessage<GlobalProxyTLSConfig> | undefined, b: GlobalProxyTLSConfig | PlainMessage<GlobalProxyTLSConfig> | undefined): boolean {
+    return proto3.util.equals(GlobalProxyTLSConfig, a, b);
+  }
+}
+
+/**
  * @generated from message devyard.v1.GlobalProxyConfig
  */
 export class GlobalProxyConfig extends Message<GlobalProxyConfig> {
@@ -2027,6 +2088,11 @@ export class GlobalProxyConfig extends Message<GlobalProxyConfig> {
    */
   domainSuffix = "";
 
+  /**
+   * @generated from field: devyard.v1.GlobalProxyTLSConfig tls = 4;
+   */
+  tls?: GlobalProxyTLSConfig;
+
   constructor(data?: PartialMessage<GlobalProxyConfig>) {
     super();
     proto3.util.initPartial(data, this);
@@ -2038,6 +2104,7 @@ export class GlobalProxyConfig extends Message<GlobalProxyConfig> {
     { no: 1, name: "host", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "port", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 3, name: "domain_suffix", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "tls", kind: "message", T: GlobalProxyTLSConfig },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalProxyConfig {

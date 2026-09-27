@@ -92,17 +92,21 @@ type Daemon struct {
 	onProjectsChange  func()
 
 	proxyPort         int
+	proxyTLSPort      int
+	proxyTLSEnabled   bool
 	proxyDomainSuffix string
 
 	watcher *gitwatcher.RepoWatcher
 }
 
-// SetProxyInfo configures the active reverse proxy port and domain suffix.
+// SetProxyInfo configures the active reverse proxy port, TLS port, domain suffix, and TLS enablement.
 // When set, services exposing ports will report their proxy URLs.
-func (d *Daemon) SetProxyInfo(port int, domainSuffix string) {
+func (d *Daemon) SetProxyInfo(port, tlsPort int, domainSuffix string, tlsEnabled bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.proxyPort = port
+	d.proxyTLSPort = tlsPort
+	d.proxyTLSEnabled = tlsEnabled
 	d.proxyDomainSuffix = domainSuffix
 }
 
@@ -113,8 +117,15 @@ func (d *Daemon) ProxyInfo() (int, string) {
 	return d.proxyPort, d.proxyDomainSuffix
 }
 
+// ProxyTLSInfo returns the active reverse proxy TLS port and whether TLS is enabled.
+func (d *Daemon) ProxyTLSInfo() (int, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.proxyTLSPort, d.proxyTLSEnabled
+}
+
 func (d *Daemon) serviceProxyURLsLocked(project, serviceName string) []string {
-	if d.proxyPort == 0 || d.proxyDomainSuffix == "" {
+	if (d.proxyPort == 0 && (!d.proxyTLSEnabled || d.proxyTLSPort == 0)) || d.proxyDomainSuffix == "" {
 		return nil
 	}
 	p, ok := d.projects[project]
@@ -132,10 +143,18 @@ func (d *Daemon) serviceProxyURLsLocked(project, serviceName string) []string {
 	}
 	urls := make([]string, 0, len(hosts))
 	for _, host := range hosts {
-		if d.proxyPort == 80 {
-			urls = append(urls, fmt.Sprintf("http://%s", host))
-		} else {
-			urls = append(urls, fmt.Sprintf("http://%s:%d", host, d.proxyPort))
+		if d.proxyTLSEnabled && d.proxyTLSPort > 0 {
+			if d.proxyTLSPort == 443 {
+				urls = append(urls, fmt.Sprintf("https://%s", host))
+			} else {
+				urls = append(urls, fmt.Sprintf("https://%s:%d", host, d.proxyTLSPort))
+			}
+		} else if d.proxyPort > 0 {
+			if d.proxyPort == 80 {
+				urls = append(urls, fmt.Sprintf("http://%s", host))
+			} else {
+				urls = append(urls, fmt.Sprintf("http://%s:%d", host, d.proxyPort))
+			}
 		}
 	}
 	return urls

@@ -11,6 +11,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"html"
@@ -52,65 +53,158 @@ type Resolver interface {
 	ProxyRoutes() []Route
 }
 
+// ServerOptions configures the reverse proxy server.
+type ServerOptions struct {
+	Addr         string
+	DomainSuffix string
+	Resolver     Resolver
+	TLS          TLSOptions
+}
+
+// TLSOptions configures TLS on the reverse proxy server.
+type TLSOptions struct {
+	Enabled      bool
+	Addr         string      // e.g. "127.0.0.1:8443"
+	TLSConfig    *tls.Config // TLS configuration (e.g. from CertManager)
+	HTTPRedirect bool        // Redirect plain HTTP requests to HTTPS
+}
+
 // Server is the reverse-proxy HTTP server owned by the daemon process.
 type Server struct {
-	addr         string
-	domainSuffix string
-	resolver     Resolver
+	opts ServerOptions
 
-	mu       sync.Mutex
-	listener net.Listener
+	mu           sync.Mutex
+	httpListener net.Listener
+	tlsListener  net.Listener
 }
 
-// NewServer creates a proxy server bound to addr serving routes under
-// domainSuffix (e.g. "localhost"). Use port 0 to let the OS pick a port and
-// read the actual address back with Addr.
-func NewServer(addr, domainSuffix string, resolver Resolver) *Server {
+// NewServer creates a proxy server using ServerOptions.
+func NewServer(opts ServerOptions) *Server {
 	return &Server{
-		addr:         addr,
-		domainSuffix: strings.ToLower(domainSuffix),
-		resolver:     resolver,
+		opts: ServerOptions{
+			Addr:         opts.Addr,
+			DomainSuffix: strings.ToLower(opts.DomainSuffix),
+			Resolver:     opts.Resolver,
+			TLS:          opts.TLS,
+		},
 	}
 }
 
-// ListenAndServe starts serving. It returns once the listener is ready.
+// ListenAndServe starts serving. It returns once the listeners are ready.
 // Call Close to stop accepting connections.
 func (s *Server) ListenAndServe() error {
-	ln, err := net.Listen("tcp", s.addr)
-	if err != nil {
-		return fmt.Errorf("proxy: listen %s: %w", s.addr, err)
+	if s.opts.Addr == "" && (!s.opts.TLS.Enabled || s.opts.TLS.Addr == "") {
+		return errors.New("proxy: no address configured to listen on")
 	}
-	s.mu.Lock()
-	s.listener = ln
-	s.mu.Unlock()
-	slog.Info("proxy listening", "addr", s.Addr(), "domain_suffix", s.domainSuffix)
-	go func() {
-		httpSrv := &http.Server{Handler: s}
-		_ = httpSrv.Serve(ln)
-	}()
+
+	if s.opts.Addr != "" {
+		ln, err := net.Listen("tcp", s.opts.Addr)
+		if err != nil {
+			return fmt.Errorf("proxy: listen %s: %w", s.opts.Addr, err)
+		}
+		s.mu.Lock()
+		s.httpListener = ln
+		s.mu.Unlock()
+		slog.Info("proxy listening http", "addr", s.Addr(), "domain_suffix", s.opts.DomainSuffix)
+
+		go func() {
+			var handler http.Handler = s
+			if s.opts.TLS.Enabled && s.opts.TLS.HTTPRedirect {
+				handler = http.HandlerFunc(s.redirectHTTPToHTTPS)
+			}
+			httpSrv := &http.Server{Handler: handler}
+			_ = httpSrv.Serve(ln)
+		}()
+	}
+
+	if s.opts.TLS.Enabled && s.opts.TLS.Addr != "" {
+		ln, err := net.Listen("tcp", s.opts.TLS.Addr)
+		if err != nil {
+			if s.httpListener != nil {
+				_ = s.httpListener.Close()
+			}
+			return fmt.Errorf("proxy: listen tls %s: %w", s.opts.TLS.Addr, err)
+		}
+
+		tlsCfg := s.opts.TLS.TLSConfig
+		if tlsCfg == nil {
+			tlsCfg = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		tlsLn := tls.NewListener(ln, tlsCfg)
+		s.mu.Lock()
+		s.tlsListener = tlsLn
+		s.mu.Unlock()
+		slog.Info("proxy listening https", "addr", s.TLSAddr(), "domain_suffix", s.opts.DomainSuffix)
+
+		go func() {
+			httpsSrv := &http.Server{Handler: s}
+			_ = httpsSrv.Serve(tlsLn)
+		}()
+	}
+
 	return nil
 }
 
-// Addr returns the actual listener address (useful when port 0 is used).
+func (s *Server) redirectHTTPToHTTPS(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	tlsPort := 443
+	if _, portStr, err := net.SplitHostPort(s.TLSAddr()); err == nil {
+		if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+			tlsPort = p
+		}
+	}
+	targetHost := host
+	if tlsPort != 443 {
+		targetHost = net.JoinHostPort(host, strconv.Itoa(tlsPort))
+	}
+	target := "https://" + targetHost + r.URL.RequestURI()
+	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+}
+
+// Addr returns the actual HTTP listener address (useful when port 0 is used).
 func (s *Server) Addr() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.listener == nil {
-		return s.addr
+	if s.httpListener == nil {
+		return s.opts.Addr
 	}
-	return s.listener.Addr().String()
+	return s.httpListener.Addr().String()
 }
 
-// Close stops the listener. It is safe to call more than once.
+// TLSAddr returns the actual HTTPS listener address (useful when port 0 is used).
+func (s *Server) TLSAddr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.tlsListener == nil {
+		return s.opts.TLS.Addr
+	}
+	return s.tlsListener.Addr().String()
+}
+
+// Close stops both listeners. It is safe to call more than once.
 func (s *Server) Close() error {
 	s.mu.Lock()
-	ln := s.listener
-	s.listener = nil
+	httpLn := s.httpListener
+	tlsLn := s.tlsListener
+	s.httpListener = nil
+	s.tlsListener = nil
 	s.mu.Unlock()
-	if ln == nil {
-		return nil
+
+	var errs []error
+	if httpLn != nil {
+		if err := httpLn.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return ln.Close()
+	if tlsLn != nil {
+		if err := tlsLn.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // ServeHTTP routes one request by Host header.
@@ -147,10 +241,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // routeIndex builds the host→route map from the resolver's live routes.
 // Routes are considered in resolver order; the first route for a host wins.
 func (s *Server) routeIndex() map[string]Route {
-	routes := s.resolver.ProxyRoutes()
+	routes := s.opts.Resolver.ProxyRoutes()
 	idx := make(map[string]Route, len(routes))
 	for _, route := range routes {
-		for _, host := range routeHosts(route, s.domainSuffix) {
+		for _, host := range routeHosts(route, s.opts.DomainSuffix) {
 			if _, exists := idx[host]; !exists {
 				idx[host] = route
 			}

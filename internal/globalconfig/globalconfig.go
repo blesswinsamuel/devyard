@@ -39,12 +39,29 @@ const DefaultProxyHost = "127.0.0.1"
 // DefaultProxyPort is the default port for the daemon's reverse proxy.
 const DefaultProxyPort = 8080
 
+// DefaultProxyTLSPort is the default HTTPS port when TLS is enabled.
+const DefaultProxyTLSPort = 8443
+
 // DefaultProxyDomainSuffix is the default domain suffix for proxied URLs.
 // `*.localhost` resolves to 127.0.0.1 per RFC 6761 on macOS and
 // systemd-resolved Linux, so the default needs no DNS setup. Users who want
 // LAN access set a custom suffix (e.g. `192-168-1-5.nip.io` via nip.io or a
 // wildcard DNS zone they control) and bind host to 0.0.0.0.
 const DefaultProxyDomainSuffix = "localhost"
+
+// ProxyTLSConfig holds TLS settings for the daemon's reverse proxy.
+type ProxyTLSConfig struct {
+	// Enabled toggles HTTPS for the reverse proxy.
+	Enabled bool `yaml:"enabled"`
+	// Port is the HTTPS TCP port. Defaults to 8443 (or 443 if proxy.port is 80).
+	Port int `yaml:"port,omitempty"`
+	// CertFile is an optional path to a PEM certificate file.
+	CertFile string `yaml:"cert_file,omitempty"`
+	// KeyFile is an optional path to a PEM private key file.
+	KeyFile string `yaml:"key_file,omitempty"`
+	// HTTPRedirect redirects incoming HTTP requests to HTTPS.
+	HTTPRedirect bool `yaml:"http_redirect,omitempty"`
+}
 
 // ProxyConfig holds settings for the daemon's reverse proxy, which exposes
 // services that declare `port`/`ports` at named URLs
@@ -58,6 +75,20 @@ type ProxyConfig struct {
 	// "localhost". Set to a nip.io/sslip.io name (e.g. 192-168-1-5.nip.io)
 	// or a wildcard DNS zone for LAN access.
 	DomainSuffix string `yaml:"domain_suffix"`
+	// TLS holds TLS settings for the reverse proxy.
+	TLS ProxyTLSConfig `yaml:"tls,omitempty"`
+}
+
+// EffectiveTLSPort returns the HTTPS port to use. If TLS.Port is set and > 0,
+// it is returned. Otherwise, if Proxy.Port is 80, it returns 443, else DefaultProxyTLSPort (8443).
+func (p *ProxyConfig) EffectiveTLSPort() int {
+	if p.TLS.Port > 0 {
+		return p.TLS.Port
+	}
+	if p.Port == 80 {
+		return 443
+	}
+	return DefaultProxyTLSPort
 }
 
 // Config is the top-level global config schema.
@@ -174,6 +205,9 @@ func loadFile(path string, read readerFunc, errOut io.Writer) (*Config, error) {
 	if cfg.Proxy.DomainSuffix == "" {
 		cfg.Proxy.DomainSuffix = DefaultProxyDomainSuffix
 	}
+	if cfg.Proxy.TLS.Enabled && cfg.Proxy.TLS.Port == 0 {
+		cfg.Proxy.TLS.Port = cfg.Proxy.EffectiveTLSPort()
+	}
 
 	return &cfg, nil
 }
@@ -219,5 +253,11 @@ func SaveForTest(path string, cfg *Config) error {
 func (c *Config) String() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "web=%s:%d proxy=%s:%d suffix=%s", c.Web.Host, c.Web.Port, c.Proxy.Host, c.Proxy.Port, c.Proxy.DomainSuffix)
+	if c.Proxy.TLS.Enabled {
+		fmt.Fprintf(&sb, " tls=%d", c.Proxy.EffectiveTLSPort())
+		if c.Proxy.TLS.HTTPRedirect {
+			sb.WriteString(" (redirect)")
+		}
+	}
 	return sb.String()
 }

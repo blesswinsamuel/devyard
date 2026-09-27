@@ -256,3 +256,68 @@ func TestSaveAndLoadProxyRoundtrip(t *testing.T) {
 		t.Errorf("proxy roundtrip: %+v", loaded.Proxy)
 	}
 }
+
+func TestLoadProxyTLS(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	content := `proxy:
+  host: 0.0.0.0
+  port: 8080
+  domain_suffix: dev.lan
+  tls:
+    enabled: true
+    port: 9443
+    cert_file: /path/to/cert.pem
+    key_file: /path/to/key.pem
+    http_redirect: true
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	cfg, err := globalconfig.LoadForTest(path, &buf)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Proxy.TLS.Enabled {
+		t.Errorf("Proxy.TLS.Enabled = false, want true")
+	}
+	if cfg.Proxy.TLS.Port != 9443 {
+		t.Errorf("Proxy.TLS.Port = %d, want 9443", cfg.Proxy.TLS.Port)
+	}
+	if cfg.Proxy.TLS.CertFile != "/path/to/cert.pem" {
+		t.Errorf("Proxy.TLS.CertFile = %q, want /path/to/cert.pem", cfg.Proxy.TLS.CertFile)
+	}
+	if cfg.Proxy.TLS.KeyFile != "/path/to/key.pem" {
+		t.Errorf("Proxy.TLS.KeyFile = %q, want /path/to/key.pem", cfg.Proxy.TLS.KeyFile)
+	}
+	if !cfg.Proxy.TLS.HTTPRedirect {
+		t.Errorf("Proxy.TLS.HTTPRedirect = false, want true")
+	}
+	if !strings.Contains(cfg.String(), "tls=9443 (redirect)") {
+		t.Errorf("cfg.String() missing tls: %s", cfg.String())
+	}
+}
+
+func TestLoadProxyTLSDefaultsEffectivePort(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	content := `proxy:
+  port: 80
+  tls:
+    enabled: true
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var buf bytes.Buffer
+	cfg, err := globalconfig.LoadForTest(path, &buf)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Proxy.TLS.Port != 443 {
+		t.Errorf("Proxy.TLS.Port = %d, want 443", cfg.Proxy.TLS.Port)
+	}
+}

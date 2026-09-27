@@ -33,9 +33,10 @@ type (
 	TaskOutputChunk = devyardv1.TaskOutputChunk
 	Event           = devyardv1.Event
 
-	GlobalConfig      = devyardv1.GlobalConfig
-	GlobalWebConfig   = devyardv1.GlobalWebConfig
-	GlobalProxyConfig = devyardv1.GlobalProxyConfig
+	GlobalConfig         = devyardv1.GlobalConfig
+	GlobalWebConfig      = devyardv1.GlobalWebConfig
+	GlobalProxyConfig    = devyardv1.GlobalProxyConfig
+	GlobalProxyTLSConfig = devyardv1.GlobalProxyTLSConfig
 )
 
 // TimeToProto converts a Go time.Time to a protobuf Timestamp. Returns nil if zero.

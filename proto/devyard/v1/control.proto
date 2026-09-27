@@ -309,10 +309,19 @@ message GlobalWebConfig {
   int32 port = 2;
 }
 
+message GlobalProxyTLSConfig {
+  bool enabled = 1;
+  int32 port = 2;
+  string cert_file = 3;
+  string key_file = 4;
+  bool http_redirect = 5;
+}
+
 message GlobalProxyConfig {
   string host = 1;
   int32 port = 2;
   string domain_suffix = 3;
+  GlobalProxyTLSConfig tls = 4;
 }
 
 message GlobalConfig {

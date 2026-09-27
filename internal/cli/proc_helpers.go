@@ -132,7 +132,20 @@ func proxyURLsFor(cfg *loadedConfig, project string) map[string][]string {
 		}
 		list := make([]string, 0, len(hosts))
 		for _, host := range hosts {
-			list = append(list, fmt.Sprintf("%s:%d", host, gcfg.Proxy.Port))
+			if gcfg.Proxy.TLS.Enabled {
+				tlsPort := gcfg.Proxy.EffectiveTLSPort()
+				if tlsPort == 443 {
+					list = append(list, fmt.Sprintf("https://%s", host))
+				} else {
+					list = append(list, fmt.Sprintf("https://%s:%d", host, tlsPort))
+				}
+			} else {
+				if gcfg.Proxy.Port == 80 {
+					list = append(list, host)
+				} else {
+					list = append(list, fmt.Sprintf("%s:%d", host, gcfg.Proxy.Port))
+				}
+			}
 		}
 		out[name] = list
 	}

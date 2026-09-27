@@ -18,6 +18,13 @@ func GlobalConfigToProto(cfg *globalconfig.Config) *protocol.GlobalConfig {
 			Host:         cfg.Proxy.Host,
 			Port:         int32(cfg.Proxy.Port),
 			DomainSuffix: cfg.Proxy.DomainSuffix,
+			Tls: &protocol.GlobalProxyTLSConfig{
+				Enabled:      cfg.Proxy.TLS.Enabled,
+				Port:         int32(cfg.Proxy.TLS.Port),
+				CertFile:     cfg.Proxy.TLS.CertFile,
+				KeyFile:      cfg.Proxy.TLS.KeyFile,
+				HttpRedirect: cfg.Proxy.TLS.HTTPRedirect,
+			},
 		},
 	}
 }
@@ -37,6 +44,13 @@ func ProtoToGlobalConfig(cfg *protocol.GlobalConfig) *globalconfig.Config {
 		out.Proxy.Host = cfg.Proxy.Host
 		out.Proxy.Port = int(cfg.Proxy.Port)
 		out.Proxy.DomainSuffix = cfg.Proxy.DomainSuffix
+		if cfg.Proxy.Tls != nil {
+			out.Proxy.TLS.Enabled = cfg.Proxy.Tls.Enabled
+			out.Proxy.TLS.Port = int(cfg.Proxy.Tls.Port)
+			out.Proxy.TLS.CertFile = cfg.Proxy.Tls.CertFile
+			out.Proxy.TLS.KeyFile = cfg.Proxy.Tls.KeyFile
+			out.Proxy.TLS.HTTPRedirect = cfg.Proxy.Tls.HttpRedirect
+		}
 	}
 	return &out
 }
@@ -63,6 +77,15 @@ func ValidateGlobalConfig(cfg *protocol.GlobalConfig) error {
 	}
 	if cfg.Proxy.DomainSuffix == "" {
 		return fmt.Errorf("proxy.domain_suffix is required")
+	}
+	if cfg.Proxy.Tls != nil && cfg.Proxy.Tls.Enabled {
+		if cfg.Proxy.Tls.Port < 0 || cfg.Proxy.Tls.Port > 65535 {
+			return fmt.Errorf("proxy.tls.port must be between 1 and 65535")
+		}
+		if (cfg.Proxy.Tls.CertFile != "" && cfg.Proxy.Tls.KeyFile == "") ||
+			(cfg.Proxy.Tls.CertFile == "" && cfg.Proxy.Tls.KeyFile != "") {
+			return fmt.Errorf("proxy.tls.cert_file and proxy.tls.key_file must both be provided or both be empty")
+		}
 	}
 	return nil
 }

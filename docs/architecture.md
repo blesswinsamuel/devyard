@@ -205,23 +205,43 @@ Default bind address is `127.0.0.1:9090` (loopback only). Override with
 
 ## Reverse proxy (`internal/proxy`)
 
-The daemon child starts an HTTP reverse proxy (default `127.0.0.1:8080`,
+The daemon child starts an HTTP/HTTPS reverse proxy (default `127.0.0.1:8080`,
 settings from the global config's `proxy` section) so services that declare
 `port`/`ports` are reachable at named URLs like
-`http://<service>.<project>.localhost`. Routes are resolved live on every
-request: `orchestrator.Daemon.ProxyRoutes()` (implements `proxy.Resolver`)
-walks the project map, reads each project's retained `config.File`, and
-attaches the live supervisor status. Matching is an exact, case-insensitive
-`Host`-header match over `[<port>.]<label>.<project>.<domain_suffix>`; the
-first route wins on duplicates (projects are iterated in sorted order). A
-service is forwarded to only while `running`; otherwise the proxy serves a
-styled 503 page naming the service, and an unreachable upstream gets a 502
-page. The proxy preserves the original `Host` header and passes websocket
-upgrades through (`httputil.ReverseProxy`, `FlushInterval: -1`). A failed
-listen (port in use) disables the proxy but not the daemon. URL display in
-`ps` is computed CLI-side from the config (`proxy.ServiceHosts`); the global
-config's `proxy.host` / `proxy.port` / `proxy.domain_suffix` control bind and
-naming (see config-schema.md > Global config).
+`http://<service>.<project>.localhost` or `https://<service>.<project>.localhost:8443`.
+Routes are resolved live on every request: `orchestrator.Daemon.ProxyRoutes()`
+(implements `proxy.Resolver`) walks the project map, reads each project's
+retained `config.File`, and attaches the live supervisor status. Matching is an
+exact, case-insensitive `Host`-header match over
+`[<port>.]<label>.<project>.<domain_suffix>`; the first route wins on duplicates
+(projects are iterated in sorted order). A service is forwarded to only while
+`running`; otherwise the proxy serves a styled 503 page naming the service, and
+an unreachable upstream gets a 502 page. The proxy preserves the original `Host`
+header and passes websocket upgrades through (`httputil.ReverseProxy`,
+`FlushInterval: -1`). A failed listen (port in use) disables the proxy but not
+the daemon.
+
+### TLS & Certificate Management (`internal/proxy/cert.go`)
+
+When `proxy.tls.enabled` is true, the proxy opens an HTTPS listener on
+`proxy.tls.port` (default `8443`, or `443` if `proxy.port` is `80`) alongside
+the HTTP listener on `proxy.port`. If `proxy.tls.http_redirect` is true,
+incoming HTTP requests receive a 307 Temporary Redirect to the corresponding
+HTTPS URL.
+
+Certificates are resolved dynamically per-connection:
+1. **Custom certificates**: if `proxy.tls.cert_file` and `proxy.tls.key_file`
+   are configured, they are loaded and served.
+2. **mkcert integration**: if mkcert is installed and its root CA is found
+   (via `CAROOT` or standard OS locations), devyard dynamically signs leaf
+   certificates with mkcert's CA, making all proxied domains trusted by the
+   user's browsers automatically with zero setup.
+3. **Built-in Local CA**: otherwise, devyard generates an internal Root CA
+   (`$XDG_STATE_HOME/devyard/ca/rootCA.pem`) and mints leaf certificates
+   on-demand for requested hostnames.
+
+URL display in `ps` and the Web UI reflects the active scheme (`https://` when
+TLS is enabled) and port (see config-schema.md > Global config).
 
 ## State on disk (`internal/project`)
 

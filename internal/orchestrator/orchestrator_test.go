@@ -874,3 +874,61 @@ func TestDaemonGitStatus(t *testing.T) {
 		t.Fatalf("expected git status on main for lc-test, got %+v", st)
 	}
 }
+
+func TestProxyInfoAndURLsWithTLS(t *testing.T) {
+	setupEnv(t)
+	d := orchestrator.New()
+	cfg := `version: "1"
+name: myapp
+services:
+  web:
+    command: "sleep 60"
+    port: 3000
+`
+	configPath := writeConfig(t, cfg)
+	if err := d.StartProject(configPath, false, "", true); err != nil {
+		t.Fatalf("StartProject: %v", err)
+	}
+	defer func() { _ = d.StopDaemon() }()
+
+	// 1. Without TLS
+	d.SetProxyInfo(8080, 0, "localhost", false)
+	port, suffix := d.ProxyInfo()
+	if port != 8080 || suffix != "localhost" {
+		t.Errorf("ProxyInfo = %d, %s, want 8080, localhost", port, suffix)
+	}
+	states, err := d.ListServices("myapp")
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if len(states) != 1 || len(states[0].ProxyUrls) != 1 {
+		t.Fatalf("expected 1 state with 1 url, got %+v", states)
+	}
+	if states[0].ProxyUrls[0] != "http://web.myapp.localhost:8080" {
+		t.Errorf("ProxyUrls[0] = %q, want http://web.myapp.localhost:8080", states[0].ProxyUrls[0])
+	}
+
+	// 2. With TLS enabled (port 8443)
+	d.SetProxyInfo(8080, 8443, "localhost", true)
+	tlsPort, tlsEnabled := d.ProxyTLSInfo()
+	if tlsPort != 8443 || !tlsEnabled {
+		t.Errorf("ProxyTLSInfo = %d, %v, want 8443, true", tlsPort, tlsEnabled)
+	}
+	states, err = d.ListServices("myapp")
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if states[0].ProxyUrls[0] != "https://web.myapp.localhost:8443" {
+		t.Errorf("ProxyUrls[0] = %q, want https://web.myapp.localhost:8443", states[0].ProxyUrls[0])
+	}
+
+	// 3. With TLS on standard port 443 (omits port)
+	d.SetProxyInfo(80, 443, "localhost", true)
+	states, err = d.ListServices("myapp")
+	if err != nil {
+		t.Fatalf("ListServices: %v", err)
+	}
+	if states[0].ProxyUrls[0] != "https://web.myapp.localhost" {
+		t.Errorf("ProxyUrls[0] = %q, want https://web.myapp.localhost", states[0].ProxyUrls[0])
+	}
+}

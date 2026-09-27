@@ -14,6 +14,11 @@ export function SettingsModal() {
   const [proxyHost, setProxyHost] = createSignal("");
   const [proxyPort, setProxyPort] = createSignal("");
   const [proxyDomainSuffix, setProxyDomainSuffix] = createSignal("");
+  const [proxyTLSEnabled, setProxyTLSEnabled] = createSignal(false);
+  const [proxyTLSPort, setProxyTLSPort] = createSignal("8443");
+  const [proxyTLSRedirect, setProxyTLSRedirect] = createSignal(false);
+  const [proxyTLSCertFile, setProxyTLSCertFile] = createSignal("");
+  const [proxyTLSKeyFile, setProxyTLSKeyFile] = createSignal("");
   const [saving, setSaving] = createSignal(false);
 
   createEffect(() => {
@@ -30,6 +35,11 @@ export function SettingsModal() {
       setProxyHost(cfg.proxy?.host ?? "");
       setProxyPort(String(cfg.proxy?.port ?? ""));
       setProxyDomainSuffix(cfg.proxy?.domainSuffix ?? (cfg.proxy as any)?.domain_suffix ?? "");
+      setProxyTLSEnabled(Boolean(cfg.proxy?.tls?.enabled));
+      setProxyTLSPort(String(cfg.proxy?.tls?.port || 8443));
+      setProxyTLSRedirect(Boolean(cfg.proxy?.tls?.httpRedirect ?? (cfg.proxy?.tls as any)?.http_redirect));
+      setProxyTLSCertFile(cfg.proxy?.tls?.certFile ?? (cfg.proxy?.tls as any)?.cert_file ?? "");
+      setProxyTLSKeyFile(cfg.proxy?.tls?.keyFile ?? (cfg.proxy?.tls as any)?.key_file ?? "");
     }
   });
 
@@ -46,6 +56,13 @@ export function SettingsModal() {
         host: proxyHost().trim(),
         port: Number(proxyPort()),
         domainSuffix: proxyDomainSuffix().trim(),
+        tls: {
+          enabled: proxyTLSEnabled(),
+          port: Number(proxyTLSPort()) || 8443,
+          httpRedirect: proxyTLSRedirect(),
+          certFile: proxyTLSCertFile().trim(),
+          keyFile: proxyTLSKeyFile().trim(),
+        },
       },
     });
     setSaving(false);
@@ -153,6 +170,85 @@ export function SettingsModal() {
                   class="rounded-md px-3 font-mono text-xs md:text-xs"
                 />
               </div>
+
+              <div class="pt-2 border-t border-border/40 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label for="settings-proxy-tls" class="text-xs font-medium cursor-pointer">
+                      Enable TLS (HTTPS)
+                    </Label>
+                    <div class="text-[11px] text-muted-foreground">
+                      Serves routes over HTTPS with automatic or custom certificates
+                    </div>
+                  </div>
+                  <input
+                    id="settings-proxy-tls"
+                    type="checkbox"
+                    checked={proxyTLSEnabled()}
+                    onChange={(e) => setProxyTLSEnabled(e.currentTarget.checked)}
+                    class="h-4 w-4 rounded border-border text-primary cursor-pointer accent-primary"
+                  />
+                </div>
+
+                <Show when={proxyTLSEnabled()}>
+                  <div class="space-y-3 pl-2 border-l-2 border-primary/20">
+                    <div class="grid grid-cols-[1fr_90px] gap-2 items-center">
+                      <div class="flex items-center gap-2">
+                        <input
+                          id="settings-proxy-redirect"
+                          type="checkbox"
+                          checked={proxyTLSRedirect()}
+                          onChange={(e) => setProxyTLSRedirect(e.currentTarget.checked)}
+                          class="h-3.5 w-3.5 rounded border-border text-primary cursor-pointer accent-primary"
+                        />
+                        <Label for="settings-proxy-redirect" class="text-xs text-muted-foreground cursor-pointer">
+                          Redirect HTTP to HTTPS
+                        </Label>
+                      </div>
+                      <div class="space-y-1">
+                        <Label for="settings-proxy-tls-port" class="text-xs text-muted-foreground">
+                          TLS Port
+                        </Label>
+                        <Input
+                          id="settings-proxy-tls-port"
+                          type="number"
+                          min="1"
+                          max="65535"
+                          value={proxyTLSPort()}
+                          onInput={(e) => setProxyTLSPort(e.currentTarget.value)}
+                          class="rounded-md px-3 font-mono text-xs md:text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div class="space-y-1">
+                      <Label for="settings-proxy-cert-file" class="text-xs text-muted-foreground">
+                        Custom Cert File (optional)
+                      </Label>
+                      <Input
+                        id="settings-proxy-cert-file"
+                        type="text"
+                        placeholder="Leave empty for auto-generated CA / mkcert"
+                        value={proxyTLSCertFile()}
+                        onInput={(e) => setProxyTLSCertFile(e.currentTarget.value)}
+                        class="rounded-md px-3 font-mono text-xs md:text-xs"
+                      />
+                    </div>
+                    <div class="space-y-1">
+                      <Label for="settings-proxy-key-file" class="text-xs text-muted-foreground">
+                        Custom Key File (optional)
+                      </Label>
+                      <Input
+                        id="settings-proxy-key-file"
+                        type="text"
+                        placeholder="Leave empty for auto-generated CA / mkcert"
+                        value={proxyTLSKeyFile()}
+                        onInput={(e) => setProxyTLSKeyFile(e.currentTarget.value)}
+                        class="rounded-md px-3 font-mono text-xs md:text-xs"
+                      />
+                    </div>
+                  </div>
+                </Show>
+              </div>
             </div>
           </div>
 
@@ -177,6 +273,11 @@ export function SettingsModal() {
                     setProxyHost(cfg().proxy?.host ?? "");
                     setProxyPort(String(cfg().proxy?.port ?? ""));
                     setProxyDomainSuffix(cfg().proxy?.domainSuffix ?? (cfg().proxy as any)?.domain_suffix ?? "");
+                    setProxyTLSEnabled(Boolean(cfg().proxy?.tls?.enabled));
+                    setProxyTLSPort(String(cfg().proxy?.tls?.port || 8443));
+                    setProxyTLSRedirect(Boolean(cfg().proxy?.tls?.httpRedirect ?? (cfg().proxy?.tls as any)?.http_redirect));
+                    setProxyTLSCertFile(cfg().proxy?.tls?.certFile ?? (cfg().proxy?.tls as any)?.cert_file ?? "");
+                    setProxyTLSKeyFile(cfg().proxy?.tls?.keyFile ?? (cfg().proxy?.tls as any)?.key_file ?? "");
                   }}
                 >
                   Reset

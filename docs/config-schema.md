@@ -305,6 +305,12 @@ proxy:
   host: 127.0.0.1      # bind address (default: 127.0.0.1, loopback only)
   port: 8080           # TCP port (default: 8080)
   domain_suffix: localhost
+  tls:
+    enabled: false     # enable HTTPS (default: false)
+    port: 8443         # HTTPS TCP port (default: 8443, or 443 if proxy.port is 80)
+    cert_file: ""      # custom PEM cert file (optional; defaults to auto-generated local CA / mkcert)
+    key_file: ""       # custom PEM private key file (optional)
+    http_redirect: false # redirect HTTP requests to HTTPS (default: false)
 ```
 
 | Field | Default | Notes |
@@ -314,6 +320,11 @@ proxy:
 | `proxy.host` | `127.0.0.1` | Bind address for the daemon's reverse proxy. Set to `0.0.0.0` for LAN access. |
 | `proxy.port` | `8080` | TCP port for the reverse proxy. |
 | `proxy.domain_suffix` | `localhost` | Domain routes are served under. Set to a nip.io name (e.g. `192-168-1-5.nip.io`) or a wildcard DNS zone for LAN access. |
+| `proxy.tls.enabled` | `false` | Enable TLS/HTTPS on the reverse proxy. |
+| `proxy.tls.port` | `8443` | HTTPS port (defaults to `8443`, or `443` if `proxy.port` is `80`). |
+| `proxy.tls.cert_file` | `""` | Path to custom certificate PEM file. When omitted, uses `mkcert` CA if found, or generates a local devyard Root CA. |
+| `proxy.tls.key_file` | `""` | Path to custom private key PEM file. |
+| `proxy.tls.http_redirect` | `false` | When true, incoming HTTP requests redirect (307) to HTTPS. |
 
 CLI flags `--host` / `--port` override these defaults.
 

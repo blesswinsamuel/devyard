@@ -6,9 +6,12 @@ package gitlog
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -912,4 +915,32 @@ func Status(dir string) (*pb.GitStatus, error) {
 
 	res.IsClean = (res.Staged == 0 && res.Dirty == 0 && res.Untracked == 0 && res.Conflicts == 0)
 	return res, nil
+}
+
+// Fingerprint summarizes the working tree: the porcelain status plus the
+// size and modification time of every changed path, so edits to files that
+// were already modified are noticed too. It returns "" for non-repos.
+func Fingerprint(dir string) string {
+	cmd := gitCmd(dir, "status", "--porcelain=v1", "-z", "--branch", "--untracked-files=normal")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	h := sha256.New()
+	_, _ = h.Write(out)
+	// Porcelain paths are relative to the repository root.
+	root := RepoRoot(dir)
+	if root == "" {
+		root = dir
+	}
+	for _, entry := range bytes.Split(out, []byte{0}) {
+		if len(entry) < 4 || bytes.HasPrefix(entry, []byte("## ")) {
+			continue
+		}
+		path := filepath.Join(root, string(entry[3:]))
+		if fi, err := os.Stat(path); err == nil {
+			_, _ = fmt.Fprintf(h, "%s\x00%d\x00%d\x00", path, fi.Size(), fi.ModTime().UnixNano())
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }

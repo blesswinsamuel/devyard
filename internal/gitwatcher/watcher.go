@@ -156,7 +156,20 @@ func (w *RepoWatcher) addTreeLocked(name, root string) {
 	})
 }
 
+// resolveGitDir finds the git dir of the repository containing dir (a
+// project may live in a subdirectory of a repository).
 func resolveGitDir(dir string) (string, bool) {
+	for d := dir; ; d = filepath.Dir(d) {
+		if g, ok := gitDirAt(d); ok {
+			return g, true
+		}
+		if filepath.Dir(d) == d {
+			return "", false
+		}
+	}
+}
+
+func gitDirAt(dir string) (string, bool) {
 	gitPath := filepath.Join(dir, ".git")
 	fi, err := os.Stat(gitPath)
 	if err != nil {

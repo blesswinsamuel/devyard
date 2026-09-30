@@ -78,7 +78,9 @@ func Run(opts Options) (err error) {
 		}
 	}()
 	if opts.LockWait == 0 {
-		opts.LockWait = 30 * time.Second
+		// A handover releases the lock before spawning the replacement,
+		// so waiting long only keeps losers of a startup race around.
+		opts.LockWait = 2 * time.Second
 	}
 	dirs, err := paths.Default()
 	if err != nil {
@@ -199,6 +201,9 @@ func Run(opts Options) (err error) {
 	defer cancel()
 	if err := mgr.Shutdown(shutdownCtx, stopServices); err != nil {
 		log.Error("shutdown", "error", err)
+	}
+	if mode == exitStop {
+		sess.StopAll(shutdownCtx)
 	}
 	closeCtx, cancelClose := context.WithTimeout(context.Background(), 2*time.Second)
 	_ = ctlSrv.Shutdown(closeCtx)

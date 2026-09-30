@@ -127,7 +127,7 @@ func TestFollowerRotationWithinRun(t *testing.T) {
 	if strings.Join(texts, ",") != "tail-of-old,fresh" {
 		t.Fatalf("after rotation got %v", texts)
 	}
-	if _, err := os.Stat(oldSegmentPath(dir, 1)); err != nil {
+	if _, err := os.Stat(oldSegmentPath(dir, 1, 1)); err != nil {
 		t.Fatalf("expected old segment: %v", err)
 	}
 }
@@ -184,5 +184,30 @@ func TestLineWriter(t *testing.T) {
 	}
 	if strings.Join(texts, "|") != "a|bc|partial" {
 		t.Fatalf("got %v", texts)
+	}
+}
+
+func TestManyRotationsKeepHistory(t *testing.T) {
+	dir := t.TempDir()
+	w, err := Create(dir, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 50; i++ {
+		w.Append(Stdout, fmt.Sprintf("line %d", i))
+		if i%10 == 0 {
+			w.mu.Lock()
+			w.rotateLocked()
+			w.mu.Unlock()
+		}
+	}
+	_ = w.Close()
+	lines, _, err := Tail(dir, 1, 0, 0)
+	if err != nil || len(lines) != 50 || lines[0].Seq != 1 || lines[49].Seq != 50 {
+		t.Fatalf("got %d lines err %v", len(lines), err)
+	}
+	page, more, _ := Tail(dir, 1, 15, 20)
+	if len(page) != 15 || page[0].Seq != 5 || !more {
+		t.Fatalf("page: %d first %d more %v", len(page), page[0].Seq, more)
 	}
 }

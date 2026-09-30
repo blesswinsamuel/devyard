@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/blesswinsamuel/devyard/internal/events"
 	pb "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
@@ -111,19 +112,41 @@ func (t *Tracker) Changed(project string) {
 	}
 }
 
+// pollInterval is how often the working tree is fingerprinted. Watching
+// .git catches commits, branch switches and staging; plain file edits only
+// show up here.
+const pollInterval = 3 * time.Second
+
 func (t *Tracker) worker(project string, ch chan struct{}) {
 	defer t.wg.Done()
+	poll := time.NewTicker(pollInterval)
+	defer poll.Stop()
+	last := ""
 	for {
 		select {
 		case _, ok := <-ch:
 			if !ok {
 				return
 			}
+			last = t.fingerprint(project)
 			t.publish(project, true)
+		case <-poll.C:
+			if fp := t.fingerprint(project); fp != last {
+				last = fp
+				t.publish(project, true)
+			}
 		case <-t.shutdown:
 			return
 		}
 	}
+}
+
+func (t *Tracker) fingerprint(project string) string {
+	dir, ok := t.Dir(project)
+	if !ok {
+		return ""
+	}
+	return gitlog.Fingerprint(dir)
 }
 
 func (t *Tracker) publish(project string, changed bool) {

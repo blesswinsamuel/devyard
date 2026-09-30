@@ -312,6 +312,8 @@ func (a *serviceActor) initialize(desired bool) {
 		// A run that was stopped on request (e.g. `daemon stop`) or lost
 		// (reboot, runner crash): start fresh when desired.
 		a.run = rst.Run
+		a.st.Run = rst.Run
+		a.st.StartedAt = rst.StartedAt
 		a.recordExit(rst)
 		a.st.Status = StatusStopped
 		a.st.Message = ""
@@ -344,9 +346,11 @@ func (a *serviceActor) cmdStart(m svcStart) {
 	case StatusBackoff:
 		a.cancelBackoff()
 		a.failures = 0
+		a.st.Restarts = 0
 		a.launch()
 	case StatusStopped, StatusExited, StatusFailed:
 		a.failures = 0
+		a.st.Restarts = 0
 		a.begin()
 	case StatusStopping:
 		// Start after the current stop completes.
@@ -415,6 +419,7 @@ func (a *serviceActor) cmdRestart(m svcRestart) {
 		a.buildNext = true
 	}
 	a.failures = 0
+	a.st.Restarts = 0
 	a.cancelBackoff()
 	if a.proc != nil {
 		a.restartAfterStop = true

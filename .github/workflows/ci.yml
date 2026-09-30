@@ -9,13 +9,34 @@ permissions:
   contents: read
 
 jobs:
+  web:
+    name: web (typecheck, unit tests, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        working-directory: web
+        run: bun run typecheck
+      - name: Unit tests
+        working-directory: web
+        run: bun run test
+      - name: Build
+        working-directory: web
+        run: bun run build
+
   test:
-    name: build & test (${{ matrix.os }})
+    name: go (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        # devyard is macOS + Linux only (Unix process groups, signals,
-        # Unix-socket control plane). No Windows.
+        # devyard is macOS + Linux only (process groups, PTYs, signals,
+        # Unix sockets). No Windows.
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -30,17 +51,14 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Build web SPA
+      - name: Build web SPA (embedded into the binary)
+        working-directory: web
         run: |
-          cd web
           bun install --frozen-lockfile
           bun run build
 
       - name: go vet
         run: go vet ./...
-
-      - name: go build
-        run: go build ./...
 
       - name: gofmt
         run: |
@@ -52,8 +70,14 @@ jobs:
             exit 1
           fi
 
-      - name: go test
-        run: go test -race ./...
+      - name: go build
+        run: go build ./...
+
+      - name: Unit tests
+        run: go test -race ./internal/... ./cmd/...
+
+      - name: E2E tests (hermetic sandbox)
+        run: go test -race -timeout 30m ./test/e2e/...
 
   lint:
     name: golangci-lint

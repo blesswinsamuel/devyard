@@ -4,7 +4,8 @@
 // Each process (service or task) has a directory with one file per run:
 //
 //	<dir>/runs/00000007.log        current segment of run 7
-//	<dir>/runs/00000007.old.log    previous segment (size rotation within a run)
+//	<dir>/runs/00000007.s3.log     older segments (size rotation within a run;
+//	                               higher numbers are newer)
 //
 // A run never overwrites another run's file, so "the previous run" is always
 // the previous run. Records are single lines:
@@ -63,6 +64,9 @@ type Line struct {
 const (
 	// MaxSegmentBytes is the soft cap of one run segment before rotation.
 	MaxSegmentBytes = 10 << 20
+	// MaxOldSegments bounds the rotated segments kept per run (together with
+	// the current one, a run keeps up to ~90 MiB of history).
+	MaxOldSegments = 8
 	// MaxLineBytes truncates pathological single lines.
 	MaxLineBytes = 1 << 20
 	// KeepRuns is how many runs are kept per process.
@@ -78,8 +82,24 @@ func segmentPath(dir string, run int64) string {
 	return filepath.Join(runsDir(dir), fmt.Sprintf("%08d.log", run))
 }
 
-func oldSegmentPath(dir string, run int64) string {
-	return filepath.Join(runsDir(dir), fmt.Sprintf("%08d.old.log", run))
+func oldSegmentPath(dir string, run int64, k int) string {
+	return filepath.Join(runsDir(dir), fmt.Sprintf("%08d.s%d.log", run, k))
+}
+
+// oldSegments lists the rotated segments of run, newest first.
+func oldSegments(dir string, run int64) []int {
+	matches, _ := filepath.Glob(filepath.Join(runsDir(dir), fmt.Sprintf("%08d.s*.log", run)))
+	var ks []int
+	for _, m := range matches {
+		name := strings.TrimSuffix(filepath.Base(m), ".log")
+		if i := strings.LastIndex(name, ".s"); i >= 0 {
+			if k, err := strconv.Atoi(name[i+2:]); err == nil {
+				ks = append(ks, k)
+			}
+		}
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(ks)))
+	return ks
 }
 
 // Runs lists the run numbers stored in dir, ascending.
@@ -160,7 +180,9 @@ func prune(dir string, current int64) {
 	for _, r := range runs {
 		if r <= current-KeepRuns {
 			_ = os.Remove(segmentPath(dir, r))
-			_ = os.Remove(oldSegmentPath(dir, r))
+			for _, k := range oldSegments(dir, r) {
+				_ = os.Remove(oldSegmentPath(dir, r, k))
+			}
 		}
 	}
 }
@@ -201,7 +223,16 @@ func (w *Writer) Systemf(format string, args ...any) {
 
 func (w *Writer) rotateLocked() {
 	_ = w.f.Close()
-	_ = os.Rename(segmentPath(w.dir, w.run), oldSegmentPath(w.dir, w.run))
+	next := 1
+	if ks := oldSegments(w.dir, w.run); len(ks) > 0 {
+		next = ks[0] + 1
+		for _, k := range ks {
+			if k <= next-MaxOldSegments {
+				_ = os.Remove(oldSegmentPath(w.dir, w.run, k))
+			}
+		}
+	}
+	_ = os.Rename(segmentPath(w.dir, w.run), oldSegmentPath(w.dir, w.run, next))
 	f, err := os.OpenFile(segmentPath(w.dir, w.run), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		w.f = nil
@@ -299,7 +330,11 @@ func parseLine(run int64, b []byte) (Line, bool) {
 // every matching line.
 func Tail(dir string, run int64, n int, before uint64) (lines []Line, more bool, err error) {
 	var collected []Line // newest first
-	for _, path := range []string{segmentPath(dir, run), oldSegmentPath(dir, run)} {
+	paths := []string{segmentPath(dir, run)}
+	for _, k := range oldSegments(dir, run) {
+		paths = append(paths, oldSegmentPath(dir, run, k))
+	}
+	for _, path := range paths {
 		if n > 0 && len(collected) >= n {
 			more = true
 			break
@@ -493,7 +528,12 @@ func (fl *Follower) open() error {
 	// A size rotation may have moved lines we have not seen yet into the
 	// .old segment; emit those first.
 	if fl.afterSeq > 0 {
-		if old, err := os.Open(oldSegmentPath(fl.dir, fl.run)); err == nil {
+		ks := oldSegments(fl.dir, fl.run)
+		for i := len(ks) - 1; i >= 0; i-- { // oldest first
+			old, err := os.Open(oldSegmentPath(fl.dir, fl.run, ks[i]))
+			if err != nil {
+				continue
+			}
 			sc := bufio.NewReaderSize(old, 64<<10)
 			for {
 				b, err := sc.ReadBytes('\n')

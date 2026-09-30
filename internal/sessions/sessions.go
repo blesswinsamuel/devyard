@@ -140,6 +140,24 @@ func (m *Manager) reap(id string) {
 	}()
 }
 
+// StopAll ends every terminal (on `daemon stop`).
+func (m *Manager) StopAll(ctx context.Context) {
+	entries, _ := os.ReadDir(m.terminalsDir())
+	var wg sync.WaitGroup
+	for _, e := range entries {
+		p, st, err := runner.Open(m.terminalDir(e.Name()))
+		if err != nil || st.Exited() {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = p.Stop(ctx, time.Second)
+		}()
+	}
+	wg.Wait()
+}
+
 // Open opens a session for target.
 func (m *Manager) Open(ctx context.Context, t Target, cols, rows int) (*Session, error) {
 	switch t.Kind {

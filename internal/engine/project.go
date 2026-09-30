@@ -81,6 +81,7 @@ type projReconfigure struct {
 	reply      chan error
 }
 type projRemove struct{ reply chan error }
+type projCheckConfig struct{}
 type projStartService struct {
 	name  string
 	build bool
@@ -103,7 +104,13 @@ type projectActor struct {
 	loadErr  error
 	services map[string]*Service
 	tasks    map[string]*Task
+	// configMissing is set while the config file does not exist.
+	configMissing bool
 }
+
+// configCheckInterval is how often a project checks that its config file
+// still exists.
+const configCheckInterval = 2 * time.Second
 
 // projectObserver forwards entity events and recomputes the project status.
 type projectObserver struct {
@@ -136,6 +143,21 @@ func newProject(dirs paths.Dirs, reg Registration, launcher Launcher, obs Observ
 	}
 	a.initialize()
 	go a.loop()
+	go func() {
+		t := time.NewTicker(configCheckInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-p.done:
+				return
+			case <-t.C:
+				select {
+				case p.inbox <- projCheckConfig{}:
+				default: // busy; check next tick
+				}
+			}
+		}
+	}()
 	return p
 }
 
@@ -506,6 +528,8 @@ func (a *projectActor) loop() {
 		case projRunTask:
 			run, err := a.cmdRunTask(m.name, m.args)
 			m.reply <- runReply{run: run, err: err}
+		case projCheckConfig:
+			a.checkConfig()
 		case projRemove:
 			err := a.cmdRemove()
 			m.reply <- err
@@ -517,6 +541,21 @@ func (a *projectActor) loop() {
 			m.reply <- nil
 			return
 		}
+	}
+}
+
+// checkConfig reports a config file that disappeared (without touching
+// running services) and reloads once it is back.
+func (a *projectActor) checkConfig() {
+	_, err := os.Stat(a.reg.ConfigPath)
+	switch {
+	case err != nil && !a.configMissing:
+		a.configMissing = true
+		a.loadErr = fmt.Errorf("config file %s not found", a.reg.ConfigPath)
+		a.publishView()
+	case err == nil && a.configMissing:
+		a.configMissing = false
+		_ = a.reload()
 	}
 }
 

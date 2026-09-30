@@ -1,4 +1,6 @@
-# devyard
+<p align="center"><img src="docs/logo.svg" alt="devyard logo" width="96" height="96"></p>
+
+<h1 align="center">devyard</h1>
 
 [![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

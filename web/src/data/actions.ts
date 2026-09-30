@@ -1,8 +1,13 @@
 import type { Component } from "solid-js";
 import {
+  CloudDownload,
   Command,
+  Download,
   ExternalLink,
   GitBranch,
+  GitCommitHorizontal,
+  ListMinus,
+  ListPlus,
   Hammer,
   House,
   Keyboard,
@@ -24,6 +29,7 @@ import {
   SunMoon,
   TextCursorInput,
   Trash2,
+  Upload,
 } from "lucide-solid";
 import type { RouteTarget } from "~/lib/paths";
 import { paths } from "~/lib/paths";
@@ -48,7 +54,7 @@ import {
 
 export type ActionTarget = RouteTarget;
 export type ActionScope = ActionTarget["kind"];
-export type ActionGroup = "service" | "task" | "project" | "navigation" | "view" | "daemon";
+export type ActionGroup = "service" | "task" | "project" | "git" | "navigation" | "view" | "daemon";
 
 export interface ActionContext {
   target: ActionTarget;
@@ -70,10 +76,12 @@ export interface ActionEnv {
   openAddProject(): void;
   openShortcuts(): void;
   openPalette(): void;
+  /** Git page on the working tree with the commit message focused. */
+  openGitCommit(project: string): void;
   toggleSidebar(): void;
   toggleDock(): void;
   cycleTheme(): void;
-  notify(message: string): void;
+  notify(message: string, description?: string): void;
 }
 
 export interface ConfirmSpec {
@@ -107,6 +115,9 @@ const always = () => true;
 const svc = (ctx: ActionContext) => ctx.service!;
 const task = (ctx: ActionContext) => ctx.task!;
 const proj = (ctx: ActionContext) => ctx.project!;
+/** A repository with no push/pull/fetch in flight (one runs at a time). */
+const gitIdle = (c: ActionContext) => !!c.project && !!c.git?.isRepo && !c.git.syncOperation;
+const gitOutput = (output: string) => output.trim() || undefined;
 
 export const ACTIONS: Action[] = [
   // ---------------------------------------------------------------- service
@@ -392,6 +403,78 @@ export const ACTIONS: Action[] = [
     local: true,
     when: (c) => !!c.project && c.git?.isRepo !== false,
     run: (c, env) => env.navigate(paths.git(proj(c).id)),
+  },
+
+  // -------------------------------------------------------------------- git
+  {
+    id: "git.fetch",
+    label: "Fetch",
+    title: (c) => `Git fetch in ${proj(c).id}`,
+    icon: CloudDownload,
+    group: "git",
+    scope: "project",
+    when: gitIdle,
+    run: async (c, env) => {
+      const res = await env.api.gitFetch({ project: proj(c).id });
+      env.notify(`Fetched ${proj(c).id}`, gitOutput(res.output));
+    },
+  },
+  {
+    id: "git.pull",
+    label: "Pull",
+    title: (c) => `Git pull in ${proj(c).id}`,
+    icon: Download,
+    group: "git",
+    scope: "project",
+    when: gitIdle,
+    run: async (c, env) => {
+      const res = await env.api.gitPull({ project: proj(c).id });
+      env.notify(`Pulled ${proj(c).id}`, gitOutput(res.output));
+    },
+  },
+  {
+    id: "git.push",
+    label: "Push",
+    title: (c) => `Git push in ${proj(c).id}`,
+    icon: Upload,
+    group: "git",
+    scope: "project",
+    when: gitIdle,
+    run: async (c, env) => {
+      const res = await env.api.gitPush({ project: proj(c).id });
+      env.notify(`Pushed ${proj(c).id}`, gitOutput(res.output));
+    },
+  },
+  {
+    id: "git.stage-all",
+    label: "Stage all",
+    title: (c) => `Stage all changes in ${proj(c).id}`,
+    icon: ListPlus,
+    group: "git",
+    scope: "project",
+    when: (c) => !!c.project && !!c.git?.isRepo && c.git.dirty + c.git.untracked + c.git.conflicts > 0,
+    run: (c, env) => env.api.gitStage({ project: proj(c).id, stageAll: true }),
+  },
+  {
+    id: "git.unstage-all",
+    label: "Unstage all",
+    title: (c) => `Unstage all changes in ${proj(c).id}`,
+    icon: ListMinus,
+    group: "git",
+    scope: "project",
+    when: (c) => !!c.project && !!c.git?.isRepo && c.git.staged > 0,
+    run: (c, env) => env.api.gitStage({ project: proj(c).id, stageAll: true, unstage: true }),
+  },
+  {
+    id: "git.commit",
+    label: "Commit…",
+    title: (c) => `Commit staged changes in ${proj(c).id}…`,
+    icon: GitCommitHorizontal,
+    group: "git",
+    scope: "project",
+    local: true,
+    when: (c) => !!c.project && !!c.git?.isRepo && c.git.staged > 0,
+    run: (c, env) => env.openGitCommit(proj(c).id),
   },
   {
     id: "project.open",

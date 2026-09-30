@@ -12,4 +12,6 @@ function mediaSignal(query: string): Accessor<boolean> {
 
 /** Phone-sized viewports (< md): sidebar and dock become sheets, tables become cards. */
 export const isMobile = mediaSignal("(max-width: 767px)");
+/** Room for multi-pane layouts (lg and up): the git view shows panes side by side. */
+export const isWide = mediaSignal("(min-width: 1024px)");
 export const prefersDark = mediaSignal("(prefers-color-scheme: dark)");

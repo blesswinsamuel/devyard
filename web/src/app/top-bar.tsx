@@ -21,7 +21,12 @@ function Crumbs() {
     list.push({ label: t.project, href: paths.project(t.project) });
     if (t.kind === "service") list.push({ label: t.name });
     if (t.kind === "task") list.push({ label: `task: ${t.name}` });
-    if (t.kind === "project" && loc.pathname.endsWith("/git")) list.push({ label: "Git" });
+    const git = t.kind === "project" ? loc.pathname.match(/\/git(?:\/commits\/([^/]+))?\/?$/) : null;
+    if (git) {
+      list.push({ label: "Git", href: paths.git(t.project) });
+      const hash = git[1] ? decodeURIComponent(git[1]) : "";
+      if (hash) list.push({ label: hash === "WORKDIR" ? "Uncommitted changes" : hash.slice(0, 7) });
+    }
     return list;
   };
   return (

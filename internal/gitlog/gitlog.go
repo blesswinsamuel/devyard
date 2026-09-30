@@ -109,7 +109,9 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 	}
 
 	format := "\x1e%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%D"
-	cmd := gitCmd(dir, "log", "--all", "--shortstat", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
+	// --date-order keeps children before parents even when timestamps
+	// tie; --decorate=full lets refs be classified by their full name.
+	cmd := gitCmd(dir, "log", "--all", "--date-order", "--decorate=full", "--shortstat", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -162,76 +164,7 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 			}
 
 			if len(fields) >= 8 && fields[7] != "" {
-				var refs []*pb.GitRef
-				seenRefs := make(map[string]bool)
-
-				for _, rawRef := range strings.Split(fields[7], ",") {
-					ref := strings.TrimSpace(rawRef)
-					if ref == "" {
-						continue
-					}
-					if strings.HasPrefix(ref, "HEAD -> ") {
-						bName := strings.TrimPrefix(ref, "HEAD -> ")
-						if !seenRefs[bName] {
-							seenRefs[bName] = true
-							refs = append(refs, &pb.GitRef{
-								Name:     bName,
-								Type:     "branch",
-								IsActive: true,
-							})
-						}
-						if !seenRefs["HEAD"] {
-							seenRefs["HEAD"] = true
-							refs = append(refs, &pb.GitRef{
-								Name:     "HEAD",
-								Type:     "head",
-								IsActive: true,
-							})
-						}
-					} else if ref == "HEAD" {
-						if !seenRefs["HEAD"] {
-							seenRefs["HEAD"] = true
-							refs = append(refs, &pb.GitRef{
-								Name:     "HEAD",
-								Type:     "head",
-								IsActive: true,
-							})
-						}
-					} else if strings.HasPrefix(ref, "tag: ") {
-						tName := strings.TrimPrefix(ref, "tag: ")
-						if !seenRefs[tName] {
-							seenRefs[tName] = true
-							refs = append(refs, &pb.GitRef{
-								Name: tName,
-								Type: "tag",
-							})
-						}
-					} else if ref == "stash" || strings.HasPrefix(ref, "refs/stash") {
-						if !seenRefs[ref] {
-							seenRefs[ref] = true
-							refs = append(refs, &pb.GitRef{
-								Name: ref,
-								Type: "stash",
-							})
-						}
-					} else {
-						if !seenRefs[ref] {
-							seenRefs[ref] = true
-							isRemote := strings.Contains(ref, "/") && !strings.HasPrefix(ref, "heads/")
-							refType := "branch"
-							if isRemote {
-								refType = "remote"
-							}
-							isActive := activeBranch != "" && ref == activeBranch
-							refs = append(refs, &pb.GitRef{
-								Name:     ref,
-								Type:     refType,
-								IsActive: isActive,
-							})
-						}
-					}
-				}
-				c.Refs = refs
+				c.Refs = parseDecorations(fields[7], activeBranch)
 			}
 
 			commits = append(commits, c)
@@ -258,10 +191,57 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 			workdirCommit.Additions = add
 			workdirCommit.Deletions = del
 		}
+		// diff --shortstat ignores untracked files; count them too.
+		untracked := gitCmd(dir, "ls-files", "--others", "--exclude-standard", "-z")
+		if out, err := untracked.Output(); err == nil {
+			for _, f := range bytes.Split(out, []byte{0}) {
+				if len(f) > 0 {
+					workdirCommit.FilesChanged++
+				}
+			}
+		}
 		commits = append([]*pb.GitCommit{workdirCommit}, commits...)
 	}
 
 	return commits, branches, tags, stashes, nil
+}
+
+// parseDecorations turns a --decorate=full %D list into refs.
+func parseDecorations(decorations, activeBranch string) []*pb.GitRef {
+	var refs []*pb.GitRef
+	seen := make(map[string]bool)
+	add := func(name, typ string, active bool) {
+		if name == "" || seen[typ+"\x00"+name] {
+			return
+		}
+		seen[typ+"\x00"+name] = true
+		refs = append(refs, &pb.GitRef{Name: name, Type: typ, IsActive: active})
+	}
+	for _, raw := range strings.Split(decorations, ",") {
+		ref := strings.TrimSpace(raw)
+		switch {
+		case ref == "":
+		case strings.HasPrefix(ref, "HEAD -> "):
+			name := strings.TrimPrefix(strings.TrimPrefix(ref, "HEAD -> "), "refs/heads/")
+			add(name, "branch", true)
+			add("HEAD", "head", true)
+		case ref == "HEAD":
+			add("HEAD", "head", true)
+		case strings.HasPrefix(ref, "tag: "):
+			add(strings.TrimPrefix(strings.TrimPrefix(ref, "tag: "), "refs/tags/"), "tag", false)
+		case ref == "refs/stash":
+			add("stash", "stash", false)
+		case strings.HasPrefix(ref, "refs/heads/"):
+			name := strings.TrimPrefix(ref, "refs/heads/")
+			add(name, "branch", activeBranch != "" && name == activeBranch)
+		case strings.HasPrefix(ref, "refs/remotes/"):
+			name := strings.TrimPrefix(ref, "refs/remotes/")
+			if !strings.HasSuffix(name, "/HEAD") {
+				add(name, "remote", false)
+			}
+		}
+	}
+	return refs
 }
 
 func parseShortstat(s string) (filesChanged, additions, deletions int32) {
@@ -299,7 +279,7 @@ func resolveActiveBranch(dir string) string {
 
 // GetBranches returns all local and remote branches in dir.
 func GetBranches(dir string, activeBranch string) []*pb.GitBranch {
-	cmd := gitCmd(dir, "branch", "-a", "--format=%(HEAD)\x1f%(refname:short)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)")
+	cmd := gitCmd(dir, "for-each-ref", "refs/heads", "refs/remotes", "--format=%(HEAD)\x1f%(refname)\x1f%(objectname)\x1f%(upstream:short)\x1f%(upstream:track,nobracket)\x1f%(symref)")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -317,7 +297,12 @@ func GetBranches(dir string, activeBranch string) []*pb.GitBranch {
 			continue
 		}
 		isHead := strings.TrimSpace(parts[0]) == "*"
-		name := strings.TrimSpace(parts[1])
+		full := strings.TrimSpace(parts[1])
+		if len(parts) >= 6 && strings.TrimSpace(parts[5]) != "" {
+			continue // symbolic refs such as refs/remotes/origin/HEAD
+		}
+		isRemote := strings.HasPrefix(full, "refs/remotes/")
+		name := strings.TrimPrefix(strings.TrimPrefix(full, "refs/heads/"), "refs/remotes/")
 		hash := strings.TrimSpace(parts[2])
 		upstream := ""
 		if len(parts) >= 4 {
@@ -330,7 +315,6 @@ func GetBranches(dir string, activeBranch string) []*pb.GitBranch {
 			behind = int32(b)
 		}
 
-		isRemote := strings.HasPrefix(name, "remotes/") || strings.HasPrefix(name, "origin/")
 		isActive := isHead || (activeBranch != "" && name == activeBranch)
 
 		branches = append(branches, &pb.GitBranch{
@@ -365,7 +349,8 @@ func parseTracking(trackStr string) (int, int) {
 
 // GetTags returns all tags in dir.
 func GetTags(dir string) []*pb.GitTag {
-	cmd := gitCmd(dir, "tag", "-l", "--format=%(refname:short)\x1f%(objectname)")
+	// %(*objectname) is the commit an annotated tag points to.
+	cmd := gitCmd(dir, "tag", "-l", "--format=%(refname:short)\x1f%(objectname)\x1f%(*objectname)")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -382,10 +367,11 @@ func GetTags(dir string) []*pb.GitTag {
 		if len(parts) < 2 {
 			continue
 		}
-		tags = append(tags, &pb.GitTag{
-			Name: strings.TrimSpace(parts[0]),
-			Hash: strings.TrimSpace(parts[1]),
-		})
+		hash := strings.TrimSpace(parts[1])
+		if len(parts) >= 3 && strings.TrimSpace(parts[2]) != "" {
+			hash = strings.TrimSpace(parts[2])
+		}
+		tags = append(tags, &pb.GitTag{Name: strings.TrimSpace(parts[0]), Hash: hash})
 	}
 	return tags
 }

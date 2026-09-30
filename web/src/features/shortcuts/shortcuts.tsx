@@ -21,6 +21,16 @@ const EXTRA: { title: string; items: { keys: string[]; label: string }[] }[] = [
     ],
   },
   {
+    title: "Git",
+    items: [
+      { keys: ["j", "k"], label: "Next / previous commit (or file, in the file list)" },
+      { keys: ["Enter"], label: "Open the diff" },
+      { keys: ["/"], label: "Search commits" },
+      { keys: ["Space"], label: "Stage / unstage the selected file" },
+      { keys: ["mod+Enter"], label: "Commit (message focused)" },
+    ],
+  },
+  {
     title: "Sidebar tree",
     items: [
       { keys: ["ArrowUp", "ArrowDown"], label: "Move" },

@@ -8,6 +8,8 @@ export const [paletteOpen, setPaletteOpen] = createSignal(false);
 export const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
 export const [addProjectOpen, setAddProjectOpen] = createSignal(false);
 export const [mobileNavOpen, setMobileNavOpen] = createSignal(false);
+/** Project whose git commit message box should take focus once shown. */
+export const [gitCommitFocus, setGitCommitFocus] = createSignal<string | null>(null);
 export const [sidebarCollapsed, setSidebarCollapsed] = createPersistedSignal("sidebar.collapsed", false, isBoolean);
 
 export interface ConfirmRequest extends ConfirmSpec {

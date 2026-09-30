@@ -18,6 +18,5 @@
     "types": ["vite/client"],
     "skipLibCheck": true
   },
-  "include": ["src"],
-  "exclude": ["src/components/git", "src/lib/git_graph.ts", "src/lib/diff.ts"]
+  "include": ["src"]
 }

@@ -8,6 +8,7 @@ export const paths = {
     `/projects/${enc(project)}/services/${enc(service)}${tab ? `?tab=${enc(tab)}` : ""}`,
   task: (project: string, task: string) => `/projects/${enc(project)}/tasks/${enc(task)}`,
   git: (project: string) => `/projects/${enc(project)}/git`,
+  gitCommit: (project: string, hash: string) => `/projects/${enc(project)}/git/commits/${enc(hash)}`,
 };
 
 export type RouteTarget =

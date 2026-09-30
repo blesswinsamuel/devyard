@@ -12,15 +12,17 @@ import {
 import { api } from "~/data/client";
 import { dockActions } from "~/data/dock";
 import { entities } from "~/data/entities";
-import { errorInfo, isCanceled } from "~/data/errors";
+import { errorDescription, isCanceled } from "~/data/errors";
 import { isPending, withPending } from "~/data/pending";
 import { connection } from "~/data/sync";
 import { isMobile } from "~/lib/media";
+import { paths } from "~/lib/paths";
 import { cycleTheme } from "~/lib/theme";
 import {
   confirm,
   promptTaskArgs,
   setAddProjectOpen,
+  setGitCommitFocus,
   setMobileNavOpen,
   setPaletteOpen,
   setShortcutsOpen,
@@ -49,10 +51,14 @@ const actionEnv: ActionEnv = {
   openAddProject: () => setAddProjectOpen(true),
   openShortcuts: () => setShortcutsOpen(true),
   openPalette: () => setPaletteOpen(true),
+  openGitCommit: (project) => {
+    setGitCommitFocus(project);
+    navigateImpl(paths.gitCommit(project, "WORKDIR"));
+  },
   toggleSidebar: () => (isMobile() ? setMobileNavOpen((o) => !o) : setSidebarCollapsed((c) => !c)),
   toggleDock: () => dockActions.toggle(),
   cycleTheme,
-  notify: (message) => void toast.success(message),
+  notify: (message, description) => void toast.success(message, { description }),
 };
 
 export const contextFor = (target: ActionTarget): ActionContext => resolveContext(target, entities.state);
@@ -76,8 +82,7 @@ export async function runAction(action: Action, target: ActionTarget): Promise<v
       await action.run(contextFor(target), actionEnv);
     } catch (err) {
       if (isCanceled(err)) return;
-      const info = errorInfo(err);
-      toast.error(`${title} failed`, { description: info.message ? `${info.reason}: ${info.message}` : info.reason });
+      toast.error(`${title} failed`, { description: errorDescription(err) });
     }
   });
 }

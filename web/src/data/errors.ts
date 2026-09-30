@@ -28,6 +28,12 @@ export function errorInfo(err: unknown): ErrorInfo {
   return { code: undefined, reason: "Error", message: errorMessage(err) };
 }
 
+/** "Reason: server message" for toast descriptions. */
+export function errorDescription(err: unknown): string {
+  const info = errorInfo(err);
+  return info.message ? `${info.reason}: ${info.message}` : info.reason;
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ConnectError) return err.rawMessage;
   if (err instanceof Error) return err.message;

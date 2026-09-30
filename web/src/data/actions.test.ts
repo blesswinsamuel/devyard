@@ -98,6 +98,42 @@ describe("action registry", () => {
     expect(inherited).not.toContain("project.stop");
   });
 
+  it("offers git actions for idle repos and hides remote ones while a sync runs", () => {
+    const gitIds = (g: Parameters<typeof git>[0]) =>
+      ids(actionsFor(resolveContext({ kind: "project", project: "web" }, stateWith({ projects: [project()], git: [git(g)] })))).filter((id) =>
+        id.startsWith("git."),
+      );
+    expect(gitIds({})).toEqual(["git.fetch", "git.pull", "git.push"]);
+    expect(gitIds({ dirty: 2, staged: 1 })).toEqual(["git.fetch", "git.pull", "git.push", "git.stage-all", "git.unstage-all", "git.commit"]);
+    expect(gitIds({ untracked: 1, syncOperation: "pull" })).toEqual(["git.stage-all"]);
+    expect(gitIds({ isRepo: false, dirty: 1 })).toEqual([]);
+    // Not inherited: a service page doesn't offer the project's git operations.
+    const svcCtx = resolveContext(
+      { kind: "service", project: "web", name: "api" },
+      stateWith({ projects: [project()], services: [service()], git: [git()] }),
+    );
+    expect(ids(actionsFor(svcCtx, { inherit: true })).some((id) => id.startsWith("git."))).toBe(false);
+  });
+
+  it("git actions call the RPCs and report their output", async () => {
+    const api = {
+      gitFetch: vi.fn().mockResolvedValue({ output: "From origin\n * branch main\n" }),
+      gitPush: vi.fn().mockResolvedValue({ output: "" }),
+      gitStage: vi.fn().mockResolvedValue({}),
+    };
+    const env = { api, notify: vi.fn(), openGitCommit: vi.fn() } as unknown as ActionEnv;
+    const ctx = resolveContext({ kind: "project", project: "web" }, stateWith({ projects: [project()], git: [git({ staged: 1, dirty: 1 })] }));
+    await getAction("git.fetch").run(ctx, env);
+    expect(api.gitFetch).toHaveBeenCalledWith({ project: "web" });
+    expect(env.notify).toHaveBeenCalledWith("Fetched web", "From origin\n * branch main");
+    await getAction("git.push").run(ctx, env);
+    expect(env.notify).toHaveBeenLastCalledWith("Pushed web", undefined);
+    await getAction("git.unstage-all").run(ctx, env);
+    expect(api.gitStage).toHaveBeenCalledWith({ project: "web", stageAll: true, unstage: true });
+    await getAction("git.commit").run(ctx, env);
+    expect(env.openGitCommit).toHaveBeenCalledWith("web");
+  });
+
   it("resolves shortcuts by state: s means stop when running, start when stopped", () => {
     const is = (k: string) => (s: string) => s === k;
     const running = resolveContext(

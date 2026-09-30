@@ -413,11 +413,7 @@ func (a *taskActor) cmdStop(reply chan error) {
 	a.st.Status = StatusStopping
 	a.publish()
 	proc, run := a.proc, a.run
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultStopGrace+stopSafety)
-		defer cancel()
-		_, _ = proc.Stop(ctx, defaultStopGrace)
-	}()
+	go stopWithRetry(proc, defaultStopGrace)
 	a.stopTimer = time.AfterFunc(defaultStopGrace+stopSafety, func() { a.post(evStopDeadline{run: run}) })
 }
 

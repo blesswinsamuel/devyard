@@ -621,3 +621,20 @@ func TestStatus(t *testing.T) {
 		t.Fatalf("expected IsRepo=false for empty dir, got %+v", st)
 	}
 }
+
+func TestParseDecorations(t *testing.T) {
+	refs := parseDecorations("HEAD -> refs/heads/main, tag: refs/tags/v1.0, refs/remotes/origin/main, refs/remotes/origin/HEAD, refs/heads/feature/search, refs/stash", "main")
+	got := map[string]string{}
+	for _, r := range refs {
+		got[r.Name] = r.Type
+	}
+	want := map[string]string{"main": "branch", "HEAD": "head", "v1.0": "tag", "origin/main": "remote", "feature/search": "branch", "stash": "stash"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s: got %q want %q", k, got[k], v)
+		}
+	}
+}

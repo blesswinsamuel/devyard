@@ -286,6 +286,10 @@ func (p *Project) ServiceStates() map[string]ServiceState {
 // recompute derives the project status from its services and publishes it
 // when it changed. Safe for concurrent use.
 func (p *Project) recompute() {
+	// Compute and publish under one lock: a computation that read older
+	// inputs must never publish after a newer one.
+	p.statusMu.Lock()
+	defer p.statusMu.Unlock()
 	v := p.View()
 	if v == nil {
 		return
@@ -363,8 +367,6 @@ func (p *Project) recompute() {
 	default:
 		st.Status = ProjectRunning
 	}
-	p.statusMu.Lock()
-	defer p.statusMu.Unlock()
 	cmp := p.lastStatus
 	cmp.UpdatedAt = time.Time{}
 	if cmp == st {
@@ -501,11 +503,7 @@ func (a *projectActor) stopUnknownRuns() {
 		if err != nil || proc == nil || st.Exited() {
 			continue
 		}
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), defaultStopGrace+stopSafety)
-			defer cancel()
-			_, _ = proc.Stop(ctx, defaultStopGrace)
-		}()
+		go stopWithRetry(proc, defaultStopGrace)
 	}
 }
 

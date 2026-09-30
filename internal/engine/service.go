@@ -398,11 +398,7 @@ func (a *serviceActor) stopProc() {
 	a.st.Message = ""
 	a.publish()
 	proc, run, grace := a.proc, a.run, a.grace()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), grace+stopSafety)
-		defer cancel()
-		_, _ = proc.Stop(ctx, grace)
-	}()
+	go stopWithRetry(proc, grace)
 	a.stopTimer = time.AfterFunc(grace+stopSafety, func() { a.post(evStopDeadline{run: run}) })
 }
 
@@ -888,4 +884,22 @@ func (a *serviceActor) applyRestartPolicy(rst runner.Status, lasted time.Duratio
 	a.st.Message = fmt.Sprintf("restarting in %s", delay.Round(100*time.Millisecond))
 	a.publish()
 	a.backoffTimer = time.AfterFunc(delay, func() { a.post(evBackoff{gen: gen}) })
+}
+
+// stopWithRetry delivers a stop request to a run's runner, retrying transient
+// failures (e.g. a connection refused under load) until the runner accepts
+// it or the stop deadline passes. The exit itself arrives via the watch.
+func stopWithRetry(proc Proc, grace time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), grace+stopSafety)
+	defer cancel()
+	for {
+		if _, err := proc.Stop(ctx, grace); err == nil || ctx.Err() != nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }

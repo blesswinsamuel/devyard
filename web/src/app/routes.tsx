@@ -12,7 +12,9 @@ export const routes: RouteDefinition[] = [
   { path: "/projects/:project", component: ProjectPage },
   { path: "/projects/:project/services/:service", component: ServicePage },
   { path: "/projects/:project/tasks/:task", component: TaskPage },
-  { path: "/projects/:project/git", component: GitPage },
+  // One parent route so selecting a commit doesn't remount the page (and lose
+  // search, scroll and pane state); the children only carry the hash.
+  { path: "/projects/:project/git", component: GitPage, children: [{ path: "/" }, { path: "/commits/:hash" }] },
   { path: "/settings", component: SettingsPage },
   { path: "*404", component: NotFoundPage },
 ];

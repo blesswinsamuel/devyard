@@ -23,6 +23,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/blesswinsamuel/devyard/internal/engine"
 	"github.com/blesswinsamuel/devyard/internal/runner"
 	"github.com/blesswinsamuel/devyard/internal/sessions"
 )
@@ -143,11 +144,26 @@ type wsControl struct {
 
 type wsEvent struct {
 	Type      string `json:"type"`
+	Code      string `json:"code,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 	TTY       *bool  `json:"tty,omitempty"`
 	Stdin     *bool  `json:"stdin,omitempty"`
 	ExitCode  *int   `json:"exit_code,omitempty"`
 	Message   string `json:"message,omitempty"`
+}
+
+// errorCode classifies a session error for the browser: not_found,
+// not_running, invalid or error.
+func errorCode(err error) string {
+	switch {
+	case errors.Is(err, sessions.ErrSessionNotFound), errors.Is(err, engine.ErrNotFound):
+		return "not_found"
+	case errors.Is(err, engine.ErrNotRunning):
+		return "not_running"
+	case errors.Is(err, engine.ErrInvalid):
+		return "invalid"
+	}
+	return "error"
 }
 
 func serveAttach(w http.ResponseWriter, r *http.Request, opts Options) {
@@ -179,7 +195,7 @@ func serveAttach(w http.ResponseWriter, r *http.Request, opts Options) {
 	t := open.Target
 	sess, err := opts.Sessions.Open(ctx, sessions.Target{Kind: t.Kind, Project: t.Project, Name: t.Name, SessionID: t.SessionID}, open.Cols, open.Rows)
 	if err != nil {
-		_ = send(wsEvent{Type: "error", Message: err.Error()})
+		_ = send(wsEvent{Type: "error", Code: errorCode(err), Message: err.Error()})
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 		return
 	}

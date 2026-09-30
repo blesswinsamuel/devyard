@@ -87,6 +87,7 @@ func (p *presenter) ServiceChanged(def *engine.ProcessDef, st engine.ServiceStat
 		Run:          st.Run,
 		Message:      st.Message,
 		Urls:         serviceURLs(def, isDefault, urls),
+		Order:        int32(def.Order),
 		Spec:         serviceSpec(def),
 	}
 	if !st.StartedAt.IsZero() {

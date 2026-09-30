@@ -548,6 +548,13 @@ export class Service extends Message<Service> {
    */
   nextRestartAtUnixMs = protoInt64.zero;
 
+  /**
+   * Position in the project's dependency (start) order, for display.
+   *
+   * @generated from field: int32 order = 16;
+   */
+  order = 0;
+
   constructor(data?: PartialMessage<Service>) {
     super();
     proto3.util.initPartial(data, this);
@@ -571,6 +578,7 @@ export class Service extends Message<Service> {
     { no: 13, name: "urls", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 14, name: "spec", kind: "message", T: ServiceSpec },
     { no: 15, name: "next_restart_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 16, name: "order", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Service {
@@ -2083,6 +2091,13 @@ export class RestartProjectRequest extends Message<RestartProjectRequest> {
    */
   project = "";
 
+  /**
+   * Run build steps before starting again.
+   *
+   * @generated from field: bool build = 2;
+   */
+  build = false;
+
   constructor(data?: PartialMessage<RestartProjectRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -2092,6 +2107,7 @@ export class RestartProjectRequest extends Message<RestartProjectRequest> {
   static readonly typeName = "devyard.v1.RestartProjectRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "build", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RestartProjectRequest {
@@ -2939,6 +2955,14 @@ export class LogsRequest extends Message<LogsRequest> {
    */
   follow = false;
 
+  /**
+   * Absolute run number to read (overrides run_offset when > 0). Stable
+   * while the process restarts; following requires the latest run.
+   *
+   * @generated from field: int64 run = 7;
+   */
+  run = protoInt64.zero;
+
   constructor(data?: PartialMessage<LogsRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -2953,6 +2977,7 @@ export class LogsRequest extends Message<LogsRequest> {
     { no: 4, name: "tail", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 5, name: "before_seq", kind: "scalar", T: 4 /* ScalarType.UINT64 */ },
     { no: 6, name: "follow", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "run", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): LogsRequest {

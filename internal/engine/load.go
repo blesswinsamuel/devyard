@@ -55,6 +55,10 @@ func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
 		services: make(map[string]*ProcessDef, len(file.Services)),
 		tasks:    make(map[string]*ProcessDef, len(file.Tasks)),
 	}
+	position := make(map[string]int, len(order))
+	for i, name := range order {
+		position[name] = i
+	}
 	for name, svc := range file.Services {
 		dir := resolveDir(baseDir, svc.WorkingDir)
 		env := config.ChildEnv(reg.Env, dotenv, svc.Env)
@@ -62,6 +66,7 @@ func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
 			Project:   reg.ID,
 			Kind:      "service",
 			Name:      name,
+			Order:     position[name],
 			Command:   svc.Command,
 			Shell:     svc.Shell,
 			Dir:       dir,

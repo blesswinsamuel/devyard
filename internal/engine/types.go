@@ -80,6 +80,8 @@ type ProcessDef struct {
 	Project string
 	Kind    string // "service" | "task"
 	Name    string
+	// Order is the position in the project's dependency order.
+	Order int
 
 	Command string
 	Shell   string

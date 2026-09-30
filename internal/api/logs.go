@@ -65,6 +65,16 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[pb.LogsRequest],
 	if offset > 0 {
 		return invalid("run_offset must be 0 or negative")
 	}
+	resolveRun := func(dir string) (int64, error) {
+		if req.Msg.Run > 0 {
+			return req.Msg.Run, nil
+		}
+		return logstore.ResolveRun(dir, offset)
+	}
+	follow := req.Msg.Follow && offset == 0
+	if req.Msg.Run > 0 && len(sources) == 1 {
+		follow = follow && req.Msg.Run == logstore.LatestRun(sources[0].dir)
+	}
 
 	// Paging backwards through one source.
 	if req.Msg.BeforeSeq > 0 {
@@ -72,7 +82,7 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[pb.LogsRequest],
 			return invalid("before_seq requires exactly one source")
 		}
 		src := sources[0]
-		run, err := logstore.ResolveRun(src.dir, offset)
+		run, err := resolveRun(src.dir)
 		if err != nil {
 			return toConnect(err)
 		}
@@ -89,7 +99,7 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[pb.LogsRequest],
 	runs := make([]int64, len(sources))
 	lastSeq := make([]uint64, len(sources))
 	for i, src := range sources {
-		run, err := logstore.ResolveRun(src.dir, offset)
+		run, err := resolveRun(src.dir)
 		if err != nil {
 			if errors.Is(err, logstore.ErrNoRun) && (offset == 0 || len(sources) > 1) {
 				continue
@@ -120,7 +130,7 @@ func (s *Server) Logs(ctx context.Context, req *connect.Request[pb.LogsRequest],
 	if err := sendLines(stream, history, more, nil); err != nil {
 		return err
 	}
-	if !req.Msg.Follow || offset != 0 {
+	if !follow {
 		return nil
 	}
 

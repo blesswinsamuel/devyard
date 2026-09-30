@@ -155,6 +155,8 @@ message Service {
   repeated string urls = 13;
   ServiceSpec spec = 14;
   int64 next_restart_at_unix_ms = 15;
+  // Position in the project's dependency (start) order, for display.
+  int32 order = 16;
 }
 
 message TaskSpec {
@@ -351,6 +353,8 @@ message StopProjectResponse {}
 
 message RestartProjectRequest {
   string project = 1;
+  // Run build steps before starting again.
+  bool build = 2;
 }
 
 message RestartProjectResponse {}
@@ -460,6 +464,9 @@ message LogsRequest {
   // single requested source's run. Implies follow = false.
   uint64 before_seq = 5;
   bool follow = 6;
+  // Absolute run number to read (overrides run_offset when > 0). Stable
+  // while the process restarts; following requires the latest run.
+  int64 run = 7;
 }
 
 message LogLine {

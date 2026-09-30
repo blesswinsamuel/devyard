@@ -55,8 +55,8 @@ type errDepFailed struct{ msg string }
 func (e errDepFailed) Error() string { return e.msg }
 
 // waitReady blocks until dep satisfies cond. It returns an error when the
-// dependency failed in a way that won't resolve by waiting (exited, failed,
-// unhealthy). A stopped dependency is waited for.
+// dependency failed in a way that won't resolve by waiting (it exited or
+// failed). Stopped and unhealthy dependencies are waited for.
 func (h *hub) waitReady(ctx context.Context, dep string, cond config.DependsOnCondition) error {
 	for {
 		h.mu.Lock()
@@ -86,13 +86,9 @@ func readiness(dep string, st ServiceState, cond config.DependsOnCondition) (boo
 		if cond != config.ConditionServiceHealthy {
 			return true, nil
 		}
-		switch st.Health {
-		case HealthHealthy:
-			return true, nil
-		case HealthUnhealthy:
-			return false, errDepFailed{fmt.Sprintf("dependency %s is unhealthy", dep)}
-		}
-		return false, nil
+		// An unhealthy dependency may still recover (slow boot, transient
+		// failure): keep waiting. Only an exit or failure ends the wait.
+		return st.Health == HealthHealthy, nil
 	case StatusExited:
 		if st.ExitCode == 0 && cond != config.ConditionServiceHealthy {
 			return true, nil

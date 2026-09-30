@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/a11y/noLabelWithoutControl: <component file - for/htmlFor handled by consumer> */
 import type { ComponentProps } from "solid-js";
 import { splitProps } from "solid-js";
 import { cn } from "~/lib/utils";

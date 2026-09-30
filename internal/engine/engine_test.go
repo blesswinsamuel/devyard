@@ -783,3 +783,23 @@ func TestConfigChangedWhileAwayRestartsOnAdoption(t *testing.T) {
 		t.Fatalf("unchanged service restarted")
 	}
 }
+
+func TestDependentWaitsThroughTransientUnhealthy(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	path := e.project("p17", `services:
+  db:
+    command: sleep 1 && touch ready && sleep 30
+    healthcheck:
+      test: ["CMD-SHELL", "test -f ready"]
+      interval: 100ms
+      retries: 1
+  api:
+    command: sleep 30
+    depends_on:
+      db: {condition: service_healthy}
+`)
+	e.add(path, true)
+	e.obs.waitFor(t, "db unhealthy while booting", 10*time.Second, func(r *recorder) bool { return r.services["p17/db"].Health == HealthUnhealthy })
+	e.obs.waitService(t, "p17/api", StatusRunning)
+}

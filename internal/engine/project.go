@@ -65,7 +65,10 @@ type projStart struct {
 	reply    chan error
 }
 type projStop struct{ reply chan error }
-type projRestart struct{ reply chan error }
+type projRestart struct {
+	build bool
+	reply chan error
+}
 type projReload struct {
 	env    []string
 	setEnv bool
@@ -177,10 +180,11 @@ func (p *Project) Stop(ctx context.Context) error {
 	return p.call(ctx, projStop{reply: r}, r)
 }
 
-// Restart stops and starts the wanted services.
-func (p *Project) Restart(ctx context.Context) error {
+// Restart stops and starts the wanted services (rebuilding first when
+// build is set).
+func (p *Project) Restart(ctx context.Context, build bool) error {
 	r := make(chan error, 1)
-	return p.call(ctx, projRestart{reply: r}, r)
+	return p.call(ctx, projRestart{build: build, reply: r}, r)
 }
 
 // Reload re-reads the config and reconciles services. When setEnv is true
@@ -489,7 +493,7 @@ func (a *projectActor) loop() {
 		case projStop:
 			m.reply <- a.cmdStop()
 		case projRestart:
-			m.reply <- a.cmdRestart()
+			m.reply <- a.cmdRestart(m.build)
 		case projReload:
 			if m.setEnv {
 				a.reg.Env = CleanEnv(m.env)
@@ -665,7 +669,7 @@ func (a *projectActor) stopLevels() [][]string {
 	return levels
 }
 
-func (a *projectActor) cmdRestart() error {
+func (a *projectActor) cmdRestart(build bool) error {
 	if err := a.requireConfig(); err != nil {
 		return err
 	}
@@ -686,7 +690,7 @@ func (a *projectActor) cmdRestart() error {
 			targets = append(targets, name)
 		}
 	}
-	return a.startServices(targets, false, nil)
+	return a.startServices(targets, build, nil)
 }
 
 func (a *projectActor) cmdReconfigure(m projReconfigure) error {

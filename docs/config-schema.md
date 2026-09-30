@@ -127,7 +127,7 @@ Conditions:
 | Condition | Meaning |
 | --- | --- |
 | `service_started` (default) | Dependent starts once the dependency has launched at least once. |
-| `service_healthy` | Dependent waits until the dependency's healthcheck is `healthy`. Fails fast if it goes `unhealthy` or exits first. |
+| `service_healthy` | Dependent waits until the dependency's healthcheck is `healthy` (an `unhealthy` dependency may still recover, so it keeps waiting). Fails if the dependency exits or fails first. |
 
 A dependency that is stopped is waited for (the dependent shows `waiting for
 <dep>`); starting a service also starts its whole `depends_on` chain.

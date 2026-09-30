@@ -223,7 +223,7 @@ func (s *Server) RestartProject(ctx context.Context, req *connect.Request[pb.Res
 	if err != nil {
 		return nil, err
 	}
-	if err := p.Restart(ctx); err != nil {
+	if err := p.Restart(ctx, req.Msg.Build); err != nil {
 		return nil, toConnect(err)
 	}
 	return connect.NewResponse(&pb.RestartProjectResponse{}), nil

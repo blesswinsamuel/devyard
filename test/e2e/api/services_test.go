@@ -445,8 +445,10 @@ services:
 	if msgs < 3 {
 		t.Fatalf("got %d stats messages: %v", msgs, stream.Err())
 	}
-	if maxBusy < 40 {
-		t.Errorf("busy loop cpu%% = %.1f, want >= 40 (percent of one core)", maxBusy)
+	// A saturated test machine can starve the spinner to ~10%% of a core;
+	// the unit bug (Mach ticks read as nanoseconds) reports ~42x less.
+	if maxBusy < 5 {
+		t.Errorf("busy loop cpu%% = %.1f, want >= 5 (percent of one core)", maxBusy)
 	}
 	if maxIdle >= maxBusy {
 		t.Errorf("idle cpu%% %.1f >= busy %.1f", maxIdle, maxBusy)

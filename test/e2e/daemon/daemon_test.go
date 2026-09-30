@@ -190,9 +190,9 @@ func TestLedger_O4_ExitWhileDaemonDownReported(t *testing.T) {
 	p := sb.WriteProject("o4", `version: "1"
 services:
   seven:
-    command: {{fixture "exiter"}} -code 7 -after 2s
+    command: {{fixture "exiter"}} -code 7 -after 6s
   clean:
-    command: {{fixture "exiter"}} -code 0 -after 2s
+    command: {{fixture "exiter"}} -code 0 -after 6s
     restart: on-failure
 `, nil)
 	p.Start()

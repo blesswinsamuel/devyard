@@ -30,8 +30,11 @@ type Project struct {
 
 	statusMu   sync.Mutex
 	lastStatus ProjectState
-	obs        Observer
-	hub        *hub
+	// stopping is set while a project-wide stop is in progress, so the
+	// project reports stopping until every service has been handled.
+	stopping atomic.Bool
+	obs      Observer
+	hub      *hub
 }
 
 // View is an immutable snapshot of a project's structure. A new View is
@@ -345,7 +348,7 @@ func (p *Project) recompute() {
 	switch {
 	case v.LoadErr != "":
 		st.Status = ProjectError
-	case stopping:
+	case stopping || p.stopping.Load():
 		st.Status = ProjectStopping
 	case v.Reg.Desired == DesiredStopped || wantedCount == 0:
 		if active > 0 {
@@ -642,6 +645,12 @@ func (a *projectActor) cmdStop() error {
 // stopEverything stops running tasks, then services in reverse dependency
 // order (dependents before their dependencies), each level concurrently.
 func (a *projectActor) stopEverything() error {
+	a.p.stopping.Store(true)
+	a.p.recompute()
+	defer func() {
+		a.p.stopping.Store(false)
+		a.p.recompute()
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	var wg sync.WaitGroup

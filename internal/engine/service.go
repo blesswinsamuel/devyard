@@ -455,6 +455,10 @@ func (a *serviceActor) cmdKill(sigName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := a.proc.Signal(ctx, runner.SignalName(sig)); err != nil {
+		if errors.Is(err, runner.ErrRunnerGone) {
+			// The run just ended; its exit event is on its way.
+			return nil
+		}
 		return fmt.Errorf("service %s: %w: %v", a.def.Name, ErrNotRunning, err)
 	}
 	return nil

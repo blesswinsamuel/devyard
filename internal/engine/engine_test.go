@@ -327,11 +327,12 @@ func TestLedgerS7KillDuringStop(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p5", `services:
   stubborn:
-    command: trap "" TERM; while true; do sleep 0.1; done
+    command: trap "" TERM; echo ready; while true; do sleep 0.1; done
     stop_grace_period: 30s
 `)
 	p := e.add(path, true)
 	e.obs.waitService(t, "p5/stubborn", StatusRunning)
+	waitLog(t, e, "p5", "stubborn", "ready")
 	svc, _ := p.Service("stubborn")
 	stopped := make(chan error, 1)
 	go func() { stopped <- svc.Stop(context.Background()) }()
@@ -357,11 +358,12 @@ func TestStopEscalatesAfterGrace(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p6", `services:
   stubborn:
-    command: trap "" TERM; while true; do sleep 0.1; done
+    command: trap "" TERM; echo ready; while true; do sleep 0.1; done
     stop_grace_period: 300ms
 `)
 	p := e.add(path, true)
 	st := e.obs.waitService(t, "p6/stubborn", StatusRunning)
+	waitLog(t, e, "p6", "stubborn", "ready")
 	start := time.Now()
 	if err := p.Stop(ctx(t)); err != nil {
 		t.Fatal(err)
@@ -802,4 +804,21 @@ func TestDependentWaitsThroughTransientUnhealthy(t *testing.T) {
 	e.add(path, true)
 	e.obs.waitFor(t, "db unhealthy while booting", 10*time.Second, func(r *recorder) bool { return r.services["p17/db"].Health == HealthUnhealthy })
 	e.obs.waitService(t, "p17/api", StatusRunning)
+}
+
+func waitLog(t *testing.T, e *env, project, service, text string) {
+	t.Helper()
+	pd, _ := e.dirs.Project(project)
+	dir := pd.Proc("service", service)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		lines, _, _ := logstore.Tail(dir, logstore.LatestRun(dir), 0, 0)
+		for _, l := range lines {
+			if l.Text == text {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("%s/%s never logged %q", project, service, text)
 }

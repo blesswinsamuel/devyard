@@ -432,6 +432,9 @@ func (a *taskActor) cmdKill(sigName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := a.proc.Signal(ctx, runner.SignalName(sig)); err != nil {
+		if errors.Is(err, runner.ErrRunnerGone) {
+			return nil
+		}
 		return fmt.Errorf("task %s: %w: %v", a.def.Name, ErrNotRunning, err)
 	}
 	return nil

@@ -1,393 +1,185 @@
 # devyard
 
 [![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![Go Report Card](https://goreportcard.com/badge/github.com/blesswinsamuel/devyard)](https://goreportcard.com/report/github.com/blesswinsamuel/devyard)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > One dev hub for all your projects and services — instead of processes scattered across a pile of terminal tabs.
 
-`devyard` is a developer hub: register as many projects as you like, each with its own set
-of services, and run them all from one place on your own machine — `start`, `stop`, `ps`, `top`,
-`logs`, `restart`, `build`, and a browser-based web UI. Instead of processes scattered across
-terminal tabs, every project and service lives in one place: a single static binary, built for
-macOS and Linux, that supervises your dev services, streams their output, restarts them on
-crash, and waits for healthchecks before starting dependents.
-
-Use it for the "run a few processes together" half of docker-compose — the API server, the web
-dev server, a local DB, a worker — without spinning up a container runtime.
-
----
+`devyard` runs your local dev services — API servers, web dev servers, databases, workers — from
+a compose-style `devyard.yml`, without containers. Register as many projects as you like; one
+daemon supervises all of them, streams their logs, restarts them on crash, gates dependents on
+healthchecks, exposes them at named URLs, and gives you a fast web dashboard with terminals,
+interactive tasks and a git view.
 
 ## Why?
 
-`docker-compose` is great for reproducing production, but for everyday local dev it drags in a
-container runtime, images, builds, volumes, and a network — when all you really want is "start
-these three commands and show me their logs together." Existing lightweight tools (`mprocs`,
-`overmind`, `hivemind`, `foreman`) cover pieces of this, but none combine a compose-style config,
-a detached lifecycle (`start` / `ps` / `stop`), health-gated dependencies, and a web UI in one tool.
+`docker compose` is great for reproducing production, but for everyday local dev it drags in a
+container runtime when all you want is "start these commands, show me their logs, keep them
+running". Lightweight tools (`mprocs`, `overmind`, `foreman`) cover pieces of that. devyard
+combines:
 
-`devyard` fills that gap:
-
-- **Compose-style config** — a single `devyard.yml` you already know how to read.
-- **Developer hub** — add multiple projects, each with multiple services, and manage them
-  all from one place: `project add`, one dashboard, one log stream per service. No more
-  juggling terminal tabs.
-- **Detached lifecycle** — `start` runs a background supervisor by default (or `start -f` for
-  foreground) you can talk back to with `ps`, `top`, `logs`, `restart`, and `stop`.
-- **Process-group safety** — each service runs in its own process group, so `stop` never leaves
-  orphans behind (the bug most lightweight supervisors have).
-- **Health-gated dependencies** — `depends_on: { condition: service_healthy }` waits for a
-  healthcheck to pass before starting dependents.
-- **Web UI** — a browser dashboard over the same control protocol, with xterm.js log streaming.
-- **Multi-project daemon** — a single daemon manages multiple projects; autostarts every
-  registered project on daemon startup (unless stopped with `stop`).
-- **One static binary** — no runtime, no daemon-on-a-daemon, no container engine.
+- **Compose-style config** — one `devyard.yml` you already know how to read.
+- **Services that survive** — every process runs under its own tiny runner, so restarting (or
+  crashing) the daemon never kills your services; the next daemon simply re-adopts them.
+- **Health-gated dependencies** — `depends_on: { condition: service_healthy }`.
+- **Restart policies** with backoff, and a stop that always escalates (SIGTERM → SIGKILL).
+- **Your shell's environment** — services run with the environment of the shell that started
+  them (PATH, version managers, …), not whatever the daemon happened to inherit.
+- **Named URLs** — `http://web.myapp.localhost:8080` via a built-in reverse proxy (optional TLS).
+- **Interactive tasks** — `devyard run seed` prompts right in your terminal (or in the browser);
+  task runs belong to the daemon, so closing a tab or losing a connection doesn't kill them.
+- **Web dashboard** — every project at a glance, merged searchable logs, CPU/memory sparklines,
+  terminals, a git view, and a ⌘K command palette.
+- **One static binary**, macOS and Linux.
 
 ## Installation
-
-### From source (requires Go 1.26+)
 
 ```bash
 go install github.com/blesswinsamuel/devyard/cmd/devyard@latest
 ```
 
-### Build from a clone
+From a clone (the web UI is embedded, so build it first):
 
 ```bash
-git clone https://github.com/blesswinsamuel/devyard.git
-cd devyard
-go build -o devyard ./cmd/devyard
+git clone https://github.com/blesswinsamuel/devyard.git && cd devyard
+(cd web && bun install && bun run build)
+go build -ldflags "-X github.com/blesswinsamuel/devyard/internal/cli.Version=$(git describe --tags --always)" \
+  -o devyard ./cmd/devyard
 ```
-
-`version`, `commit`, and `date` build metadata can be injected via `-ldflags`
-(the defaults are `dev`, empty, empty):
-
-```bash
-go build -ldflags "-X github.com/blesswinsamuel/devyard/internal/cli.Version=v1.2.3 \
-                   -X github.com/blesswinsamuel/devyard/internal/cli.Commit=$(git rev-parse --short HEAD) \
-                   -X github.com/blesswinsamuel/devyard/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-         -o devyard ./cmd/devyard
-```
-
-Prebuilt binaries for tagged releases will be published on the
-[releases page](https://github.com/blesswinsamuel/devyard/releases) once available.
 
 ## Quick start
 
-Create a `devyard.yml` in your project:
-
 ```yaml
+# devyard.yml
 version: "1"
 name: myapp
+proxy:
+  default_service: web              # myapp.localhost:8080 → web
 services:
+  db:
+    command: postgres -D ./data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 2s
+      start_period: 10s
   api:
     command: cargo run --bin api
     working_dir: ./api
-    build: cargo build --bin api          # run once before first start; --build forces
+    build: cargo build --bin api     # run with `start --build`
     depends_on:
-      db: { condition: service_healthy }  # wait for db's healthcheck to pass
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 5s
-      retries: 10
-      timeout: 2s
+      db: { condition: service_healthy }
+    restart: on-failure
+    port: 8080                       # → api.myapp.localhost:8080
   web:
-    command: pnpm dev
+    command: pnpm dev --port 3000
     working_dir: ./web
     depends_on: [api]
-    build:
-      command: pnpm build
-      working_dir: ./web
-      env:
-        NODE_ENV: production
-      shell: bash
-  db:
-    command: postgres -D /usr/local/var/postgres
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
-      interval: 5s
-      retries: 5
+    port: 3000
+tasks:
+  migrate: cargo run --bin migrate
+  seed:
+    command: node scripts/seed.js    # tasks get a TTY, so prompts work
 ```
 
-Then:
-
 ```bash
-devyard start        # start everything in the background
-devyard ps           # see status, pids, health
-devyard logs -f api        # tail the api's output
-devyard logs --tail 100 api # last 100 lines only
-devyard logs --previous api # inspect the previous run's logs
-devyard restart web  # restart one service
-devyard stop         # stop the current project
-devyard daemon stop  # stop all projects and the daemon
+devyard start            # register the project and start everything (starts the daemon)
+devyard status           # status, pid, uptime, restarts, URLs
+devyard logs -f          # merged logs of all services (or: devyard logs api web)
+devyard restart api      # restart one service
+devyard run seed         # run a task interactively; exit code = task's
+devyard web --open       # open the dashboard
+devyard stop             # stop the project (it stays stopped across daemon restarts)
 ```
 
 ## Commands
 
-`devyard` provides clean resource-oriented commands (`project`, `service`, `task`, `daemon`, `ui`), paired with intuitive root-level shortcuts for your daily workflow.
-
-### Daily Shortcuts
-
-| Shortcut | Description | Target Resource |
-| --- | --- | --- |
-| `start [service...]` | Start services (or all services in the project). Auto-starts daemon. (`-f` to follow). | `service start` |
-| `stop [service...]` | Stop services (or all services in the project). | `service stop` |
-| `restart [service...]` | Restart services (or all services in the project). | `service restart` |
-| `reload [project]` | Re-read config from disk and reconcile running services in place. | `project reload` |
-| `status` / `ps` | List services in the project with status, PID, restart count, and health. | `service list` |
-| `logs [service]` | Output or stream service logs (`--follow`, `--tail N`, `--previous`). | `service logs` |
-| `top [service]` | Sample process-group CPU% and memory usage. | `service top` |
-| `kill [service...]` | Forcefully terminate services with a signal (`-s SIGKILL`, `SIGTERM`, ...). | `service kill` |
-| `run <task> [-- args]` | Execute a one-off task defined in `tasks:`. | `task run` |
-| `build [service...]` | Run pre-start build commands. | `service build` |
-
-### Resource-Based Commands
-
-#### `project` (`proj`, `p`)
-- `project list` — List all projects registered with the daemon.
-- `project add <path>` — Register a project config file with the daemon (persists state).
-- `project reload [project]` — Re-read config from disk and reconcile running services.
-- `project start [project]` — Start all services in a project.
-- `project stop [project]` — Stop all services in a project.
-- `project restart [project]` — Restart all services in a project.
-- `project remove [project]` / `rm` — Stop and completely remove a project from the daemon.
-- `project logs [project]` — Combined log stream across all services in the project.
-
-#### `service` (`svc`, `s`)
-- `service list` (`ps`) — List services and statuses (`-a` for all projects).
-- `service start [service...]` — Start one or more services (`--build`, `--follow`).
-- `service stop [service...]` — Stop one or more services.
-- `service restart [service...]` — Restart one or more services.
-- `service kill [service...]` — Terminate services with a signal (`-s SIGKILL`).
-- `service logs [service]` — Inspect or follow service logs (`--follow`, `--tail`, `--previous`).
-- `service top [service]` — CPU and memory consumption.
-- `service build [service...]` — Run build steps for services.
-
-#### `task` (`tasks`, `t`)
-- `task list` — List available tasks defined in the project config.
-- `task run <task> [-- args]` — Execute a task on demand (`--follow`).
-- `task stop <task>` — Stop a running task.
-- `task kill <task>` — Send a signal to a running task process group (`-s SIGKILL`).
-- `task logs <task>` — Inspect or follow task logs (`--follow`, `--tail`, `--previous`).
-- `task top [task]` — CPU and memory consumption for running tasks.
-
-#### `daemon` (`d`)
-- `daemon status` — Check running daemon status, socket path, and managed projects.
-- `daemon start` — Launch the global background daemon.
-- `daemon stop` — Stop the daemon and all managed projects.
-- `daemon restart` — Seamlessly restart the daemon with process adoption (`-r` to restart services too).
-
-#### `ui` (alias: `web`)
-- `ui` — Start the browser dashboard web server and connect to the daemon.
-
-### Global Flags
-
-| Flag | Description |
+| Command | What it does |
 | --- | --- |
-| `-f, --file <path>` | Path to `devyard.yml` (default: walk up from current directory). |
-| `-p, --project <name>` | Resolve a registered project by name when no config file is found. |
-| `--env-file <path>` | Path to an env file for variables and config interpolation. |
-| `-o, --format <table\|json>` | Output format: `table` (default) or `json` (for scripting and automation). |
+| `start [svc...] [-f] [--build]` | Register the project (capturing your shell's environment) and start all services, or the named ones plus their `depends_on` chain. `-f` follows logs and stops on Ctrl-C. |
+| `stop [svc...]` | Stop the project (it won't autostart) or the named services. |
+| `restart [svc...] [--build]` | Restart the project's services or the named ones. |
+| `reload` | Re-read `devyard.yml`: added services start, removed ones stop, changed ones restart, the rest keep running. Also refreshes the captured environment. |
+| `status [-a]` (`ps`) | Service status (`-a`: all projects; `-o json` for scripts). |
+| `logs [svc...] [-f] [--tail N] [--previous]` | Logs; merged with name prefixes when several services. |
+| `top [name...]` | CPU and memory of running services and tasks. |
+| `kill [svc...] [-s SIGNAL]` | Send a signal (default SIGKILL); a killed service stays down. |
+| `run <task> [args...]` | Run a task; interactive when attached to a terminal, stdin streamed otherwise. |
+| `attach <svc\|task>` | Attach to a running TTY service or task (Ctrl-] detaches). |
+| `build [svc...]` | Run build steps in the foreground. |
+| `web [--open]` | Print or open the dashboard URL. |
+| `project list\|add\|start\|stop\|restart\|reload\|remove\|logs` | Manage registered projects (`remove` deletes state and logs). |
+| `service …` / `task list\|run\|stop\|kill\|logs` | Resource-scoped variants of the above. |
+| `daemon start\|stop\|restart [-r]\|status` | Manage the daemon. `restart` keeps services running unless `-r`. |
 
-### The Web UI
+Global flags: `--file <path>` (config; default: search upwards), `-p <project>` (a registered
+project id — unknown ids are an error), `--env-file <path>`, `-o table|json`.
 
-The web UI is a browser-based dashboard served automatically by the daemon — project/service
-listing, live xterm.js logs, and start/stop/restart actions. Access it at `http://127.0.0.1:9090`,
-or via the reverse proxy at `http://localhost:8080` or `http://devyard.localhost:8080` (loopback-only by default).
+## Configuration
 
-## Config reference
+See [docs/config-schema.md](docs/config-schema.md) for every field. Highlights:
 
-Top-level:
-
-| Field | Description |
-| --- | --- |
-| `version` | **Required.** Config schema version (currently `"1"`). |
-| `name` | Optional project name. Defaults to the config file's directory name. |
-| `services` | **Required.** Map of service name → `Service`. |
-| `tasks` | Optional. Map of task name → `Task` (one-off tasks). |
-
-`Service`:
-
-| Field | Description |
-| --- | --- |
-| `command` | **Required.** Shell command to run (executed via `sh -c` by default). |
-| `working_dir` | Working directory (relative to the config file). |
-| `env` | Map of environment variables. **Additive** over the parent process env. |
-| `shell` | Shell used to run `command` (default `sh`). |
-| `depends_on` | List of names, or a map of `name: { condition: ... }`. Conditions: `service_started` (default), `service_healthy`. |
-| `healthcheck` | Periodic probe; see below. |
-| `restart` | `no` (default), `on-failure`, or `always`. |
-| `build` | A pre-start build step. Accepts a **string** (`build: cargo build`) or an **object** (see below). |
-
-`build` object form:
-
-```yaml
-build:
-  command: pnpm build          # required
-  working_dir: ./web           # optional, relative to the config file
-  env:                         # optional, additive over parent env
-    NODE_ENV: production
-  shell: bash                  # optional, default sh
-```
-
-`build` runs once before the service starts on `start`. `devyard build` runs every service's
-declared build step; `devyard start --build` forces a rebuild. A failed build aborts `start` so services never
-start on top of a broken build.
-
-### Env files and interpolation
-
-A `.env` file next to `devyard.yml` (or the file given via `--env-file`) is loaded
-automatically. Its variables are passed to every service process — layered under the service's
-own `env` (service `env` wins) — and are available for **config interpolation**:
-
-```yaml
-# .env
-PORT=8080
-
-# devyard.yml
-services:
-  api:
-    command: cargo run --bin api -- --port ${PORT:-3000}
-```
-
-`${VAR}` and `${VAR:-default}` (also `${VAR-default}`) are expanded anywhere in the config text.
-Unset variables without a default expand to empty with a warning; `$$` escapes a literal `$`;
-bare `$VAR` is left untouched for the shell.
-
-`healthcheck`:
-
-| Field | Description |
-| --- | --- |
-| `test` | **Required.** Either `["CMD", "executable", "args..."]` (run directly) or `["CMD-SHELL", "command"]` (run via shell). |
-| `interval` | Time between probes (default `5s`). |
-| `timeout` | Per-probe timeout (default `2s`). |
-| `retries` | Consecutive successes/failures that flip the state (default `3`). |
-
-A service starts `starting`, becomes `healthy` when a probe succeeds, and `unhealthy` after
-`retries` consecutive failures. A dependent with `condition: service_healthy` won't start until
-its dependency is `healthy`.
-
-### What's deliberately not in the schema
-
-`image`, `build:` (Docker context), `volumes`, `networks`, and `ports` are intentionally absent.
-Processes bind ports and read the filesystem directly — there's nothing to map. This keeps the
-config honest about what `devyard` actually does.
+- **Services**: `command`, `working_dir`, `env`, `shell`, `depends_on` (`service_started` /
+  `service_healthy`), `healthcheck` (`test`, `interval`, `timeout`, `retries`, `start_period`),
+  `restart` (`no` / `on-failure` / `always`), `build`, `tty`, `port` / `ports`, `proxy.host`,
+  `stop_grace_period`.
+- **Tasks**: `command`, `working_dir`, `env`, `shell`, `depends_on`, `tty` (default `true`).
+- **Env files**: `.env` next to the config (or `--env-file`) feeds `${VAR}` / `${VAR:-default}`
+  interpolation and every process's environment.
+- **Global config** (`~/.config/devyard/config.yml`): dashboard and proxy listeners, domain
+  suffix, TLS, and `web.allowed_hosts`.
 
 ## How it works
 
-`devyard` has a small, focused architecture: one **global daemon** process owns a
-supervisor per project, and exposes a single **Unix socket** control protocol; every other
-command (`ps`, `logs`, `restart`, `stop`) and the web UI are thin clients over that
-socket.
-
 ```
-devyard start ──►  ensureDaemon()  ──►  Global Daemon (setsid, backgrounded)
-                                              │  owns one Supervisor per project
-                                              │  serves one Unix socket
-                                              │  optionally serves web UI
-                                              ▼
-                            $XDG_RUNTIME_DIR/devyard/daemon.sock
-
-devyard ps / logs / restart / stop / web  ──►  socket client
+devyard CLI ─┐                    ┌─ runner ─ service
+web UI ──────┼─▶ daemon ─ engine ─┼─ runner ─ task
+             │  (api, proxy, UI)  └─ runner ─ terminal
+             └─ unix socket / http
 ```
 
-- **`start`** auto-starts the daemon if it's not running, sends `start_project` over the socket,
-  and (with `-f` / `--follow`) follows logs from all services. Detached `start` just starts the project and
-  returns.
-- **Autostart**: on daemon startup, every registered project is started automatically
-  (unless explicitly stopped with `stop`, which writes a project `.stopped` marker).
-  `start <svc>` on a stopped project lazily starts just that service (plus its `depends_on` chain).
-- **Process groups**: each service is started with `Setpgid`, so `stop` uses `killpg` to
-  tear down the whole tree — no orphaned children, even when `command` is a shell pipeline.
-- **Restart policy**: `on-failure` only restarts non-zero exits (capped); `always` restarts
-  indefinitely. `stop <svc>` is ephemeral — the running supervisor honors it, but the next
-  **daemon autostart** resumes the service unless the whole project was stopped.
+One daemon owns every project. Each project, service and task is an actor that processes
+commands one at a time, so concurrent commands never race. Every process runs under its own
+`devyard --runner` process that owns its output, PTY and exit status — the daemon can come and
+go without affecting anything it supervises. Clients observe state through a single revisioned
+stream (`Watch`). Details: [docs/architecture.md](docs/architecture.md),
+[docs/control-protocol.md](docs/control-protocol.md).
 
-### Where state lives
+State lives under the XDG directories: `~/.local/state/devyard/` (projects, logs, daemon log),
+`$XDG_RUNTIME_DIR/devyard/` (sockets; falls back to the state dir on macOS) and
+`~/.config/devyard/config.yml`.
 
-Per the XDG base directory spec:
-
-| Path | Holds |
-| --- | --- |
-| `$XDG_RUNTIME_DIR/devyard/` (or `~/.local/state/devyard/run/`) | Daemon control socket + pidfile. Transient — cleared on reboot. |
-| `$XDG_STATE_HOME/devyard/<project>/` (or `~/.local/state/devyard/<project>/`) | Per-service log files, config-path, and the project `.stopped` marker. Persisted. |
-| `$XDG_CONFIG_HOME/devyard/config.yml` (or `~/.config/devyard/config.yml`) | Global config (web UI settings). |
-
-Each project is namespaced by project name, so multiple projects can run side by side under one
-daemon.
-
-### Web UI
- 
-The browser dashboard (SolidJS SPA with xterm.js log streaming) is served directly by the daemon at `http://127.0.0.1:9090` (and through the reverse proxy at `http://localhost:8080` and `http://devyard.localhost:8080`).
- 
-Optional bind defaults in the global config:
-
-```yaml
-# ~/.config/devyard/config.yml
-web:
-  host: 127.0.0.1   # loopback only by default
-  port: 9090
-```
+The dashboard is served at `http://127.0.0.1:9090` (and through the proxy at
+`http://devyard.localhost:8080`). It only answers to loopback names, IP addresses, `devyard`,
+names under the proxy domain suffix and `web.allowed_hosts`, which blocks DNS-rebinding attacks.
+Binding it to a non-loopback address exposes terminals to your network — only do that on a
+network you trust.
 
 ## Comparison
 
-| | devyard | docker-compose | mprocs | overmind / hivemind | foreman / honcho |
+| | devyard | docker compose | mprocs | overmind | foreman |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| Compose-style YAML config | ✅ | ✅ | — | — | Procfile |
-| Runs locally (no engine) | ✅ | — | ✅ | ✅ | ✅ |
-| Detached `start` + `ps`/`top`/`stop` | ✅ | ✅ | — | — | partial |
-| Multi-project daemon | ✅ | ✅ | — | — | — |
-| Health-gated `depends_on` | ✅ | ✅ | — | — | — |
-| Web UI | ✅ | — | — | — | — |
-| Restart policies | ✅ | ✅ | — | — | — |
-| Single static binary | ✅ | — | ✅ | ✅ | depends on runtime |
-
-## Roadmap
-
-- [x] Core: `start`, `stop`, `ps`, `top`, `logs`, `restart`, `build`
-- [x] Healthchecks + `depends_on` conditions
-- [x] Global daemon with multi-project orchestrator
-- [x] Autostart projects based on service restart policies
-- [x] Web UI — browser dashboard (WS + embedded SolidJS SPA with xterm.js logs)
-- [x] Global config (`web.host`, `web.port`)
-- [x] Log rotation (current + previous run per service, `logs --previous`; size-based soft cap)
-- [ ] `.env` / `--env-file` loading and `${VAR}` interpolation in config
-- [x] `logs --tail N` (server-side; web default to 5000)
-- [ ] `logs --since`
-- [ ] Graceful stop timeout (SIGTERM → SIGKILL)
-- [ ] `on-failure` autostart
-- [ ] Shell completions and `devyard version`
-- [ ] Prebuilt release binaries
-
-See [docs/roadmap.md](docs/roadmap.md) for the full breakdown and non-goals.
+| Compose-style YAML | ✅ | ✅ | — | — | Procfile |
+| No container engine | ✅ | — | ✅ | ✅ | ✅ |
+| Detached lifecycle (`start`/`status`/`stop`) | ✅ | ✅ | — | — | partial |
+| Services survive supervisor restarts | ✅ | ✅ | — | — | — |
+| Multi-project | ✅ | ✅ | — | — | — |
+| Health-gated dependencies | ✅ | ✅ | — | — | — |
+| Web UI, terminals, interactive tasks | ✅ | — | — | — | — |
 
 ## Contributing
 
-Contributions are welcome. The project is a standard Go module laid out as a `cmd/` entrypoint
-over `internal/` packages (`config`, `dag`, `supervisor`, `procstat`, `daemon`, `orchestrator`, `control`,
-`protocol`, `health`, `logs`, `ui`, `web`, `globalconfig`, `project`).
-
 ```bash
-git clone https://github.com/blesswinsamuel/devyard.git
-cd devyard
-go build ./...                     # build
-go vet ./...                       # vet
-gofmt -l .                         # should print nothing
-golangci-lint run                  # lint (config in .golangci-lint.yml)
-go test ./...                      # unit + integration tests
+go build ./... && go vet ./... && gofmt -l .
+golangci-lint run
+go test -race ./...                        # unit + hermetic e2e suites (test/e2e)
+(cd web && bun run typecheck && bun run test && bun run build)
 ```
 
-Before opening a PR:
-
-- Run `gofmt`, `go vet`, and `go test ./...` and make sure they're clean.
-- Keep commits focused and use [conventional commit](https://www.conventionalcommits.org/)
-  messages (`feat(web): ...`, `fix(supervisor): ...`, `test(config): ...`).
-- Add tests for new behavior — there are unit tests per package and a black-box integration suite
-  in `test/integration/`.
-
-Please open an issue first for larger changes so we can align on direction.
+The e2e suites build the real binary and run it in a sandbox (isolated HOME, XDG dirs, git
+config and ports) — they never touch your own daemon. `scripts/e2e-linux.sh` runs them in a
+Linux container. See [AGENTS.md](AGENTS.md) for conventions and gotchas, and
+[docs/roadmap.md](docs/roadmap.md) for what's next.
 
 ## License
 
-[MIT](LICENSE). A `LICENSE` file is included in this repository.
+[MIT](LICENSE).

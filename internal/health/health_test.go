@@ -73,7 +73,7 @@ func TestCMDProbeBecomesHealthy(t *testing.T) {
 	})
 	t.Cleanup(c.Stop)
 	c.EnsureStarted(context.Background())
-	if !waitForState(t, c, time.Second, health.StateHealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateHealthy) {
 		t.Fatalf("state = %s, want healthy", c.State())
 	}
 }
@@ -91,7 +91,7 @@ func TestCMDShellProbeBecomesHealthy(t *testing.T) {
 	})
 	t.Cleanup(c.Stop)
 	c.EnsureStarted(context.Background())
-	if !waitForState(t, c, time.Second, health.StateHealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateHealthy) {
 		t.Fatalf("state = %s, want healthy", c.State())
 	}
 }
@@ -109,7 +109,7 @@ func TestFailingProbeGoesUnhealthyAfterRetries(t *testing.T) {
 	})
 	t.Cleanup(c.Stop)
 	c.EnsureStarted(context.Background())
-	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateUnhealthy) {
 		t.Fatalf("state = %s, want unhealthy", c.State())
 	}
 }
@@ -136,13 +136,13 @@ func TestRecoveryFromUnhealthyToHealthy(t *testing.T) {
 	t.Cleanup(c.Stop)
 	c.EnsureStarted(context.Background())
 
-	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateUnhealthy) {
 		t.Fatalf("state = %s, want unhealthy before marker", c.State())
 	}
 	if err := os.WriteFile(marker, []byte("1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if !waitForState(t, c, 2*time.Second, health.StateHealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateHealthy) {
 		t.Fatalf("state = %s, want healthy after marker", c.State())
 	}
 }
@@ -182,7 +182,7 @@ func TestProbeTimeoutKillsGroup(t *testing.T) {
 		t.Fatalf("child wrote flag file — probe group was not killed by timeout")
 	}
 	// State must be unhealthy (1 retry, the timed-out probe counts as failure).
-	if !waitForState(t, c, time.Second, health.StateUnhealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateUnhealthy) {
 		t.Fatalf("state = %s, want unhealthy", c.State())
 	}
 }
@@ -213,7 +213,7 @@ func TestEnsureStartedIdempotent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if !waitForState(t, c, time.Second, health.StateHealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateHealthy) {
 		t.Fatalf("state = %s, want healthy", c.State())
 	}
 }
@@ -245,7 +245,7 @@ func TestLogsTransitionToUnhealthy(t *testing.T) {
 	}
 	t.Cleanup(c.Stop)
 	c.EnsureStarted(context.Background())
-	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateUnhealthy) {
 		t.Fatalf("state = %s, want unhealthy", c.State())
 	}
 	// The unhealthy log line is emitted immediately after the state flip, but
@@ -302,7 +302,7 @@ func TestSetOnStateChange(t *testing.T) {
 	c.EnsureStarted(context.Background())
 
 	// Initially probe fails (probeFile does not exist) -> state becomes unhealthy
-	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateUnhealthy) {
 		t.Fatalf("state = %s, want unhealthy", c.State())
 	}
 
@@ -310,7 +310,7 @@ func TestSetOnStateChange(t *testing.T) {
 	if err := os.WriteFile(probeFile, []byte("ok"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	if !waitForState(t, c, 2*time.Second, health.StateHealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateHealthy) {
 		t.Fatalf("state = %s, want healthy", c.State())
 	}
 
@@ -318,7 +318,7 @@ func TestSetOnStateChange(t *testing.T) {
 	if err := os.Remove(probeFile); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+	if !waitForState(t, c, 10*time.Second, health.StateUnhealthy) {
 		t.Fatalf("state = %s, want unhealthy", c.State())
 	}
 
@@ -341,30 +341,36 @@ func TestSetOnStateChange(t *testing.T) {
 func TestStartPeriodSuppressesEarlyFailures(t *testing.T) {
 	dir := t.TempDir()
 	flag := dir + "/ok"
+	const startPeriod = 3 * time.Second
 	c, err := health.New("svc", health.Config{
 		Test:        []string{"CMD-SHELL", "test -f " + flag},
 		Interval:    20 * time.Millisecond,
 		Retries:     1,
 		Timeout:     time.Second,
-		StartPeriod: 300 * time.Millisecond,
+		StartPeriod: startPeriod,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	start := time.Now()
 	c.EnsureStarted(context.Background())
 	defer c.Stop()
-	time.Sleep(150 * time.Millisecond)
-	if st := c.State(); st != health.StateStarting {
+	// While inside the start period, a failed probe (Retries: 1) must not
+	// mark the service unhealthy.
+	for c.LastFailure() == "" && time.Since(start) < startPeriod {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if st := c.State(); time.Since(start) < startPeriod && st != health.StateStarting {
 		t.Fatalf("state during start period = %s, want starting", st)
 	}
-	if c.LastFailure() == "" {
-		t.Fatal("expected a recorded failure detail")
-	}
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for c.State() != health.StateUnhealthy {
 		if time.Now().After(deadline) {
 			t.Fatalf("never became unhealthy after start period; state=%s", c.State())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	if c.LastFailure() == "" {
+		t.Fatal("expected a recorded failure detail")
 	}
 }

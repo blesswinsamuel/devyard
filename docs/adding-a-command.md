@@ -1,149 +1,89 @@
 # Adding a CLI command
 
-A recipe for adding a new `devyard <command>` end to end, following how
-the existing commands are wired. Use this as a checklist.
+A checklist for adding `devyard <command>` end to end. The example is a
+hypothetical `devyard pause <service>` that sends SIGSTOP and marks the
+service paused.
 
 ## Decide what kind of command it is
 
-- **Control command** (talks to a running daemon): `ps`, `logs`, `restart`,
-  `stop` — these dial the daemon's control socket and send a request. You'll
-  need a new protocol kind; see [control-protocol.md](control-protocol.md) >
-  "Adding a new request kind".
-- **Local command** (no daemon needed): `build` — runs against the config
-  directly. No protocol change.
-- **Frontend command**: the web UI — a long-running client of the
-  control socket.
-- **Daemon-management command**: `start-daemon`, `stop-daemon` — manage the
-  global daemon process itself.
+- **Daemon command**: talks to the daemon over its socket (`status`, `logs`,
+  `restart`, `stop`). Needs an RPC, unless an existing one already covers it.
+- **Local command**: works on the config directly without a daemon (`build`).
+- **Daemon management**: manages the daemon process itself (`daemon start`,
+  `daemon stop`, `daemon restart`).
 
-## Steps (control command example: `devyard pause <service>`)
+## Steps for a daemon command
 
 ### 1. Protocol
 
-In `internal/protocol/protocol.go`:
+Add the RPC to `proto/devyard/v1/control.proto`:
 
-```go
-const KindPause RequestKind = "pause"
-```
+```proto
+rpc PauseService(PauseServiceRequest) returns (PauseServiceResponse);
 
-Add fields on `Request` only if needed (here, `Service`). Update
-[docs/control-protocol.md](control-protocol.md).
-
-### 2. Backend + supervisor
-
-Add to the `Backend` interface in `internal/control/control.go`:
-
-```go
-Pause(name string) error
-```
-
-Implement it on `*Supervisor` in `internal/supervisor/control_backend.go`
-and/or `supervisor.go`. Add a unit test in `internal/supervisor/`.
-
-### 3. Server dispatch
-
-In `internal/control/server.go`, add a case for `protocol.KindPause` in the
-request handler that calls `backend.Pause(req.Service)` and writes a `done`
-(or `error`) frame. The server already resolves the per-project `Backend` via
-`MultiBackend.ProjectBackend(req.Project)`.
-
-### 4. Client helper
-
-In `internal/control/client.go`:
-
-```go
-func (c *Client) Pause(project, service string) error {
-    if err := c.Send(protocol.Request{Kind: protocol.KindPause, Project: project, Service: service}); err != nil {
-        return err
-    }
-    return c.awaitDone()
+message PauseServiceRequest {
+  string project = 1;
+  string service = 2;
 }
+message PauseServiceResponse {}
 ```
 
-Add a case to `internal/control/control_test.go` using a fake `Backend`.
+Then run `buf lint && buf generate` and update
+[control-protocol.md](control-protocol.md).
 
-### 5. CLI command
+### 2. Engine
 
-Add a command constructor factory to the appropriate resource file (e.g. `cmd_service.go`):
+Add the behavior to the owning actor in `internal/engine`. For a service,
+that means `internal/engine/service.go`:
 
-```go
-func newServicePauseCmd(ctx *CLIContext) *cobra.Command {
-    return &cobra.Command{
-        Use:   "pause [service]",
-        Short: "Pause one or all services",
-        Args:  cobra.MaximumNArgs(1),
-        RunE: func(cmd *cobra.Command, args []string) error {
-            cfg, err := ctx.LoadConfig()
-            if err != nil {
-                return err
-            }
-            service := ""
-            if len(args) == 1 {
-                service = args[0]
-            }
-            client, err := ctx.DialDaemon()
-            if err != nil {
-                ctx.Errorln("devyard: no daemon running")
-                return err
-            }
-            defer func() { _ = client.Close() }()
-            if err := client.Pause(cfg.Project, service); err != nil {
-                return err
-            }
-            ctx.Errorf("devyard: paused %q\n", service)
-            return nil
-        },
-    }
-}
-```
+- Add a command type (`svcPause{reply chan error}`).
+- Add the public method `(*Service).Pause(ctx)`, which sends the command and
+  waits for the reply.
+- Handle the command in `serviceActor.loop`, and publish any state change
+  with `a.publish()`.
+- Return typed errors (`ErrNotRunning`, ...).
 
-Register it on the parent resource command (and optionally as a top-level shortcut in `internal/cli/root.go`):
+Never touch actor state from another goroutine. Long waits run in a goroutine
+that posts an event back to the mailbox.
 
-```go
-serviceCmd.AddCommand(newServicePauseCmd(ctx))
-```
+Add a test in `internal/engine/engine_test.go`. It uses real runners and the
+recorder observer.
 
-### 6. Tests + docs
+### 3. API
 
-- Unit test in `internal/control/control_test.go` (fake backend) and
-  `internal/supervisor/` (real behavior).
-- CLI unit test in `internal/cli/cli_test.go` to test command tree and argument parsing.
-- Add an integration case in `test/integration/e2e_test.go` if the command is
-  user-facing and observable through the binary.
-- Add a row to the Commands table in [README.md](../README.md).
-- Add a row to the request-kind table in
-  [docs/control-protocol.md](control-protocol.md).
+Implement the handler in `internal/api` (for example `server.go`). Resolve the
+entity with `s.service(project, name)`, call the engine, and return errors
+through `toConnect`.
 
-## Patterns to copy
+### 4. CLI
 
-| You're adding... | Copy |
-| --- | --- |
-| A project command | `internal/cli/cmd_project.go` |
-| A service command (`restart`, `stop`, `kill`) | `internal/cli/cmd_service.go` |
-| A task command (`run`, `logs`) | `internal/cli/cmd_task.go` |
-| A streaming command (`logs`) | `internal/cli/proc_helpers.go` + `client.Logs` |
-| A local command (`build`) | `internal/cli/build.go` (no socket) |
-| A daemon-management command | `internal/cli/daemon_cmd.go` |
+Add the cobra command in `internal/cli`:
 
-## Key helpers on CLIContext
+- Resolve the daemon with `c.dial(ctx)`, or `c.ensureDaemon(ctx)` if the
+  command may start one.
+- Resolve the project with `c.projectID(ctx, cl)`. It honours `-p` and the
+  local config, and an unknown `-p` is an error.
+- Print data to stdout. Print status (`devyard: paused "api"`) to stderr.
+- Support `-o json` through `c.printProtoJSON` when the command lists
+  entities.
 
-| Helper | What it does |
-| --- | --- |
-| `ctx.LoadConfig()` | Finds, parses, validates the config, derives project name, computes topo order. |
-| `ctx.ResolveProjectName()` | Resolves project name from config file or `-p` flag without full validation. |
-| `ctx.EnsureDaemon()` | Checks if the daemon is running, spawns it if not, returns control client. |
-| `ctx.DialDaemon()` | Dials the daemon's control socket. Returns an error if the daemon is not running. |
-| `ctx.Errorf(format, ...)` | Writes formatted message to `ctx.Err` without unchecked error returns. |
-| `ctx.PrintJSON(val)` | Encodes structured output when `-o json` is set. |
+Register the command in `NewRootCommand`, and in the `service` group if it is
+per-service.
+
+### 5. Web UI
+
+Add an entry to the action registry (`web/src/data/actions.ts`). The palette,
+context menus, buttons and shortcuts all pick it up from there.
+
+### 6. Tests and docs
+
+- Add an e2e case in `test/e2e/cli` (and `test/e2e/api` for API semantics),
+  using the harness.
+- Update the README command tables.
 
 ## Gotchas
 
-- **`-f` is used for `--follow`** on logs commands (`logs`, `svc logs`, `task logs`). `--file` is available persistently across commands without a shorthand.
-- **Use `CLIContext` streams** (`ctx.Out`, `ctx.Err`) rather than `os.Stdout`/`os.Stderr` so commands remain isolated and unit-testable.
-- **Close the client** (`defer client.Close()`).
-- **`ctx.LoadConfig()`** already finds the config (walking up from cwd), validates it,
-  derives the project name, and computes the topological `Order` — reuse it,
-  don't re-derive.
-- If the daemon child needs to inherit a new flag, handle it in
-  `runDaemonChild` (`internal/cli/daemon_run.go`), since the daemon re-execs
-  *before* cobra parses.
+- **Commands reply only when their effect holds.** For example, pause should
+  reply once the signal was delivered.
+- **Don't add error-string matching** anywhere. Add a sentinel error and map
+  it in `api.toConnect` if clients need to tell it apart.

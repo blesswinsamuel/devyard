@@ -23,21 +23,21 @@ go build ./...                      # build everything
 go build -o devyard ./cmd/devyard   # build the binary
 go vet ./...                        # vet
 gofmt -l .                          # must print nothing
-go test ./...                       # all unit + integration tests
+go test ./...                       # all unit + e2e tests
 go test -race ./...                 # with the race detector (CI uses this)
-go test ./internal/supervisor/...   # one package
-go test ./test/integration/...      # the black-box e2e suite (builds the real binary)
+go test ./internal/engine/...       # one package
+go test ./test/e2e/...              # the hermetic black-box e2e suites (build the real binary)
 golangci-lint run                   # lint; config in .golangci-lint.yml (v2)
 ```
 
 **Web UI build (embedded SPA).** The frontend source lives in `web/` (SolidJS +
 Vite, built with `bun`). It is embedded into the Go binary via
-`//go:embed all:dist` in `internal/web/server.go`. Built frontend assets
+`//go:embed all:dist` in `internal/web/web.go`. Built frontend assets
 in `internal/web/dist/` are gitignored (except `.gitkeep` so Go builds and
 linters work on clean checkouts) — CI builds it in the "build & test" job
 (`bun install && bun run build`, which outputs to `../internal/web/dist`)
 before `go build ./...`. For local development, `devyard start` (see
-`devyard.yml`) runs `bun run dev` (a Vite server on :5173 proxying to the
+`devyard.yml`) runs `bun run dev` (a Vite server on :19095 proxying to the
 Go web proxy on :9090), so you can edit `web/src/**` and see changes live with
 no rebuild. When changing web source, always verify the build still compiles:
 `cd web && bun install && bun run build`.
@@ -52,52 +52,57 @@ consumers at the wrapper.
 
 Tests and lint must stay green. CI (`.github/workflows/ci.yml`) runs `go vet`,
 `gofmt`, `golangci-lint`, `go build`, and `go test -race` on Ubuntu and macOS.
-The integration suite builds the actual binary and drives the full CLI lifecycle
-(`start`, `start -f`, `ps`, `logs`, `restart`, `stop`, `build`,
-`daemon start`, `daemon stop`) against isolated XDG dirs — it never touches the
-user's real state.
+The e2e suites (`test/e2e`) build the actual binary and drive the CLI, the API
+and the web endpoints inside a sandbox (isolated HOME, XDG dirs, git config,
+ephemeral ports, process-leak checks) — they never touch the user's real
+daemon or state. `scripts/e2e-linux.sh` runs them in a Linux container.
 
 ## Repo layout
 
 ```
-cmd/devyard/main.go   # entrypoint -> cli.Execute()
+cmd/devyard/main.go   # entrypoint -> cli.Execute() (also dispatches --daemon / --runner)
 internal/
-  cli/         # cobra commands + flag wiring + the daemon re-exec handler (root.go)
-  config/      # devyard.yml schema, parsing, validation, defaults
-  project/     # project name + XDG runtime/state dir resolution (per-project + daemon)
-  dag/         # depends_on graph, cycle detection, topo order
-  procstat/    # process-group CPU/memory sampling for `top` (procfs + libproc)
-  supervisor/  # owns child processes: launch, log capture, restart policy, health, stop
-  daemon/      # setsid re-exec for the global daemon, pidfile, liveness checks (build tag: unix)
-  orchestrator/ # multi-project manager: owns map[string]*supervisor.Supervisor, autostart
-  control/     # Unix-socket server (MultiBackend interface) + thin Client
-  protocol/    # wire frames: Request/Response, length-prefixed JSON
-  health/      # per-service healthcheck state machine (starting -> healthy | unhealthy)
-  ui/          # shared status color/label helpers used by cli and web
-  web/         # WS server + embedded SolidJS SPA (xterm.js logs)
-  globalconfig/ # user-level config ($XDG_CONFIG_HOME/devyard/config.yml)
-test/integration/  # black-box e2e tests
+  cli/         # cobra commands; thin client of the daemon API
+  client/      # control-socket client (unencrypted HTTP/2 over the unix socket)
+  daemon/      # daemon lifecycle (lock, pidfile, spawn, handover), presenter, proxy routes
+  api/         # DaemonService handlers (Watch, Logs, Attach, Stats, git, ...)
+  engine/      # project/service/task actors, manager, registration, config -> definitions
+  runner/      # per-run supervisor process (stdio/PTY, logs, stop escalation, status, attach)
+  logstore/    # per-run structured log files: write, tail, page, follow
+  events/      # revisioned state bus behind Watch
+  sessions/    # interactive sessions: runner-backed terminals, task/service attach
+  web/         # dashboard handler (SPA, API, /ws/attach, Host allowlist) + embedded dist
+  gitstate/    # per-project git status on the bus; serialized remote ops
+  gitlog/ gitwatcher/  # git commands and repository watching
+  config/      # devyard.yml schema, parsing, validation, env layering
+  globalconfig/ # $XDG_CONFIG_HOME/devyard/config.yml
+  paths/       # XDG path resolution and project-id validation
+  health/ dag/ procstat/ ports/ proxy/ ui/
+test/e2e/      # hermetic black-box suites (harness, fixtures, cli, api, daemon, ...)
+web/           # SolidJS SPA
 ```
 
 ## Architecture in one paragraph
 
-A single **global daemon** process (`devyard --daemon`, spawned by `up`
-or `start-daemon`) owns a `map[string]*supervisor.Supervisor` — one supervisor
-per project. It serves one **Unix-socket control protocol** at
-`$XDG_RUNTIME_DIR/devyard/daemon.sock`. Every CLI command (`ps`, `logs`,
-`restart`, `down`) is a thin **Client** connection over that socket. The daemon
-also serves the web UI dashboard (HTTP / ConnectRPC / WebSocket) and reverse proxy.
-The daemon autostarts every registered project on startup unless a
-project-level `.stopped` marker exists. See
+A single **daemon** (`devyard --daemon`) owns an `engine.Manager` of
+**project actors**; each project owns **service** and **task actors**. An actor
+is one goroutine that owns its entity's state and processes commands in order,
+so concurrent calls can never race into duplicate processes or stuck states.
+Every process is launched through its own **runner** (`devyard --runner`, a
+separate session) that holds its stdio/PTY, writes its logs and records its
+exit, so daemon restarts and crashes never affect services: a new daemon just
+re-adopts the runners. State reaches clients through a revisioned **bus**
+(`Watch`: snapshot + changes). The CLI talks to the daemon over its unix
+socket; the web UI over the dashboard listener. See
 [docs/architecture.md](docs/architecture.md) and
 [docs/control-protocol.md](docs/control-protocol.md).
 
 ## Conventions
 
-- **Commit style**: conventional commits — `feat(web): ...`, `fix(supervisor): ...`,
+- **Commit style**: conventional commits — `feat(web): ...`, `fix(engine): ...`,
   `test(config): ...`, `docs: ...`. Keep commits focused and build-clean.
 - **Go style**: `gofmt`'d, errors wrapped with `%w` and a leading package context
-  (`fmt.Errorf("supervisor: ...: %w", err)`), `context.Context` for cancellation,
+  (`fmt.Errorf("engine: ...: %w", err)`), `context.Context` for cancellation,
   no `log.Fatal` in packages (only `main`/CLI may exit).
 - **No inline imports** beyond the top-of-file block.
 - **Process safety**: every child is started with `Setpgid`; teardown uses
@@ -109,48 +114,42 @@ project-level `.stopped` marker exists. See
 - **Global config changes**: update `internal/globalconfig/globalconfig.go` and
   its tests. The global config lives at
   `$XDG_CONFIG_HOME/devyard/config.yml`.
-- **Protocol changes**: update `internal/protocol/protocol.go`, both sides in
-  `internal/control`, and [docs/control-protocol.md](docs/control-protocol.md).
+- **Protocol changes**: edit `proto/devyard/v1/control.proto`, run
+  `buf lint && buf generate`, implement in `internal/api`, update the CLI and
+  `web/src/data`, and [docs/control-protocol.md](docs/control-protocol.md).
   The protocol is shared by the CLI and web UI — keep messages
   frontend-agnostic (no terminal-specific fields).
 - **Tests**: add unit tests in the package you changed. For cross-cutting
-  behavior, prefer a black-box case in `test/integration/`.
+  behavior, prefer a black-box case in `test/e2e/`. Bug fixes get a
+  regression test named after the bug.
 
 ## Gotchas
 
-- **Daemon re-exec** is detected in `cli.Execute()` *before* cobra runs, via the
-  hidden `--daemon` flag (`daemon.DaemonFlag`). The daemon child runs
-  `runDaemonChild` (`internal/cli/daemon_run.go`), not a cobra command. If you
-  add root-level flags that the daemon child must inherit, handle them in
-  `runDaemonChild`, not just in cobra.
-- **`start` auto-starts the daemon**: `start` calls `ensureDaemon()` which spawns
-  the daemon if it's not running, then sends `start_project` over the socket.
-  Foreground `start -f` / `--follow` then follows logs from all services via `followForeground`.
-  `start` (detached) just sends `start_project` and returns.
-- **Autostart**: on daemon startup, `Autostart()` scans
-  `$XDG_STATE_HOME/devyard/*/` for `config-path` files, reads each
-  project's config, and starts every project **unless** a project-level
-  `.stopped` marker exists. Skipped projects are still registered in
-  memory as stopped so list commands stay complete. Restart policy does not
-  gate autostart.
-- **Project-level `.stopped` marker**: `StopProject` writes a
-  project-level `$XDG_STATE_HOME/devyard/<project>/.stopped` marker (so
-  autostart won't resume the project) and keeps the project in the daemon map
-  (closed supervisor retained for `ps`). Explicit `start`/`start <svc>`
-  removes the marker.
-- **`start <svc>` on a stopped project** lazily starts just that service plus
-  its transitive `depends_on` chain: the supervisor is materialized with a
-  `Selected` service set, and unselected services are registered as `stopped`
-  and skipped (logged `skipping service <name>`) — a skip is not a failure, so
-  `Failed()` stays false. Only a dependency that genuinely exits or goes
-  unhealthy sets `Failed()`; a user-initiated shutdown (`errSupervisorStopping`)
-  doesn't either.
-- **Health checker lifecycle**: the checker is created before
-  `depends_on: service_healthy` waiters poll it, so they see `starting` instead
-  of nil. Don't reorder checker creation after `waitForDeps`.
-- **State dirs** are per-project and follow XDG. Never hardcode `/tmp/...` or
-  `~/.local/...`; always go through `project.Resolve` / `Locations` (per-project)
-  or `project.ResolveDaemon` / `DaemonLocations` (daemon-level).
+- **Never mutate actor state from outside the actor.** Add a message type and
+  handle it in the actor loop. Long work (waiting for dependencies, backoff,
+  watching a run) runs in goroutines that post events back to the mailbox.
+- **Commands must reply only when their effect holds.** Stop replies when the
+  process is gone; don't add fire-and-forget variants.
+- **Project actors may block on service actors, never the reverse.** Service
+  and task actors must not call into their project synchronously.
+- **Readers use snapshots.** `Project.View()` and bus entities are immutable;
+  don't hand out maps that an actor mutates.
+- **The daemon never signals raw pids.** It goes through the runner (`stop`,
+  `signal`); the runner signals its own process group. Every child has its own
+  process group or session; with a PTY use `Setsid` only (combining it with
+  `Setpgid` fails with EPERM).
+- **Errors are typed.** Return `engine.Err*` / `ErrSessionNotFound`, wrapped
+  with `%w`; `api.toConnect` maps them to Connect codes. Never match error
+  strings, on either side.
+- **Hidden flags.** `--daemon` and `--runner` are handled in `cli.Execute`
+  before cobra. Tests that launch runners from a test binary need a
+  `TestMain` hook calling `runner.Main` (see `internal/runner`,
+  `internal/engine` tests).
+- **Paths.** Always resolve through `internal/paths` and validate project ids
+  with `paths.ValidateID`; never hardcode `/tmp` or `~/.local`.
+- **Tests must be hermetic.** Unit tests set their own dirs; e2e tests go
+  through `test/e2e/harness`, which sandboxes HOME, XDG dirs, git config and
+  ports. Never touch the developer's real daemon or config.
 
 ## Common tasks
 
@@ -158,7 +157,7 @@ project-level `.stopped` marker exists. See
 - **Add a config field**: see [docs/config-schema.md](docs/config-schema.md).
 - **Change the wire protocol**: see [docs/control-protocol.md](docs/control-protocol.md).
 - **Implement the web UI**: the web UI is embedded in the binary and served directly
-  by the daemon. See `internal/web/server.go` and the roadmap for remaining items.
+  by the daemon. See `internal/web/web.go` (server side) and `web/src` (SPA).
 
 ## Roadmap
 

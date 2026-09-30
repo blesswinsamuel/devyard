@@ -1,6 +1,7 @@
 # Rewrite plan
 
-Status: proposed. The work happens on the `rewrite` branch. Existing code is
+Status: implemented on `rewrite` (see git log). Deviations from the original
+plan are noted inline. The work happens on the `rewrite` branch. Existing code is
 replaced in place, with no versioned names (no `v2`) and no compatibility
 layers. `master` keeps working until the branch merges.
 
@@ -154,9 +155,9 @@ Rules:
   `build: true` on start.
 - **Typed errors** (`ErrProjectNotFound`, `ErrNotRunning`, …) map to proper
   Connect codes. Clients switch on codes, never on message text.
-- **Web security**: a Host allowlist (loopback plus the configured domain
-  suffix) and a per-install token (cookie) are required for RPC and `/ws`.
-  This closes the DNS-rebinding shell hole.
+- **Web security**: a Host allowlist (loopback, IP literals, the configured
+  domain suffix, `web.allowed_hosts`) for RPC and `/ws`, plus same-origin
+  websockets. This closes the DNS-rebinding shell hole.
 
 ### CLI
 
@@ -263,8 +264,11 @@ This part is unchanged from the previous revision of this plan.
 - Project identity is a validated slug; the default is still the directory
   name.
 - Tasks default to `tty: true`.
-- The daemon web UI requires a token cookie. Opening the UI from the CLI
-  (`devyard web`, or the URL printed by `start`) sets it.
+- ~~The daemon web UI requires a token cookie.~~ Replaced by a Host
+  allowlist (loopback, IP literals, `devyard`, the proxy domain suffix,
+  `web.allowed_hosts`) plus same-origin websockets. That closes the DNS-
+  rebinding hole without breaking access from other devices on the LAN,
+  which a token cookie would have required logging in on.
 
 ## Phases
 

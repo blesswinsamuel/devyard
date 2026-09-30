@@ -24,7 +24,7 @@ export function StatusDot(props: { tone: Tone; pulse?: boolean; class?: string; 
 export function StatusBadge(props: { tone: Tone; status: string; label?: string; class?: string }) {
   return (
     <Badge variant={toneBadge[props.tone]} class={cn("gap-1.5 font-medium", props.class)}>
-      <StatusDot tone={props.tone} pulse={isTransitional(props.status)} />
+      <StatusDot tone={props.tone} pulse={isTransitional(props.status)} class="bg-current" />
       {props.label ?? props.status}
     </Badge>
   );

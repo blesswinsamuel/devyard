@@ -39,7 +39,7 @@ optional build step, paths) and:
    combined with `Setsid`).
 3. Pumps output to the run's log (`internal/logstore`), to attached clients,
    and to a 256 KiB replay ring buffer.
-4. Serves a control socket (`$XDG_RUNTIME_DIR/devyard/r/<hash>.sock`) with
+4. Serves a control socket (`$XDG_RUNTIME_DIR/devyard/r/<hash>-<run>.sock`, unique per run) with
    these operations:
    - `status`, `watch` (phase changes) and `wait`
    - `stop`: SIGTERM, then SIGKILL after the grace period. It replies when

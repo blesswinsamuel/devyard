@@ -20,7 +20,7 @@ func main() {
 	if *countFile != "" {
 		f, err := os.OpenFile(*countFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 		if err == nil {
-			fmt.Fprintf(f, "%d\n", os.Getpid())
+			_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
 			_ = f.Close()
 		}
 	}

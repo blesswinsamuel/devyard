@@ -75,7 +75,7 @@ func TestEvents_EveryTransitionEmitted(t *testing.T) {
 
 	_, err := d.Client().RestartService(d.Ctx(), connect.NewRequest(&v1.RestartServiceRequest{Project: "trans", Service: "tick"}))
 	harness.NoError(t, err, "RestartService")
-	st = w.WaitFor(t, "tick restarted", func(s harness.State) bool {
+	w.WaitFor(t, "tick restarted", func(s harness.State) bool {
 		return s.Running("trans", "tick") && s.ServicePid("trans", "tick") != tickPid
 	})
 	_, err = d.Client().KillService(d.Ctx(), connect.NewRequest(&v1.KillServiceRequest{Project: "trans", Service: "tick"}))
@@ -228,10 +228,7 @@ services:
 	}()
 	resyncs := 0
 	deadline := time.After(harness.Scale(15 * time.Second))
-	for {
-		if harness.DiffServices(state, truth) == "" {
-			break
-		}
+	for harness.DiffServices(state, truth) != "" {
 		select {
 		case m, ok := <-msgs:
 			if !ok {

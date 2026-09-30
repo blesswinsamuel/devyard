@@ -1,18 +1,28 @@
 package cli
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"text/tabwriter"
+	"time"
 
-	"github.com/blesswinsamuel/devyard/internal/control"
+	"connectrpc.com/connect"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/blesswinsamuel/devyard/internal/client"
+	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/daemon"
+	pb "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
+	"github.com/blesswinsamuel/devyard/internal/paths"
 )
 
-// CLIContext encapsulates standard I/O streams, flags, and dependency clients
-// for testability and clean architecture.
-type CLIContext struct {
+// Context carries streams and global flags.
+type Context struct {
 	In  io.Reader
 	Out io.Writer
 	Err io.Writer
@@ -20,80 +30,194 @@ type CLIContext struct {
 	ConfigPath string
 	Project    string
 	EnvFile    string
-	Format     string // "table" (default), "json"
+	Format     string
 }
 
-// NewDefaultCLIContext creates a CLIContext with default OS streams.
-func NewDefaultCLIContext() *CLIContext {
-	return &CLIContext{
-		In:     os.Stdin,
-		Out:    os.Stdout,
-		Err:    os.Stderr,
-		Format: "table",
+// NewContext returns a Context bound to the process's standard streams.
+func NewContext() *Context {
+	return &Context{In: os.Stdin, Out: os.Stdout, Err: os.Stderr, Format: "table"}
+}
+
+// Errorf writes a status message to stderr.
+func (c *Context) Errorf(format string, a ...any) { _, _ = fmt.Fprintf(c.Err, format, a...) }
+
+// Printf writes to stdout.
+func (c *Context) Printf(format string, a ...any) { _, _ = fmt.Fprintf(c.Out, format, a...) }
+
+// JSON reports whether JSON output was requested.
+func (c *Context) JSON() bool { return c.Format == "json" }
+
+func (c *Context) table() *tabwriter.Writer { return tabwriter.NewWriter(c.Out, 0, 0, 2, ' ', 0) }
+
+// printProtoJSON prints a list of messages as a JSON array.
+func (c *Context) printProtoJSON(msgs []proto.Message) error {
+	opts := protojson.MarshalOptions{Indent: "  ", EmitUnpopulated: true}
+	_, _ = fmt.Fprint(c.Out, "[")
+	for i, m := range msgs {
+		if i > 0 {
+			_, _ = fmt.Fprint(c.Out, ",")
+		}
+		data, err := opts.Marshal(m)
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(c.Out, "\n%s", data)
 	}
+	if len(msgs) > 0 {
+		_, _ = fmt.Fprintln(c.Out)
+	}
+	_, _ = fmt.Fprintln(c.Out, "]")
+	return nil
 }
 
-// IsJSON reports whether the current output format is JSON.
-func (c *CLIContext) IsJSON() bool {
-	return c.Format == "json"
+// errorText renders a CLI error; Connect errors show only the server
+// message.
+func errorText(err error) string {
+	var ce *connect.Error
+	if errors.As(err, &ce) {
+		return ce.Message()
+	}
+	return err.Error()
 }
 
-// PrintJSON writes the provided value as indented JSON to c.Out.
-func (c *CLIContext) PrintJSON(v any) error {
-	enc := json.NewEncoder(c.Out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
-}
+// --- daemon connection ---------------------------------------------------------
 
-// NewTabWriter returns a new tabwriter writing to c.Out.
-func (c *CLIContext) NewTabWriter() *tabwriter.Writer {
-	return tabwriter.NewWriter(c.Out, 0, 0, 2, ' ', 0)
-}
+func dirs() (paths.Dirs, error) { return paths.Default() }
 
-// Printf formats according to a format specifier and writes to c.Out.
-func (c *CLIContext) Printf(format string, a ...any) {
-	_, _ = fmt.Fprintf(c.Out, format, a...)
-}
-
-// Println formats using the default formats for its operands and writes to c.Out.
-func (c *CLIContext) Println(a ...any) {
-	_, _ = fmt.Fprintln(c.Out, a...)
-}
-
-// Errorf formats according to a format specifier and writes to c.Err.
-func (c *CLIContext) Errorf(format string, a ...any) {
-	_, _ = fmt.Fprintf(c.Err, format, a...)
-}
-
-// Errorln formats using the default formats for its operands and writes to c.Err.
-func (c *CLIContext) Errorln(a ...any) {
-	_, _ = fmt.Fprintln(c.Err, a...)
-}
-
-// LoadConfig loads and resolves the project config using context flags.
-func (c *CLIContext) LoadConfig() (*loadedConfig, error) {
-	return loadConfigWith(c.ConfigPath, c.Project, c.EnvFile)
-}
-
-// ResolveProjectName resolves the active project name from config or project flag.
-func (c *CLIContext) ResolveProjectName() (string, error) {
-	return resolveProjectNameWith(c.ConfigPath, c.Project, c.EnvFile)
-}
-
-// DialDaemon dials the running global daemon's control socket.
-func (c *CLIContext) DialDaemon() (*control.Client, error) {
-	sock, err := dialDaemon()
+// dial connects to a running daemon.
+func (c *Context) dial(ctx context.Context) (*client.Client, error) {
+	d, err := dirs()
 	if err != nil {
 		return nil, err
 	}
-	return control.Dial(sock)
+	cl := client.Dial(d.Socket())
+	if _, err := cl.Ping(ctx, 2*time.Second); err != nil {
+		cl.Close()
+		return nil, errors.New("no daemon running (start one with `devyard start` or `devyard daemon start`)")
+	}
+	return cl, nil
 }
 
-// EnsureDaemon ensures the global daemon is running and returns a client connected to it.
-func (c *CLIContext) EnsureDaemon() (*control.Client, error) {
-	sock, err := ensureDaemonTo(c.Err)
+// ensureDaemon connects to the daemon, starting it when none is running.
+func (c *Context) ensureDaemon(ctx context.Context) (*client.Client, error) {
+	d, err := dirs()
 	if err != nil {
 		return nil, err
 	}
-	return control.Dial(sock)
+	cl := client.Dial(d.Socket())
+	if _, err := cl.Ping(ctx, time.Second); err == nil {
+		return cl, nil
+	}
+	pid := daemon.ReadPid(d)
+	if pid == 0 || !daemon.Alive(pid) {
+		if pid, err = daemon.Spawn(d, os.Environ()); err != nil {
+			cl.Close()
+			return nil, err
+		}
+		c.Errorf("devyard: daemon started (pid %d)\n", pid)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := cl.Ping(ctx, 500*time.Millisecond); err == nil {
+			return cl, nil
+		}
+		if !daemon.Alive(pid) && daemon.ReadPid(d) == 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	cl.Close()
+	if msg := daemon.LastError(d); msg != "" {
+		return nil, fmt.Errorf("daemon failed to start: %s", msg)
+	}
+	return nil, fmt.Errorf("timed out waiting for the daemon (see %s)", d.DaemonLog())
 }
+
+// --- project resolution --------------------------------------------------------
+
+// localConfig is the config found from flags or the working directory.
+type localConfig struct {
+	Path    string
+	EnvFile string
+	File    *config.File
+}
+
+// loadLocalConfig loads the config named by --file or found by walking up
+// from the working directory.
+func (c *Context) loadLocalConfig() (*localConfig, error) {
+	path := c.ConfigPath
+	if path == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		if path, err = config.FindConfig(wd); err != nil {
+			return nil, errors.New("no devyard.yml found in this directory or its parents (use --file or -p)")
+		}
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	envFile, dotenv, err := config.ResolveDotEnv(abs, c.EnvFile)
+	if err != nil {
+		return nil, err
+	}
+	file, warnings, err := config.Load(abs, config.InterpolationEnv(os.Environ(), dotenv))
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range warnings {
+		c.Errorf("devyard: warning: %s\n", w)
+	}
+	explicitEnv := ""
+	if c.EnvFile != "" {
+		explicitEnv = envFile
+	}
+	return &localConfig{Path: abs, EnvFile: explicitEnv, File: file}, nil
+}
+
+// projectID resolves the project to act on: -p (which must be registered)
+// or the local config's project.
+func (c *Context) projectID(ctx context.Context, cl *client.Client) (string, error) {
+	if c.Project != "" {
+		if err := paths.ValidateID(c.Project); err != nil {
+			return "", err
+		}
+		if cl != nil {
+			if _, err := findProject(ctx, cl, c.Project); err != nil {
+				return "", err
+			}
+		}
+		return c.Project, nil
+	}
+	lc, err := c.loadLocalConfig()
+	if err != nil {
+		return "", err
+	}
+	return lc.File.ID(), nil
+}
+
+func state(ctx context.Context, cl *client.Client) (*pb.Snapshot, error) {
+	resp, err := cl.GetState(ctx, connect.NewRequest(&pb.GetStateRequest{}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg.Snapshot, nil
+}
+
+func findProject(ctx context.Context, cl *client.Client, id string) (*pb.Project, error) {
+	snap, err := state(ctx, cl)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range snap.Projects {
+		if p.Id == id {
+			return p, nil
+		}
+	}
+	return nil, fmt.Errorf("project %q is not registered (see `devyard project list`)", id)
+}
+
+// captureEnv is the launch environment sent to the daemon.
+func captureEnv() []string { return os.Environ() }

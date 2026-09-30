@@ -33,21 +33,8 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// DaemonServiceListProjectsProcedure is the fully-qualified name of the DaemonService's
-	// ListProjects RPC.
-	DaemonServiceListProjectsProcedure = "/devyard.v1.DaemonService/ListProjects"
-	// DaemonServiceStartProjectProcedure is the fully-qualified name of the DaemonService's
-	// StartProject RPC.
-	DaemonServiceStartProjectProcedure = "/devyard.v1.DaemonService/StartProject"
-	// DaemonServiceStopProjectProcedure is the fully-qualified name of the DaemonService's StopProject
-	// RPC.
-	DaemonServiceStopProjectProcedure = "/devyard.v1.DaemonService/StopProject"
-	// DaemonServiceRemoveProjectProcedure is the fully-qualified name of the DaemonService's
-	// RemoveProject RPC.
-	DaemonServiceRemoveProjectProcedure = "/devyard.v1.DaemonService/RemoveProject"
-	// DaemonServiceDaemonStatusProcedure is the fully-qualified name of the DaemonService's
-	// DaemonStatus RPC.
-	DaemonServiceDaemonStatusProcedure = "/devyard.v1.DaemonService/DaemonStatus"
+	// DaemonServiceGetDaemonProcedure is the fully-qualified name of the DaemonService's GetDaemon RPC.
+	DaemonServiceGetDaemonProcedure = "/devyard.v1.DaemonService/GetDaemon"
 	// DaemonServiceStopDaemonProcedure is the fully-qualified name of the DaemonService's StopDaemon
 	// RPC.
 	DaemonServiceStopDaemonProcedure = "/devyard.v1.DaemonService/StopDaemon"
@@ -60,91 +47,110 @@ const (
 	// DaemonServiceUpdateGlobalConfigProcedure is the fully-qualified name of the DaemonService's
 	// UpdateGlobalConfig RPC.
 	DaemonServiceUpdateGlobalConfigProcedure = "/devyard.v1.DaemonService/UpdateGlobalConfig"
-	// DaemonServiceListServicesProcedure is the fully-qualified name of the DaemonService's
-	// ListServices RPC.
-	DaemonServiceListServicesProcedure = "/devyard.v1.DaemonService/ListServices"
+	// DaemonServiceWatchProcedure is the fully-qualified name of the DaemonService's Watch RPC.
+	DaemonServiceWatchProcedure = "/devyard.v1.DaemonService/Watch"
+	// DaemonServiceGetStateProcedure is the fully-qualified name of the DaemonService's GetState RPC.
+	DaemonServiceGetStateProcedure = "/devyard.v1.DaemonService/GetState"
+	// DaemonServiceAddProjectProcedure is the fully-qualified name of the DaemonService's AddProject
+	// RPC.
+	DaemonServiceAddProjectProcedure = "/devyard.v1.DaemonService/AddProject"
+	// DaemonServiceStartProjectProcedure is the fully-qualified name of the DaemonService's
+	// StartProject RPC.
+	DaemonServiceStartProjectProcedure = "/devyard.v1.DaemonService/StartProject"
+	// DaemonServiceStopProjectProcedure is the fully-qualified name of the DaemonService's StopProject
+	// RPC.
+	DaemonServiceStopProjectProcedure = "/devyard.v1.DaemonService/StopProject"
+	// DaemonServiceRestartProjectProcedure is the fully-qualified name of the DaemonService's
+	// RestartProject RPC.
+	DaemonServiceRestartProjectProcedure = "/devyard.v1.DaemonService/RestartProject"
+	// DaemonServiceReloadProjectProcedure is the fully-qualified name of the DaemonService's
+	// ReloadProject RPC.
+	DaemonServiceReloadProjectProcedure = "/devyard.v1.DaemonService/ReloadProject"
+	// DaemonServiceRemoveProjectProcedure is the fully-qualified name of the DaemonService's
+	// RemoveProject RPC.
+	DaemonServiceRemoveProjectProcedure = "/devyard.v1.DaemonService/RemoveProject"
 	// DaemonServiceStartServiceProcedure is the fully-qualified name of the DaemonService's
 	// StartService RPC.
 	DaemonServiceStartServiceProcedure = "/devyard.v1.DaemonService/StartService"
 	// DaemonServiceStopServiceProcedure is the fully-qualified name of the DaemonService's StopService
 	// RPC.
 	DaemonServiceStopServiceProcedure = "/devyard.v1.DaemonService/StopService"
+	// DaemonServiceRestartServiceProcedure is the fully-qualified name of the DaemonService's
+	// RestartService RPC.
+	DaemonServiceRestartServiceProcedure = "/devyard.v1.DaemonService/RestartService"
 	// DaemonServiceKillServiceProcedure is the fully-qualified name of the DaemonService's KillService
 	// RPC.
 	DaemonServiceKillServiceProcedure = "/devyard.v1.DaemonService/KillService"
-	// DaemonServiceRestartProcedure is the fully-qualified name of the DaemonService's Restart RPC.
-	DaemonServiceRestartProcedure = "/devyard.v1.DaemonService/Restart"
-	// DaemonServiceTopProcedure is the fully-qualified name of the DaemonService's Top RPC.
-	DaemonServiceTopProcedure = "/devyard.v1.DaemonService/Top"
-	// DaemonServiceLogsProcedure is the fully-qualified name of the DaemonService's Logs RPC.
-	DaemonServiceLogsProcedure = "/devyard.v1.DaemonService/Logs"
-	// DaemonServiceListPortsProcedure is the fully-qualified name of the DaemonService's ListPorts RPC.
-	DaemonServiceListPortsProcedure = "/devyard.v1.DaemonService/ListPorts"
-	// DaemonServiceListTasksProcedure is the fully-qualified name of the DaemonService's ListTasks RPC.
-	DaemonServiceListTasksProcedure = "/devyard.v1.DaemonService/ListTasks"
 	// DaemonServiceRunTaskProcedure is the fully-qualified name of the DaemonService's RunTask RPC.
 	DaemonServiceRunTaskProcedure = "/devyard.v1.DaemonService/RunTask"
 	// DaemonServiceStopTaskProcedure is the fully-qualified name of the DaemonService's StopTask RPC.
 	DaemonServiceStopTaskProcedure = "/devyard.v1.DaemonService/StopTask"
+	// DaemonServiceKillTaskProcedure is the fully-qualified name of the DaemonService's KillTask RPC.
+	DaemonServiceKillTaskProcedure = "/devyard.v1.DaemonService/KillTask"
+	// DaemonServiceLogsProcedure is the fully-qualified name of the DaemonService's Logs RPC.
+	DaemonServiceLogsProcedure = "/devyard.v1.DaemonService/Logs"
+	// DaemonServiceAttachProcedure is the fully-qualified name of the DaemonService's Attach RPC.
+	DaemonServiceAttachProcedure = "/devyard.v1.DaemonService/Attach"
+	// DaemonServiceStatsProcedure is the fully-qualified name of the DaemonService's Stats RPC.
+	DaemonServiceStatsProcedure = "/devyard.v1.DaemonService/Stats"
+	// DaemonServiceListPortsProcedure is the fully-qualified name of the DaemonService's ListPorts RPC.
+	DaemonServiceListPortsProcedure = "/devyard.v1.DaemonService/ListPorts"
 	// DaemonServiceGitLogProcedure is the fully-qualified name of the DaemonService's GitLog RPC.
 	DaemonServiceGitLogProcedure = "/devyard.v1.DaemonService/GitLog"
 	// DaemonServiceGitDiffProcedure is the fully-qualified name of the DaemonService's GitDiff RPC.
 	DaemonServiceGitDiffProcedure = "/devyard.v1.DaemonService/GitDiff"
-	// DaemonServiceGitCommitProcedure is the fully-qualified name of the DaemonService's GitCommit RPC.
-	DaemonServiceGitCommitProcedure = "/devyard.v1.DaemonService/GitCommit"
 	// DaemonServiceGitStageProcedure is the fully-qualified name of the DaemonService's GitStage RPC.
 	DaemonServiceGitStageProcedure = "/devyard.v1.DaemonService/GitStage"
+	// DaemonServiceGitCommitProcedure is the fully-qualified name of the DaemonService's GitCommit RPC.
+	DaemonServiceGitCommitProcedure = "/devyard.v1.DaemonService/GitCommit"
 	// DaemonServiceGitPushProcedure is the fully-qualified name of the DaemonService's GitPush RPC.
 	DaemonServiceGitPushProcedure = "/devyard.v1.DaemonService/GitPush"
 	// DaemonServiceGitPullProcedure is the fully-qualified name of the DaemonService's GitPull RPC.
 	DaemonServiceGitPullProcedure = "/devyard.v1.DaemonService/GitPull"
 	// DaemonServiceGitFetchProcedure is the fully-qualified name of the DaemonService's GitFetch RPC.
 	DaemonServiceGitFetchProcedure = "/devyard.v1.DaemonService/GitFetch"
-	// DaemonServiceGitStatusProcedure is the fully-qualified name of the DaemonService's GitStatus RPC.
-	DaemonServiceGitStatusProcedure = "/devyard.v1.DaemonService/GitStatus"
-	// DaemonServiceSubscribeEventsProcedure is the fully-qualified name of the DaemonService's
-	// SubscribeEvents RPC.
-	DaemonServiceSubscribeEventsProcedure = "/devyard.v1.DaemonService/SubscribeEvents"
 )
 
 // DaemonServiceClient is a client for the devyard.v1.DaemonService service.
 type DaemonServiceClient interface {
-	// Project Lifecycle
-	ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error)
-	StartProject(context.Context, *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error)
-	StopProject(context.Context, *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error)
-	RemoveProject(context.Context, *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error)
-	// Daemon Management
-	DaemonStatus(context.Context, *connect.Request[v1.DaemonStatusRequest]) (*connect.Response[v1.DaemonStatusResponse], error)
+	// Daemon
+	GetDaemon(context.Context, *connect.Request[v1.GetDaemonRequest]) (*connect.Response[v1.GetDaemonResponse], error)
 	StopDaemon(context.Context, *connect.Request[v1.StopDaemonRequest]) (*connect.Response[v1.StopDaemonResponse], error)
 	RestartDaemon(context.Context, *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error)
-	// Global Settings
 	GetGlobalConfig(context.Context, *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error)
 	UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error)
-	// Service Management
-	ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error)
+	// State observation
+	Watch(context.Context, *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WatchResponse], error)
+	GetState(context.Context, *connect.Request[v1.GetStateRequest]) (*connect.Response[v1.GetStateResponse], error)
+	// Projects
+	AddProject(context.Context, *connect.Request[v1.AddProjectRequest]) (*connect.Response[v1.AddProjectResponse], error)
+	StartProject(context.Context, *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error)
+	StopProject(context.Context, *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error)
+	RestartProject(context.Context, *connect.Request[v1.RestartProjectRequest]) (*connect.Response[v1.RestartProjectResponse], error)
+	ReloadProject(context.Context, *connect.Request[v1.ReloadProjectRequest]) (*connect.Response[v1.ReloadProjectResponse], error)
+	RemoveProject(context.Context, *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error)
+	// Services
 	StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error)
 	StopService(context.Context, *connect.Request[v1.StopServiceRequest]) (*connect.Response[v1.StopServiceResponse], error)
+	RestartService(context.Context, *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error)
 	KillService(context.Context, *connect.Request[v1.KillServiceRequest]) (*connect.Response[v1.KillServiceResponse], error)
-	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
-	Top(context.Context, *connect.Request[v1.TopRequest]) (*connect.Response[v1.TopResponse], error)
-	Logs(context.Context, *connect.Request[v1.LogsRequest]) (*connect.ServerStreamForClient[v1.LogChunk], error)
-	ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error)
 	// Tasks
-	ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error)
-	RunTask(context.Context, *connect.Request[v1.RunTaskRequest]) (*connect.ServerStreamForClient[v1.TaskOutputChunk], error)
+	RunTask(context.Context, *connect.Request[v1.RunTaskRequest]) (*connect.Response[v1.RunTaskResponse], error)
 	StopTask(context.Context, *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error)
-	// Git Operations
+	KillTask(context.Context, *connect.Request[v1.KillTaskRequest]) (*connect.Response[v1.KillTaskResponse], error)
+	// Output, sessions, metrics
+	Logs(context.Context, *connect.Request[v1.LogsRequest]) (*connect.ServerStreamForClient[v1.LogsResponse], error)
+	Attach(context.Context) *connect.BidiStreamForClient[v1.AttachRequest, v1.AttachResponse]
+	Stats(context.Context, *connect.Request[v1.StatsRequest]) (*connect.ServerStreamForClient[v1.StatsResponse], error)
+	ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error)
+	// Git
 	GitLog(context.Context, *connect.Request[v1.GitLogRequest]) (*connect.Response[v1.GitLogResponse], error)
 	GitDiff(context.Context, *connect.Request[v1.GitDiffRequest]) (*connect.Response[v1.GitDiffResponse], error)
-	GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error)
 	GitStage(context.Context, *connect.Request[v1.GitStageRequest]) (*connect.Response[v1.GitStageResponse], error)
+	GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error)
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
-	GitStatus(context.Context, *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error)
-	// Real-time Event Subscription
-	SubscribeEvents(context.Context, *connect.Request[v1.SubscribeEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error)
 }
 
 // NewDaemonServiceClient constructs a client for the devyard.v1.DaemonService service. By default,
@@ -158,34 +164,10 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 	baseURL = strings.TrimRight(baseURL, "/")
 	daemonServiceMethods := v1.File_devyard_v1_control_proto.Services().ByName("DaemonService").Methods()
 	return &daemonServiceClient{
-		listProjects: connect.NewClient[v1.ListProjectsRequest, v1.ListProjectsResponse](
+		getDaemon: connect.NewClient[v1.GetDaemonRequest, v1.GetDaemonResponse](
 			httpClient,
-			baseURL+DaemonServiceListProjectsProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("ListProjects")),
-			connect.WithClientOptions(opts...),
-		),
-		startProject: connect.NewClient[v1.StartProjectRequest, v1.StartProjectResponse](
-			httpClient,
-			baseURL+DaemonServiceStartProjectProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("StartProject")),
-			connect.WithClientOptions(opts...),
-		),
-		stopProject: connect.NewClient[v1.StopProjectRequest, v1.StopProjectResponse](
-			httpClient,
-			baseURL+DaemonServiceStopProjectProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("StopProject")),
-			connect.WithClientOptions(opts...),
-		),
-		removeProject: connect.NewClient[v1.RemoveProjectRequest, v1.RemoveProjectResponse](
-			httpClient,
-			baseURL+DaemonServiceRemoveProjectProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("RemoveProject")),
-			connect.WithClientOptions(opts...),
-		),
-		daemonStatus: connect.NewClient[v1.DaemonStatusRequest, v1.DaemonStatusResponse](
-			httpClient,
-			baseURL+DaemonServiceDaemonStatusProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("DaemonStatus")),
+			baseURL+DaemonServiceGetDaemonProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GetDaemon")),
 			connect.WithClientOptions(opts...),
 		),
 		stopDaemon: connect.NewClient[v1.StopDaemonRequest, v1.StopDaemonResponse](
@@ -212,10 +194,52 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("UpdateGlobalConfig")),
 			connect.WithClientOptions(opts...),
 		),
-		listServices: connect.NewClient[v1.ListServicesRequest, v1.ListServicesResponse](
+		watch: connect.NewClient[v1.WatchRequest, v1.WatchResponse](
 			httpClient,
-			baseURL+DaemonServiceListServicesProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("ListServices")),
+			baseURL+DaemonServiceWatchProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("Watch")),
+			connect.WithClientOptions(opts...),
+		),
+		getState: connect.NewClient[v1.GetStateRequest, v1.GetStateResponse](
+			httpClient,
+			baseURL+DaemonServiceGetStateProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GetState")),
+			connect.WithClientOptions(opts...),
+		),
+		addProject: connect.NewClient[v1.AddProjectRequest, v1.AddProjectResponse](
+			httpClient,
+			baseURL+DaemonServiceAddProjectProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("AddProject")),
+			connect.WithClientOptions(opts...),
+		),
+		startProject: connect.NewClient[v1.StartProjectRequest, v1.StartProjectResponse](
+			httpClient,
+			baseURL+DaemonServiceStartProjectProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("StartProject")),
+			connect.WithClientOptions(opts...),
+		),
+		stopProject: connect.NewClient[v1.StopProjectRequest, v1.StopProjectResponse](
+			httpClient,
+			baseURL+DaemonServiceStopProjectProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("StopProject")),
+			connect.WithClientOptions(opts...),
+		),
+		restartProject: connect.NewClient[v1.RestartProjectRequest, v1.RestartProjectResponse](
+			httpClient,
+			baseURL+DaemonServiceRestartProjectProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("RestartProject")),
+			connect.WithClientOptions(opts...),
+		),
+		reloadProject: connect.NewClient[v1.ReloadProjectRequest, v1.ReloadProjectResponse](
+			httpClient,
+			baseURL+DaemonServiceReloadProjectProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("ReloadProject")),
+			connect.WithClientOptions(opts...),
+		),
+		removeProject: connect.NewClient[v1.RemoveProjectRequest, v1.RemoveProjectResponse](
+			httpClient,
+			baseURL+DaemonServiceRemoveProjectProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("RemoveProject")),
 			connect.WithClientOptions(opts...),
 		),
 		startService: connect.NewClient[v1.StartServiceRequest, v1.StartServiceResponse](
@@ -230,43 +254,19 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("StopService")),
 			connect.WithClientOptions(opts...),
 		),
+		restartService: connect.NewClient[v1.RestartServiceRequest, v1.RestartServiceResponse](
+			httpClient,
+			baseURL+DaemonServiceRestartServiceProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("RestartService")),
+			connect.WithClientOptions(opts...),
+		),
 		killService: connect.NewClient[v1.KillServiceRequest, v1.KillServiceResponse](
 			httpClient,
 			baseURL+DaemonServiceKillServiceProcedure,
 			connect.WithSchema(daemonServiceMethods.ByName("KillService")),
 			connect.WithClientOptions(opts...),
 		),
-		restart: connect.NewClient[v1.RestartRequest, v1.RestartResponse](
-			httpClient,
-			baseURL+DaemonServiceRestartProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("Restart")),
-			connect.WithClientOptions(opts...),
-		),
-		top: connect.NewClient[v1.TopRequest, v1.TopResponse](
-			httpClient,
-			baseURL+DaemonServiceTopProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("Top")),
-			connect.WithClientOptions(opts...),
-		),
-		logs: connect.NewClient[v1.LogsRequest, v1.LogChunk](
-			httpClient,
-			baseURL+DaemonServiceLogsProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("Logs")),
-			connect.WithClientOptions(opts...),
-		),
-		listPorts: connect.NewClient[v1.ListPortsRequest, v1.ListPortsResponse](
-			httpClient,
-			baseURL+DaemonServiceListPortsProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("ListPorts")),
-			connect.WithClientOptions(opts...),
-		),
-		listTasks: connect.NewClient[v1.ListTasksRequest, v1.ListTasksResponse](
-			httpClient,
-			baseURL+DaemonServiceListTasksProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("ListTasks")),
-			connect.WithClientOptions(opts...),
-		),
-		runTask: connect.NewClient[v1.RunTaskRequest, v1.TaskOutputChunk](
+		runTask: connect.NewClient[v1.RunTaskRequest, v1.RunTaskResponse](
 			httpClient,
 			baseURL+DaemonServiceRunTaskProcedure,
 			connect.WithSchema(daemonServiceMethods.ByName("RunTask")),
@@ -276,6 +276,36 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			httpClient,
 			baseURL+DaemonServiceStopTaskProcedure,
 			connect.WithSchema(daemonServiceMethods.ByName("StopTask")),
+			connect.WithClientOptions(opts...),
+		),
+		killTask: connect.NewClient[v1.KillTaskRequest, v1.KillTaskResponse](
+			httpClient,
+			baseURL+DaemonServiceKillTaskProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("KillTask")),
+			connect.WithClientOptions(opts...),
+		),
+		logs: connect.NewClient[v1.LogsRequest, v1.LogsResponse](
+			httpClient,
+			baseURL+DaemonServiceLogsProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("Logs")),
+			connect.WithClientOptions(opts...),
+		),
+		attach: connect.NewClient[v1.AttachRequest, v1.AttachResponse](
+			httpClient,
+			baseURL+DaemonServiceAttachProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("Attach")),
+			connect.WithClientOptions(opts...),
+		),
+		stats: connect.NewClient[v1.StatsRequest, v1.StatsResponse](
+			httpClient,
+			baseURL+DaemonServiceStatsProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("Stats")),
+			connect.WithClientOptions(opts...),
+		),
+		listPorts: connect.NewClient[v1.ListPortsRequest, v1.ListPortsResponse](
+			httpClient,
+			baseURL+DaemonServiceListPortsProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("ListPorts")),
 			connect.WithClientOptions(opts...),
 		),
 		gitLog: connect.NewClient[v1.GitLogRequest, v1.GitLogResponse](
@@ -290,16 +320,16 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitDiff")),
 			connect.WithClientOptions(opts...),
 		),
-		gitCommit: connect.NewClient[v1.GitCommitRequest, v1.GitCommitResponse](
-			httpClient,
-			baseURL+DaemonServiceGitCommitProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("GitCommit")),
-			connect.WithClientOptions(opts...),
-		),
 		gitStage: connect.NewClient[v1.GitStageRequest, v1.GitStageResponse](
 			httpClient,
 			baseURL+DaemonServiceGitStageProcedure,
 			connect.WithSchema(daemonServiceMethods.ByName("GitStage")),
+			connect.WithClientOptions(opts...),
+		),
+		gitCommit: connect.NewClient[v1.GitCommitRequest, v1.GitCommitResponse](
+			httpClient,
+			baseURL+DaemonServiceGitCommitProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitCommit")),
 			connect.WithClientOptions(opts...),
 		),
 		gitPush: connect.NewClient[v1.GitPushRequest, v1.GitPushResponse](
@@ -320,77 +350,47 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitFetch")),
 			connect.WithClientOptions(opts...),
 		),
-		gitStatus: connect.NewClient[v1.GitStatusRequest, v1.GitStatusResponse](
-			httpClient,
-			baseURL+DaemonServiceGitStatusProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("GitStatus")),
-			connect.WithClientOptions(opts...),
-		),
-		subscribeEvents: connect.NewClient[v1.SubscribeEventsRequest, v1.Event](
-			httpClient,
-			baseURL+DaemonServiceSubscribeEventsProcedure,
-			connect.WithSchema(daemonServiceMethods.ByName("SubscribeEvents")),
-			connect.WithClientOptions(opts...),
-		),
 	}
 }
 
 // daemonServiceClient implements DaemonServiceClient.
 type daemonServiceClient struct {
-	listProjects       *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
-	startProject       *connect.Client[v1.StartProjectRequest, v1.StartProjectResponse]
-	stopProject        *connect.Client[v1.StopProjectRequest, v1.StopProjectResponse]
-	removeProject      *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
-	daemonStatus       *connect.Client[v1.DaemonStatusRequest, v1.DaemonStatusResponse]
+	getDaemon          *connect.Client[v1.GetDaemonRequest, v1.GetDaemonResponse]
 	stopDaemon         *connect.Client[v1.StopDaemonRequest, v1.StopDaemonResponse]
 	restartDaemon      *connect.Client[v1.RestartDaemonRequest, v1.RestartDaemonResponse]
 	getGlobalConfig    *connect.Client[v1.GetGlobalConfigRequest, v1.GetGlobalConfigResponse]
 	updateGlobalConfig *connect.Client[v1.UpdateGlobalConfigRequest, v1.UpdateGlobalConfigResponse]
-	listServices       *connect.Client[v1.ListServicesRequest, v1.ListServicesResponse]
+	watch              *connect.Client[v1.WatchRequest, v1.WatchResponse]
+	getState           *connect.Client[v1.GetStateRequest, v1.GetStateResponse]
+	addProject         *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
+	startProject       *connect.Client[v1.StartProjectRequest, v1.StartProjectResponse]
+	stopProject        *connect.Client[v1.StopProjectRequest, v1.StopProjectResponse]
+	restartProject     *connect.Client[v1.RestartProjectRequest, v1.RestartProjectResponse]
+	reloadProject      *connect.Client[v1.ReloadProjectRequest, v1.ReloadProjectResponse]
+	removeProject      *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
 	startService       *connect.Client[v1.StartServiceRequest, v1.StartServiceResponse]
 	stopService        *connect.Client[v1.StopServiceRequest, v1.StopServiceResponse]
+	restartService     *connect.Client[v1.RestartServiceRequest, v1.RestartServiceResponse]
 	killService        *connect.Client[v1.KillServiceRequest, v1.KillServiceResponse]
-	restart            *connect.Client[v1.RestartRequest, v1.RestartResponse]
-	top                *connect.Client[v1.TopRequest, v1.TopResponse]
-	logs               *connect.Client[v1.LogsRequest, v1.LogChunk]
-	listPorts          *connect.Client[v1.ListPortsRequest, v1.ListPortsResponse]
-	listTasks          *connect.Client[v1.ListTasksRequest, v1.ListTasksResponse]
-	runTask            *connect.Client[v1.RunTaskRequest, v1.TaskOutputChunk]
+	runTask            *connect.Client[v1.RunTaskRequest, v1.RunTaskResponse]
 	stopTask           *connect.Client[v1.StopTaskRequest, v1.StopTaskResponse]
+	killTask           *connect.Client[v1.KillTaskRequest, v1.KillTaskResponse]
+	logs               *connect.Client[v1.LogsRequest, v1.LogsResponse]
+	attach             *connect.Client[v1.AttachRequest, v1.AttachResponse]
+	stats              *connect.Client[v1.StatsRequest, v1.StatsResponse]
+	listPorts          *connect.Client[v1.ListPortsRequest, v1.ListPortsResponse]
 	gitLog             *connect.Client[v1.GitLogRequest, v1.GitLogResponse]
 	gitDiff            *connect.Client[v1.GitDiffRequest, v1.GitDiffResponse]
-	gitCommit          *connect.Client[v1.GitCommitRequest, v1.GitCommitResponse]
 	gitStage           *connect.Client[v1.GitStageRequest, v1.GitStageResponse]
+	gitCommit          *connect.Client[v1.GitCommitRequest, v1.GitCommitResponse]
 	gitPush            *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
 	gitPull            *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
 	gitFetch           *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
-	gitStatus          *connect.Client[v1.GitStatusRequest, v1.GitStatusResponse]
-	subscribeEvents    *connect.Client[v1.SubscribeEventsRequest, v1.Event]
 }
 
-// ListProjects calls devyard.v1.DaemonService.ListProjects.
-func (c *daemonServiceClient) ListProjects(ctx context.Context, req *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error) {
-	return c.listProjects.CallUnary(ctx, req)
-}
-
-// StartProject calls devyard.v1.DaemonService.StartProject.
-func (c *daemonServiceClient) StartProject(ctx context.Context, req *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error) {
-	return c.startProject.CallUnary(ctx, req)
-}
-
-// StopProject calls devyard.v1.DaemonService.StopProject.
-func (c *daemonServiceClient) StopProject(ctx context.Context, req *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error) {
-	return c.stopProject.CallUnary(ctx, req)
-}
-
-// RemoveProject calls devyard.v1.DaemonService.RemoveProject.
-func (c *daemonServiceClient) RemoveProject(ctx context.Context, req *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error) {
-	return c.removeProject.CallUnary(ctx, req)
-}
-
-// DaemonStatus calls devyard.v1.DaemonService.DaemonStatus.
-func (c *daemonServiceClient) DaemonStatus(ctx context.Context, req *connect.Request[v1.DaemonStatusRequest]) (*connect.Response[v1.DaemonStatusResponse], error) {
-	return c.daemonStatus.CallUnary(ctx, req)
+// GetDaemon calls devyard.v1.DaemonService.GetDaemon.
+func (c *daemonServiceClient) GetDaemon(ctx context.Context, req *connect.Request[v1.GetDaemonRequest]) (*connect.Response[v1.GetDaemonResponse], error) {
+	return c.getDaemon.CallUnary(ctx, req)
 }
 
 // StopDaemon calls devyard.v1.DaemonService.StopDaemon.
@@ -413,9 +413,44 @@ func (c *daemonServiceClient) UpdateGlobalConfig(ctx context.Context, req *conne
 	return c.updateGlobalConfig.CallUnary(ctx, req)
 }
 
-// ListServices calls devyard.v1.DaemonService.ListServices.
-func (c *daemonServiceClient) ListServices(ctx context.Context, req *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error) {
-	return c.listServices.CallUnary(ctx, req)
+// Watch calls devyard.v1.DaemonService.Watch.
+func (c *daemonServiceClient) Watch(ctx context.Context, req *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WatchResponse], error) {
+	return c.watch.CallServerStream(ctx, req)
+}
+
+// GetState calls devyard.v1.DaemonService.GetState.
+func (c *daemonServiceClient) GetState(ctx context.Context, req *connect.Request[v1.GetStateRequest]) (*connect.Response[v1.GetStateResponse], error) {
+	return c.getState.CallUnary(ctx, req)
+}
+
+// AddProject calls devyard.v1.DaemonService.AddProject.
+func (c *daemonServiceClient) AddProject(ctx context.Context, req *connect.Request[v1.AddProjectRequest]) (*connect.Response[v1.AddProjectResponse], error) {
+	return c.addProject.CallUnary(ctx, req)
+}
+
+// StartProject calls devyard.v1.DaemonService.StartProject.
+func (c *daemonServiceClient) StartProject(ctx context.Context, req *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error) {
+	return c.startProject.CallUnary(ctx, req)
+}
+
+// StopProject calls devyard.v1.DaemonService.StopProject.
+func (c *daemonServiceClient) StopProject(ctx context.Context, req *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error) {
+	return c.stopProject.CallUnary(ctx, req)
+}
+
+// RestartProject calls devyard.v1.DaemonService.RestartProject.
+func (c *daemonServiceClient) RestartProject(ctx context.Context, req *connect.Request[v1.RestartProjectRequest]) (*connect.Response[v1.RestartProjectResponse], error) {
+	return c.restartProject.CallUnary(ctx, req)
+}
+
+// ReloadProject calls devyard.v1.DaemonService.ReloadProject.
+func (c *daemonServiceClient) ReloadProject(ctx context.Context, req *connect.Request[v1.ReloadProjectRequest]) (*connect.Response[v1.ReloadProjectResponse], error) {
+	return c.reloadProject.CallUnary(ctx, req)
+}
+
+// RemoveProject calls devyard.v1.DaemonService.RemoveProject.
+func (c *daemonServiceClient) RemoveProject(ctx context.Context, req *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error) {
+	return c.removeProject.CallUnary(ctx, req)
 }
 
 // StartService calls devyard.v1.DaemonService.StartService.
@@ -428,44 +463,49 @@ func (c *daemonServiceClient) StopService(ctx context.Context, req *connect.Requ
 	return c.stopService.CallUnary(ctx, req)
 }
 
+// RestartService calls devyard.v1.DaemonService.RestartService.
+func (c *daemonServiceClient) RestartService(ctx context.Context, req *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error) {
+	return c.restartService.CallUnary(ctx, req)
+}
+
 // KillService calls devyard.v1.DaemonService.KillService.
 func (c *daemonServiceClient) KillService(ctx context.Context, req *connect.Request[v1.KillServiceRequest]) (*connect.Response[v1.KillServiceResponse], error) {
 	return c.killService.CallUnary(ctx, req)
 }
 
-// Restart calls devyard.v1.DaemonService.Restart.
-func (c *daemonServiceClient) Restart(ctx context.Context, req *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error) {
-	return c.restart.CallUnary(ctx, req)
-}
-
-// Top calls devyard.v1.DaemonService.Top.
-func (c *daemonServiceClient) Top(ctx context.Context, req *connect.Request[v1.TopRequest]) (*connect.Response[v1.TopResponse], error) {
-	return c.top.CallUnary(ctx, req)
-}
-
-// Logs calls devyard.v1.DaemonService.Logs.
-func (c *daemonServiceClient) Logs(ctx context.Context, req *connect.Request[v1.LogsRequest]) (*connect.ServerStreamForClient[v1.LogChunk], error) {
-	return c.logs.CallServerStream(ctx, req)
-}
-
-// ListPorts calls devyard.v1.DaemonService.ListPorts.
-func (c *daemonServiceClient) ListPorts(ctx context.Context, req *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error) {
-	return c.listPorts.CallUnary(ctx, req)
-}
-
-// ListTasks calls devyard.v1.DaemonService.ListTasks.
-func (c *daemonServiceClient) ListTasks(ctx context.Context, req *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error) {
-	return c.listTasks.CallUnary(ctx, req)
-}
-
 // RunTask calls devyard.v1.DaemonService.RunTask.
-func (c *daemonServiceClient) RunTask(ctx context.Context, req *connect.Request[v1.RunTaskRequest]) (*connect.ServerStreamForClient[v1.TaskOutputChunk], error) {
-	return c.runTask.CallServerStream(ctx, req)
+func (c *daemonServiceClient) RunTask(ctx context.Context, req *connect.Request[v1.RunTaskRequest]) (*connect.Response[v1.RunTaskResponse], error) {
+	return c.runTask.CallUnary(ctx, req)
 }
 
 // StopTask calls devyard.v1.DaemonService.StopTask.
 func (c *daemonServiceClient) StopTask(ctx context.Context, req *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error) {
 	return c.stopTask.CallUnary(ctx, req)
+}
+
+// KillTask calls devyard.v1.DaemonService.KillTask.
+func (c *daemonServiceClient) KillTask(ctx context.Context, req *connect.Request[v1.KillTaskRequest]) (*connect.Response[v1.KillTaskResponse], error) {
+	return c.killTask.CallUnary(ctx, req)
+}
+
+// Logs calls devyard.v1.DaemonService.Logs.
+func (c *daemonServiceClient) Logs(ctx context.Context, req *connect.Request[v1.LogsRequest]) (*connect.ServerStreamForClient[v1.LogsResponse], error) {
+	return c.logs.CallServerStream(ctx, req)
+}
+
+// Attach calls devyard.v1.DaemonService.Attach.
+func (c *daemonServiceClient) Attach(ctx context.Context) *connect.BidiStreamForClient[v1.AttachRequest, v1.AttachResponse] {
+	return c.attach.CallBidiStream(ctx)
+}
+
+// Stats calls devyard.v1.DaemonService.Stats.
+func (c *daemonServiceClient) Stats(ctx context.Context, req *connect.Request[v1.StatsRequest]) (*connect.ServerStreamForClient[v1.StatsResponse], error) {
+	return c.stats.CallServerStream(ctx, req)
+}
+
+// ListPorts calls devyard.v1.DaemonService.ListPorts.
+func (c *daemonServiceClient) ListPorts(ctx context.Context, req *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error) {
+	return c.listPorts.CallUnary(ctx, req)
 }
 
 // GitLog calls devyard.v1.DaemonService.GitLog.
@@ -478,14 +518,14 @@ func (c *daemonServiceClient) GitDiff(ctx context.Context, req *connect.Request[
 	return c.gitDiff.CallUnary(ctx, req)
 }
 
-// GitCommit calls devyard.v1.DaemonService.GitCommit.
-func (c *daemonServiceClient) GitCommit(ctx context.Context, req *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error) {
-	return c.gitCommit.CallUnary(ctx, req)
-}
-
 // GitStage calls devyard.v1.DaemonService.GitStage.
 func (c *daemonServiceClient) GitStage(ctx context.Context, req *connect.Request[v1.GitStageRequest]) (*connect.Response[v1.GitStageResponse], error) {
 	return c.gitStage.CallUnary(ctx, req)
+}
+
+// GitCommit calls devyard.v1.DaemonService.GitCommit.
+func (c *daemonServiceClient) GitCommit(ctx context.Context, req *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error) {
+	return c.gitCommit.CallUnary(ctx, req)
 }
 
 // GitPush calls devyard.v1.DaemonService.GitPush.
@@ -503,54 +543,46 @@ func (c *daemonServiceClient) GitFetch(ctx context.Context, req *connect.Request
 	return c.gitFetch.CallUnary(ctx, req)
 }
 
-// GitStatus calls devyard.v1.DaemonService.GitStatus.
-func (c *daemonServiceClient) GitStatus(ctx context.Context, req *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error) {
-	return c.gitStatus.CallUnary(ctx, req)
-}
-
-// SubscribeEvents calls devyard.v1.DaemonService.SubscribeEvents.
-func (c *daemonServiceClient) SubscribeEvents(ctx context.Context, req *connect.Request[v1.SubscribeEventsRequest]) (*connect.ServerStreamForClient[v1.Event], error) {
-	return c.subscribeEvents.CallServerStream(ctx, req)
-}
-
 // DaemonServiceHandler is an implementation of the devyard.v1.DaemonService service.
 type DaemonServiceHandler interface {
-	// Project Lifecycle
-	ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error)
-	StartProject(context.Context, *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error)
-	StopProject(context.Context, *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error)
-	RemoveProject(context.Context, *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error)
-	// Daemon Management
-	DaemonStatus(context.Context, *connect.Request[v1.DaemonStatusRequest]) (*connect.Response[v1.DaemonStatusResponse], error)
+	// Daemon
+	GetDaemon(context.Context, *connect.Request[v1.GetDaemonRequest]) (*connect.Response[v1.GetDaemonResponse], error)
 	StopDaemon(context.Context, *connect.Request[v1.StopDaemonRequest]) (*connect.Response[v1.StopDaemonResponse], error)
 	RestartDaemon(context.Context, *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error)
-	// Global Settings
 	GetGlobalConfig(context.Context, *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error)
 	UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error)
-	// Service Management
-	ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error)
+	// State observation
+	Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error
+	GetState(context.Context, *connect.Request[v1.GetStateRequest]) (*connect.Response[v1.GetStateResponse], error)
+	// Projects
+	AddProject(context.Context, *connect.Request[v1.AddProjectRequest]) (*connect.Response[v1.AddProjectResponse], error)
+	StartProject(context.Context, *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error)
+	StopProject(context.Context, *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error)
+	RestartProject(context.Context, *connect.Request[v1.RestartProjectRequest]) (*connect.Response[v1.RestartProjectResponse], error)
+	ReloadProject(context.Context, *connect.Request[v1.ReloadProjectRequest]) (*connect.Response[v1.ReloadProjectResponse], error)
+	RemoveProject(context.Context, *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error)
+	// Services
 	StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error)
 	StopService(context.Context, *connect.Request[v1.StopServiceRequest]) (*connect.Response[v1.StopServiceResponse], error)
+	RestartService(context.Context, *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error)
 	KillService(context.Context, *connect.Request[v1.KillServiceRequest]) (*connect.Response[v1.KillServiceResponse], error)
-	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
-	Top(context.Context, *connect.Request[v1.TopRequest]) (*connect.Response[v1.TopResponse], error)
-	Logs(context.Context, *connect.Request[v1.LogsRequest], *connect.ServerStream[v1.LogChunk]) error
-	ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error)
 	// Tasks
-	ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error)
-	RunTask(context.Context, *connect.Request[v1.RunTaskRequest], *connect.ServerStream[v1.TaskOutputChunk]) error
+	RunTask(context.Context, *connect.Request[v1.RunTaskRequest]) (*connect.Response[v1.RunTaskResponse], error)
 	StopTask(context.Context, *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error)
-	// Git Operations
+	KillTask(context.Context, *connect.Request[v1.KillTaskRequest]) (*connect.Response[v1.KillTaskResponse], error)
+	// Output, sessions, metrics
+	Logs(context.Context, *connect.Request[v1.LogsRequest], *connect.ServerStream[v1.LogsResponse]) error
+	Attach(context.Context, *connect.BidiStream[v1.AttachRequest, v1.AttachResponse]) error
+	Stats(context.Context, *connect.Request[v1.StatsRequest], *connect.ServerStream[v1.StatsResponse]) error
+	ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error)
+	// Git
 	GitLog(context.Context, *connect.Request[v1.GitLogRequest]) (*connect.Response[v1.GitLogResponse], error)
 	GitDiff(context.Context, *connect.Request[v1.GitDiffRequest]) (*connect.Response[v1.GitDiffResponse], error)
-	GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error)
 	GitStage(context.Context, *connect.Request[v1.GitStageRequest]) (*connect.Response[v1.GitStageResponse], error)
+	GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error)
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
-	GitStatus(context.Context, *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error)
-	// Real-time Event Subscription
-	SubscribeEvents(context.Context, *connect.Request[v1.SubscribeEventsRequest], *connect.ServerStream[v1.Event]) error
 }
 
 // NewDaemonServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -560,34 +592,10 @@ type DaemonServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	daemonServiceMethods := v1.File_devyard_v1_control_proto.Services().ByName("DaemonService").Methods()
-	daemonServiceListProjectsHandler := connect.NewUnaryHandler(
-		DaemonServiceListProjectsProcedure,
-		svc.ListProjects,
-		connect.WithSchema(daemonServiceMethods.ByName("ListProjects")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceStartProjectHandler := connect.NewUnaryHandler(
-		DaemonServiceStartProjectProcedure,
-		svc.StartProject,
-		connect.WithSchema(daemonServiceMethods.ByName("StartProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceStopProjectHandler := connect.NewUnaryHandler(
-		DaemonServiceStopProjectProcedure,
-		svc.StopProject,
-		connect.WithSchema(daemonServiceMethods.ByName("StopProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceRemoveProjectHandler := connect.NewUnaryHandler(
-		DaemonServiceRemoveProjectProcedure,
-		svc.RemoveProject,
-		connect.WithSchema(daemonServiceMethods.ByName("RemoveProject")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceDaemonStatusHandler := connect.NewUnaryHandler(
-		DaemonServiceDaemonStatusProcedure,
-		svc.DaemonStatus,
-		connect.WithSchema(daemonServiceMethods.ByName("DaemonStatus")),
+	daemonServiceGetDaemonHandler := connect.NewUnaryHandler(
+		DaemonServiceGetDaemonProcedure,
+		svc.GetDaemon,
+		connect.WithSchema(daemonServiceMethods.ByName("GetDaemon")),
 		connect.WithHandlerOptions(opts...),
 	)
 	daemonServiceStopDaemonHandler := connect.NewUnaryHandler(
@@ -614,10 +622,52 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("UpdateGlobalConfig")),
 		connect.WithHandlerOptions(opts...),
 	)
-	daemonServiceListServicesHandler := connect.NewUnaryHandler(
-		DaemonServiceListServicesProcedure,
-		svc.ListServices,
-		connect.WithSchema(daemonServiceMethods.ByName("ListServices")),
+	daemonServiceWatchHandler := connect.NewServerStreamHandler(
+		DaemonServiceWatchProcedure,
+		svc.Watch,
+		connect.WithSchema(daemonServiceMethods.ByName("Watch")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGetStateHandler := connect.NewUnaryHandler(
+		DaemonServiceGetStateProcedure,
+		svc.GetState,
+		connect.WithSchema(daemonServiceMethods.ByName("GetState")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceAddProjectHandler := connect.NewUnaryHandler(
+		DaemonServiceAddProjectProcedure,
+		svc.AddProject,
+		connect.WithSchema(daemonServiceMethods.ByName("AddProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceStartProjectHandler := connect.NewUnaryHandler(
+		DaemonServiceStartProjectProcedure,
+		svc.StartProject,
+		connect.WithSchema(daemonServiceMethods.ByName("StartProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceStopProjectHandler := connect.NewUnaryHandler(
+		DaemonServiceStopProjectProcedure,
+		svc.StopProject,
+		connect.WithSchema(daemonServiceMethods.ByName("StopProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceRestartProjectHandler := connect.NewUnaryHandler(
+		DaemonServiceRestartProjectProcedure,
+		svc.RestartProject,
+		connect.WithSchema(daemonServiceMethods.ByName("RestartProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceReloadProjectHandler := connect.NewUnaryHandler(
+		DaemonServiceReloadProjectProcedure,
+		svc.ReloadProject,
+		connect.WithSchema(daemonServiceMethods.ByName("ReloadProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceRemoveProjectHandler := connect.NewUnaryHandler(
+		DaemonServiceRemoveProjectProcedure,
+		svc.RemoveProject,
+		connect.WithSchema(daemonServiceMethods.ByName("RemoveProject")),
 		connect.WithHandlerOptions(opts...),
 	)
 	daemonServiceStartServiceHandler := connect.NewUnaryHandler(
@@ -632,43 +682,19 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("StopService")),
 		connect.WithHandlerOptions(opts...),
 	)
+	daemonServiceRestartServiceHandler := connect.NewUnaryHandler(
+		DaemonServiceRestartServiceProcedure,
+		svc.RestartService,
+		connect.WithSchema(daemonServiceMethods.ByName("RestartService")),
+		connect.WithHandlerOptions(opts...),
+	)
 	daemonServiceKillServiceHandler := connect.NewUnaryHandler(
 		DaemonServiceKillServiceProcedure,
 		svc.KillService,
 		connect.WithSchema(daemonServiceMethods.ByName("KillService")),
 		connect.WithHandlerOptions(opts...),
 	)
-	daemonServiceRestartHandler := connect.NewUnaryHandler(
-		DaemonServiceRestartProcedure,
-		svc.Restart,
-		connect.WithSchema(daemonServiceMethods.ByName("Restart")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceTopHandler := connect.NewUnaryHandler(
-		DaemonServiceTopProcedure,
-		svc.Top,
-		connect.WithSchema(daemonServiceMethods.ByName("Top")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceLogsHandler := connect.NewServerStreamHandler(
-		DaemonServiceLogsProcedure,
-		svc.Logs,
-		connect.WithSchema(daemonServiceMethods.ByName("Logs")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceListPortsHandler := connect.NewUnaryHandler(
-		DaemonServiceListPortsProcedure,
-		svc.ListPorts,
-		connect.WithSchema(daemonServiceMethods.ByName("ListPorts")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceListTasksHandler := connect.NewUnaryHandler(
-		DaemonServiceListTasksProcedure,
-		svc.ListTasks,
-		connect.WithSchema(daemonServiceMethods.ByName("ListTasks")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceRunTaskHandler := connect.NewServerStreamHandler(
+	daemonServiceRunTaskHandler := connect.NewUnaryHandler(
 		DaemonServiceRunTaskProcedure,
 		svc.RunTask,
 		connect.WithSchema(daemonServiceMethods.ByName("RunTask")),
@@ -678,6 +704,36 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		DaemonServiceStopTaskProcedure,
 		svc.StopTask,
 		connect.WithSchema(daemonServiceMethods.ByName("StopTask")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceKillTaskHandler := connect.NewUnaryHandler(
+		DaemonServiceKillTaskProcedure,
+		svc.KillTask,
+		connect.WithSchema(daemonServiceMethods.ByName("KillTask")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceLogsHandler := connect.NewServerStreamHandler(
+		DaemonServiceLogsProcedure,
+		svc.Logs,
+		connect.WithSchema(daemonServiceMethods.ByName("Logs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceAttachHandler := connect.NewBidiStreamHandler(
+		DaemonServiceAttachProcedure,
+		svc.Attach,
+		connect.WithSchema(daemonServiceMethods.ByName("Attach")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceStatsHandler := connect.NewServerStreamHandler(
+		DaemonServiceStatsProcedure,
+		svc.Stats,
+		connect.WithSchema(daemonServiceMethods.ByName("Stats")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceListPortsHandler := connect.NewUnaryHandler(
+		DaemonServiceListPortsProcedure,
+		svc.ListPorts,
+		connect.WithSchema(daemonServiceMethods.ByName("ListPorts")),
 		connect.WithHandlerOptions(opts...),
 	)
 	daemonServiceGitLogHandler := connect.NewUnaryHandler(
@@ -692,16 +748,16 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitDiff")),
 		connect.WithHandlerOptions(opts...),
 	)
-	daemonServiceGitCommitHandler := connect.NewUnaryHandler(
-		DaemonServiceGitCommitProcedure,
-		svc.GitCommit,
-		connect.WithSchema(daemonServiceMethods.ByName("GitCommit")),
-		connect.WithHandlerOptions(opts...),
-	)
 	daemonServiceGitStageHandler := connect.NewUnaryHandler(
 		DaemonServiceGitStageProcedure,
 		svc.GitStage,
 		connect.WithSchema(daemonServiceMethods.ByName("GitStage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitCommitHandler := connect.NewUnaryHandler(
+		DaemonServiceGitCommitProcedure,
+		svc.GitCommit,
+		connect.WithSchema(daemonServiceMethods.ByName("GitCommit")),
 		connect.WithHandlerOptions(opts...),
 	)
 	daemonServiceGitPushHandler := connect.NewUnaryHandler(
@@ -722,30 +778,10 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitFetch")),
 		connect.WithHandlerOptions(opts...),
 	)
-	daemonServiceGitStatusHandler := connect.NewUnaryHandler(
-		DaemonServiceGitStatusProcedure,
-		svc.GitStatus,
-		connect.WithSchema(daemonServiceMethods.ByName("GitStatus")),
-		connect.WithHandlerOptions(opts...),
-	)
-	daemonServiceSubscribeEventsHandler := connect.NewServerStreamHandler(
-		DaemonServiceSubscribeEventsProcedure,
-		svc.SubscribeEvents,
-		connect.WithSchema(daemonServiceMethods.ByName("SubscribeEvents")),
-		connect.WithHandlerOptions(opts...),
-	)
 	return "/devyard.v1.DaemonService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case DaemonServiceListProjectsProcedure:
-			daemonServiceListProjectsHandler.ServeHTTP(w, r)
-		case DaemonServiceStartProjectProcedure:
-			daemonServiceStartProjectHandler.ServeHTTP(w, r)
-		case DaemonServiceStopProjectProcedure:
-			daemonServiceStopProjectHandler.ServeHTTP(w, r)
-		case DaemonServiceRemoveProjectProcedure:
-			daemonServiceRemoveProjectHandler.ServeHTTP(w, r)
-		case DaemonServiceDaemonStatusProcedure:
-			daemonServiceDaemonStatusHandler.ServeHTTP(w, r)
+		case DaemonServiceGetDaemonProcedure:
+			daemonServiceGetDaemonHandler.ServeHTTP(w, r)
 		case DaemonServiceStopDaemonProcedure:
 			daemonServiceStopDaemonHandler.ServeHTTP(w, r)
 		case DaemonServiceRestartDaemonProcedure:
@@ -754,46 +790,58 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGetGlobalConfigHandler.ServeHTTP(w, r)
 		case DaemonServiceUpdateGlobalConfigProcedure:
 			daemonServiceUpdateGlobalConfigHandler.ServeHTTP(w, r)
-		case DaemonServiceListServicesProcedure:
-			daemonServiceListServicesHandler.ServeHTTP(w, r)
+		case DaemonServiceWatchProcedure:
+			daemonServiceWatchHandler.ServeHTTP(w, r)
+		case DaemonServiceGetStateProcedure:
+			daemonServiceGetStateHandler.ServeHTTP(w, r)
+		case DaemonServiceAddProjectProcedure:
+			daemonServiceAddProjectHandler.ServeHTTP(w, r)
+		case DaemonServiceStartProjectProcedure:
+			daemonServiceStartProjectHandler.ServeHTTP(w, r)
+		case DaemonServiceStopProjectProcedure:
+			daemonServiceStopProjectHandler.ServeHTTP(w, r)
+		case DaemonServiceRestartProjectProcedure:
+			daemonServiceRestartProjectHandler.ServeHTTP(w, r)
+		case DaemonServiceReloadProjectProcedure:
+			daemonServiceReloadProjectHandler.ServeHTTP(w, r)
+		case DaemonServiceRemoveProjectProcedure:
+			daemonServiceRemoveProjectHandler.ServeHTTP(w, r)
 		case DaemonServiceStartServiceProcedure:
 			daemonServiceStartServiceHandler.ServeHTTP(w, r)
 		case DaemonServiceStopServiceProcedure:
 			daemonServiceStopServiceHandler.ServeHTTP(w, r)
+		case DaemonServiceRestartServiceProcedure:
+			daemonServiceRestartServiceHandler.ServeHTTP(w, r)
 		case DaemonServiceKillServiceProcedure:
 			daemonServiceKillServiceHandler.ServeHTTP(w, r)
-		case DaemonServiceRestartProcedure:
-			daemonServiceRestartHandler.ServeHTTP(w, r)
-		case DaemonServiceTopProcedure:
-			daemonServiceTopHandler.ServeHTTP(w, r)
-		case DaemonServiceLogsProcedure:
-			daemonServiceLogsHandler.ServeHTTP(w, r)
-		case DaemonServiceListPortsProcedure:
-			daemonServiceListPortsHandler.ServeHTTP(w, r)
-		case DaemonServiceListTasksProcedure:
-			daemonServiceListTasksHandler.ServeHTTP(w, r)
 		case DaemonServiceRunTaskProcedure:
 			daemonServiceRunTaskHandler.ServeHTTP(w, r)
 		case DaemonServiceStopTaskProcedure:
 			daemonServiceStopTaskHandler.ServeHTTP(w, r)
+		case DaemonServiceKillTaskProcedure:
+			daemonServiceKillTaskHandler.ServeHTTP(w, r)
+		case DaemonServiceLogsProcedure:
+			daemonServiceLogsHandler.ServeHTTP(w, r)
+		case DaemonServiceAttachProcedure:
+			daemonServiceAttachHandler.ServeHTTP(w, r)
+		case DaemonServiceStatsProcedure:
+			daemonServiceStatsHandler.ServeHTTP(w, r)
+		case DaemonServiceListPortsProcedure:
+			daemonServiceListPortsHandler.ServeHTTP(w, r)
 		case DaemonServiceGitLogProcedure:
 			daemonServiceGitLogHandler.ServeHTTP(w, r)
 		case DaemonServiceGitDiffProcedure:
 			daemonServiceGitDiffHandler.ServeHTTP(w, r)
-		case DaemonServiceGitCommitProcedure:
-			daemonServiceGitCommitHandler.ServeHTTP(w, r)
 		case DaemonServiceGitStageProcedure:
 			daemonServiceGitStageHandler.ServeHTTP(w, r)
+		case DaemonServiceGitCommitProcedure:
+			daemonServiceGitCommitHandler.ServeHTTP(w, r)
 		case DaemonServiceGitPushProcedure:
 			daemonServiceGitPushHandler.ServeHTTP(w, r)
 		case DaemonServiceGitPullProcedure:
 			daemonServiceGitPullHandler.ServeHTTP(w, r)
 		case DaemonServiceGitFetchProcedure:
 			daemonServiceGitFetchHandler.ServeHTTP(w, r)
-		case DaemonServiceGitStatusProcedure:
-			daemonServiceGitStatusHandler.ServeHTTP(w, r)
-		case DaemonServiceSubscribeEventsProcedure:
-			daemonServiceSubscribeEventsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -803,24 +851,8 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 // UnimplementedDaemonServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedDaemonServiceHandler struct{}
 
-func (UnimplementedDaemonServiceHandler) ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.ListProjects is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) StartProject(context.Context, *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.StartProject is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) StopProject(context.Context, *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.StopProject is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) RemoveProject(context.Context, *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.RemoveProject is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) DaemonStatus(context.Context, *connect.Request[v1.DaemonStatusRequest]) (*connect.Response[v1.DaemonStatusResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.DaemonStatus is not implemented"))
+func (UnimplementedDaemonServiceHandler) GetDaemon(context.Context, *connect.Request[v1.GetDaemonRequest]) (*connect.Response[v1.GetDaemonResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GetDaemon is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) StopDaemon(context.Context, *connect.Request[v1.StopDaemonRequest]) (*connect.Response[v1.StopDaemonResponse], error) {
@@ -839,8 +871,36 @@ func (UnimplementedDaemonServiceHandler) UpdateGlobalConfig(context.Context, *co
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.UpdateGlobalConfig is not implemented"))
 }
 
-func (UnimplementedDaemonServiceHandler) ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.ListServices is not implemented"))
+func (UnimplementedDaemonServiceHandler) Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.Watch is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GetState(context.Context, *connect.Request[v1.GetStateRequest]) (*connect.Response[v1.GetStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GetState is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) AddProject(context.Context, *connect.Request[v1.AddProjectRequest]) (*connect.Response[v1.AddProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.AddProject is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) StartProject(context.Context, *connect.Request[v1.StartProjectRequest]) (*connect.Response[v1.StartProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.StartProject is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) StopProject(context.Context, *connect.Request[v1.StopProjectRequest]) (*connect.Response[v1.StopProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.StopProject is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) RestartProject(context.Context, *connect.Request[v1.RestartProjectRequest]) (*connect.Response[v1.RestartProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.RestartProject is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) ReloadProject(context.Context, *connect.Request[v1.ReloadProjectRequest]) (*connect.Response[v1.ReloadProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.ReloadProject is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) RemoveProject(context.Context, *connect.Request[v1.RemoveProjectRequest]) (*connect.Response[v1.RemoveProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.RemoveProject is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error) {
@@ -851,36 +911,40 @@ func (UnimplementedDaemonServiceHandler) StopService(context.Context, *connect.R
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.StopService is not implemented"))
 }
 
+func (UnimplementedDaemonServiceHandler) RestartService(context.Context, *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.RestartService is not implemented"))
+}
+
 func (UnimplementedDaemonServiceHandler) KillService(context.Context, *connect.Request[v1.KillServiceRequest]) (*connect.Response[v1.KillServiceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.KillService is not implemented"))
 }
 
-func (UnimplementedDaemonServiceHandler) Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.Restart is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) Top(context.Context, *connect.Request[v1.TopRequest]) (*connect.Response[v1.TopResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.Top is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) Logs(context.Context, *connect.Request[v1.LogsRequest], *connect.ServerStream[v1.LogChunk]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.Logs is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.ListPorts is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) ListTasks(context.Context, *connect.Request[v1.ListTasksRequest]) (*connect.Response[v1.ListTasksResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.ListTasks is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) RunTask(context.Context, *connect.Request[v1.RunTaskRequest], *connect.ServerStream[v1.TaskOutputChunk]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.RunTask is not implemented"))
+func (UnimplementedDaemonServiceHandler) RunTask(context.Context, *connect.Request[v1.RunTaskRequest]) (*connect.Response[v1.RunTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.RunTask is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) StopTask(context.Context, *connect.Request[v1.StopTaskRequest]) (*connect.Response[v1.StopTaskResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.StopTask is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) KillTask(context.Context, *connect.Request[v1.KillTaskRequest]) (*connect.Response[v1.KillTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.KillTask is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) Logs(context.Context, *connect.Request[v1.LogsRequest], *connect.ServerStream[v1.LogsResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.Logs is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) Attach(context.Context, *connect.BidiStream[v1.AttachRequest, v1.AttachResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.Attach is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) Stats(context.Context, *connect.Request[v1.StatsRequest], *connect.ServerStream[v1.StatsResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.Stats is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) ListPorts(context.Context, *connect.Request[v1.ListPortsRequest]) (*connect.Response[v1.ListPortsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.ListPorts is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) GitLog(context.Context, *connect.Request[v1.GitLogRequest]) (*connect.Response[v1.GitLogResponse], error) {
@@ -891,12 +955,12 @@ func (UnimplementedDaemonServiceHandler) GitDiff(context.Context, *connect.Reque
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitDiff is not implemented"))
 }
 
-func (UnimplementedDaemonServiceHandler) GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitCommit is not implemented"))
-}
-
 func (UnimplementedDaemonServiceHandler) GitStage(context.Context, *connect.Request[v1.GitStageRequest]) (*connect.Response[v1.GitStageResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitStage is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitCommit is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error) {
@@ -909,12 +973,4 @@ func (UnimplementedDaemonServiceHandler) GitPull(context.Context, *connect.Reque
 
 func (UnimplementedDaemonServiceHandler) GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitFetch is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) GitStatus(context.Context, *connect.Request[v1.GitStatusRequest]) (*connect.Response[v1.GitStatusResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitStatus is not implemented"))
-}
-
-func (UnimplementedDaemonServiceHandler) SubscribeEvents(context.Context, *connect.Request[v1.SubscribeEventsRequest], *connect.ServerStream[v1.Event]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.SubscribeEvents is not implemented"))
 }

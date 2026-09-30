@@ -32,7 +32,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file, err := config.Load(path)
+	file, err := load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -70,7 +70,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file, err := config.Load(path)
+	file, err := load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -98,7 +98,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file, err := config.Load(path)
+	file, err := load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -123,7 +123,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file, err := config.Load(path)
+	file, err := load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -197,6 +197,11 @@ func TestParseDotEnv(t *testing.T) {
 	}
 }
 
+func load(path string) (*config.File, error) {
+	file, _, err := config.Load(path, nil)
+	return file, err
+}
+
 func TestParseDotEnvMalformed(t *testing.T) {
 	t.Parallel()
 	if _, err := config.ParseDotEnv([]byte("NOKEY\n")); err == nil {
@@ -219,37 +224,113 @@ services:
 		t.Fatal(err)
 	}
 	dotenv := map[string]string{"PORT": "9090"}
-	file, err := config.LoadWithEnv(path, dotenv)
+	env := config.InterpolationEnv([]string{"PATH=/usr/bin"}, dotenv)
+	file, _, err := config.Load(path, env)
 	if err != nil {
-		t.Fatalf("LoadWithEnv: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
 	api := file.Services["api"]
 	if api.Command != "echo port=9090" {
 		t.Errorf("command = %q, want %q", api.Command, "echo port=9090")
 	}
-	if !strings.HasSuffix(api.Env["PATH"], ":/custom/bin") {
-		t.Errorf("env PATH = %q, want suffix %q", api.Env["PATH"], ":/custom/bin")
+	if api.Env["PATH"] != "/usr/bin:/custom/bin" {
+		t.Errorf("env PATH = %q, want %q", api.Env["PATH"], "/usr/bin:/custom/bin")
 	}
 }
 
-func TestBuildEnvOver(t *testing.T) {
+func TestInterpolationLaunchEnvWins(t *testing.T) {
 	t.Parallel()
-	base := []string{"PATH=/usr/bin", "FOO=base"}
-	svc := map[string]string{"FOO": "svc", "BAR": "new"}
-	out := config.BuildEnvOver(base, svc)
-	got := map[string]string{}
-	for _, kv := range out {
-		k, v, _ := strings.Cut(kv, "=")
-		got[k] = v
+	env := config.InterpolationEnv([]string{"PORT=1"}, map[string]string{"PORT": "2", "X": "y"})
+	if env["PORT"] != "1" || env["X"] != "y" {
+		t.Fatalf("unexpected env: %v", env)
 	}
-	if got["FOO"] != "svc" {
-		t.Errorf("FOO = %q, want svc", got["FOO"])
+}
+
+func TestChildEnvLayering(t *testing.T) {
+	t.Parallel()
+	launch := []string{"PATH=/usr/bin", "FOO=base", "KEEP=1"}
+	dotenv := map[string]string{"FOO": "dotenv", "DOT": "d"}
+	own := map[string]string{"FOO": "svc", "BAR": "new"}
+	got := config.EnvMap(config.ChildEnv(launch, dotenv, own))
+	want := map[string]string{"PATH": "/usr/bin", "FOO": "svc", "KEEP": "1", "DOT": "d", "BAR": "new"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
-	if got["BAR"] != "new" {
-		t.Errorf("BAR = %q, want new", got["BAR"])
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %q, want %q", k, got[k], v)
+		}
 	}
-	if got["PATH"] != "/usr/bin" {
-		t.Errorf("PATH = %q, want /usr/bin", got["PATH"])
+}
+
+func TestTaskTTYDefaultsTrue(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "devyard.yml")
+	content := `version: "1"
+services:
+  web:
+    command: echo hi
+tasks:
+  short: echo short
+  long:
+    command: echo long
+  plain:
+    command: echo plain
+    tty: false
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !file.Tasks["short"].Spec.IsTTY() || !file.Tasks["long"].Spec.IsTTY() || file.Tasks["plain"].Spec.IsTTY() {
+		t.Fatalf("unexpected tty defaults")
+	}
+}
+
+func TestProjectIDFromName(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "My Project")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "devyard.yml")
+	if err := os.WriteFile(path, []byte("version: \"1\"\nservices:\n  a:\n    command: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.ID() != "my-project" {
+		t.Fatalf("id = %q", file.ID())
+	}
+}
+
+func TestHealthcheckStartPeriod(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "devyard.yml")
+	content := `version: "1"
+services:
+  db:
+    command: x
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      start_period: 30s
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.Services["db"].Healthcheck.StartPeriod != 30*time.Second {
+		t.Fatalf("start_period = %v", file.Services["db"].Healthcheck.StartPeriod)
 	}
 }
 
@@ -276,7 +357,7 @@ tasks:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file, err := config.Load(path)
+	file, err := load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -321,7 +402,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file, err := config.Load(path)
+	file, err := load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -372,7 +453,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+	if _, err := load(path); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("Load err = %v, want mutually exclusive error", err)
 	}
 }
@@ -394,7 +475,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := config.Load(path)
+	_, err := load(path)
 	if err == nil || !strings.Contains(err.Error(), "unknown service") {
 		t.Fatalf("unknown default_service err = %v", err)
 	}
@@ -411,7 +492,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "exposes no ports") {
+	if _, err := load(path); err == nil || !strings.Contains(err.Error(), "exposes no ports") {
 		t.Fatalf("portless default_service err = %v", err)
 	}
 }
@@ -425,7 +506,7 @@ func TestPortNameValidation(t *testing.T) {
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := config.Load(path); err == nil {
+		if _, err := load(path); err == nil {
 			t.Errorf("port name %q: expected error", name)
 		}
 	}
@@ -443,7 +524,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := config.Load(path); err != nil {
+	if _, err := load(path); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 }
@@ -463,7 +544,7 @@ services:
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := config.Load(path); err == nil || !strings.Contains(err.Error(), "proxy.host") {
+	if _, err := load(path); err == nil || !strings.Contains(err.Error(), "proxy.host") {
 		t.Fatalf("Load err = %v, want proxy.host error", err)
 	}
 }

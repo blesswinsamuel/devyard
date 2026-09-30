@@ -137,3 +137,25 @@ func TestInspectProcessZeroOrNegative(t *testing.T) {
 		t.Errorf("InspectProcess(-1) reported ok")
 	}
 }
+
+func TestSampleGroupCPUIsWallClockScale(t *testing.T) {
+	// Burn ~300ms of CPU in this process and check the sampled CPU time
+	// grows by a comparable amount (catches unit bugs like Mach ticks being
+	// treated as nanoseconds).
+	pgid := syscall.Getpgrp()
+	before, ok := procstat.SampleGroup(pgid)
+	if !ok {
+		t.Skip("cannot sample own group")
+	}
+	start := time.Now()
+	x := 0
+	for time.Since(start) < 300*time.Millisecond {
+		x++
+	}
+	_ = x
+	after, _ := procstat.SampleGroup(pgid)
+	delta := after.CPU - before.CPU
+	if delta < 100*time.Millisecond || delta > 5*time.Second {
+		t.Fatalf("cpu delta %v for ~300ms busy loop", delta)
+	}
+}

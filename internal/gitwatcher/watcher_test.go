@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -220,5 +221,52 @@ func TestRepoWatcherWorktree(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for worktree git change event")
+	}
+}
+
+func TestSharedRepoRemoveOneKeepsOther(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("commit", "-q", "--allow-empty", "-m", "one")
+
+	var mu sync.Mutex
+	got := map[string]int{}
+	w, err := New(func(p string) { mu.Lock(); got[p]++; mu.Unlock() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	w.SetDebounce(20 * time.Millisecond)
+	_ = w.AddProject("a", dir)
+	_ = w.AddProject("b", dir)
+	w.RemoveProject("a")
+
+	run("checkout", "-q", "-b", "feature/nested")
+	run("commit", "-q", "--allow-empty", "-m", "two")
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		mu.Lock()
+		b, a := got["b"], got["a"]
+		mu.Unlock()
+		if b > 0 {
+			if a != 0 {
+				t.Fatalf("removed project notified: %v", got)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("remaining project never notified")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

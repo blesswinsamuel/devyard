@@ -337,3 +337,34 @@ func TestSetOnStateChange(t *testing.T) {
 		t.Errorf("expected transition 2 to be unhealthy, got %v", states[2])
 	}
 }
+
+func TestStartPeriodSuppressesEarlyFailures(t *testing.T) {
+	dir := t.TempDir()
+	flag := dir + "/ok"
+	c, err := health.New("svc", health.Config{
+		Test:        []string{"CMD-SHELL", "test -f " + flag},
+		Interval:    20 * time.Millisecond,
+		Retries:     1,
+		Timeout:     time.Second,
+		StartPeriod: 300 * time.Millisecond,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.EnsureStarted(context.Background())
+	defer c.Stop()
+	time.Sleep(150 * time.Millisecond)
+	if st := c.State(); st != health.StateStarting {
+		t.Fatalf("state during start period = %s, want starting", st)
+	}
+	if c.LastFailure() == "" {
+		t.Fatal("expected a recorded failure detail")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for c.State() != health.StateUnhealthy {
+		if time.Now().After(deadline) {
+			t.Fatalf("never became unhealthy after start period; state=%s", c.State())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

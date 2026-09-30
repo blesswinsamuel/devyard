@@ -1,3 +1,4 @@
+// Command devyard orchestrates local processes with a compose-style config.
 package main
 
 import (
@@ -7,7 +8,5 @@ import (
 )
 
 func main() {
-	if err := cli.Execute(); err != nil {
-		os.Exit(1)
-	}
+	os.Exit(cli.Execute())
 }

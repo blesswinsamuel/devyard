@@ -2,322 +2,99 @@ package globalconfig_test
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/blesswinsamuel/devyard/internal/globalconfig"
 )
 
-func TestLoadMissingFileReturnsDefaults(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
+func parse(t *testing.T, content string) (*globalconfig.Config, string) {
+	t.Helper()
+	var warn bytes.Buffer
+	cfg, err := globalconfig.Parse([]byte(content), &warn)
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("parse: %v", err)
 	}
-	if cfg.Web.Host != globalconfig.DefaultHost {
-		t.Errorf("Host = %q, want %q", cfg.Web.Host, globalconfig.DefaultHost)
+	return cfg, warn.String()
+}
+
+func TestMissingFileReturnsDefaults(t *testing.T) {
+	cfg, err := globalconfig.Load(filepath.Join(t.TempDir(), "config.yml"), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if cfg.Web.Port != globalconfig.DefaultPort {
-		t.Errorf("Port = %d, want %d", cfg.Web.Port, globalconfig.DefaultPort)
-	}
-	if buf.Len() > 0 {
-		t.Errorf("unexpected warnings: %s", buf.String())
+	if !reflect.DeepEqual(*cfg, globalconfig.Defaults()) {
+		t.Fatalf("got %+v", cfg)
 	}
 }
 
-func TestLoadValidFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `web:
-  host: 0.0.0.0
-  port: 8080
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
+func TestExplicitValues(t *testing.T) {
+	cfg, _ := parse(t, "web:\n  host: 0.0.0.0\n  port: 8081\n  allowed_hosts: [box.tailnet.ts.net]\nproxy:\n  port: 8082\n  domain_suffix: Dev.LAN\n")
+	if cfg.Web.Host != "0.0.0.0" || cfg.Web.Port != 8081 || cfg.Proxy.Port != 8082 || cfg.Proxy.DomainSuffix != "dev.lan" {
+		t.Fatalf("got %+v", cfg)
 	}
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Web.Host != "0.0.0.0" {
-		t.Errorf("Host = %q, want 0.0.0.0", cfg.Web.Host)
-	}
-	if cfg.Web.Port != 8080 {
-		t.Errorf("Port = %d, want 8080", cfg.Web.Port)
-	}
-}
-
-func TestLoadAppliesDefaultsForEmptyFields(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `web: {}
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Web.Host != globalconfig.DefaultHost {
-		t.Errorf("Host = %q, want %q", cfg.Web.Host, globalconfig.DefaultHost)
-	}
-	if cfg.Web.Port != globalconfig.DefaultPort {
-		t.Errorf("Port = %d, want %d", cfg.Web.Port, globalconfig.DefaultPort)
-	}
-}
-
-func TestLoadIgnoresLegacyEnabled(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	// Legacy field is ignored by the schema (no error).
-	content := `web:
-  enabled: true
-  host: 0.0.0.0
-  port: 8080
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Web.Host != "0.0.0.0" {
-		t.Errorf("Host = %q, want 0.0.0.0", cfg.Web.Host)
-	}
-	if cfg.Web.Port != 8080 {
-		t.Errorf("Port = %d, want 8080", cfg.Web.Port)
-	}
-}
-
-func TestLoadUnknownFieldsWarn(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `web:
-  host: 127.0.0.1
-unknown_field: hello
-another_unknown: 42
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Web.Host != "127.0.0.1" {
-		t.Errorf("Host = %q, want 127.0.0.1", cfg.Web.Host)
-	}
-	warnings := buf.String()
-	if !strings.Contains(warnings, "unknown_field") {
-		t.Errorf("warnings missing 'unknown_field': %s", warnings)
-	}
-	if !strings.Contains(warnings, "another_unknown") {
-		t.Errorf("warnings missing 'another_unknown': %s", warnings)
-	}
-}
-
-func TestConfigPathUsesXDGConfigHome(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "/custom/config")
-	path, err := globalconfig.ConfigPath()
-	if err != nil {
-		t.Fatalf("ConfigPath: %v", err)
-	}
-	if path != "/custom/config/devyard/config.yml" {
-		t.Errorf("path = %q, want /custom/config/devyard/config.yml", path)
-	}
-}
-
-func TestConfigPathDefaultsToHome(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv("HOME", "/tmp/fakehome")
-	path, err := globalconfig.ConfigPath()
-	if err != nil {
-		t.Fatalf("ConfigPath: %v", err)
-	}
-	want := "/tmp/fakehome/.config/devyard/config.yml"
-	if path != want {
-		t.Errorf("path = %q, want %q", path, want)
-	}
-}
-
-func TestSaveAndLoadRoundtrip(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-
-	cfg := globalconfig.Defaults()
-	cfg.Web.Host = "0.0.0.0"
-	cfg.Web.Port = 12345
-
-	if err := globalconfig.SaveForTest(path, &cfg); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	var buf bytes.Buffer
-	loaded, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if loaded.Web.Host != "0.0.0.0" {
-		t.Errorf("Host = %q, want 0.0.0.0", loaded.Web.Host)
-	}
-	if loaded.Web.Port != 12345 {
-		t.Errorf("Port = %d, want 12345", loaded.Web.Port)
-	}
-}
-
-func TestLoadProxyDefaults(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	if len(cfg.Web.AllowedHosts) != 1 || cfg.Web.AllowedHosts[0] != "box.tailnet.ts.net" {
+		t.Fatalf("allowed hosts: %v", cfg.Web.AllowedHosts)
 	}
 	if cfg.Proxy.Host != globalconfig.DefaultProxyHost {
-		t.Errorf("Proxy.Host = %q, want %q", cfg.Proxy.Host, globalconfig.DefaultProxyHost)
-	}
-	if cfg.Proxy.Port != globalconfig.DefaultProxyPort {
-		t.Errorf("Proxy.Port = %d, want %d", cfg.Proxy.Port, globalconfig.DefaultProxyPort)
-	}
-	if cfg.Proxy.DomainSuffix != globalconfig.DefaultProxyDomainSuffix {
-		t.Errorf("Proxy.DomainSuffix = %q, want %q", cfg.Proxy.DomainSuffix, globalconfig.DefaultProxyDomainSuffix)
-	}
-	if buf.Len() > 0 {
-		t.Errorf("unexpected warnings: %s", buf.String())
+		t.Fatalf("proxy host default not applied: %q", cfg.Proxy.Host)
 	}
 }
 
-func TestLoadProxyOverrides(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `proxy:
-  host: 0.0.0.0
-  port: 9091
-  domain_suffix: 192-168-1-5.nip.io
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Proxy.Host != "0.0.0.0" {
-		t.Errorf("Proxy.Host = %q, want 0.0.0.0", cfg.Proxy.Host)
-	}
-	if cfg.Proxy.Port != 9091 {
-		t.Errorf("Proxy.Port = %d, want 9091", cfg.Proxy.Port)
-	}
-	if cfg.Proxy.DomainSuffix != "192-168-1-5.nip.io" {
-		t.Errorf("Proxy.DomainSuffix = %q, want 192-168-1-5.nip.io", cfg.Proxy.DomainSuffix)
-	}
-	if buf.Len() > 0 {
-		t.Errorf("unexpected warnings: %s", buf.String())
+func TestEmptySectionsGetDefaults(t *testing.T) {
+	cfg, _ := parse(t, "web: {}\nproxy: {}\n")
+	if !reflect.DeepEqual(*cfg, globalconfig.Defaults()) {
+		t.Fatalf("got %+v", cfg)
 	}
 }
 
-func TestSaveAndLoadProxyRoundtrip(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-
-	cfg := globalconfig.Defaults()
-	cfg.Proxy.Host = "0.0.0.0"
-	cfg.Proxy.Port = 8081
-	cfg.Proxy.DomainSuffix = "dev.lan"
-
-	if err := globalconfig.SaveForTest(path, &cfg); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	var buf bytes.Buffer
-	loaded, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if loaded.Proxy.Host != "0.0.0.0" || loaded.Proxy.Port != 8081 || loaded.Proxy.DomainSuffix != "dev.lan" {
-		t.Errorf("proxy roundtrip: %+v", loaded.Proxy)
+func TestPortZeroMeansEphemeral(t *testing.T) {
+	cfg, _ := parse(t, "web:\n  port: 0\nproxy:\n  port: 0\n")
+	if cfg.Web.Port != 0 || cfg.Proxy.Port != 0 {
+		t.Fatalf("got %+v", cfg)
 	}
 }
 
-func TestLoadProxyTLS(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `proxy:
-  host: 0.0.0.0
-  port: 8080
-  domain_suffix: dev.lan
-  tls:
-    enabled: true
-    port: 9443
-    cert_file: /path/to/cert.pem
-    key_file: /path/to/key.pem
-    http_redirect: true
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if !cfg.Proxy.TLS.Enabled {
-		t.Errorf("Proxy.TLS.Enabled = false, want true")
-	}
-	if cfg.Proxy.TLS.Port != 9443 {
-		t.Errorf("Proxy.TLS.Port = %d, want 9443", cfg.Proxy.TLS.Port)
-	}
-	if cfg.Proxy.TLS.CertFile != "/path/to/cert.pem" {
-		t.Errorf("Proxy.TLS.CertFile = %q, want /path/to/cert.pem", cfg.Proxy.TLS.CertFile)
-	}
-	if cfg.Proxy.TLS.KeyFile != "/path/to/key.pem" {
-		t.Errorf("Proxy.TLS.KeyFile = %q, want /path/to/key.pem", cfg.Proxy.TLS.KeyFile)
-	}
-	if !cfg.Proxy.TLS.HTTPRedirect {
-		t.Errorf("Proxy.TLS.HTTPRedirect = false, want true")
-	}
-	if !strings.Contains(cfg.String(), "tls=9443 (redirect)") {
-		t.Errorf("cfg.String() missing tls: %s", cfg.String())
+func TestInvalidPort(t *testing.T) {
+	if _, err := globalconfig.Parse([]byte("web:\n  port: 70000\n"), nil); err == nil {
+		t.Fatal("expected error")
 	}
 }
 
-func TestLoadProxyTLSDefaultsEffectivePort(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `proxy:
-  port: 80
-  tls:
-    enabled: true
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
+func TestUnknownFieldsWarn(t *testing.T) {
+	_, warn := parse(t, "web:\n  host: 127.0.0.1\nunknown_field: 1\n")
+	if !strings.Contains(warn, "unknown_field") {
+		t.Fatalf("warnings: %q", warn)
 	}
+}
 
-	var buf bytes.Buffer
-	cfg, err := globalconfig.LoadForTest(path, &buf)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+func TestTLS(t *testing.T) {
+	cfg, _ := parse(t, "proxy:\n  tls:\n    enabled: true\n    port: 9443\n    http_redirect: true\n")
+	if !cfg.Proxy.TLS.Enabled || cfg.Proxy.TLS.Port != 9443 || !strings.Contains(cfg.String(), "tls=9443 (redirect)") {
+		t.Fatalf("got %+v %s", cfg.Proxy.TLS, cfg)
 	}
+	cfg, _ = parse(t, "proxy:\n  port: 80\n  tls:\n    enabled: true\n")
 	if cfg.Proxy.TLS.Port != 443 {
-		t.Errorf("Proxy.TLS.Port = %d, want 443", cfg.Proxy.TLS.Port)
+		t.Fatalf("effective tls port %d", cfg.Proxy.TLS.Port)
+	}
+}
+
+func TestSaveRoundtrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "devyard", "config.yml")
+	in := globalconfig.Defaults()
+	in.Web.Port = 0
+	in.Proxy.DomainSuffix = "dev.lan"
+	in.Web.AllowedHosts = []string{"a.example"}
+	if err := globalconfig.Save(path, &in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := globalconfig.Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Web.Port != 0 || out.Proxy.DomainSuffix != "dev.lan" || len(out.Web.AllowedHosts) != 1 {
+		t.Fatalf("roundtrip: %+v", out)
 	}
 }

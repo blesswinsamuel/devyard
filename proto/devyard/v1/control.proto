@@ -2,290 +2,265 @@ syntax = "proto3";
 
 package devyard.v1;
 
-import "google/protobuf/timestamp.proto";
-
 option go_package = "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1;devyardv1";
 
+// DaemonService is the single control API of the devyard daemon. The CLI
+// reaches it over the daemon's Unix socket (HTTP/2); the web UI reaches it
+// over HTTP on the dashboard listener.
+//
+// State is observed through Watch (snapshot + revisioned deltas). Mutating
+// RPCs return once the command has been accepted by the owning actor; the
+// resulting state transitions arrive through Watch.
 service DaemonService {
-  // Project Lifecycle
-  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
-  rpc StartProject(StartProjectRequest) returns (StartProjectResponse);
-  rpc StopProject(StopProjectRequest) returns (StopProjectResponse);
-  rpc RemoveProject(RemoveProjectRequest) returns (RemoveProjectResponse);
-
-  // Daemon Management
-  rpc DaemonStatus(DaemonStatusRequest) returns (DaemonStatusResponse);
+  // Daemon
+  rpc GetDaemon(GetDaemonRequest) returns (GetDaemonResponse);
   rpc StopDaemon(StopDaemonRequest) returns (StopDaemonResponse);
   rpc RestartDaemon(RestartDaemonRequest) returns (RestartDaemonResponse);
-
-  // Global Settings
   rpc GetGlobalConfig(GetGlobalConfigRequest) returns (GetGlobalConfigResponse);
   rpc UpdateGlobalConfig(UpdateGlobalConfigRequest) returns (UpdateGlobalConfigResponse);
 
-  // Service Management
-  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  // State observation
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+
+  // Projects
+  rpc AddProject(AddProjectRequest) returns (AddProjectResponse);
+  rpc StartProject(StartProjectRequest) returns (StartProjectResponse);
+  rpc StopProject(StopProjectRequest) returns (StopProjectResponse);
+  rpc RestartProject(RestartProjectRequest) returns (RestartProjectResponse);
+  rpc ReloadProject(ReloadProjectRequest) returns (ReloadProjectResponse);
+  rpc RemoveProject(RemoveProjectRequest) returns (RemoveProjectResponse);
+
+  // Services
   rpc StartService(StartServiceRequest) returns (StartServiceResponse);
   rpc StopService(StopServiceRequest) returns (StopServiceResponse);
+  rpc RestartService(RestartServiceRequest) returns (RestartServiceResponse);
   rpc KillService(KillServiceRequest) returns (KillServiceResponse);
-  rpc Restart(RestartRequest) returns (RestartResponse);
-  rpc Top(TopRequest) returns (TopResponse);
-  rpc Logs(LogsRequest) returns (stream LogChunk);
-  rpc ListPorts(ListPortsRequest) returns (ListPortsResponse);
 
   // Tasks
-  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
-  rpc RunTask(RunTaskRequest) returns (stream TaskOutputChunk);
+  rpc RunTask(RunTaskRequest) returns (RunTaskResponse);
   rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
+  rpc KillTask(KillTaskRequest) returns (KillTaskResponse);
 
-  // Git Operations
+  // Output, sessions, metrics
+  rpc Logs(LogsRequest) returns (stream LogsResponse);
+  rpc Attach(stream AttachRequest) returns (stream AttachResponse);
+  rpc Stats(StatsRequest) returns (stream StatsResponse);
+  rpc ListPorts(ListPortsRequest) returns (ListPortsResponse);
+
+  // Git
   rpc GitLog(GitLogRequest) returns (GitLogResponse);
   rpc GitDiff(GitDiffRequest) returns (GitDiffResponse);
-  rpc GitCommit(GitCommitRequest) returns (GitCommitResponse);
   rpc GitStage(GitStageRequest) returns (GitStageResponse);
+  rpc GitCommit(GitCommitRequest) returns (GitCommitResponse);
   rpc GitPush(GitPushRequest) returns (GitPushResponse);
   rpc GitPull(GitPullRequest) returns (GitPullResponse);
   rpc GitFetch(GitFetchRequest) returns (GitFetchResponse);
-  rpc GitStatus(GitStatusRequest) returns (GitStatusResponse);
-
-  // Real-time Event Subscription
-  rpc SubscribeEvents(SubscribeEventsRequest) returns (stream Event);
 }
 
 // -----------------------------------------------------------------------------
-// Common Types
+// Entities
 // -----------------------------------------------------------------------------
 
 message DaemonInfo {
   int32 pid = 1;
-  google.protobuf.Timestamp start_time = 2;
-  int32 goroutines = 3;
-  uint64 memory_alloc = 4;
-  uint64 memory_sys = 5;
+  int64 started_at_unix_ms = 2;
+  string version = 3;
+  string go_version = 4;
+  int32 goroutines = 5;
   uint64 memory_rss = 6;
-  string go_version = 7;
+  uint64 memory_heap = 7;
+  // Bound addresses (host:port). Empty when the listener is disabled.
+  string web_addr = 8;
+  string proxy_addr = 9;
+  string proxy_tls_addr = 10;
+  string domain_suffix = 11;
+  bool draining = 12;
 }
 
-message ServiceState {
+message Project {
+  // id is the project's stable identity: a validated slug derived from the
+  // config's `name` (or its directory name).
+  string id = 1;
+  string config_path = 2;
+  string env_file = 3;
+  // status: "stopped" | "starting" | "running" | "degraded" | "stopping" | "error"
+  string status = 4;
+  // desired: "running" | "stopped" | "partial" (a selected subset of services)
+  string desired = 5;
+  // error is set when the project cannot be loaded (config missing or
+  // invalid). The project stays registered; fix the config and reload.
+  string error = 6;
+  int32 services_total = 7;
+  int32 services_running = 8;
+  string default_service = 9;
+  int64 updated_at_unix_ms = 10;
+}
+
+message Dependency {
   string name = 1;
-  string status = 2;
-  int32 pid = 3;
-  int32 exit_code = 4;
-  int32 restarts = 5;
-  google.protobuf.Timestamp started_at = 6;
-  google.protobuf.Timestamp finished_at = 7;
-  bool has_health = 8;
-  string health = 9;
-  string project = 10;
-  repeated string proxy_urls = 11;
+  // condition: "service_started" | "service_healthy"
+  string condition = 2;
 }
 
-message TaskState {
+message Healthcheck {
+  repeated string test = 1;
+  int64 interval_ms = 2;
+  int64 timeout_ms = 3;
+  int32 retries = 4;
+  int64 start_period_ms = 5;
+}
+
+message Port {
   string name = 1;
-  string command = 2;
-  string working_dir = 3;
-  bool tty = 4;
-  repeated string depends_on = 5;
-  string status = 6;
-  int32 pid = 7;
-  int32 exit_code = 8;
-  google.protobuf.Timestamp started_at = 9;
-  google.protobuf.Timestamp finished_at = 10;
-  string project = 11;
+  int32 port = 2;
 }
 
-message ProjectInfo {
-  string name = 1;
-  string status = 2;
-  string config_path = 3;
-  int32 running_services = 4;
-  int32 total_services = 5;
+message ServiceSpec {
+  string command = 1;
+  string working_dir = 2;
+  string shell = 3;
+  // restart: "no" | "on-failure" | "always"
+  string restart = 4;
+  repeated Dependency depends_on = 5;
+  Healthcheck healthcheck = 6;
+  repeated Port ports = 7;
+  bool tty = 8;
+  // Environment variable names only; values are never exposed.
+  repeated string env_keys = 9;
+  string build_command = 10;
 }
 
-message ServiceStat {
-  string name = 1;
-  string status = 2;
-  int32 pid = 3;
-  int32 pgid = 4;
-  int32 procs = 5;
-  double cpu = 6;
-  uint64 rss_bytes = 7;
-}
-
-message PortBinding {
+message Service {
   string project = 1;
-  string service = 2;
-  int32 pid = 3;
-  string ip = 4;
-  int32 port = 5;
-  string protocol = 6;
-}
-
-message GitRef {
-  string name = 1;
-  string type = 2;
-  bool is_active = 3;
-}
-
-message GitBranch {
-  string name = 1;
-  string hash = 2;
-  bool is_active = 3;
-  bool is_remote = 4;
-  string upstream = 5;
-  int32 ahead = 6;
-  int32 behind = 7;
-}
-
-message GitTag {
-  string name = 1;
-  string hash = 2;
-}
-
-message GitStash {
-  string index = 1;
   string name = 2;
-  string hash = 3;
-  google.protobuf.Timestamp time = 4;
-}
-
-message GitCommit {
-  string hash = 1;
-  string short = 2;
-  string author = 3;
-  string email = 4;
-  google.protobuf.Timestamp time = 5;
-  repeated string parents = 6;
-  string subject = 7;
-  bool head = 8;
-  repeated GitRef refs = 9;
-  int32 additions = 10;
-  int32 deletions = 11;
-  int32 files_changed = 12;
-}
-
-message GitFileChange {
-  string path = 1;
-  string old_path = 2;
+  // status: "stopped" | "waiting" | "building" | "starting" | "running" |
+  //         "stopping" | "backoff" | "exited" | "failed"
   string status = 3;
-  int32 additions = 4;
-  int32 deletions = 5;
-  bool staged = 6;
-  bool unstaged = 7;
-  bool untracked = 8;
+  // health: "" (no healthcheck or not running) | "starting" | "healthy" | "unhealthy"
+  string health = 4;
+  // Last failing probe output while unhealthy.
+  string health_detail = 5;
+  int32 pid = 6;
+  int32 exit_code = 7;
+  int32 restarts = 8;
+  // run is the 1-based run counter of the service; each launch is a new run
+  // with its own log file.
+  int64 run = 9;
+  int64 started_at_unix_ms = 10;
+  int64 finished_at_unix_ms = 11;
+  // Human-readable reason for the current state (e.g. "waiting for db
+  // (service_healthy)", "build failed", "restarting in 4s").
+  string message = 12;
+  repeated string urls = 13;
+  ServiceSpec spec = 14;
+  int64 next_restart_at_unix_ms = 15;
 }
 
-message GitDiffResult {
-  GitCommit commit = 1;
-  repeated GitFileChange files = 2;
-  string diff = 3;
+message TaskSpec {
+  string command = 1;
+  string working_dir = 2;
+  string shell = 3;
+  bool tty = 4;
+  repeated Dependency depends_on = 5;
+  repeated string env_keys = 6;
+}
+
+message Task {
+  string project = 1;
+  string name = 2;
+  // status: "idle" | "waiting" | "running" | "stopping" | "exited" | "failed"
+  string status = 3;
+  int32 pid = 4;
+  int32 exit_code = 5;
+  int64 run = 6;
+  int64 started_at_unix_ms = 7;
+  int64 finished_at_unix_ms = 8;
+  string message = 9;
+  repeated string args = 10;
+  TaskSpec spec = 11;
 }
 
 message GitStatus {
   string project = 1;
-  string branch = 2;
-  string upstream = 3;
-  int32 ahead = 4;
-  int32 behind = 5;
-  int32 staged = 6;
-  int32 dirty = 7;
-  int32 untracked = 8;
-  int32 conflicts = 9;
-  bool is_clean = 10;
-  bool is_repo = 11;
+  bool is_repo = 2;
+  string branch = 3;
+  string upstream = 4;
+  int32 ahead = 5;
+  int32 behind = 6;
+  int32 staged = 7;
+  int32 dirty = 8;
+  int32 untracked = 9;
+  int32 conflicts = 10;
+  bool is_clean = 11;
   string head_hash = 12;
+  // Remote operation in progress: "" | "pull" | "fetch" | "push"
+  string sync_operation = 13;
+  // Incremented whenever the repository changes on disk, so clients can
+  // invalidate cached logs and diffs.
+  int64 change_seq = 14;
+}
+
+message EntityRef {
+  // kind: "project" | "service" | "task" | "git"
+  string kind = 1;
+  string project = 2;
+  string name = 3;
 }
 
 // -----------------------------------------------------------------------------
-// Streaming Messages
+// Watch
 // -----------------------------------------------------------------------------
 
-message LogChunk {
-  string project = 1;
-  string service = 2;
-  string task = 3;
-  repeated string lines = 4;
-  string content = 5;
-  bool rotated = 6;
+message Snapshot {
+  DaemonInfo daemon = 1;
+  repeated Project projects = 2;
+  repeated Service services = 3;
+  repeated Task tasks = 4;
+  repeated GitStatus git = 5;
 }
 
-message TaskOutputChunk {
-  string project = 1;
-  string task = 2;
-  string line = 3;
-  optional int32 exit_code = 4;
-}
-
-message ServiceStateChangedEvent {
-  string project = 1;
-  ServiceState state = 2;
-}
-
-message TaskStateChangedEvent {
-  string project = 1;
-  TaskState state = 2;
-}
-
-message GitChangedEvent {
-  string project = 1;
-}
-
-// GitSyncEvent reports the start and end of a remote git operation
-// (pull, fetch, push) so all connected clients can show progress.
-message GitSyncEvent {
-  string project = 1;
-  string operation = 2; // "pull" | "fetch" | "push"
-  bool running = 3;
-}
-
-message ProjectsChangedEvent {}
-
-message HeartbeatEvent {}
-
-message Event {
-  oneof event {
-    ServiceStateChangedEvent service_state_changed = 1;
-    TaskStateChangedEvent task_state_changed = 2;
-    GitChangedEvent git_changed = 3;
-    ProjectsChangedEvent projects_changed = 4;
-    HeartbeatEvent heartbeat = 5;
-    GitSyncEvent git_sync = 6;
+message Change {
+  oneof change {
+    Project project = 1;
+    Service service = 2;
+    Task task = 3;
+    GitStatus git = 4;
+    EntityRef removed = 5;
+    DaemonInfo daemon = 6;
   }
 }
 
+message WatchRequest {}
+
+message WatchResponse {
+  // revision is monotonically increasing per daemon process. A snapshot
+  // replaces all client state; changes apply on top of the latest snapshot.
+  uint64 revision = 1;
+  oneof event {
+    Snapshot snapshot = 2;
+    Change change = 3;
+    // Sent periodically so clients can detect dead connections.
+    Heartbeat heartbeat = 4;
+  }
+}
+
+message Heartbeat {}
+
+message GetStateRequest {}
+
+message GetStateResponse {
+  uint64 revision = 1;
+  Snapshot snapshot = 2;
+}
+
 // -----------------------------------------------------------------------------
-// Request & Response Payloads
+// Daemon
 // -----------------------------------------------------------------------------
 
-message ListProjectsRequest {}
+message GetDaemonRequest {}
 
-message ListProjectsResponse {
-  repeated ProjectInfo projects = 1;
-}
-
-message StartProjectRequest {
-  string config_path = 1;
-  bool build = 2;
-  string env_file = 3;
-  optional bool remove_orphans = 4;
-}
-
-message StartProjectResponse {}
-
-message StopProjectRequest {
-  string project = 1;
-}
-
-message StopProjectResponse {}
-
-message RemoveProjectRequest {
-  string project = 1;
-}
-
-message RemoveProjectResponse {}
-
-message DaemonStatusRequest {}
-
-message DaemonStatusResponse {
+message GetDaemonResponse {
   DaemonInfo info = 1;
 }
 
@@ -294,19 +269,17 @@ message StopDaemonRequest {}
 message StopDaemonResponse {}
 
 message RestartDaemonRequest {
+  // When false (the default) services keep running and are re-adopted by
+  // the replacement daemon.
   bool restart_services = 1;
 }
 
-message RestartDaemonResponse {
-  // Pid is the process id of the replacement daemon spawned by the old
-  // daemon. Callers use it to wait for the new daemon to take over the
-  // control socket before assuming the restart succeeded.
-  int32 pid = 1;
-}
+message RestartDaemonResponse {}
 
 message GlobalWebConfig {
   string host = 1;
   int32 port = 2;
+  repeated string allowed_hosts = 3;
 }
 
 message GlobalProxyTLSConfig {
@@ -333,6 +306,7 @@ message GetGlobalConfigRequest {}
 
 message GetGlobalConfigResponse {
   GlobalConfig config = 1;
+  string path = 2;
 }
 
 message UpdateGlobalConfigRequest {
@@ -341,17 +315,69 @@ message UpdateGlobalConfigRequest {
 
 message UpdateGlobalConfigResponse {}
 
-message ListServicesRequest {
+// -----------------------------------------------------------------------------
+// Projects
+// -----------------------------------------------------------------------------
+
+message AddProjectRequest {
+  string config_path = 1;
+  // Optional explicit env file; defaults to .env next to the config.
+  string env_file = 2;
+  // Launch environment ("KEY=VALUE") captured from the caller's shell.
+  // Empty means "use the daemon's environment".
+  repeated string env = 3;
+  bool start = 4;
+  bool build = 5;
+}
+
+message AddProjectResponse {
+  Project project = 1;
+}
+
+message StartProjectRequest {
+  string project = 1;
+  // Services to start (plus their depends_on chain). Empty starts all.
+  repeated string services = 2;
+  bool build = 3;
+}
+
+message StartProjectResponse {}
+
+message StopProjectRequest {
   string project = 1;
 }
 
-message ListServicesResponse {
-  repeated ServiceState states = 1;
+message StopProjectResponse {}
+
+message RestartProjectRequest {
+  string project = 1;
 }
+
+message RestartProjectResponse {}
+
+message ReloadProjectRequest {
+  string project = 1;
+  // When set, replaces the project's stored launch environment.
+  repeated string env = 2;
+  bool update_env = 3;
+}
+
+message ReloadProjectResponse {}
+
+message RemoveProjectRequest {
+  string project = 1;
+}
+
+message RemoveProjectResponse {}
+
+// -----------------------------------------------------------------------------
+// Services
+// -----------------------------------------------------------------------------
 
 message StartServiceRequest {
   string project = 1;
   string service = 2;
+  bool build = 3;
 }
 
 message StartServiceResponse {}
@@ -363,37 +389,187 @@ message StopServiceRequest {
 
 message StopServiceResponse {}
 
+message RestartServiceRequest {
+  string project = 1;
+  string service = 2;
+  bool build = 3;
+}
+
+message RestartServiceResponse {}
+
 message KillServiceRequest {
   string project = 1;
   string service = 2;
+  // Signal name (e.g. "SIGKILL", "SIGTERM", "SIGHUP"). Defaults to SIGKILL.
   string signal = 3;
 }
 
 message KillServiceResponse {}
 
-message RestartRequest {
+// -----------------------------------------------------------------------------
+// Tasks
+// -----------------------------------------------------------------------------
+
+message RunTaskRequest {
   string project = 1;
-  string service = 2;
+  string task = 2;
+  repeated string args = 3;
 }
 
-message RestartResponse {}
-
-message TopRequest {
-  string project = 1;
-  string service = 2;
+message RunTaskResponse {
+  int64 run = 1;
 }
 
-message TopResponse {
-  repeated ServiceStat stats = 1;
+message StopTaskRequest {
+  string project = 1;
+  string task = 2;
+}
+
+message StopTaskResponse {}
+
+message KillTaskRequest {
+  string project = 1;
+  string task = 2;
+  string signal = 3;
+}
+
+message KillTaskResponse {}
+
+// -----------------------------------------------------------------------------
+// Logs
+// -----------------------------------------------------------------------------
+
+message LogSource {
+  // kind: "service" | "task"
+  string kind = 1;
+  string name = 2;
 }
 
 message LogsRequest {
   string project = 1;
+  // Sources to read. Empty means every service of the project (merged by
+  // timestamp).
+  repeated LogSource sources = 2;
+  // Which run to read: 0 = current (latest) run, -1 = the run before it, and
+  // so on. Following is only supported for the current run.
+  int64 run_offset = 3;
+  // Number of history lines to send before following (0 = all history of
+  // the run, bounded server-side).
+  int32 tail = 4;
+  // Page backwards: send up to `tail` lines with seq < before_seq of the
+  // single requested source's run. Implies follow = false.
+  uint64 before_seq = 5;
+  bool follow = 6;
+}
+
+message LogLine {
+  LogSource source = 1;
+  int64 run = 2;
+  uint64 seq = 3;
+  int64 ts_unix_nanos = 4;
+  // stream: "stdout" | "stderr" | "system"
+  string stream = 5;
+  string text = 6;
+}
+
+message LogsResponse {
+  repeated LogLine lines = 1;
+  // Set on the first response: true when history before the first returned
+  // line exists (for paging).
+  bool has_more_before = 2;
+  // Set when the stream switched to a new run of a followed source.
+  repeated LogSource new_run = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Attach (interactive sessions)
+// -----------------------------------------------------------------------------
+
+message AttachTarget {
+  // kind: "terminal" (a new or existing project shell) | "task" | "service"
+  string kind = 1;
+  string project = 2;
+  // Task/service name. Empty for terminals.
+  string name = 3;
+  // Existing terminal session id to reattach to. Empty creates a terminal.
+  string session_id = 4;
+}
+
+message AttachRequest {
+  oneof msg {
+    AttachOpen open = 1;
+    bytes input = 2;
+    AttachResize resize = 3;
+    // Close the process's stdin (EOF) for non-TTY sessions.
+    bool close_stdin = 4;
+    // End a terminal session (kills the shell). Other kinds just detach
+    // when the stream ends.
+    bool close = 5;
+  }
+}
+
+message AttachOpen {
+  AttachTarget target = 1;
+  int32 cols = 2;
+  int32 rows = 3;
+}
+
+message AttachResize {
+  int32 cols = 1;
+  int32 rows = 2;
+}
+
+message AttachResponse {
+  oneof msg {
+    AttachReady ready = 1;
+    bytes output = 2;
+    AttachExit exit = 3;
+  }
+}
+
+message AttachReady {
+  string session_id = 1;
+  // True when the target is a TTY (raw keystrokes); false for line-based
+  // stdin (non-TTY tasks/services).
+  bool tty = 2;
+}
+
+message AttachExit {
+  int32 exit_code = 1;
+  string message = 2;
+}
+
+// -----------------------------------------------------------------------------
+// Stats & ports
+// -----------------------------------------------------------------------------
+
+message StatsRequest {
+  string project = 1;
+  int64 interval_ms = 2;
+}
+
+message ProcessStat {
+  // kind: "service" | "task"
+  string kind = 1;
+  string name = 2;
+  int32 pid = 3;
+  int32 procs = 4;
+  double cpu_percent = 5;
+  uint64 rss_bytes = 6;
+}
+
+message StatsResponse {
+  int64 ts_unix_ms = 1;
+  repeated ProcessStat stats = 2;
+}
+
+message PortBinding {
+  string project = 1;
   string service = 2;
-  string task = 3;
-  bool follow = 4;
-  bool previous = 5;
-  int32 tail = 6;
+  int32 pid = 3;
+  string ip = 4;
+  int32 port = 5;
+  string protocol = 6;
 }
 
 message ListPortsRequest {
@@ -404,26 +580,70 @@ message ListPortsResponse {
   repeated PortBinding ports = 1;
 }
 
-message ListTasksRequest {
-  string project = 1;
+// -----------------------------------------------------------------------------
+// Git
+// -----------------------------------------------------------------------------
+
+message GitRef {
+  string name = 1;
+  string type = 2;
+  bool is_active = 3;
 }
 
-message ListTasksResponse {
-  repeated TaskState tasks = 1;
+message GitBranch {
+  string name = 1;
+  string hash = 2;
+  bool is_active = 3;
+  bool is_remote = 4;
+  string upstream = 5;
+  int32 ahead = 6;
+  int32 behind = 7;
 }
 
-message RunTaskRequest {
-  string project = 1;
-  string task = 2;
-  repeated string args = 3;
+message GitTag {
+  string name = 1;
+  string hash = 2;
 }
 
-message StopTaskRequest {
-  string project = 1;
-  string task = 2;
+message GitStash {
+  string index = 1;
+  string name = 2;
+  string hash = 3;
+  int64 time_unix_ms = 4;
 }
 
-message StopTaskResponse {}
+message GitCommit {
+  string hash = 1;
+  string short = 2;
+  string author = 3;
+  string email = 4;
+  int64 time_unix_ms = 5;
+  repeated string parents = 6;
+  string subject = 7;
+  bool head = 8;
+  repeated GitRef refs = 9;
+  int32 additions = 10;
+  int32 deletions = 11;
+  int32 files_changed = 12;
+  string body = 13;
+}
+
+message GitFileChange {
+  string path = 1;
+  string old_path = 2;
+  string status = 3;
+  int32 additions = 4;
+  int32 deletions = 5;
+  bool staged = 6;
+  bool unstaged = 7;
+  bool untracked = 8;
+}
+
+message GitDiffResult {
+  GitCommit commit = 1;
+  repeated GitFileChange files = 2;
+  string diff = 3;
+}
 
 message GitLogRequest {
   string project = 1;
@@ -438,6 +658,7 @@ message GitLogResponse {
 
 message GitDiffRequest {
   string project = 1;
+  // Commit hash, or "WORKDIR" for uncommitted changes.
   string hash = 2;
   string path = 3;
   int32 context_lines = 4;
@@ -447,13 +668,6 @@ message GitDiffResponse {
   GitDiffResult result = 1;
 }
 
-message GitCommitRequest {
-  string project = 1;
-  string message = 2;
-}
-
-message GitCommitResponse {}
-
 message GitStageRequest {
   string project = 1;
   string path = 2;
@@ -462,6 +676,13 @@ message GitStageRequest {
 }
 
 message GitStageResponse {}
+
+message GitCommitRequest {
+  string project = 1;
+  string message = 2;
+}
+
+message GitCommitResponse {}
 
 message GitPushRequest {
   string project = 1;
@@ -486,13 +707,3 @@ message GitFetchRequest {
 message GitFetchResponse {
   string output = 1;
 }
-
-message GitStatusRequest {
-  string project = 1;
-}
-
-message GitStatusResponse {
-  GitStatus status = 1;
-}
-
-message SubscribeEventsRequest {}

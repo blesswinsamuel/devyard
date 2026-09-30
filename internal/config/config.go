@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/blesswinsamuel/devyard/internal/paths"
 )
 
 const DefaultShell = "sh"
@@ -76,6 +79,9 @@ type Healthcheck struct {
 	Interval time.Duration `yaml:"interval,omitempty"`
 	Retries  int           `yaml:"retries,omitempty"`
 	Timeout  time.Duration `yaml:"timeout,omitempty"`
+	// StartPeriod is a grace period after launch during which failing
+	// probes do not count towards Retries (a success still marks healthy).
+	StartPeriod time.Duration `yaml:"start_period,omitempty"`
 }
 
 // DependsOnEntry is the long form of depends_on.
@@ -177,6 +183,9 @@ type Service struct {
 	Port        int               `yaml:"port,omitempty"`
 	Ports       *Ports            `yaml:"ports,omitempty"`
 	Proxy       *ServiceProxy     `yaml:"proxy,omitempty"`
+	// StopGracePeriod is how long stop waits after SIGTERM before SIGKILL
+	// (default 10s).
+	StopGracePeriod time.Duration `yaml:"stop_grace_period,omitempty"`
 }
 
 // DependsOn accepts either a list of service names or a map with conditions.
@@ -225,8 +234,15 @@ type TaskSpec struct {
 	WorkingDir string            `yaml:"working_dir,omitempty"`
 	Env        map[string]string `yaml:"env,omitempty"`
 	Shell      string            `yaml:"shell,omitempty"`
-	TTY        bool              `yaml:"tty,omitempty"`
-	DependsOn  DependsOn         `yaml:"depends_on,omitempty"`
+	// TTY runs the task in a pseudo-terminal so interactive prompts work.
+	// Defaults to true for tasks; set false for plain piped output.
+	TTY       *bool     `yaml:"tty,omitempty"`
+	DependsOn DependsOn `yaml:"depends_on,omitempty"`
+}
+
+// IsTTY reports whether the task runs in a pseudo-terminal (default true).
+func (t TaskSpec) IsTTY() bool {
+	return t.TTY == nil || *t.TTY
 }
 
 // Task accepts either a command string or a TaskSpec object in YAML.
@@ -271,48 +287,58 @@ type File struct {
 	Tasks    map[string]Task    `yaml:"tasks,omitempty"`
 }
 
-// Load reads and validates a config file. Environment variable references in
-// the file (${VAR}, ${VAR:-default}) are interpolated from the process
-// environment before parsing. See Interpolate.
-func Load(path string) (*File, error) {
-	return LoadWithEnv(path, nil)
-}
-
-// LoadWithEnv reads and validates a config file, interpolating environment
-// variable references from dotenv overlaid on the process environment (the
-// process environment wins for duplicate keys). dotenv is typically the
-// variables read from a project .env file.
-func LoadWithEnv(path string, dotenv map[string]string) (*File, error) {
+// Load reads and validates a config file. References to environment
+// variables (${VAR}, ${VAR:-default}) are interpolated from env, which is
+// the project's launch environment with its env file already overlaid (see
+// InterpolationEnv). Warnings (e.g. unset variables) are returned rather than
+// printed so the daemon can surface them.
+func Load(path string, env map[string]string) (*File, []string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
+		return nil, nil, fmt.Errorf("read config: %w", err)
 	}
-	text := Interpolate(string(data), interpolateEnv(dotenv), func(msg string) {
-		fmt.Fprintf(os.Stderr, "devyard: warning: %s\n", msg)
+	var warnings []string
+	text := Interpolate(string(data), env, func(msg string) {
+		warnings = append(warnings, msg)
 	})
 	var file File
 	if err := yaml.Unmarshal([]byte(text), &file); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
+		return nil, warnings, fmt.Errorf("parse config: %w", err)
 	}
 	if err := file.Validate(path); err != nil {
-		return nil, err
+		return nil, warnings, err
 	}
-	return &file, nil
+	return &file, warnings, nil
 }
 
-// interpolateEnv merges dotenv vars with the process environment for
-// interpolation, with the process environment taking precedence.
-func interpolateEnv(dotenv map[string]string) map[string]string {
-	env := make(map[string]string, len(dotenv))
+// EnvMap converts a KEY=VALUE slice into a map (later entries win).
+func EnvMap(env []string) map[string]string {
+	m := make(map[string]string, len(env))
+	for _, kv := range env {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			m[kv[:i]] = kv[i+1:]
+		}
+	}
+	return m
+}
+
+// InterpolationEnv merges env-file variables with the launch environment for
+// ${VAR} interpolation. The launch environment wins for duplicate keys,
+// matching docker compose.
+func InterpolationEnv(launch []string, dotenv map[string]string) map[string]string {
+	env := make(map[string]string, len(launch)+len(dotenv))
 	for k, v := range dotenv {
 		env[k] = v
 	}
-	for _, kv := range os.Environ() {
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			env[kv[:i]] = kv[i+1:]
-		}
+	for k, v := range EnvMap(launch) {
+		env[k] = v
 	}
 	return env
+}
+
+// ID returns the project's id: the slug of its name.
+func (f *File) ID() string {
+	return paths.Slugify(f.Name)
 }
 
 // Validate checks the loaded config and applies defaults.
@@ -325,6 +351,9 @@ func (f *File) Validate(configPath string) error {
 	}
 	if f.Name == "" {
 		f.Name = defaultProjectName(configPath)
+	}
+	if f.ID() == "" {
+		return fmt.Errorf("name %q does not contain any letters or digits", f.Name)
 	}
 	for name, svc := range f.Services {
 		if strings.TrimSpace(svc.Command) == "" {
@@ -379,6 +408,12 @@ func (f *File) Validate(configPath string) error {
 			if svc.Healthcheck.Retries == 0 {
 				svc.Healthcheck.Retries = 3
 			}
+			if svc.Healthcheck.StartPeriod < 0 {
+				return fmt.Errorf("service %q: healthcheck.start_period must not be negative", name)
+			}
+		}
+		if svc.StopGracePeriod < 0 {
+			return fmt.Errorf("service %q: stop_grace_period must not be negative", name)
 		}
 		if svc.Port != 0 && svc.Ports != nil {
 			return fmt.Errorf("service %q: port and ports are mutually exclusive", name)
@@ -519,52 +554,21 @@ func FindConfig(startDir string) (string, error) {
 	return "", fmt.Errorf("devyard.yml not found")
 }
 
-// BuildEnvOver returns base with svcEnv overlaid (additive, matching the
-// service env rule). Keys present in svcEnv replace the corresponding base
-// keys; new keys are appended. base is typically os.Environ() layered with
-// dotenv vars via BaseEnv.
-func BuildEnvOver(base []string, svcEnv map[string]string) []string {
-	if len(svcEnv) == 0 {
-		return base
-	}
-	seen := make(map[string]bool, len(svcEnv))
-	out := make([]string, 0, len(base)+len(svcEnv))
-	for _, kv := range base {
-		k := kv
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			k = kv[:i]
-		}
-		if v, ok := svcEnv[k]; ok {
-			out = append(out, k+"="+v)
-			seen[k] = true
-			continue
-		}
-		out = append(out, kv)
-	}
-	for k, v := range svcEnv {
-		if !seen[k] {
-			out = append(out, k+"="+v)
-		}
-	}
-	return out
-}
-
-// BaseEnv returns an environment slice built from the process environment
-// with dotenv vars overlaid (dotenv wins for duplicate keys). Service and
-// build env is layered on top via BuildEnvOver.
-func BaseEnv(dotenv map[string]string) []string {
-	merged := make(map[string]string, len(dotenv))
-	for _, kv := range os.Environ() {
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			merged[kv[:i]] = kv[i+1:]
-		}
-	}
+// ChildEnv builds a child process environment: the launch environment,
+// overlaid with env-file variables, overlaid with the process's own env map
+// (later layers win).
+func ChildEnv(launch []string, dotenv map[string]string, own map[string]string) []string {
+	merged := EnvMap(launch)
 	for k, v := range dotenv {
+		merged[k] = v
+	}
+	for k, v := range own {
 		merged[k] = v
 	}
 	out := make([]string, 0, len(merged))
 	for k, v := range merged {
 		out = append(out, k+"="+v)
 	}
+	sort.Strings(out)
 	return out
 }

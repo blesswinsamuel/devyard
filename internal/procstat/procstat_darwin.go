@@ -7,13 +7,38 @@ package procstat
 #include <sys/proc.h>
 #include <sys/proc_info.h>
 #include <stdint.h>
+#include <mach/mach_time.h>
+
+static void devyard_timebase(uint32_t *numer, uint32_t *denom) {
+	mach_timebase_info_data_t tb;
+	mach_timebase_info(&tb);
+	*numer = tb.numer;
+	*denom = tb.denom;
+}
 */
 import "C"
 
 import (
+	"sync"
 	"time"
 	"unsafe"
 )
+
+// pti_total_user/system are in Mach absolute time units, which equal
+// nanoseconds on Intel but not on Apple Silicon (numer/denom = 125/3).
+var timebase = sync.OnceValues(func() (uint64, uint64) {
+	var numer, denom C.uint32_t
+	C.devyard_timebase(&numer, &denom)
+	if denom == 0 {
+		return 1, 1
+	}
+	return uint64(numer), uint64(denom)
+})
+
+func machToDuration(ticks uint64) time.Duration {
+	numer, denom := timebase()
+	return time.Duration(ticks / denom * numer)
+}
 
 // processInfo inspects a single process via libproc, returning its process
 // group id and zombie state.
@@ -66,7 +91,7 @@ func sampleGroup(pgid int) (Sample, bool) {
 			continue
 		}
 		s.Procs++
-		s.CPU += time.Duration(uint64(ti.pti_total_user) + uint64(ti.pti_total_system))
+		s.CPU += machToDuration(uint64(ti.pti_total_user) + uint64(ti.pti_total_system))
 		s.RSS += uint64(ti.pti_resident_size)
 	}
 	return s, s.Procs > 0

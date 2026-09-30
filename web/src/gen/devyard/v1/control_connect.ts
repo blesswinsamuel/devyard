@@ -3,62 +3,32 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { DaemonStatusRequest, DaemonStatusResponse, Event, GetGlobalConfigRequest, GetGlobalConfigResponse, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, GitStatusRequest, GitStatusResponse, KillServiceRequest, KillServiceResponse, ListPortsRequest, ListPortsResponse, ListProjectsRequest, ListProjectsResponse, ListServicesRequest, ListServicesResponse, ListTasksRequest, ListTasksResponse, LogChunk, LogsRequest, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartRequest, RestartResponse, RunTaskRequest, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SubscribeEventsRequest, TaskOutputChunk, TopRequest, TopResponse, UpdateGlobalConfigRequest, UpdateGlobalConfigResponse } from "./control_pb.js";
+import { AddProjectRequest, AddProjectResponse, AttachRequest, AttachResponse, GetDaemonRequest, GetDaemonResponse, GetGlobalConfigRequest, GetGlobalConfigResponse, GetStateRequest, GetStateResponse, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, KillTaskRequest, KillTaskResponse, ListPortsRequest, ListPortsResponse, LogsRequest, LogsResponse, ReloadProjectRequest, ReloadProjectResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartProjectRequest, RestartProjectResponse, RestartServiceRequest, RestartServiceResponse, RunTaskRequest, RunTaskResponse, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StatsRequest, StatsResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, UpdateGlobalConfigRequest, UpdateGlobalConfigResponse, WatchRequest, WatchResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
+ * DaemonService is the single control API of the devyard daemon. The CLI
+ * reaches it over the daemon's Unix socket (HTTP/2); the web UI reaches it
+ * over HTTP on the dashboard listener.
+ *
+ * State is observed through Watch (snapshot + revisioned deltas). Mutating
+ * RPCs return once the command has been accepted by the owning actor; the
+ * resulting state transitions arrive through Watch.
+ *
  * @generated from service devyard.v1.DaemonService
  */
 export const DaemonService = {
   typeName: "devyard.v1.DaemonService",
   methods: {
     /**
-     * Project Lifecycle
+     * Daemon
      *
-     * @generated from rpc devyard.v1.DaemonService.ListProjects
+     * @generated from rpc devyard.v1.DaemonService.GetDaemon
      */
-    listProjects: {
-      name: "ListProjects",
-      I: ListProjectsRequest,
-      O: ListProjectsResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc devyard.v1.DaemonService.StartProject
-     */
-    startProject: {
-      name: "StartProject",
-      I: StartProjectRequest,
-      O: StartProjectResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc devyard.v1.DaemonService.StopProject
-     */
-    stopProject: {
-      name: "StopProject",
-      I: StopProjectRequest,
-      O: StopProjectResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc devyard.v1.DaemonService.RemoveProject
-     */
-    removeProject: {
-      name: "RemoveProject",
-      I: RemoveProjectRequest,
-      O: RemoveProjectResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * Daemon Management
-     *
-     * @generated from rpc devyard.v1.DaemonService.DaemonStatus
-     */
-    daemonStatus: {
-      name: "DaemonStatus",
-      I: DaemonStatusRequest,
-      O: DaemonStatusResponse,
+    getDaemon: {
+      name: "GetDaemon",
+      I: GetDaemonRequest,
+      O: GetDaemonResponse,
       kind: MethodKind.Unary,
     },
     /**
@@ -80,8 +50,6 @@ export const DaemonService = {
       kind: MethodKind.Unary,
     },
     /**
-     * Global Settings
-     *
      * @generated from rpc devyard.v1.DaemonService.GetGlobalConfig
      */
     getGlobalConfig: {
@@ -100,17 +68,84 @@ export const DaemonService = {
       kind: MethodKind.Unary,
     },
     /**
-     * Service Management
+     * State observation
      *
-     * @generated from rpc devyard.v1.DaemonService.ListServices
+     * @generated from rpc devyard.v1.DaemonService.Watch
      */
-    listServices: {
-      name: "ListServices",
-      I: ListServicesRequest,
-      O: ListServicesResponse,
+    watch: {
+      name: "Watch",
+      I: WatchRequest,
+      O: WatchResponse,
+      kind: MethodKind.ServerStreaming,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.GetState
+     */
+    getState: {
+      name: "GetState",
+      I: GetStateRequest,
+      O: GetStateResponse,
       kind: MethodKind.Unary,
     },
     /**
+     * Projects
+     *
+     * @generated from rpc devyard.v1.DaemonService.AddProject
+     */
+    addProject: {
+      name: "AddProject",
+      I: AddProjectRequest,
+      O: AddProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.StartProject
+     */
+    startProject: {
+      name: "StartProject",
+      I: StartProjectRequest,
+      O: StartProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.StopProject
+     */
+    stopProject: {
+      name: "StopProject",
+      I: StopProjectRequest,
+      O: StopProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.RestartProject
+     */
+    restartProject: {
+      name: "RestartProject",
+      I: RestartProjectRequest,
+      O: RestartProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.ReloadProject
+     */
+    reloadProject: {
+      name: "ReloadProject",
+      I: ReloadProjectRequest,
+      O: ReloadProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.RemoveProject
+     */
+    removeProject: {
+      name: "RemoveProject",
+      I: RemoveProjectRequest,
+      O: RemoveProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * Services
+     *
      * @generated from rpc devyard.v1.DaemonService.StartService
      */
     startService: {
@@ -129,6 +164,15 @@ export const DaemonService = {
       kind: MethodKind.Unary,
     },
     /**
+     * @generated from rpc devyard.v1.DaemonService.RestartService
+     */
+    restartService: {
+      name: "RestartService",
+      I: RestartServiceRequest,
+      O: RestartServiceResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
      * @generated from rpc devyard.v1.DaemonService.KillService
      */
     killService: {
@@ -138,30 +182,61 @@ export const DaemonService = {
       kind: MethodKind.Unary,
     },
     /**
-     * @generated from rpc devyard.v1.DaemonService.Restart
+     * Tasks
+     *
+     * @generated from rpc devyard.v1.DaemonService.RunTask
      */
-    restart: {
-      name: "Restart",
-      I: RestartRequest,
-      O: RestartResponse,
+    runTask: {
+      name: "RunTask",
+      I: RunTaskRequest,
+      O: RunTaskResponse,
       kind: MethodKind.Unary,
     },
     /**
-     * @generated from rpc devyard.v1.DaemonService.Top
+     * @generated from rpc devyard.v1.DaemonService.StopTask
      */
-    top: {
-      name: "Top",
-      I: TopRequest,
-      O: TopResponse,
+    stopTask: {
+      name: "StopTask",
+      I: StopTaskRequest,
+      O: StopTaskResponse,
       kind: MethodKind.Unary,
     },
     /**
+     * @generated from rpc devyard.v1.DaemonService.KillTask
+     */
+    killTask: {
+      name: "KillTask",
+      I: KillTaskRequest,
+      O: KillTaskResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * Output, sessions, metrics
+     *
      * @generated from rpc devyard.v1.DaemonService.Logs
      */
     logs: {
       name: "Logs",
       I: LogsRequest,
-      O: LogChunk,
+      O: LogsResponse,
+      kind: MethodKind.ServerStreaming,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.Attach
+     */
+    attach: {
+      name: "Attach",
+      I: AttachRequest,
+      O: AttachResponse,
+      kind: MethodKind.BiDiStreaming,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.Stats
+     */
+    stats: {
+      name: "Stats",
+      I: StatsRequest,
+      O: StatsResponse,
       kind: MethodKind.ServerStreaming,
     },
     /**
@@ -174,36 +249,7 @@ export const DaemonService = {
       kind: MethodKind.Unary,
     },
     /**
-     * Tasks
-     *
-     * @generated from rpc devyard.v1.DaemonService.ListTasks
-     */
-    listTasks: {
-      name: "ListTasks",
-      I: ListTasksRequest,
-      O: ListTasksResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc devyard.v1.DaemonService.RunTask
-     */
-    runTask: {
-      name: "RunTask",
-      I: RunTaskRequest,
-      O: TaskOutputChunk,
-      kind: MethodKind.ServerStreaming,
-    },
-    /**
-     * @generated from rpc devyard.v1.DaemonService.StopTask
-     */
-    stopTask: {
-      name: "StopTask",
-      I: StopTaskRequest,
-      O: StopTaskResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * Git Operations
+     * Git
      *
      * @generated from rpc devyard.v1.DaemonService.GitLog
      */
@@ -223,21 +269,21 @@ export const DaemonService = {
       kind: MethodKind.Unary,
     },
     /**
-     * @generated from rpc devyard.v1.DaemonService.GitCommit
-     */
-    gitCommit: {
-      name: "GitCommit",
-      I: GitCommitRequest,
-      O: GitCommitResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
      * @generated from rpc devyard.v1.DaemonService.GitStage
      */
     gitStage: {
       name: "GitStage",
       I: GitStageRequest,
       O: GitStageResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.GitCommit
+     */
+    gitCommit: {
+      name: "GitCommit",
+      I: GitCommitRequest,
+      O: GitCommitResponse,
       kind: MethodKind.Unary,
     },
     /**
@@ -266,26 +312,6 @@ export const DaemonService = {
       I: GitFetchRequest,
       O: GitFetchResponse,
       kind: MethodKind.Unary,
-    },
-    /**
-     * @generated from rpc devyard.v1.DaemonService.GitStatus
-     */
-    gitStatus: {
-      name: "GitStatus",
-      I: GitStatusRequest,
-      O: GitStatusResponse,
-      kind: MethodKind.Unary,
-    },
-    /**
-     * Real-time Event Subscription
-     *
-     * @generated from rpc devyard.v1.DaemonService.SubscribeEvents
-     */
-    subscribeEvents: {
-      name: "SubscribeEvents",
-      I: SubscribeEventsRequest,
-      O: Event,
-      kind: MethodKind.ServerStreaming,
     },
   }
 } as const;

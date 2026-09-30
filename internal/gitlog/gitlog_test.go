@@ -1,6 +1,7 @@
 package gitlog
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +47,30 @@ func initRepo(t *testing.T) string {
 	return dir
 }
 
+// TestMain isolates git from the developer's global and system config (a
+// user-level push.autoSetupRemote, for example, changes push semantics).
+func TestMain(m *testing.M) {
+	home, err := os.MkdirTemp("", "gitlog-home")
+	if err != nil {
+		panic(err)
+	}
+	gitconfig := filepath.Join(home, "gitconfig")
+	if err := os.WriteFile(gitconfig, []byte("[user]\n\tname = Test\n\temail = test@example.com\n[init]\n\tdefaultBranch = main\n"), 0o644); err != nil {
+		panic(err)
+	}
+	for k, v := range map[string]string{
+		"HOME":                home,
+		"GIT_CONFIG_GLOBAL":   gitconfig,
+		"GIT_CONFIG_NOSYSTEM": "1",
+		"GIT_TERMINAL_PROMPT": "0",
+	} {
+		_ = os.Setenv(k, v)
+	}
+	code := m.Run()
+	_ = os.RemoveAll(home)
+	os.Exit(code)
+}
+
 func TestLog(t *testing.T) {
 	dir := initRepo(t)
 	if !IsRepo(dir) {
@@ -76,7 +101,7 @@ func TestLog(t *testing.T) {
 	if commits[0].Author != "Test Author" || commits[0].Email != "test@example.com" {
 		t.Fatalf("unexpected author: %+v", commits[0])
 	}
-	if commits[0].Time == nil {
+	if commits[0].TimeUnixMs == 0 {
 		t.Fatalf("expected commit time, got nil")
 	}
 	if !commits[0].Head {
@@ -278,13 +303,13 @@ func TestPushPullFetch(t *testing.T) {
 	runIn("remote", "add", "origin", remote)
 
 	// Push without an upstream should fail with useful guidance.
-	if _, err := Push(dir, ""); err == nil {
+	if _, err := Push(context.Background(), dir, ""); err == nil {
 		t.Fatalf("Push with no upstream: expected error, got nil")
 	}
 
 	// Set upstream and push.
 	runIn("push", "-u", "origin", "main")
-	output, err := Push(dir, "origin")
+	output, err := Push(context.Background(), dir, "origin")
 	if err != nil {
 		t.Fatalf("Push: %v (output: %s)", err, output)
 	}
@@ -313,13 +338,13 @@ func TestPushPullFetch(t *testing.T) {
 	writeAndCommit(clone, "c.txt", "clone commit")
 
 	// Fetch should bring the new refs into dir without touching the worktree.
-	fetched, err := Fetch(dir, "")
+	fetched, err := Fetch(context.Background(), dir, "")
 	if err != nil {
 		t.Fatalf("Fetch: %v (output: %s)", err, fetched)
 	}
 
 	// Pull should fast-forward dir's main to the clone's commit.
-	pulled, err := Pull(dir, "")
+	pulled, err := Pull(context.Background(), dir, "")
 	if err != nil {
 		t.Fatalf("Pull: %v (output: %s)", err, pulled)
 	}
@@ -339,13 +364,13 @@ func TestPushPullFetch(t *testing.T) {
 
 func TestPushPullFetchNotARepo(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Push(dir, ""); err == nil {
+	if _, err := Push(context.Background(), dir, ""); err == nil {
 		t.Fatalf("Push on non-repo: expected error, got nil")
 	}
-	if _, err := Pull(dir, ""); err == nil {
+	if _, err := Pull(context.Background(), dir, ""); err == nil {
 		t.Fatalf("Pull on non-repo: expected error, got nil")
 	}
-	if _, err := Fetch(dir, ""); err == nil {
+	if _, err := Fetch(context.Background(), dir, ""); err == nil {
 		t.Fatalf("Fetch on non-repo: expected error, got nil")
 	}
 }

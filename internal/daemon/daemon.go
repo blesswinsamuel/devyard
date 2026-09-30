@@ -3,223 +3,382 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
+	"net/http"
 	"os"
-	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
-	"strings"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/blesswinsamuel/devyard/internal/project"
+	"github.com/blesswinsamuel/devyard/internal/api"
+	"github.com/blesswinsamuel/devyard/internal/engine"
+	"github.com/blesswinsamuel/devyard/internal/events"
+	pb "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
+	"github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1/devyardv1connect"
+	"github.com/blesswinsamuel/devyard/internal/gitstate"
+	"github.com/blesswinsamuel/devyard/internal/globalconfig"
+	"github.com/blesswinsamuel/devyard/internal/paths"
+	"github.com/blesswinsamuel/devyard/internal/procstat"
+	"github.com/blesswinsamuel/devyard/internal/proxy"
+	"github.com/blesswinsamuel/devyard/internal/runner"
+	"github.com/blesswinsamuel/devyard/internal/sessions"
+	"github.com/blesswinsamuel/devyard/internal/web"
 )
 
-// DaemonFlag is the hidden flag the global daemon child is invoked with. The
-// CLI root command handles it by running the global daemon (orchestrator)
-// instead of dispatching a normal subcommand.
-const DaemonFlag = "--daemon"
-
-// WritePidfile writes pid (followed by a newline) to path with 0o644 perms.
-func WritePidfile(path string, pid int) error {
-	return writePidfile(path, pid)
+// Options configure Run.
+type Options struct {
+	Version string
+	// LockWait is how long to wait for a previous daemon to release the
+	// lock (during a restart handover).
+	LockWait time.Duration
 }
 
-// writePidfile writes pid (followed by a newline) to path with 0o644 perms.
-func writePidfile(path string, pid int) error {
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)+"\n"), 0o644)
+type exitMode int
+
+const (
+	exitDetach  exitMode = iota // leave services running (signal)
+	exitStop                    // stop services, then exit
+	exitRestart                 // hand over to a new daemon
+)
+
+type daemon struct {
+	opts    Options
+	dirs    paths.Dirs
+	log     *slog.Logger
+	started time.Time
+
+	mgr *engine.Manager
+	bus *events.Bus
+
+	gcfgMu sync.Mutex
+	gcfg   *globalconfig.Config
+
+	webAddr, proxyAddr, proxyTLSAddr string
+
+	exitOnce        sync.Once
+	exitCh          chan exitMode
+	restartServices bool
 }
 
-// LockFilePath returns the path to the daemon lock file.
-func LockFilePath(locs *project.DaemonLocations) string {
-	return filepath.Join(locs.Runtime, "daemon.lock")
-}
-
-// lockAcquireTimeout bounds how long LockDaemon waits for the previous daemon
-// to release its lock. It must comfortably exceed DefaultGracefulStopTimeout
-// (20s) so a replacement daemon never gives up while the old one is still
-// gracefully stopping services.
-const lockAcquireTimeout = 30 * time.Second
-
-// LockDaemon attempts to acquire an exclusive non-blocking flock on the daemon lock file.
-// It returns the open *os.File holding the lock, which must remain open for the duration
-// of the daemon process.
-func LockDaemon(locs *project.DaemonLocations) (*os.File, error) {
-	if locs == nil {
-		return nil, errors.New("daemon: DaemonLocations is required")
-	}
-	if err := locs.MkdirAll(); err != nil {
-		return nil, err
-	}
-	lockPath := LockFilePath(locs)
-	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("daemon: open lock file: %w", err)
-	}
-
-	deadline := time.Now().Add(lockAcquireTimeout)
-	for {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			return f, nil
+// Run runs the daemon until it is asked to stop.
+func Run(opts Options) (err error) {
+	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	slog.SetDefault(log)
+	defer func() {
+		if err != nil {
+			log.Error("daemon failed", "error", err)
 		}
-		if (errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)) && time.Now().Before(deadline) {
-			time.Sleep(50 * time.Millisecond)
-			continue
+	}()
+	if opts.LockWait == 0 {
+		opts.LockWait = 30 * time.Second
+	}
+	dirs, err := paths.Default()
+	if err != nil {
+		return err
+	}
+	lockFile, err := lock(dirs, opts.LockWait)
+	if err != nil {
+		return err
+	}
+	lockReleased := false
+	releaseLock := func() {
+		if !lockReleased {
+			lockReleased = true
+			removePidIfOurs(dirs)
+			_ = lockFile.Close()
 		}
-		_ = f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
-			return nil, errors.New("another daemon process is already running")
+	}
+	defer releaseLock()
+	if err := writePid(dirs); err != nil {
+		return fmt.Errorf("daemon: write pidfile: %w", err)
+	}
+
+	gcfg, err := globalconfig.Load(dirs.GlobalConfig(), os.Stderr)
+	if err != nil {
+		return err
+	}
+	d := &daemon{
+		opts:    opts,
+		dirs:    dirs,
+		log:     log,
+		started: time.Now(),
+		bus:     events.New(),
+		gcfg:    gcfg,
+		exitCh:  make(chan exitMode, 1),
+	}
+	log.Info("daemon starting", "pid", os.Getpid(), "version", opts.Version, "config", gcfg.String())
+
+	// Bind every listener before touching projects so a port collision is
+	// reported immediately and URLs are known when services are published.
+	_ = os.Remove(dirs.Socket())
+	ctlLn, err := net.Listen("unix", dirs.Socket())
+	if err != nil {
+		return fmt.Errorf("daemon: listen %s: %w", dirs.Socket(), err)
+	}
+	_ = os.Chmod(dirs.Socket(), 0o600)
+	webLn, err := net.Listen("tcp", net.JoinHostPort(gcfg.Web.Host, strconv.Itoa(gcfg.Web.Port)))
+	if err != nil {
+		_ = ctlLn.Close()
+		return fmt.Errorf("daemon: web dashboard: listen %s:%d: %w", gcfg.Web.Host, gcfg.Web.Port, err)
+	}
+	d.webAddr = webLn.Addr().String()
+
+	git, err := gitstate.New(d.bus, log)
+	if err != nil {
+		_ = ctlLn.Close()
+		_ = webLn.Close()
+		return err
+	}
+	defer git.Close()
+
+	var mgr *engine.Manager
+	resolver := &lateRoutes{}
+	psrv, err := d.startProxy(resolver)
+	if err != nil {
+		_ = ctlLn.Close()
+		_ = webLn.Close()
+		return err
+	}
+	d.proxyAddr = psrv.Addr()
+	if gcfg.Proxy.TLS.Enabled {
+		d.proxyTLSAddr = psrv.TLSAddr()
+	}
+
+	presenter := newPresenter(d.bus, git, d.urlConfig())
+	mgr = engine.NewManager(dirs, engine.RunnerLauncher{}, presenter, log)
+	d.mgr = mgr
+	resolver.set(routes{mgr: mgr, bus: d.bus})
+	d.bus.SetDaemon(d.staticInfo())
+	if err := mgr.Load(); err != nil {
+		log.Error("loading projects failed", "error", err)
+	}
+	sess := sessions.New(dirs, mgr, runner.LaunchOptions{})
+
+	apiServer := &api.Server{Mgr: mgr, Bus: d.bus, Git: git, Sessions: sess, Daemon: d, Log: log}
+	path, apiHandler := devyardv1connect.NewDaemonServiceHandler(apiServer)
+	apiMux := http.NewServeMux()
+	apiMux.Handle(path, apiHandler)
+
+	// The control socket speaks unencrypted HTTP/2 so the CLI can use
+	// bidirectional streams (Attach).
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	ctlSrv := &http.Server{Handler: apiMux, Protocols: protocols}
+	go func() { _ = ctlSrv.Serve(ctlLn) }()
+
+	dashboard := web.Handler(web.Options{API: apiMux, Sessions: sess, Hosts: d.hostPolicy, Log: log})
+	webSrv := &http.Server{Handler: dashboard, ReadHeaderTimeout: 10 * time.Second}
+	go func() { _ = webSrv.Serve(webLn) }()
+	resolver.setDashboard(dashboard)
+
+	log.Info("daemon ready", "socket", dirs.Socket(), "web", d.webAddr, "proxy", d.proxyAddr)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	var mode exitMode
+	select {
+	case mode = <-d.exitCh:
+	case sig := <-sigCh:
+		log.Info("signal received; exiting and leaving services running", "signal", sig.String())
+		mode = exitDetach
+	}
+
+	// Let the RPC that requested the exit finish its response.
+	time.Sleep(100 * time.Millisecond)
+	stopServices := mode == exitStop || (mode == exitRestart && d.restartServices)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if err := mgr.Shutdown(shutdownCtx, stopServices); err != nil {
+		log.Error("shutdown", "error", err)
+	}
+	closeCtx, cancelClose := context.WithTimeout(context.Background(), 2*time.Second)
+	_ = ctlSrv.Shutdown(closeCtx)
+	_ = webSrv.Shutdown(closeCtx)
+	cancelClose()
+	_ = ctlSrv.Close()
+	_ = webSrv.Close()
+	_ = psrv.Close()
+	_ = os.Remove(dirs.Socket())
+	releaseLock()
+
+	if mode == exitRestart {
+		pid, err := Spawn(dirs, os.Environ())
+		if err != nil {
+			return fmt.Errorf("daemon: spawn replacement: %w", err)
 		}
-		return nil, fmt.Errorf("daemon: flock lock file: %w", err)
+		log.Info("handed over to replacement daemon", "pid", pid)
 	}
+	log.Info("daemon exited")
+	return nil
 }
 
-// ReadPidfile reads and parses the pidfile at path. It returns the pid and an
-// error if the file is missing or malformed.
-func ReadPidfile(path string) (int, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-	s := strings.TrimSpace(string(data))
-	if s == "" {
-		return 0, errors.New("daemon: empty pidfile")
-	}
-	pid, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, fmt.Errorf("daemon: parse pidfile %q: %w", s, err)
-	}
-	if pid <= 0 {
-		return 0, fmt.Errorf("daemon: invalid pid %d", pid)
-	}
-	return pid, nil
+// lateRoutes lets the proxy start before the manager exists.
+type lateRoutes struct {
+	mu        sync.RWMutex
+	r         proxy.Resolver
+	dashboard http.Handler
 }
 
-// IsAlive reports whether pid names a running process. A pid is considered
-// alive if kill(pid, 0) succeeds or fails with EPERM (the process exists but
-// belongs to another user). ESRCH (no such process) means dead.
-func IsAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	if err == nil {
-		return true
-	}
-	if errors.Is(err, syscall.EPERM) {
-		return true
-	}
-	return false
+func (l *lateRoutes) set(r proxy.Resolver) {
+	l.mu.Lock()
+	l.r = r
+	l.mu.Unlock()
 }
 
-// SpawnDaemon re-execs the current binary as a daemonized global daemon: a
-// new session leader (setsid) detached from the controlling terminal, with
-// stdio repointed at the daemon log file. It writes the child's pidfile and
-// returns the child's pid.
-func SpawnDaemon(locs *project.DaemonLocations) (int, error) {
-	if locs == nil {
-		return 0, errors.New("daemon: DaemonLocations is required")
-	}
-
-	self, err := os.Executable()
-	if err != nil {
-		return 0, fmt.Errorf("daemon: resolve executable: %w", err)
-	}
-
-	if err := locs.MkdirAll(); err != nil {
-		return 0, err
-	}
-
-	logFile, err := os.OpenFile(locs.LogFile,
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return 0, fmt.Errorf("daemon: open daemon log: %w", err)
-	}
-	defer func() { _ = logFile.Close() }()
-
-	cmd := exec.Command(self, DaemonFlag)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Stdin = nil
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.Env = os.Environ()
-
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("daemon: start daemon: %w", err)
-	}
-	pid := cmd.Process.Pid
-
-	if err := cmd.Process.Release(); err != nil {
-		return pid, fmt.Errorf("daemon: release daemon: %w", err)
-	}
-
-	if err := writePidfile(locs.Pidfile, pid); err != nil {
-		return pid, err
-	}
-	return pid, nil
+func (l *lateRoutes) setDashboard(h http.Handler) {
+	l.mu.Lock()
+	l.dashboard = h
+	l.mu.Unlock()
 }
 
-// IsSocketResponsive checks if a Unix domain socket at path is actively accepting connections.
-func IsSocketResponsive(path string, timeout time.Duration) bool {
-	if path == "" {
-		return false
-	}
-	conn, err := net.DialTimeout("unix", path, timeout)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-	return true
-}
-
-// DaemonRunning returns the pid of an existing global daemon, or 0 if none is
-// running. A stale pidfile (dead pid or unreachable socket) is treated as "not running".
-func DaemonRunning(locs *project.DaemonLocations) (int, error) {
-	if locs == nil {
-		return 0, nil
-	}
-	pid, err := ReadPidfile(locs.Pidfile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	if !IsAlive(pid) {
-		return 0, nil
-	}
-	if locs.Socket != "" && !IsSocketResponsive(locs.Socket, 200*time.Millisecond) {
-		return 0, nil
-	}
-	return pid, nil
-}
-
-// RemoveDaemonPidfile removes the daemon pidfile, ignoring "not exist" errors.
-func RemoveDaemonPidfile(locs *project.DaemonLocations) error {
-	err := os.Remove(locs.Pidfile)
-	if os.IsNotExist(err) {
+func (l *lateRoutes) ProxyRoutes() []proxy.Route {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	if l.r == nil {
 		return nil
 	}
-	return err
+	return l.r.ProxyRoutes()
 }
 
-// RemovePidfileIfOurs removes the pidfile only when it still contains our own
-// pid. During a daemon restart the replacement daemon may have already
-// written its own pid to the pidfile by the time the old daemon exits; the
-// old daemon must not delete it.
-func RemovePidfileIfOurs(locs *project.DaemonLocations, pid int) error {
-	if pid <= 0 {
-		return nil
+func (l *lateRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	l.mu.RLock()
+	h := l.dashboard
+	l.mu.RUnlock()
+	if h == nil {
+		http.Error(w, "devyard: starting", http.StatusServiceUnavailable)
+		return
 	}
-	stored, err := ReadPidfile(locs.Pidfile)
-	if err != nil {
-		return nil
-	}
-	if stored != pid {
-		return nil
-	}
-	return os.Remove(locs.Pidfile)
+	h.ServeHTTP(w, r)
 }
+
+func (d *daemon) startProxy(resolver *lateRoutes) (*proxy.Server, error) {
+	cfg := d.gcfg.Proxy
+	opts := proxy.ServerOptions{
+		Addr:             net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		DomainSuffix:     cfg.DomainSuffix,
+		Resolver:         resolver,
+		DashboardHandler: resolver,
+	}
+	if cfg.TLS.Enabled {
+		cm, err := proxy.NewCertManager(proxy.CertManagerOptions{
+			CertFile: cfg.TLS.CertFile,
+			KeyFile:  cfg.TLS.KeyFile,
+			CADir:    filepath.Join(d.dirs.State, "ca"),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("daemon: proxy tls: %w", err)
+		}
+		opts.TLS = proxy.TLSOptions{
+			Enabled:      true,
+			Addr:         net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.EffectiveTLSPort())),
+			TLSConfig:    cm.TLSConfig(),
+			HTTPRedirect: cfg.TLS.HTTPRedirect,
+		}
+	}
+	srv := proxy.NewServer(opts)
+	if err := srv.ListenAndServe(); err != nil {
+		return nil, fmt.Errorf("daemon: reverse proxy: %w", err)
+	}
+	return srv, nil
+}
+
+func portOf(addr string) int {
+	_, p, err := net.SplitHostPort(addr)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(p)
+	return n
+}
+
+func (d *daemon) urlConfig() urlConfig {
+	u := urlConfig{Suffix: d.gcfg.Proxy.DomainSuffix, Port: portOf(d.proxyAddr)}
+	if d.gcfg.Proxy.TLS.Enabled {
+		u.TLS = true
+		u.Port = portOf(d.proxyTLSAddr)
+	}
+	return u
+}
+
+func (d *daemon) hostPolicy() web.HostPolicy {
+	d.gcfgMu.Lock()
+	defer d.gcfgMu.Unlock()
+	return web.HostPolicy{DomainSuffix: d.gcfg.Proxy.DomainSuffix, Extra: d.gcfg.Web.AllowedHosts}
+}
+
+func (d *daemon) staticInfo() *pb.DaemonInfo {
+	return &pb.DaemonInfo{
+		Pid:             int32(os.Getpid()),
+		StartedAtUnixMs: d.started.UnixMilli(),
+		Version:         d.opts.Version,
+		GoVersion:       runtime.Version(),
+		WebAddr:         d.webAddr,
+		ProxyAddr:       d.proxyAddr,
+		ProxyTlsAddr:    d.proxyTLSAddr,
+		DomainSuffix:    d.gcfg.Proxy.DomainSuffix,
+		Draining:        d.mgr != nil && d.mgr.Draining(),
+	}
+}
+
+// --- api.Daemon ----------------------------------------------------------------
+
+// Info implements api.Daemon.
+func (d *daemon) Info() *pb.DaemonInfo {
+	info := d.staticInfo()
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	info.Goroutines = int32(runtime.NumGoroutine())
+	info.MemoryHeap = ms.HeapAlloc
+	if s, ok := procstat.SampleGroup(syscall.Getpgrp()); ok {
+		info.MemoryRss = s.RSS
+	}
+	return info
+}
+
+func (d *daemon) requestExit(mode exitMode) {
+	d.exitOnce.Do(func() {
+		d.bus.SetDaemon(func() *pb.DaemonInfo { i := d.staticInfo(); i.Draining = true; return i }())
+		d.exitCh <- mode
+	})
+}
+
+// RequestStop implements api.Daemon.
+func (d *daemon) RequestStop() { d.requestExit(exitStop) }
+
+// RequestRestart implements api.Daemon.
+func (d *daemon) RequestRestart(restartServices bool) {
+	d.restartServices = restartServices
+	d.requestExit(exitRestart)
+}
+
+// GlobalConfig implements api.Daemon.
+func (d *daemon) GlobalConfig() (*globalconfig.Config, string, error) {
+	cfg, err := globalconfig.Load(d.dirs.GlobalConfig(), nil)
+	return cfg, d.dirs.GlobalConfig(), err
+}
+
+// SaveGlobalConfig implements api.Daemon. Listener changes apply after a
+// daemon restart; allowed hosts apply immediately.
+func (d *daemon) SaveGlobalConfig(cfg *globalconfig.Config) error {
+	if err := globalconfig.Save(d.dirs.GlobalConfig(), cfg); err != nil {
+		return err
+	}
+	d.gcfgMu.Lock()
+	d.gcfg.Web.AllowedHosts = cfg.Web.AllowedHosts
+	d.gcfgMu.Unlock()
+	return nil
+}
+
+var _ api.Daemon = (*daemon)(nil)
+
+// ErrNotRunning is returned by clients when no daemon answers.
+var ErrNotRunning = errors.New("no daemon running")

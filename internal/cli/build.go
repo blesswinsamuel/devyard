@@ -1,117 +1,93 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/blesswinsamuel/devyard/internal/config"
+	"github.com/blesswinsamuel/devyard/internal/dag"
 	"github.com/blesswinsamuel/devyard/internal/ui"
 )
 
-func newBuildCmd(ctx *CLIContext) *cobra.Command {
-	return newServiceBuildCmd(ctx)
-}
-
-// runAllBuilds runs the build step for every service (in start order) that
-// declares one. It's the entry point used by `up --build`.
-func runAllBuilds(cfg *loadedConfig) error {
-	return runBuilds(cfg, cfg.Order...)
-}
-
-// runBuilds runs the build step for the named services (or all, in start
-// order, when names is empty). Services without a build spec are skipped. A
-// failed build aborts the run and returns its error so `up --build` doesn't
-// start services on top of a broken build.
-func runBuilds(cfg *loadedConfig, names ...string) error {
-	if len(names) == 0 {
-		names = cfg.Order
+func newBuildCmd(c *Context) *cobra.Command {
+	return &cobra.Command{
+		Use:   "build [service...]",
+		Short: "Run build steps in the foreground (all services with a build, in dependency order)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lc, err := c.loadLocalConfig()
+			if err != nil {
+				return err
+			}
+			return c.runBuilds(lc, args)
+		},
 	}
-	for _, name := range names {
-		svc, ok := cfg.File.Services[name]
+}
+
+// runBuilds runs build commands locally, in the current environment, each
+// in its own process group. The first failure aborts.
+func (c *Context) runBuilds(lc *localConfig, names []string) error {
+	order := names
+	if len(order) == 0 {
+		deps := map[string][]string{}
+		for name, svc := range lc.File.Services {
+			deps[name] = svc.DependsOn.Order
+		}
+		g, err := dag.New(deps)
+		if err != nil {
+			return err
+		}
+		if order, err = g.Order(); err != nil {
+			return err
+		}
+	}
+	_, dotenv, err := config.ResolveDotEnv(lc.Path, c.EnvFile)
+	if err != nil {
+		return err
+	}
+	base := filepath.Dir(lc.Path)
+	built := 0
+	for _, name := range order {
+		svc, ok := lc.File.Services[name]
 		if !ok {
-			return fmt.Errorf("build: unknown service %q", name)
+			return fmt.Errorf("unknown service %q", name)
 		}
 		if svc.Build == nil {
+			if len(names) > 0 {
+				c.Errorf("devyard: %s has no build step\n", name)
+			}
 			continue
 		}
-		if err := runOneBuild(cfg, name, svc.Build.Spec); err != nil {
-			return fmt.Errorf("build %q: %w", name, err)
+		b := svc.Build.Spec
+		dir := b.WorkingDir
+		if dir == "" {
+			dir = base
+		} else if !filepath.IsAbs(dir) {
+			dir = filepath.Join(base, dir)
 		}
+		c.Errorf("%s │ %s\n", ui.ServicePrefix(name), ui.Dim("$ "+b.Command))
+		cmd := exec.Command(b.Shell, "-c", b.Command)
+		cmd.Dir = dir
+		cmd.Env = config.ChildEnv(os.Environ(), dotenv, b.Env)
+		cmd.Stdout = c.Out
+		cmd.Stderr = c.Err
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := cmd.Run(); err != nil {
+			var exit *exec.ExitError
+			if errors.As(err, &exit) {
+				return fmt.Errorf("build of %s failed with exit code %d", name, exit.ExitCode())
+			}
+			return fmt.Errorf("build of %s: %w", name, err)
+		}
+		built++
+	}
+	if built == 0 && len(names) == 0 {
+		c.Errorf("devyard: no service defines a build step\n")
 	}
 	return nil
-}
-
-// runOneBuild executes a single service's build spec: the command (run via the
-// configured shell), with the spec's env layered over the parent env and the
-// working_dir resolved against the config base dir. stdout/stderr stream to
-// the terminal with a colored-ish prefix so multi-service builds stay legible.
-func runOneBuild(cfg *loadedConfig, name string, spec config.BuildSpec) error {
-	shell := spec.Shell
-	if shell == "" {
-		shell = config.DefaultShell
-	}
-	dir := spec.WorkingDir
-	if dir != "" && !filepath.IsAbs(dir) {
-		dir = filepath.Join(cfg.BaseDir, dir)
-	}
-
-	fmt.Fprintf(os.Stderr, "devyard: building %q\n", name)
-	stdout := prefixWriter(name, os.Stdout)
-	_, _ = fmt.Fprintf(stdout, "$ %s\n", spec.Command)
-	cmd := exec.Command(shell, "-c", spec.Command)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	cmd.Env = config.BuildEnvOver(config.BaseEnv(cfg.DotEnv), spec.Env)
-	cmd.Stdout = stdout
-	cmd.Stderr = prefixWriter(name, os.Stderr)
-	return cmd.Run()
-}
-
-// prefixWriter wraps a writer so each line written through it gets a service
-// prefix, mirroring the supervisor's foreground log prefixing for builds.
-func prefixWriter(name string, w io.Writer) io.Writer {
-	return &linePrefixer{w: w, prefix: ui.ServicePrefix(name) + " │ "}
-}
-
-// linePrefixer inserts prefix at the start of each line. It buffers a partial
-// trailing line until the next newline so multi-write lines stay prefixed
-// exactly once.
-type linePrefixer struct {
-	w       io.Writer
-	prefix  string
-	pending bool
-}
-
-func (p *linePrefixer) Write(buf []byte) (int, error) {
-	total := 0
-	for len(buf) > 0 {
-		if !p.pending {
-			if _, err := io.WriteString(p.w, p.prefix); err != nil {
-				return total, err
-			}
-			p.pending = true
-		}
-		i := strings.IndexByte(string(buf), '\n')
-		if i < 0 {
-			n, err := p.w.Write(buf)
-			total += n
-			return total, err
-		}
-		cleaned := ui.CleanLogLine(string(buf[:i]))
-		n, err := io.WriteString(p.w, cleaned+"\n")
-		total += n
-		if err != nil {
-			return total, err
-		}
-		p.pending = false
-		buf = buf[i+1:]
-	}
-	return total, nil
 }

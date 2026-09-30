@@ -20,8 +20,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/blesswinsamuel/devyard/internal/project"
 )
 
 // CertManager manages TLS certificates for the reverse proxy. It supports:
@@ -42,7 +40,7 @@ type CertManager struct {
 type CertManagerOptions struct {
 	CertFile string
 	KeyFile  string
-	CADir    string // Directory to store devyard's CA if mkcert is not present. If empty, derived via project.ResolveDaemon().
+	CADir    string // Directory to store devyard's CA if mkcert is not present (required).
 }
 
 // NewCertManager creates a new certificate manager.
@@ -73,11 +71,7 @@ func NewCertManager(opts CertManagerOptions) (*CertManager, error) {
 	// Otherwise, use/generate devyard's internal Root CA.
 	caDir := opts.CADir
 	if caDir == "" {
-		if locs, err := project.ResolveDaemon(); err == nil {
-			caDir = filepath.Join(locs.State, "ca")
-		} else {
-			caDir = filepath.Join(os.TempDir(), "devyard", "ca")
-		}
+		return nil, fmt.Errorf("proxy: CADir is required")
 	}
 
 	cert, key, caPath, err := ensureDevyardCA(caDir)

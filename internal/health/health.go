@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -58,6 +59,9 @@ type Config struct {
 	WorkingDir string
 	// Env is the probe process's environment (optional; nil inherits parent).
 	Env []string
+	// StartPeriod is a grace period after EnsureStarted during which failing
+	// probes do not count towards Retries. A success ends it early.
+	StartPeriod time.Duration
 }
 
 // Checker runs one service's healthcheck on an interval until Stop.
@@ -69,6 +73,9 @@ type Checker struct {
 	mu            sync.Mutex
 	state         State
 	consecutive   int
+	lastFailure   string
+	startedAt     time.Time
+	everHealthy   bool
 	onStateChange func(State)
 
 	started  atomic.Bool
@@ -125,6 +132,14 @@ func (c *Checker) State() State {
 	return c.state
 }
 
+// LastFailure returns the output (or error) of the most recent failing
+// probe, cleared by the next success. Safe for concurrent use.
+func (c *Checker) LastFailure() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastFailure
+}
+
 // SetOnStateChange registers a callback invoked whenever the health state
 // transitions. Safe for concurrent use.
 func (c *Checker) SetOnStateChange(fn func(State)) {
@@ -140,6 +155,9 @@ func (c *Checker) EnsureStarted(ctx context.Context) {
 	if !c.started.CompareAndSwap(false, true) {
 		return
 	}
+	c.mu.Lock()
+	c.startedAt = time.Now()
+	c.mu.Unlock()
 	c.wg.Add(1)
 	go c.loop(ctx)
 }
@@ -179,6 +197,9 @@ func (c *Checker) loop(ctx context.Context) {
 // file records why health flipped, and onStateChange is invoked on transitions.
 func (c *Checker) probeOnce(ctx context.Context) {
 	err := c.runProbe(ctx)
+	if ctx.Err() != nil {
+		return
+	}
 	c.mu.Lock()
 	prevState := c.state
 	var logMsg string
@@ -186,10 +207,16 @@ func (c *Checker) probeOnce(ctx context.Context) {
 		recovered := c.state == StateUnhealthy
 		c.consecutive = 0
 		c.state = StateHealthy
+		c.everHealthy = true
+		c.lastFailure = ""
 		if recovered {
 			logMsg = "devyard: healthcheck recovered: healthy"
 		}
+	} else if !c.everHealthy && time.Since(c.startedAt) < c.cfg.StartPeriod {
+		// Within the start period failures don't count.
+		c.lastFailure = err.Error()
 	} else {
+		c.lastFailure = err.Error()
 		c.consecutive++
 		failed := c.consecutive >= c.cfg.Retries
 		wasUnhealthy := c.state == StateUnhealthy
@@ -241,5 +268,42 @@ func (c *Checker) runProbe(ctx context.Context) error {
 		return os.ErrProcessDone
 	}
 	cmd.WaitDelay = c.cfg.Timeout
-	return cmd.Run()
+	var out limitedBuffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		if probeCtx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("timed out after %s", c.cfg.Timeout)
+		}
+		if msg := strings.TrimSpace(out.String()); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
+}
+
+// limitedBuffer keeps the first 1 KiB written to it.
+type limitedBuffer struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if room := 1024 - len(b.buf); room > 0 {
+		if len(p) > room {
+			b.buf = append(b.buf, p[:room]...)
+		} else {
+			b.buf = append(b.buf, p...)
+		}
+	}
+	return len(p), nil
+}
+
+func (b *limitedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf)
 }

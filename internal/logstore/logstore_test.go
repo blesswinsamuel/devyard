@@ -22,7 +22,7 @@ func writeRun(t *testing.T, dir string, run int64, n int) *Writer {
 func TestTailAndPaging(t *testing.T) {
 	dir := t.TempDir()
 	w := writeRun(t, dir, 1, 100)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	lines, more, err := Tail(dir, 1, 10, 0)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestLongLinesAcrossBlocks(t *testing.T) {
 	w.Append(Stdout, "a")
 	w.Append(Stderr, long)
 	w.Append(System, "c")
-	w.Close()
+	_ = w.Close()
 	lines, _, err := Tail(dir, 1, 0, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestLongLinesAcrossBlocks(t *testing.T) {
 func TestRunsAndResolve(t *testing.T) {
 	dir := t.TempDir()
 	for r := int64(1); r <= 3; r++ {
-		writeRun(t, dir, r, 1).Close()
+		_ = writeRun(t, dir, r, 1).Close()
 	}
 	if r, err := ResolveRun(dir, 0); err != nil || r != 3 {
 		t.Fatalf("offset 0: %d %v", r, err)
@@ -86,7 +86,7 @@ func TestRunsAndResolve(t *testing.T) {
 func TestPruneKeepsRecentRuns(t *testing.T) {
 	dir := t.TempDir()
 	for r := int64(1); r <= KeepRuns+3; r++ {
-		writeRun(t, dir, r, 1).Close()
+		_ = writeRun(t, dir, r, 1).Close()
 	}
 	runs, _ := Runs(dir)
 	if len(runs) != KeepRuns || runs[0] != 4 {
@@ -100,7 +100,7 @@ func TestFollowerRotationWithinRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	fl := NewFollower(dir, 1, 0)
 	defer fl.Close()
 
@@ -141,9 +141,9 @@ func TestFollowerMovesToNewRunAfterDraining(t *testing.T) {
 		t.Fatalf("initial: %v", got)
 	}
 	w1.Append(System, "exited")
-	w1.Close()
+	_ = w1.Close()
 	w2 := writeRun(t, dir, 2, 1)
-	defer w2.Close()
+	defer func() { _ = w2.Close() }()
 	got, newRun, err := fl.Poll()
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestFollowerStartsBeforeRunExists(t *testing.T) {
 		t.Fatalf("empty: %v %v", got, err)
 	}
 	w := writeRun(t, dir, 1, 1)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	got, newRun, err := fl.Poll()
 	if err != nil || !newRun || len(got) != 1 {
 		t.Fatalf("got %v %v %v", got, newRun, err)
@@ -176,7 +176,7 @@ func TestLineWriter(t *testing.T) {
 	_, _ = lw.Write([]byte("c\n"))
 	_, _ = lw.Write([]byte("partial"))
 	lw.Flush()
-	w.Close()
+	_ = w.Close()
 	lines, _, _ := Tail(dir, 1, 0, 0)
 	var texts []string
 	for _, l := range lines {

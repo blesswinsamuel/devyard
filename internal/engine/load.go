@@ -160,9 +160,9 @@ func envKeys(layers ...map[string]string) []string {
 // the process when they change.
 func runtimeHash(d *ProcessDef) string {
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\x00%s\x00%s\x00%v\x00", d.Command, d.Shell, d.Dir, d.TTY)
+	_, _ = fmt.Fprintf(h, "%s\x00%s\x00%s\x00%v\x00", d.Command, d.Shell, d.Dir, d.TTY)
 	for _, kv := range d.Env {
-		fmt.Fprintf(h, "%s\x00", kv)
+		_, _ = fmt.Fprintf(h, "%s\x00", kv)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

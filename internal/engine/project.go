@@ -308,9 +308,10 @@ func (p *Project) recompute() {
 				degraded = true
 			}
 		case StatusRunning:
-			if s.Health == HealthUnhealthy {
+			switch s.Health {
+			case HealthUnhealthy:
 				degraded = true
-			} else if s.Health == HealthStarting {
+			case HealthStarting:
 				starting = true
 			}
 		}

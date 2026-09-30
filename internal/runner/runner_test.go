@@ -259,7 +259,7 @@ func TestInteractiveTTYTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 	if !a.TTY || !a.Stdin {
 		t.Fatalf("attach flags tty=%v stdin=%v", a.TTY, a.Stdin)
 	}
@@ -283,7 +283,7 @@ func TestInteractivePipeTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer a.Close()
+	defer func() { _ = a.Close() }()
 	if a.TTY || !a.Stdin {
 		t.Fatalf("attach flags tty=%v stdin=%v", a.TTY, a.Stdin)
 	}

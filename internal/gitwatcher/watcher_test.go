@@ -245,7 +245,7 @@ func TestSharedRepoRemoveOneKeepsOther(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	w.SetDebounce(20 * time.Millisecond)
 	_ = w.AddProject("a", dir)
 	_ = w.AddProject("b", dir)

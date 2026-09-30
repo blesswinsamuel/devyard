@@ -11,6 +11,11 @@ tasks:
     deps:
       - frontend
 
+  install:
+    desc: Install the devyard binary into $GOPATH/bin (go install)
+    cmds:
+      - go install ./cmd/devyard
+
   frontend:
     desc: Start the Vite frontend (bun)
     dir: web

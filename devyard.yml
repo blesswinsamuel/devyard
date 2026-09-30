@@ -32,5 +32,5 @@ services:
     restart: always
 
 tasks:
-  install-daemon: go install ./cmd/devyard
+  install-daemon: task install
   restart-daemon: bash -c 'devyard daemon restart >/dev/null 2>&1 &'

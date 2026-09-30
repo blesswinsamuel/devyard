@@ -4,6 +4,7 @@ import { ChevronRight, Command, PanelLeftClose, Play, Plus, Search, Settings } f
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { ActionContextMenu } from "~/components/actions";
+import { Logo } from "~/components/logo";
 import { HealthIndicator, StatusDot } from "~/components/status";
 import { Shortcut } from "~/components/shortcut";
 import { entities, getGit, getProject, getService, getTask, projectList, servicesOf, tasksOf } from "~/data/entities";
@@ -189,9 +190,7 @@ export function Sidebar(props: { onNavigate?: () => void; collapsible?: boolean 
     <div class="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
       <div class="flex h-(--header-h) shrink-0 items-center gap-2 border-b border-sidebar-border px-3">
         <A href={paths.home()} class="focus-ring flex items-center gap-2 rounded-md font-semibold" onClick={() => props.onNavigate?.()}>
-          <span class="flex size-6 items-center justify-center rounded-md bg-primary text-2xs font-bold text-primary-foreground" aria-hidden="true">
-            dy
-          </span>
+          <Logo />
           devyard
         </A>
         <Show when={props.collapsible}>

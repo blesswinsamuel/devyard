@@ -4,71 +4,54 @@ What's done, what's planned, and where each item lives in the code.
 
 ## Done
 
-- **Core lifecycle** — `start`, `stop`, `ps`, `top`, `logs [service] [--follow] [--tail N] [--previous]`,
-  `restart [service]`, `kill [service] [--signal]`, `build [service...]`,
-  `start --build`. Size-based log rotation (10 MiB soft cap per current run file)
-  and server-side history tailing keep huge logs from flooding clients.
-  (`internal/cli`, `internal/supervisor`, `internal/control`)
-- **Global daemon** — a single daemon process owns multiple project
-  supervisors (`map[string]*supervisor.Supervisor`). All CLI commands and the
-  web UI are thin clients over one Unix socket at
-  `$XDG_RUNTIME_DIR/devyard/daemon.sock`. (`internal/orchestrator`,
-  `internal/daemon`, `internal/cli/daemon_run.go`)
-- **Autostart** — on daemon startup, every registered project is started
-  automatically **unless** a project-level `.stopped` marker exists (written by
-  `stop`). (`internal/orchestrator` `Autostart()`)
-- **Process-group safety** — each service in its own `setpgid` group; teardown
-  via `killpg` so no orphans. (`internal/supervisor/proc_unix.go`)
-- **`top` resource view** — `devyard top [service]` aggregates CPU and
-  memory across each service's process group (procfs on Linux, libproc on
-  macOS), sampled over a 1s interval for a live CPU%. (`internal/procstat`,
-  `internal/supervisor`)
-- **Dependency ordering** — `depends_on` graph with cycle detection and
-  topological start order. (`internal/dag`)
-- **Healthchecks + conditions** — per-service `starting -> healthy | unhealthy`
-  state machine; `depends_on: { condition: service_healthy }` gates dependents.
-  (`internal/health`, `internal/supervisor`)
-- **Restart policies** — `no` / `on-failure` / `always` with
-  exponential backoff + jitter. (`internal/supervisor/restart.go`)
-- **Reverse proxy / named URLs** — services that declare `port`/`ports` are
-  exposed by a daemon-owned reverse proxy at
-  `<service>.<project>.localhost[:suffix]:<port>` (project
-  `proxy.default_service` serves `project.localhost`; named ports prefix the
-  service label). Live route resolution from the orchestrator; styled 502/503
-  error pages; URL column in `ps`. (`internal/proxy`, `internal/config`,
-  `internal/cli`, `internal/orchestrator`)
-- **Web UI** — embedded SolidJS SPA (xterm.js logs) served directly by the
-  daemon. Loopback-only by default. (`internal/web`, `web/`)
-- **Global config** — `$XDG_CONFIG_HOME/devyard/config.yml` with
-  `web.host`, `web.port` defaults for the web dashboard. (`internal/globalconfig`)
-- **Config discovery** — `-f`/`-p` flags; walk-up discovery of
-  `devyard.yml`. (`internal/config`, `internal/cli`)
-- **Env files + interpolation** — `.env` next to the config (or `--env-file`)
-  feeds child-process env and `${VAR}` / `${VAR:-default}` config
-  interpolation. (`internal/config/envfile.go`, `internal/cli`)
-- **Tests** — unit tests per package plus a black-box integration suite that
-  builds the real binary and drives the full lifecycle. (`test/integration`)
-- **CI + lint** — GitHub Actions workflow (`go vet`, `gofmt`, `golangci-lint`,
-  `go build`, `go test -race` on Ubuntu + macOS) and a v2 `.golangci-lint.yml`.
+- **Core lifecycle.** `start [-f] [--build]`, `stop`, `restart`, `reload`,
+  `status`, `logs [-f] [--tail N] [--previous]`, `top`, `kill`, `build`,
+  `run`, `attach`. (`internal/cli`, `internal/engine`)
+- **Runner-per-process supervision.** Every service, task and terminal runs
+  under a detached `devyard --runner`, so services survive daemon restarts
+  and crashes and are re-adopted. (`internal/runner`)
+- **Actor engine.** Serialized per-entity state machines: no duplicate
+  processes, no stuck states, and stop interrupts backoff and dependency
+  waits. (`internal/engine`)
+- **Health-gated dependencies.** A new checker per run, `start_period`, and
+  `service_healthy` / `service_started`. (`internal/health`, `internal/engine`)
+- **Restart policies.** `no` / `on-failure` / `always`, with exponential
+  backoff and jitter. The restart policy also applies to exits that happened
+  while the daemon was down.
+- **Configurable stop grace** per service (`stop_grace_period`).
+- **Desired state and autostart.** Projects remember running / stopped /
+  partial. The daemon adopts live runs and starts only what is wanted.
+- **Launch environment capture.** Services run with the environment of the
+  shell that started them, not the daemon's.
+- **Interactive tasks.** PTY by default. Tasks are detached from the caller
+  and attachable from the CLI (`devyard run`) and the web UI.
+- **Per-run logs.** Structured records, lossless rotation and following,
+  paging, and merged project streams. (`internal/logstore`, `internal/api`)
+- **Revisioned state stream.** `Watch` sends a snapshot, then changes, and
+  resyncs when a client falls behind. (`internal/events`)
+- **Reverse proxy.** Named URLs, TLS (custom certs, mkcert, or a local CA).
+  (`internal/proxy`)
+- **Web UI.** The embedded SolidJS dashboard. The dashboard is protected by a
+  Host allowlist against DNS rebinding. (`internal/web`, `web/`)
+- **Git.** Status, log, diff, stage, commit, push/pull/fetch. Remote
+  operations are bounded by a timeout, and watchers handle shared
+  repositories. (`internal/gitlog`, `internal/gitstate`)
+- **Hermetic e2e suites and CI** on Ubuntu and macOS. (`test/e2e`,
+  `.github/workflows`)
 
 ## Planned
 
-- [ ] **Configurable graceful stop timeout** per service / via flag (currently
-      fixed at 10s in `Supervisor`).
-- [ ] **`on-failure` autostart** — currently autostart resumes every project
-      regardless of restart policy; a future refinement could gate it on policy.
-- [ ] **Shell completions** (cobra `__complete`) and `devyard version`.
-- [ ] **Strict config mode** that warns on unknown fields (today `yaml.v3`
-      silently ignores them).
+- [ ] **Shell completions** (cobra `__complete`).
+- [ ] **Unknown-field warnings** for `devyard.yml` (today `yaml.v3` silently
+      ignores unknown fields).
 - [ ] **Prebuilt release binaries** (GoReleaser).
-- [ ] **`logs --since`** time filter (size-based rotation and `logs --tail N`
-      already ship).
+- [ ] **`logs --since`** time filter.
+- [ ] **Log search across runs** in the web UI.
 
 ## Non-goals
 
-- Docker compatibility — we will not add `image`, `volumes`, `networks`, or
-  `ports` shims. See [config-schema.md](config-schema.md) > "Intentionally
+- **Docker compatibility.** We will not add `image`, `volumes`, `networks`,
+  or `ports` shims. See [config-schema.md](config-schema.md) > "Intentionally
   absent".
-- Windows support — the supervisor relies on Unix process groups, signals, and
-  a Unix domain socket. A Windows port would need a separate supervisor
-  implementation (Job Objects) and transport (named pipes/TCP).
+- **Windows support.** Supervision relies on Unix process groups, sessions,
+  PTYs, signals and Unix domain sockets.

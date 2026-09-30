@@ -21,12 +21,10 @@
 #   - crasher depends on api (service_started), exits 7, and is restarted by the
 #     on-failure policy until the backoff cap is hit.
 #
-# Note: the smoke project deliberately has no project-level .stopped marker
-# written by `stop` during testing, so a hard daemon kill (no `stop`) brings
-# api back on the next daemon autostart. `restart: always` keeps api running
-# in place after unexpected exits. A project-level `stop` writes a `.stopped`
-# marker that suppresses autostart; the next explicit `start` clears
-# that marker and starts the project again.
+# Note: `stop` records that the project should stay stopped, so the daemon
+# won't start it again on its next start; the next explicit `start` resumes it.
+# Killing the daemon (even with SIGKILL) never stops services: the next daemon
+# re-adopts them.
 
 version: "1"
 name: smoke

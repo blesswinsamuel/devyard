@@ -57,9 +57,10 @@ func Main() error {
 }
 
 type server struct {
-	spec Spec
-	log  *logstore.Writer
-	ln   net.Listener
+	spec     Spec
+	log      *logstore.Writer
+	ln       net.Listener
+	sockInfo os.FileInfo
 
 	mu           sync.Mutex
 	status       Status
@@ -103,13 +104,15 @@ func newServer(spec Spec) (*server, error) {
 		return nil, fmt.Errorf("runner: listen: %w", err)
 	}
 	_ = os.Chmod(spec.Socket, 0o600)
+	sockInfo, _ := os.Stat(spec.Socket)
 	s := &server{
-		spec:    spec,
-		log:     w,
-		ln:      ln,
-		clients: make(map[*attachClient]struct{}),
-		done:    make(chan struct{}),
-		changed: make(chan struct{}),
+		sockInfo: sockInfo,
+		spec:     spec,
+		log:      w,
+		ln:       ln,
+		clients:  make(map[*attachClient]struct{}),
+		done:     make(chan struct{}),
+		changed:  make(chan struct{}),
 		status: Status{
 			Project:   spec.Project,
 			Kind:      spec.Kind,
@@ -152,7 +155,10 @@ func (s *server) run() error {
 	case <-time.After(lingerTimeout):
 	}
 	_ = s.ln.Close()
-	_ = os.Remove(s.spec.Socket)
+	// Remove the socket only if it is still ours.
+	if fi, err := os.Stat(s.spec.Socket); err == nil && s.sockInfo != nil && os.SameFile(fi, s.sockInfo) {
+		_ = os.Remove(s.spec.Socket)
+	}
 	_ = s.log.Close()
 	return nil
 }

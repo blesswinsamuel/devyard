@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/blesswinsamuel/devyard/internal/config"
 	"github.com/blesswinsamuel/devyard/internal/dag"
@@ -217,4 +219,11 @@ func (l *loaded) closure(names []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// runSocket derives a run's own runner socket from the process's base
+// socket path. Distinct paths per run mean a finishing runner can never
+// clobber the socket of the run that replaced it.
+func runSocket(base string, run int64) string {
+	return strings.TrimSuffix(base, ".sock") + "-" + strconv.FormatInt(run, 10) + ".sock"
 }

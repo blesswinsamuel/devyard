@@ -61,8 +61,9 @@ func TestSampleGroupLiveProcess(t *testing.T) {
 
 func TestSampleGroupUnknownGroup(t *testing.T) {
 	pgid, cmd := startGrouped(t)
-	if err := cmd.Process.Kill(); err != nil {
-		t.Fatalf("kill child: %v", err)
+	// Kill the whole group: a shell leader may have forked its command.
+	if err := syscall.Kill(-pgid, syscall.SIGKILL); err != nil {
+		t.Fatalf("kill group: %v", err)
 	}
 	if _, err := cmd.Process.Wait(); err != nil {
 		t.Fatalf("wait child: %v", err)

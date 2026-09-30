@@ -296,7 +296,7 @@ func (a *taskActor) launch(run int64, args []string) {
 		Env:       a.def.Env,
 		TTY:       a.def.TTY,
 		ProcDir:   a.def.ProcDir,
-		Socket:    a.def.Socket,
+		Socket:    runSocket(a.def.Socket, run),
 		StopGrace: defaultStopGrace,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)

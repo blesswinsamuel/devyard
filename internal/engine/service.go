@@ -631,7 +631,7 @@ func (a *serviceActor) launch() {
 		Env:       a.def.Env,
 		TTY:       a.def.TTY,
 		ProcDir:   a.def.ProcDir,
-		Socket:    a.def.Socket,
+		Socket:    runSocket(a.def.Socket, run),
 		StopGrace: a.grace(),
 		Hash:      a.def.RuntimeHash,
 	}

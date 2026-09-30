@@ -51,7 +51,7 @@ func main() {
 			}
 		}()
 	}
-	fmt.Printf("%s start pid=%d\n", *prefix, os.Getpid())
+	fmt.Printf("%s start pid=%d pgid=%d\n", *prefix, os.Getpid(), syscall.Getpgrp())
 	for i := 1; *count == 0 || i <= *count; i++ {
 		line := fmt.Sprintf("%s %d", *prefix, i)
 		if *lineSize > len(line) {

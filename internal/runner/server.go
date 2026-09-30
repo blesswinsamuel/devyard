@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
 
 	"github.com/blesswinsamuel/devyard/internal/logstore"
 )
@@ -42,7 +43,7 @@ func Main() error {
 		return fmt.Errorf("runner: read spec: %w", err)
 	}
 	if devnull, err := os.Open(os.DevNull); err == nil {
-		_ = syscall.Dup2(int(devnull.Fd()), 0)
+		_ = unix.Dup2(int(devnull.Fd()), 0)
 		_ = devnull.Close()
 	}
 	_ = os.Chdir("/")
@@ -60,15 +61,16 @@ type server struct {
 	log  *logstore.Writer
 	ln   net.Listener
 
-	mu        sync.Mutex
-	status    Status
-	pgid      int // process group currently running (build or main); 0 when none
-	stopping  bool
-	stopTimer *time.Timer
-	stdin     io.WriteCloser // non-TTY stdin pipe (nil when not interactive)
-	ptmx      *os.File       // TTY master
-	clients   map[*attachClient]struct{}
-	ring      []byte
+	mu           sync.Mutex
+	status       Status
+	pgid         int // process group currently running (build or main); 0 when none
+	stopping     bool
+	stopTimer    *time.Timer
+	stopDeadline time.Time
+	stdin        io.WriteCloser // non-TTY stdin pipe (nil when not interactive)
+	ptmx         *os.File       // TTY master
+	clients      map[*attachClient]struct{}
+	ring         []byte
 	// pendingInput holds input received before the child's stdin exists.
 	pendingInput []byte
 
@@ -233,18 +235,47 @@ func (s *server) started(pid int, phase string) {
 	}
 }
 
-// ended clears the process group once its leader has been reaped, first
-// killing any stragglers left in the group so they cannot hold ports or
-// pipes.
+// ended runs once the group leader has been reaped. Other members of the
+// group (children of a shell wrapper, background jobs) must not outlive the
+// run — they would hold ports and pipes — but they deserve the same graceful
+// treatment as the leader: they get SIGTERM (unless a stop already sent it)
+// and SIGKILL only at the stop deadline or after the grace period. The run
+// finishes when the group is empty.
 func (s *server) ended() {
 	s.mu.Lock()
 	pgid := s.pgid
-	s.pgid = 0
 	s.status.PID = 0
+	stopping := s.stopping
+	deadline := s.stopDeadline
 	s.mu.Unlock()
-	if pgid > 0 {
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	if pgid > 0 && groupAlive(pgid) {
+		if !stopping {
+			_ = syscall.Kill(-pgid, syscall.SIGTERM)
+			deadline = time.Now().Add(s.spec.StopGrace)
+		}
+		for groupAlive(pgid) {
+			if !deadline.IsZero() && time.Now().After(deadline) {
+				_ = syscall.Kill(-pgid, syscall.SIGKILL)
+				// Bounded: members may linger as zombies until reaped
+				// by their new parent.
+				killDeadline := time.Now().Add(2 * time.Second)
+				for groupAlive(pgid) && time.Now().Before(killDeadline) {
+					time.Sleep(20 * time.Millisecond)
+				}
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
 	}
+	s.mu.Lock()
+	s.pgid = 0
+	s.mu.Unlock()
+}
+
+// groupAlive reports whether any process is left in the group.
+func groupAlive(pgid int) bool {
+	err := syscall.Kill(-pgid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func (s *server) runBuild(b *BuildSpec) (int, string, error) {
@@ -504,6 +535,7 @@ func (s *server) requestStop(grace time.Duration) {
 		_ = syscall.Kill(-s.pgid, syscall.SIGTERM)
 	}
 	if first {
+		s.stopDeadline = time.Now().Add(grace)
 		s.stopTimer = time.AfterFunc(grace, func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()

@@ -36,7 +36,9 @@ func TestSampleGroupLiveProcess(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		s, ok = procstat.SampleGroup(pgid)
-		if ok && s.Procs > 0 {
+		// Right after fork (before exec) the child can briefly report no
+		// resident pages.
+		if ok && s.Procs > 0 && s.RSS > 0 {
 			break
 		}
 		if time.Now().After(deadline) {

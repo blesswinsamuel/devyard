@@ -97,15 +97,15 @@ func TestCLI_Lifecycle_StartStatusLogsRestartStopRemove(t *testing.T) {
 	// logs shows the current run; --previous shows only the previous run.
 	harness.Eventually(t, "current run logs", func(c *harness.C) {
 		r := p.CLI("logs", "beta")
-		if !strings.Contains(r.Stdout, fmt.Sprintf("pid=%d", newBeta)) {
+		if !strings.Contains(r.Stdout, fmt.Sprintf("pgid=%d", newBeta)) {
 			c.Errorf("current logs missing new run start:\n%s", r)
 		}
-		if strings.Contains(r.Stdout, fmt.Sprintf("pid=%d", oldBeta)) {
+		if strings.Contains(r.Stdout, fmt.Sprintf("pgid=%d", oldBeta)) {
 			c.Fatalf("current logs contain the previous run:\n%s", r)
 		}
 	})
 	prev := p.CLI("logs", "--previous", "beta").MustSucceed(t)
-	if !strings.Contains(prev.Stdout, fmt.Sprintf("pid=%d", oldBeta)) || strings.Contains(prev.Stdout, fmt.Sprintf("pid=%d", newBeta)) {
+	if !strings.Contains(prev.Stdout, fmt.Sprintf("pgid=%d", oldBeta)) || strings.Contains(prev.Stdout, fmt.Sprintf("pgid=%d", newBeta)) {
 		t.Errorf("logs --previous should contain exactly the previous run:\n%s", prev)
 	}
 	p.CLI("logs", "--previous", "--follow", "beta").MustFail(t)

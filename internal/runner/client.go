@@ -86,7 +86,9 @@ func Launch(ctx context.Context, spec Spec, opts LaunchOptions) (*Process, error
 	}()
 
 	p := &Process{ProcDir: spec.ProcDir, Socket: spec.Socket}
-	deadline := time.NewTimer(10 * time.Second)
+	// Generous: on a saturated machine a fresh process can take seconds to
+	// come up, and giving up early would leave a live runner behind.
+	deadline := time.NewTimer(30 * time.Second)
 	defer deadline.Stop()
 	for {
 		if st, err := p.Status(ctx); err == nil && st.Run == spec.Run {

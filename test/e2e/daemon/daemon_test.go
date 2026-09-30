@@ -190,9 +190,9 @@ func TestLedger_O4_ExitWhileDaemonDownReported(t *testing.T) {
 	p := sb.WriteProject("o4", `version: "1"
 services:
   seven:
-    command: {{fixture "exiter"}} -code 7 -after 6s
+    command: {{fixture "exiter"}} -code 7 -until-file exit-now
   clean:
-    command: {{fixture "exiter"}} -code 0 -after 6s
+    command: {{fixture "exiter"}} -code 0 -until-file exit-now
     restart: on-failure
 `, nil)
 	p.Start()
@@ -200,6 +200,10 @@ services:
 	w := d.Watch(context.Background())
 	st := p.WaitRunning(w)
 	d.KillHard()
+	// Let the services exit only once the daemon is gone.
+	if err := os.WriteFile(filepath.Join(filepath.Dir(p.ConfigPath), "exit-now"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, n := range []string{"seven", "clean"} {
 		pid := st.ServicePid("o4", n)
 		harness.Eventually(t, n+" exited while the daemon is down", func(c *harness.C) {

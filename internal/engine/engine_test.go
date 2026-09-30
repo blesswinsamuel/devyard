@@ -385,6 +385,7 @@ func TestLedgerS5AdoptionAcrossManagers(t *testing.T) {
 `)
 	e.add(path, true)
 	before := e.obs.waitService(t, "p7/ticker", StatusRunning)
+	waitLog(t, e, "p7", "ticker", "tick")
 	// The "daemon" goes away without stopping services.
 	if err := e.m.Shutdown(ctx(t), false); err != nil {
 		t.Fatal(err)
@@ -406,10 +407,16 @@ func TestLedgerS5AdoptionAcrossManagers(t *testing.T) {
 	pd, _ := e.dirs.Project("p7")
 	dir := pd.Proc("service", "ticker")
 	n1, _, _ := logstore.Tail(dir, after.Run, 0, 0)
-	time.Sleep(400 * time.Millisecond)
-	n2, _, _ := logstore.Tail(dir, after.Run, 0, 0)
-	if len(n2) <= len(n1) {
-		t.Fatalf("log stopped growing after adoption (%d -> %d lines)", len(n1), len(n2))
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		n2, _, _ := logstore.Tail(dir, after.Run, 0, 0)
+		if len(n2) > len(n1) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("log stopped growing after adoption (%d -> %d lines)", len(n1), len(n2))
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	p, _ := e.m.Get("p7")
 	if err := p.Stop(ctx(t)); err != nil {

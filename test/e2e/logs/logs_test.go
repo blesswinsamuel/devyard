@@ -132,7 +132,7 @@ func TestLedger_S14_PreviousIsExactlyThePreviousRun(t *testing.T) {
 	st := w.State()
 	oldPid, oldRun := st.ServicePid("prev", "a"), st.Service("prev", "a").GetRun()
 	// Under load a fixture can take seconds to print its first line.
-	d.WaitLog("prev", harness.Svc("a"), fmt.Sprintf("pid=%d", oldPid))
+	d.WaitLog("prev", harness.Svc("a"), fmt.Sprintf("pgid=%d", oldPid))
 	_, err := d.Client().RestartService(d.Ctx(), connect.NewRequest(&v1.RestartServiceRequest{Project: "prev", Service: "a"}))
 	harness.NoError(t, err, "RestartService")
 	st = w.WaitFor(t, "new run", func(s harness.State) bool {
@@ -141,7 +141,7 @@ func TestLedger_S14_PreviousIsExactlyThePreviousRun(t *testing.T) {
 	newPid := st.ServicePid("prev", "a")
 	harness.Eventually(t, "current run logged", func(c *harness.C) {
 		cur := d.Logs(&v1.LogsRequest{Project: "prev", Sources: src("a")})
-		if !harness.ContainsText(cur, fmt.Sprintf("pid=%d", newPid)) {
+		if !harness.ContainsText(cur, fmt.Sprintf("pgid=%d", newPid)) {
 			c.Errorf("no start line of the new run")
 		}
 		for _, l := range cur {
@@ -151,7 +151,7 @@ func TestLedger_S14_PreviousIsExactlyThePreviousRun(t *testing.T) {
 		}
 	})
 	prev := d.Logs(&v1.LogsRequest{Project: "prev", Sources: src("a"), RunOffset: -1})
-	if !harness.ContainsText(prev, fmt.Sprintf("pid=%d", oldPid)) {
+	if !harness.ContainsText(prev, fmt.Sprintf("pgid=%d", oldPid)) {
 		t.Errorf("previous run missing its start line")
 	}
 	for _, l := range prev {

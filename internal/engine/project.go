@@ -633,9 +633,12 @@ func union(a, b []string) []string {
 }
 
 func (a *projectActor) cmdStop() error {
+	// Report stopping (not stopped) until every service has been handled.
+	a.p.stopping.Store(true)
 	a.reg.Desired = DesiredStopped
 	a.reg.Selected = nil
 	if err := a.save(); err != nil {
+		a.p.stopping.Store(false)
 		return err
 	}
 	a.publishView()

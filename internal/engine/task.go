@@ -299,7 +299,7 @@ func (a *taskActor) launch(run int64, args []string) {
 		Socket:    a.def.Socket,
 		StopGrace: defaultStopGrace,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	proc, err := a.launcher.Launch(ctx, spec)
 	cancel()
 	if err != nil {

@@ -60,8 +60,8 @@ func testSpec(t *testing.T, kind, command string) Spec {
 		Kind:      kind,
 		Name:      "n",
 		Run:       seq.Add(1),
-		Command:   command,
-		Shell:     "sh",
+		Argv:      []string{"sh", "-c", command},
+		Display:   command,
 		Dir:       dir,
 		Env:       []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir},
 		ProcDir:   filepath.Join(dir, "proc"),
@@ -309,7 +309,7 @@ func TestServiceStdinIsNotInteractive(t *testing.T) {
 func TestBuildFailureSkipsCommand(t *testing.T) {
 	t.Parallel()
 	spec := testSpec(t, "service", "echo should-not-run")
-	spec.Build = &BuildSpec{Command: "echo building; exit 4", Shell: "sh", Dir: spec.Dir, Env: spec.Env}
+	spec.Build = &BuildSpec{Argv: []string{"sh", "-c", "echo building; exit 4"}, Display: "echo building; exit 4", Dir: spec.Dir, Env: spec.Env}
 	p := launch(t, spec)
 	st := wait(t, p, 5*time.Second)
 	if !st.BuildFailed || st.ExitCode != 4 {
@@ -324,7 +324,7 @@ func TestBuildFailureSkipsCommand(t *testing.T) {
 func TestBuildThenRun(t *testing.T) {
 	t.Parallel()
 	spec := testSpec(t, "service", "cat artifact")
-	spec.Build = &BuildSpec{Command: "echo built > artifact", Shell: "sh", Dir: spec.Dir, Env: spec.Env}
+	spec.Build = &BuildSpec{Argv: []string{"sh", "-c", "echo built > artifact"}, Display: "echo built > artifact", Dir: spec.Dir, Env: spec.Env}
 	p := launch(t, spec)
 	st := wait(t, p, 5*time.Second)
 	if st.ExitCode != 0 || !strings.Contains(logText(t, spec), "stdout:built") {
@@ -335,7 +335,7 @@ func TestBuildThenRun(t *testing.T) {
 func TestStopDuringBuild(t *testing.T) {
 	t.Parallel()
 	spec := testSpec(t, "service", "echo should-not-run")
-	spec.Build = &BuildSpec{Command: "echo building; sleep 30", Shell: "sh", Dir: spec.Dir, Env: spec.Env}
+	spec.Build = &BuildSpec{Argv: []string{"sh", "-c", "echo building; sleep 30"}, Display: "echo building; sleep 30", Dir: spec.Dir, Env: spec.Env}
 	p := launch(t, spec)
 	waitForLog(t, spec, "stdout:building")
 	st, err := p.Stop(context.Background(), time.Second)
@@ -471,7 +471,7 @@ func readUntil(t *testing.T, a *Attachment, want string) string {
 func TestWatchReportsPhases(t *testing.T) {
 	t.Parallel()
 	spec := testSpec(t, "service", "echo run; sleep 0.2")
-	spec.Build = &BuildSpec{Command: "sleep 0.2", Shell: "sh", Dir: spec.Dir, Env: spec.Env}
+	spec.Build = &BuildSpec{Argv: []string{"sh", "-c", "sleep 0.2"}, Display: "sleep 0.2", Dir: spec.Dir, Env: spec.Env}
 	p := launch(t, spec)
 	var phases []string
 	final, err := p.Watch(context.Background(), func(st Status) {

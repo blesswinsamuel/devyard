@@ -13,12 +13,18 @@ What's done, what's planned, and where each item lives in the code.
 - **Actor engine.** Serialized per-entity state machines: no duplicate
   processes, no stuck states, and stop interrupts backoff and dependency
   waits. (`internal/engine`)
-- **Health-gated dependencies.** A new checker per run, `start_period`, and
-  `service_healthy` / `service_started`. (`internal/health`, `internal/engine`)
-- **Restart policies.** `no` / `on-failure` / `always`, with exponential
-  backoff and jitter. The restart policy also applies to exits that happened
-  while the daemon was down.
-- **Configurable stop grace** per service (`stop_grace_period`).
+- **Readiness-gated dependencies.** Structured `ready` probes (`http`, `tcp`,
+  `exec`), a new checker per run, `start_period`; `depends_on` waits until
+  ready. (`internal/health`, `internal/engine`)
+- **Restart policies.** `never` / `on-failure` (default) / `always`, with
+  exponential backoff and jitter. The restart policy also applies to exits
+  that happened while the daemon was down.
+- **Configurable stop** per service (`stop.signal`, `stop.timeout`).
+- **Config.** String-or-argv `run`, layered `env_files`, `port: auto` with
+  persisted assignments and `${svc.port}` / `${svc.url}` references,
+  `autostart`, `build.sources` fingerprints, `devyard.local.yml` overrides,
+  unknown-field warnings, and a generated JSON Schema (`devyard schema`).
+  (`internal/config`)
 - **Desired state and autostart.** Projects remember running / stopped /
   partial. The daemon adopts live runs and starts only what is wanted.
 - **Launch environment capture.** Services run with the environment of the
@@ -42,16 +48,14 @@ What's done, what's planned, and where each item lives in the code.
 ## Planned
 
 - [ ] **Shell completions** (cobra `__complete`).
-- [ ] **Unknown-field warnings** for `devyard.yml` (today `yaml.v3` silently
-      ignores unknown fields).
 - [ ] **Prebuilt release binaries** (GoReleaser).
 - [ ] **`logs --since`** time filter.
 - [ ] **Log search across runs** in the web UI.
 
 ## Non-goals
 
-- **Docker compatibility.** We will not add `image`, `volumes`, `networks`,
-  or `ports` shims. See [config-schema.md](config-schema.md) > "Intentionally
-  absent".
+- **Docker Compose compatibility.** We will not add `image`, `volumes`,
+  `networks`, or compose-style shims. See [config-schema.md](config-schema.md)
+  > "Not part of the schema".
 - **Windows support.** Supervision relies on Unix process groups, sessions,
   PTYs, signals and Unix domain sockets.

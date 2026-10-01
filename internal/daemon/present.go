@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/blesswinsamuel/devyard/internal/config"
 	"github.com/blesswinsamuel/devyard/internal/engine"
 	"github.com/blesswinsamuel/devyard/internal/events"
 	pb "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
@@ -39,18 +40,19 @@ func newPresenter(bus *events.Bus, git *gitstate.Tracker, urls urlConfig) *prese
 
 func (p *presenter) ProjectChanged(st engine.ProjectState) {
 	p.mu.Lock()
-	p.defaults[st.ID] = st.DefaultService
+	p.defaults[st.ID] = st.Primary
 	p.mu.Unlock()
 	p.bus.UpsertProject(&pb.Project{
 		Id:              st.ID,
 		ConfigPath:      st.ConfigPath,
-		EnvFile:         st.EnvFile,
+		EnvFiles:        st.EnvFiles,
 		Status:          st.Status,
 		Desired:         st.Desired,
 		Error:           st.Error,
 		ServicesTotal:   int32(st.ServicesTotal),
 		ServicesRunning: int32(st.ServicesActive),
-		DefaultService:  st.DefaultService,
+		Primary:         st.Primary,
+		Links:           links(st.Links),
 		UpdatedAtUnixMs: st.UpdatedAt.UnixMilli(),
 	})
 	if p.git != nil && st.ConfigPath != "" {
@@ -115,12 +117,11 @@ func (p *presenter) TaskChanged(def *engine.ProcessDef, st engine.TaskState) {
 		Message:  st.Message,
 		Args:     st.Args,
 		Spec: &pb.TaskSpec{
-			Command:    def.Command,
-			WorkingDir: def.Dir,
-			Shell:      def.Shell,
-			Tty:        def.TTY,
-			DependsOn:  deps(def.Deps),
-			EnvKeys:    def.EnvKeys,
+			Command:   def.Cmd.String(),
+			Dir:       def.Dir,
+			Tty:       def.TTY,
+			DependsOn: def.Deps,
+			EnvKeys:   def.EnvKeys,
 		},
 	}
 	if !st.StartedAt.IsZero() {
@@ -134,38 +135,40 @@ func (p *presenter) TaskChanged(def *engine.ProcessDef, st engine.TaskState) {
 
 func (p *presenter) TaskRemoved(project, name string) { p.bus.RemoveTask(project, name) }
 
-func deps(ds []engine.Dep) []*pb.Dependency {
-	out := make([]*pb.Dependency, len(ds))
-	for i, d := range ds {
-		out[i] = &pb.Dependency{Name: d.Name, Condition: string(d.Condition)}
+func links(ls []config.Link) []*pb.Link {
+	out := make([]*pb.Link, len(ls))
+	for i, l := range ls {
+		out[i] = &pb.Link{Name: l.Name, Url: l.URL}
 	}
 	return out
 }
 
 func serviceSpec(def *engine.ProcessDef) *pb.ServiceSpec {
 	spec := &pb.ServiceSpec{
-		Command:    def.Command,
-		WorkingDir: def.Dir,
-		Shell:      def.Shell,
+		Command:    def.Cmd.String(),
+		Dir:        def.Dir,
 		Restart:    string(def.Restart),
-		DependsOn:  deps(def.Deps),
+		DependsOn:  def.Deps,
 		Tty:        def.TTY,
 		EnvKeys:    def.EnvKeys,
+		Autostart:  def.Autostart,
+		StopSignal: def.StopSignal,
 	}
-	if def.Health != nil {
-		spec.Healthcheck = &pb.Healthcheck{
-			Test:          def.Health.Test,
-			IntervalMs:    def.Health.Interval.Milliseconds(),
-			TimeoutMs:     def.Health.Timeout.Milliseconds(),
-			Retries:       int32(def.Health.Retries),
-			StartPeriodMs: def.Health.StartPeriod.Milliseconds(),
+	if r := def.Ready; r != nil {
+		spec.Ready = &pb.Ready{
+			Kind:          r.Kind(),
+			Target:        r.Target(),
+			IntervalMs:    r.Interval.Milliseconds(),
+			TimeoutMs:     r.Timeout.Milliseconds(),
+			Retries:       int32(r.Retries),
+			StartPeriodMs: r.StartPeriod.Milliseconds(),
 		}
 	}
 	for _, port := range def.Ports {
-		spec.Ports = append(spec.Ports, &pb.Port{Name: port.Name, Port: int32(port.Port)})
+		spec.Ports = append(spec.Ports, &pb.Port{Name: port.Name, Port: int32(port.Port), Auto: port.Auto})
 	}
 	if def.Build != nil {
-		spec.BuildCommand = def.Build.Command
+		spec.BuildCommand = def.Build.Display
 	}
 	return spec
 }

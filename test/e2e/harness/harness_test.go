@@ -245,7 +245,7 @@ func TestSelf_ProjectTemplating(t *testing.T) {
 	sb := New(t)
 	p := sb.WriteProject("tmpl", `services:
   a:
-    command: {{fixture "ticker"}} -prefix {{.Name}}
+    run: {{fixture "ticker"}} -prefix {{.Name}}
     port: {{port "a"}}
 `, map[string]string{".env": "P={{port \"a\"}}\n"})
 	cfg, _ := os.ReadFile(p.ConfigPath)

@@ -1,0 +1,470 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Build": {
+      "oneOf": [
+        {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "minItems": 1
+            }
+          ],
+          "description": "A string runs with `sh -c`; a list is executed directly."
+        },
+        {
+          "properties": {
+            "run": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "minItems": 1
+                }
+              ],
+              "description": "Build command: a string runs with `sh -c`, a list is executed\ndirectly."
+            },
+            "dir": {
+              "type": "string",
+              "description": "Working directory, relative to the project directory. Default: the\nservice's."
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "description": "Variables added to the service's environment for the build."
+            },
+            "sources": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "description": "Input files (globs relative to the project directory; ** matches\nany directories). When set, start builds only if they changed since\nthe last successful build."
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "run"
+          ]
+        }
+      ],
+      "description": "Build runs before the service starts."
+    },
+    "HTTPProbe": {
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Request path. Default: /."
+        },
+        "port": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "maximum": 65535,
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "description": "A port name of the service."
+            }
+          ],
+          "description": "Port name or number. Default: the service's default port."
+        },
+        "status": {
+          "type": "integer",
+          "description": "Expected status code. Default: any 2xx or 3xx."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "HTTPProbe requests http://127.0.0.1:\u003cport\u003e\u003cpath\u003e."
+    },
+    "Ready": {
+      "properties": {
+        "http": {
+          "$ref": "#/$defs/HTTPProbe",
+          "description": "GET request to the service; ready on a 2xx or 3xx (or the expected\nstatus)."
+        },
+        "tcp": {
+          "$ref": "#/$defs/TCPProbe",
+          "description": "TCP connection to the service."
+        },
+        "exec": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "minItems": 1
+            }
+          ],
+          "description": "Command that exits 0 when the service is ready."
+        },
+        "interval": {
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+          "description": "Time between probes. Default: 2s.",
+          "examples": [
+            "500ms",
+            "10s",
+            "1m30s"
+          ]
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+          "description": "Time limit of one probe. Default: 2s.",
+          "examples": [
+            "500ms",
+            "10s",
+            "1m30s"
+          ]
+        },
+        "retries": {
+          "type": "integer",
+          "description": "Consecutive failures that mark the service unhealthy. Default: 30."
+        },
+        "start_period": {
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+          "description": "Grace period after start during which failures don't count.",
+          "examples": [
+            "500ms",
+            "10s",
+            "1m30s"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Ready configures the readiness probe: exactly one of http, tcp and exec."
+    },
+    "Service": {
+      "oneOf": [
+        {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "minItems": 1
+            }
+          ],
+          "description": "A string runs with `sh -c`; a list is executed directly."
+        },
+        {
+          "properties": {
+            "run": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "minItems": 1
+                }
+              ],
+              "description": "Command to run: a string runs with `sh -c`, a list is executed\ndirectly."
+            },
+            "dir": {
+              "type": "string",
+              "description": "Working directory, relative to the project directory."
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "description": "Variables for this service; they win over env files."
+            },
+            "env_files": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "description": "Env files for this service, loaded after the project's."
+            },
+            "depends_on": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "description": "Services to wait for: until they are ready (or exited with code 0)."
+            },
+            "ready": {
+              "$ref": "#/$defs/Ready",
+              "description": "Readiness probe; without one the service is ready once started."
+            },
+            "restart": {
+              "type": "string",
+              "enum": [
+                "never",
+                "on-failure",
+                "always"
+              ],
+              "description": "When to restart after an exit. Default: on-failure.",
+              "default": "on-failure"
+            },
+            "build": {
+              "$ref": "#/$defs/Build",
+              "description": "Build step run before start: with --build, or when its sources\nchanged."
+            },
+            "tty": {
+              "type": "boolean",
+              "description": "Run in a pseudo-terminal (colors, progress bars, attach)."
+            },
+            "port": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "maximum": 65535,
+                  "minimum": 1
+                },
+                {
+                  "const": "auto",
+                  "description": "devyard allocates a free port and keeps it across restarts."
+                }
+              ],
+              "description": "Port the service listens on, or \"auto\". Exported as $PORT."
+            },
+            "ports": {
+              "additionalProperties": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 65535,
+                    "minimum": 1
+                  },
+                  {
+                    "const": "auto",
+                    "description": "devyard allocates a free port and keeps it across restarts."
+                  }
+                ]
+              },
+              "propertyNames": {
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+              },
+              "type": "object",
+              "minProperties": 1,
+              "description": "Named ports (number or \"auto\"); the first is the default port.\nExported as $PORT and $PORT_\u003cNAME\u003e."
+            },
+            "host": {
+              "type": "string",
+              "description": "Proxy host label; defaults to the service name."
+            },
+            "stop": {
+              "$ref": "#/$defs/Stop",
+              "description": "How the service is stopped."
+            },
+            "autostart": {
+              "type": "boolean",
+              "description": "Start with the project. When false, the service starts only when\nnamed (or needed by another service). Default: true."
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "run"
+          ]
+        }
+      ],
+      "description": "Service is a long-running process."
+    },
+    "Stop": {
+      "properties": {
+        "signal": {
+          "type": "string",
+          "description": "Signal sent to stop the service. Default: SIGTERM."
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+          "description": "Wait after the signal before SIGKILL. Default: 10s.",
+          "examples": [
+            "500ms",
+            "10s",
+            "1m30s"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Stop configures how a service is stopped."
+    },
+    "TCPProbe": {
+      "properties": {
+        "port": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "maximum": 65535,
+              "minimum": 1
+            },
+            {
+              "type": "string",
+              "description": "A port name of the service."
+            }
+          ],
+          "description": "Port name or number. Default: the service's default port."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "TCPProbe connects to 127.0.0.1:\u003cport\u003e."
+    },
+    "Task": {
+      "oneOf": [
+        {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "minItems": 1
+            }
+          ],
+          "description": "A string runs with `sh -c`; a list is executed directly."
+        },
+        {
+          "properties": {
+            "run": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "minItems": 1
+                }
+              ],
+              "description": "Command to run: a string runs with `sh -c`, a list is executed\ndirectly. Extra arguments are appended."
+            },
+            "dir": {
+              "type": "string",
+              "description": "Working directory, relative to the project directory."
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "description": "Variables for this task; they win over env files."
+            },
+            "env_files": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "description": "Env files for this task, loaded after the project's."
+            },
+            "depends_on": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "description": "Services to start and wait for (until ready) before running."
+            },
+            "tty": {
+              "type": "boolean",
+              "description": "Run in a pseudo-terminal so prompts work. Default: true."
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "run"
+          ]
+        }
+      ],
+      "description": "Task is an on-demand command."
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Project name; defaults to the directory name. The project id is its\nslug."
+    },
+    "primary": {
+      "type": "string",
+      "description": "Service served at \u003cproject\u003e.\u003cdomain\u003e and opened by the dashboard."
+    },
+    "env_files": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "description": "Env files loaded in order, later files winning; missing files are\nskipped. Default: [.env, .env.local]."
+    },
+    "env": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object",
+      "description": "Variables for every service and task."
+    },
+    "links": {
+      "additionalProperties": {
+        "type": "string",
+        "format": "uri"
+      },
+      "type": "object",
+      "description": "Named URLs shown with the project, in order."
+    },
+    "services": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Service"
+      },
+      "type": "object",
+      "description": "Long-running processes. A string or list is shorthand for run."
+    },
+    "tasks": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Task"
+      },
+      "type": "object",
+      "description": "On-demand commands. A string or list is shorthand for run."
+    }
+  },
+  "additionalProperties": false,
+  "type": "object",
+  "title": "devyard.yml",
+  "description": "A devyard project: the services and tasks it runs. See docs/config-schema.md."
+}

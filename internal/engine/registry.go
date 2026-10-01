@@ -19,15 +19,13 @@ import (
 type Registration struct {
 	ID         string `json:"id"`
 	ConfigPath string `json:"config_path"`
-	// EnvFile is the explicit env file, or "" for the default .env next to
-	// the config.
-	EnvFile string `json:"env_file,omitempty"`
 	// Env is the launch environment captured from the shell that
 	// registered or last started the project.
 	Env []string `json:"env,omitempty"`
 	// Desired is running | stopped | partial.
 	Desired string `json:"desired"`
-	// Selected lists the services wanted when Desired is partial.
+	// Selected lists the services wanted when Desired is partial, and the
+	// services started by name (beyond autostart) when it is running.
 	Selected  []string  `json:"selected,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

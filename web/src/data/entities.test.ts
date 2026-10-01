@@ -22,7 +22,7 @@ describe("entity store", () => {
     expect(api.startedAt).toBe(1700000000000);
     expect(typeof api.run).toBe("number");
     expect(api.spec.command).toBe("go run .");
-    expect(api.spec.healthcheck).toBeNull();
+    expect(api.spec.ready).toBeNull();
     expect(s.tasks["web/migrate"]?.spec.tty).toBe(true);
     expect(s.git.web?.branch).toBe("main");
   });

@@ -63,7 +63,6 @@ func (m *Manager) Load() error {
 // AddOptions registers (or re-registers) a project.
 type AddOptions struct {
 	ConfigPath string
-	EnvFile    string
 	// Env is the launch environment; nil means the daemon's environment.
 	Env   []string
 	Start bool
@@ -83,23 +82,12 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) (*Project, error) {
 		env = os.Environ()
 	}
 	env = CleanEnv(env)
-	envFile := opts.EnvFile
-	if envFile != "" {
-		if envFile, err = filepath.Abs(envFile); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
-		}
-	}
 	// Parse once to learn the project id.
-	resolvedEnvFile, dotenv, err := config.ResolveDotEnv(abs, envFile)
+	proj, err := config.Load(abs, env)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrConfig, err)
 	}
-	_ = resolvedEnvFile
-	file, _, err := config.Load(abs, config.InterpolationEnv(env, dotenv))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrConfig, err)
-	}
-	id := file.ID()
+	id := proj.ID
 
 	m.mu.Lock()
 	if m.draining {
@@ -111,7 +99,6 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) (*Project, error) {
 		reg := Registration{
 			ID:         id,
 			ConfigPath: abs,
-			EnvFile:    envFile,
 			Env:        env,
 			Desired:    DesiredStopped,
 			CreatedAt:  time.Now(),
@@ -126,7 +113,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) (*Project, error) {
 	m.mu.Unlock()
 
 	if exists {
-		if err := p.reconfigure(ctx, abs, envFile, env); err != nil {
+		if err := p.reconfigure(ctx, abs, env); err != nil {
 			return p, err
 		}
 	}

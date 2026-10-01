@@ -47,12 +47,19 @@ The resulting transitions arrive through `Watch`.
 | Project | `status` | `stopped`, `starting`, `running`, `degraded`, `stopping`, `error` (`error` carries the message) |
 | Project | `desired` | `running`, `stopped`, `partial` (a selected subset of services) |
 | Service | `status` | `stopped`, `waiting` (dependencies), `building`, `starting`, `running`, `stopping`, `backoff`, `exited`, `failed` |
-| Service | `health` | `""`, `starting`, `healthy`, `unhealthy` (with `health_detail`) |
+| Service | `health` | `""` (no `ready` probe or not running), `starting`, `healthy`, `unhealthy` (with `health_detail`) |
 | Task | `status` | `idle`, `waiting`, `running`, `stopping`, `exited`, `failed` |
 
-`message` explains the current state in words, for example "waiting for db
-(healthy)", "restarting in 4s", "killed by SIGKILL" or "build failed (exit
-code 2)".
+`message` explains the current state in words, for example "waiting for
+db", "restarting in 4s", "killed by SIGKILL" or "build failed (exit code
+2)".
+
+Specs (`ServiceSpec`, `TaskSpec`) describe the resolved definition:
+`command` is the display form of `run`, `ports` carry the decided numbers
+(`auto` marks allocated ones), `ready` is the probe (`kind` and the `target`
+URL, address or command), and `env_keys` names the variables the project
+defines (values are never sent). `Project.env_files` lists the env files that
+exist and `links` the project's links.
 
 ## Errors
 

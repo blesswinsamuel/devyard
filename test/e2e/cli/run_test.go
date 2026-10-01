@@ -9,14 +9,13 @@ import (
 	"github.com/blesswinsamuel/devyard/test/e2e/harness"
 )
 
-const taskProject = `version: "1"
-services:
+const taskProject = `services:
   idle:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 tasks:
   greet: {{fixture "prompter"}}
   greet-notty:
-    command: {{fixture "prompter"}}
+    run: {{fixture "prompter"}}
     tty: false
   fail: {{fixture "exiter"}} -code 3
   echoargs: "echo args:"
@@ -94,10 +93,9 @@ func TestCLI_RunTaskCtrlCStopsTask(t *testing.T) {
 func TestCLI_AttachTTYService(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("att", `version: "1"
-services:
+	p := sb.WriteProject("att", `services:
   console:
-    command: sh -c 'echo console-ready; while read l; do echo "got:$l"; done'
+    run: sh -c 'echo console-ready; while read l; do echo "got:$l"; done'
     tty: true
 `, nil)
 	p.Start()

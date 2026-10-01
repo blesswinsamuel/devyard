@@ -19,18 +19,16 @@ import (
 func TestMain(m *testing.M) { harness.Main(m) }
 
 // web listens on its port; api's "metrics" port has no listener (502).
-const cfg = `version: "1"
-proxy:
-  default_service: web
+const cfg = `primary: web
 services:
   web:
-    command: {{fixture "httpecho"}}
+    run: {{fixture "httpecho"}}
     port: {{port "web"}}
     env:
       PORT: "{{port "web"}}"
       NAME: web
   api:
-    command: {{fixture "httpecho"}}
+    run: {{fixture "httpecho"}}
     ports:
       http: {{port "api"}}
       metrics: {{port "metrics"}}
@@ -38,7 +36,7 @@ services:
       PORT: "{{port "api"}}"
       NAME: api
   hidden:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `
 
 func setup(t *testing.T, name string) (*harness.Project, *harness.Daemon, *harness.Watcher) {
@@ -61,7 +59,7 @@ func TestProxy_RoutesByHost(t *testing.T) {
 		body string
 	}{
 		{"web.px.localhost", http.StatusOK, "name=web"},
-		{"px.localhost", http.StatusOK, "name=web"}, // default_service
+		{"px.localhost", http.StatusOK, "name=web"}, // primary
 		{"http.api.px.localhost", http.StatusOK, "name=api"},
 		{"api.px.localhost", http.StatusOK, "name=api"}, // first port is the default
 		{"metrics.api.px.localhost", http.StatusBadGateway, ""},
@@ -124,8 +122,8 @@ func TestProxy_URLsOnServices(t *testing.T) {
 	if urls := st.Service("pxurl", "hidden").GetUrls(); len(urls) != 0 {
 		t.Errorf("portless service has urls %v", urls)
 	}
-	if st.Project("pxurl").GetDefaultService() != "web" {
-		t.Errorf("default_service = %q", st.Project("pxurl").GetDefaultService())
+	if st.Project("pxurl").GetPrimary() != "web" {
+		t.Errorf("primary = %q", st.Project("pxurl").GetPrimary())
 	}
 }
 

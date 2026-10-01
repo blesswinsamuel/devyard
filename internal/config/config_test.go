@@ -1,9 +1,9 @@
 package config_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,127 +11,504 @@ import (
 	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
-func TestLoadBuildStringAndObject(t *testing.T) {
-	t.Parallel()
+// writeProject writes devyard.yml (and any extra files) into a temp dir and
+// returns the config path.
+func writeProject(t *testing.T, content string, files map[string]string) string {
+	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-services:
-  api:
-    command: echo api
-    build: cargo build
-  web:
-    command: echo web
-    build:
-      command: pnpm build
-      working_dir: ./web
-      env:
-        NODE_ENV: production
-      shell: bash
-`
+	for name, data := range files {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(dir, config.FileName)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file, err := load(path)
+	return path
+}
+
+func mustLoad(t *testing.T, content string, files map[string]string) *config.Project {
+	t.Helper()
+	p, err := config.Load(writeProject(t, content, files), nil)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	api := file.Services["api"]
-	if api.Build == nil || api.Build.Spec.Command != "cargo build" || api.Build.Spec.Shell != "sh" {
-		t.Fatalf("api build: %+v", api.Build)
-	}
-	web := file.Services["web"]
-	if web.Build == nil || web.Build.Spec.Command != "pnpm build" || web.Build.Spec.WorkingDir != "./web" {
-		t.Fatalf("web build: %+v", web.Build)
-	}
-	if web.Build.Spec.Env["NODE_ENV"] != "production" || web.Build.Spec.Shell != "bash" {
-		t.Fatalf("web build env/shell: %+v", web.Build.Spec)
+	return p
+}
+
+func loadErr(t *testing.T, content, want string) {
+	t.Helper()
+	_, err := config.Load(writeProject(t, content, nil), nil)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("Load err = %v, want it to contain %q", err, want)
 	}
 }
 
-func TestDependsOnListAndMap(t *testing.T) {
+func mustResolve(t *testing.T, p *config.Project, launch []string) *config.Resolved {
+	t.Helper()
+	next := 40000
+	r, err := p.Resolve(launch, nil, func() (int, error) { next++; return next, nil })
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	return r
+}
+
+func TestEmptyConfigIsAProject(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
+	p := mustLoad(t, "", nil)
+	if p.ID == "" || len(p.File.Services) != 0 {
+		t.Fatalf("project = %+v", p)
+	}
+}
+
+func TestProjectIDFromName(t *testing.T) {
+	t.Parallel()
+	if p := mustLoad(t, "name: My App\n", nil); p.ID != "my-app" {
+		t.Fatalf("id = %q, want my-app", p.ID)
+	}
+	dir := filepath.Join(t.TempDir(), "Some Dir")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, config.FileName)
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := config.Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ID != "some-dir" {
+		t.Fatalf("id = %q, want some-dir", p.ID)
+	}
+}
+
+func TestRunStringAndList(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
 services:
+  short: bun run dev
+  list: [cargo, run, --bin, "my api"]
+  long:
+    run: echo hi
+tasks:
+  t1: echo t1
+  t2: [make, test]
+`, nil)
+	s := p.File.Services
+	if got := s["short"].Run.Args(); !reflect.DeepEqual(got, []string{"sh", "-c", "bun run dev"}) {
+		t.Errorf("short args = %q", got)
+	}
+	if got := s["list"].Run.Args("x y"); !reflect.DeepEqual(got, []string{"cargo", "run", "--bin", "my api", "x y"}) {
+		t.Errorf("list args = %q", got)
+	}
+	if got := s["list"].Run.String(); got != "cargo run --bin 'my api'" {
+		t.Errorf("list display = %q", got)
+	}
+	if got := p.File.Tasks["t1"].Run.Args("a b"); !reflect.DeepEqual(got, []string{"sh", "-c", "echo t1 'a b'"}) {
+		t.Errorf("t1 args = %q", got)
+	}
+	if got := p.File.Tasks["t2"].Run.Args(); !reflect.DeepEqual(got, []string{"make", "test"}) {
+		t.Errorf("t2 args = %q", got)
+	}
+}
+
+func TestServiceDefaults(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, "services:\n  api: ./api\n", nil)
+	api := p.File.Services["api"]
+	if api.Restart != config.RestartOnFailure {
+		t.Errorf("restart = %q, want on-failure", api.Restart)
+	}
+	if api.Stop.Timeout != config.DefaultStopTimeout || api.Stop.Signal != "" {
+		t.Errorf("stop = %+v", api.Stop)
+	}
+	if !api.Starts() || api.TTY {
+		t.Errorf("autostart/tty defaults wrong: %+v", api)
+	}
+}
+
+func TestTaskTTYDefaultsTrue(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
+tasks:
+  short: echo short
+  long:
+    run: echo long
+  plain:
+    run: echo plain
+    tty: false
+`, nil)
+	tasks := p.File.Tasks
+	if !tasks["short"].IsTTY() || !tasks["long"].IsTTY() || tasks["plain"].IsTTY() {
+		t.Fatal("unexpected tty defaults")
+	}
+}
+
+func TestValidationErrors(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, content, want string
+	}{
+		{"missing run", "services:\n  api:\n    dir: x\n", "run is required"},
+		{"null service", "services:\n  api:\n", "run is required"},
+		{"bad service name", "services:\n  My_Api: x\n", "must be lowercase"},
+		{"unknown dep", "services:\n  api:\n    run: x\n    depends_on: [db]\n", `unknown service "db"`},
+		{"self dep", "services:\n  api:\n    run: x\n    depends_on: [api]\n", "itself"},
+		{"dup dep", "services:\n  db: x\n  api:\n    run: x\n    depends_on: [db, db]\n", "twice"},
+		{"bad restart", "services:\n  api:\n    run: x\n    restart: no\n", "invalid restart policy"},
+		{"port and ports", "services:\n  api:\n    run: x\n    port: 1\n    ports: {http: 2}\n", "mutually exclusive"},
+		{"bad port", "services:\n  api:\n    run: x\n    port: 70000\n", "between 1 and 65535"},
+		{"bad port word", "services:\n  api:\n    run: x\n    port: any\n", `"auto"`},
+		{"bad port name", "services:\n  api:\n    run: x\n    ports: {Http: 1}\n", "must be lowercase"},
+		{"bad host", "services:\n  api:\n    run: x\n    port: 1\n    host: a.b\n", "host"},
+		{"primary unknown", "primary: web\nservices:\n  api: x\n", "unknown service"},
+		{"primary portless", "primary: api\nservices:\n  api: x\n", "has no port"},
+		{"ready none", "services:\n  api:\n    run: x\n    ready: {}\n", "exactly one"},
+		{"ready two", "services:\n  api:\n    run: x\n    port: 1\n    ready: {tcp: {}, exec: true}\n", "exactly one"},
+		{"ready no port", "services:\n  api:\n    run: x\n    ready: {tcp: {}}\n", "has no port"},
+		{"ready bad port name", "services:\n  api:\n    run: x\n    port: 1\n    ready: {http: {port: metrics}}\n", `unknown port "metrics"`},
+		{"ready bad path", "services:\n  api:\n    run: x\n    port: 1\n    ready: {http: {path: health}}\n", "start with /"},
+		{"negative stop", "services:\n  api:\n    run: x\n    stop: {timeout: -1s}\n", "negative"},
+		{"build missing run", "services:\n  api:\n    run: x\n    build: {dir: x}\n", "build.run"},
+		{"task missing run", "tasks:\n  t:\n    dir: x\n", "run is required"},
+		{"task unknown dep", "tasks:\n  t:\n    run: x\n    depends_on: [db]\n", `unknown service "db"`},
+		{"ref unknown service", "services:\n  api:\n    run: echo ${db.port}\n", `unknown service "db"`},
+		{"ref portless", "services:\n  db: x\n  api:\n    run: x\n    env: {X: \"${db.url}\"}\n", "has no port"},
+		{"ref unknown port", "services:\n  db:\n    run: x\n    port: 1\n  api:\n    run: echo ${db.ports.admin}\n", `no port "admin"`},
+		{"bad link", "links:\n  docs: not a url\n", "absolute url"},
+		{"bad env name", "env:\n  \"A B\": x\n", "invalid env name"},
+		{"run map", "services:\n  api:\n    run: {a: b}\n", "string or a list"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			loadErr(t, c.content, c.want)
+		})
+	}
+}
+
+func TestReadyProbes(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
+services:
+  web:
+    run: x
+    ports: {http: 3000, admin: auto}
+    ready:
+      http: {path: /health, port: admin, status: 204}
+      interval: 1s
   db:
-    command: echo db
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-  api:
-    command: echo api
-    depends_on:
-      db: { condition: service_healthy }
-  web:
-    command: echo web
-    depends_on: [api]
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
+    run: x
+    port: 5432
+    ready: {tcp: {}}
+  q:
+    run: x
+    ready:
+      exec: pg_isready -q
+`, nil)
+	web := p.File.Services["web"].Ready
+	if web.Interval != time.Second || web.Timeout != config.DefaultTimeout || web.Retries != config.DefaultRetries {
+		t.Errorf("web ready defaults = %+v", web)
 	}
-	file, err := load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	r := mustResolve(t, p, nil)
+	if got := r.Services["web"].Ready; got.URL != "http://127.0.0.1:40001/health" || got.Status != 204 || got.Kind() != "http" {
+		t.Errorf("web probe = %+v", got)
 	}
-	api := file.Services["api"]
-	if api.DependsOn.Entries["db"].Condition != config.ConditionServiceHealthy {
-		t.Fatalf("api depends_on db condition: %+v", api.DependsOn)
+	if got := r.Services["db"].Ready; got.Addr != "127.0.0.1:5432" || got.Kind() != "tcp" {
+		t.Errorf("db probe = %+v", got)
 	}
-	web := file.Services["web"]
-	if web.DependsOn.Entries["api"].Condition != config.ConditionServiceStarted {
-		t.Fatalf("web depends_on api: %+v", web.DependsOn)
+	if got := r.Services["q"].Ready; !reflect.DeepEqual(got.Exec, []string{"sh", "-c", "pg_isready -q"}) || got.Kind() != "exec" {
+		t.Errorf("q probe = %+v", got)
 	}
 }
 
-func TestHealthcheckDefaults(t *testing.T) {
+func TestPortsAndAutoAllocation(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
+	p := mustLoad(t, `
 services:
+  web:
+    run: x
+    port: auto
   api:
-    command: echo api
-    healthcheck:
-      test: ["CMD", "true"]
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+    run: x
+    ports:
+      http: 3000
+      metrics: auto
+  db: x
+`, nil)
+	assigned := config.PortAssignments{"web": 41000, "gone": 42000}
+	next := 41000
+	r, err := p.Resolve(nil, assigned, func() (int, error) { next++; return next, nil })
+	if err != nil {
 		t.Fatal(err)
 	}
-	file, err := load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	if got := r.Services["web"].Ports; !reflect.DeepEqual(got, []config.ResolvedPort{{Port: 41000, Auto: true}}) {
+		t.Errorf("web ports = %+v (kept assignment expected)", got)
 	}
-	hc := file.Services["api"].Healthcheck
-	if hc.Interval != 5*time.Second || hc.Timeout != 2*time.Second || hc.Retries != 3 {
-		t.Fatalf("defaults: interval=%v timeout=%v retries=%d", hc.Interval, hc.Timeout, hc.Retries)
+	// 41001 is free; 41000 is taken by web.
+	want := []config.ResolvedPort{{Name: "http", Port: 3000}, {Name: "metrics", Port: 41001, Auto: true}}
+	if got := r.Services["api"].Ports; !reflect.DeepEqual(got, want) {
+		t.Errorf("api ports = %+v, want %+v", got, want)
+	}
+	if want := (config.PortAssignments{"web": 41000, "api.metrics": 41001}); !reflect.DeepEqual(r.Ports, want) {
+		t.Errorf("assignments = %v, want %v (stale entries dropped)", r.Ports, want)
+	}
+	env := config.EnvMap(r.Services["api"].Env)
+	if env["PORT"] != "3000" || env["PORT_HTTP"] != "3000" || env["PORT_METRICS"] != "41001" {
+		t.Errorf("api port env = %v", env)
+	}
+	if _, ok := config.EnvMap(r.Services["db"].Env)["PORT"]; ok {
+		t.Error("portless service got PORT")
 	}
 }
 
-func TestTTYField(t *testing.T) {
+func TestServiceReferences(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
+	path := writeProject(t, `
 services:
-  web:
-    command: npm start
-    tty: true
   api:
-    command: echo api
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+    run: x
+    ports: {http: 8080, admin-ui: 9000}
+  my-web:
+    run: [serve, "--api=${api.url}"]
+    env:
+      API: ${api.port}
+      ADMIN: http://localhost:${api.ports.admin-ui}/
+      HOME_DIR: ${HOME}
+tasks:
+  seed: curl ${api.url}/seed
+`, nil)
+	p, err := config.Load(path, []string{"HOME=/home/me"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	file, err := load(path)
+	r := mustResolve(t, p, nil)
+	web := r.Services["my-web"]
+	if want := []string{"serve", "--api=http://127.0.0.1:8080"}; !reflect.DeepEqual(web.Cmd.Argv, want) {
+		t.Errorf("argv = %q, want %q", web.Cmd.Argv, want)
+	}
+	env := config.EnvMap(web.Env)
+	if env["API"] != "8080" || env["ADMIN"] != "http://localhost:9000/" || env["HOME_DIR"] != "/home/me" {
+		t.Errorf("env = %v", env)
+	}
+	if got := r.Tasks["seed"].Cmd.Script; got != "curl http://127.0.0.1:8080/seed" {
+		t.Errorf("task = %q", got)
+	}
+}
+
+func TestEnvFilesAndLayering(t *testing.T) {
+	t.Parallel()
+	path := writeProject(t, `
+env:
+  LEVEL: project
+  SHARED: project
+services:
+  api:
+    run: echo ${FROM_DOTENV}
+    dir: api
+    env_files: [api/.env]
+    env:
+      OWN: svc
+    build:
+      run: make
+      env: {BUILD: yes}
+tasks:
+  t:
+    run: x
+    env: {SHARED: task}
+`, map[string]string{
+		".env":       "FROM_DOTENV=dot\nSHARED=dotenv\nLOCAL=base\n",
+		".env.local": "LOCAL=override\n",
+		"api/.env":   "SHARED=api-file\nOWN=file\n",
+	})
+	p, err := config.Load(path, []string{"PATH=/bin", "LEVEL=launch"})
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatal(err)
 	}
-	if !file.Services["web"].TTY {
-		t.Fatal("expected web.tty = true")
+	dir := filepath.Dir(path)
+	if want := []string{filepath.Join(dir, ".env"), filepath.Join(dir, ".env.local")}; !reflect.DeepEqual(p.EnvFiles, want) {
+		t.Errorf("env files = %v, want %v", p.EnvFiles, want)
 	}
-	if file.Services["api"].TTY {
-		t.Fatal("expected api.tty = false (default)")
+	if p.File.Services["api"].Run.Script != "echo dot" {
+		t.Errorf("interpolation from .env failed: %q", p.File.Services["api"].Run.Script)
+	}
+	r := mustResolve(t, p, []string{"PATH=/bin", "LEVEL=launch"})
+	api := r.Services["api"]
+	env := config.EnvMap(api.Env)
+	want := map[string]string{
+		"PATH": "/bin", "LEVEL": "project", "FROM_DOTENV": "dot", "LOCAL": "override",
+		"SHARED": "api-file", "OWN": "svc",
+	}
+	for k, v := range want {
+		if env[k] != v {
+			t.Errorf("api %s = %q, want %q", k, env[k], v)
+		}
+	}
+	if api.Dir != filepath.Join(dir, "api") {
+		t.Errorf("dir = %q", api.Dir)
+	}
+	if slicesContains(api.EnvKeys, "PATH") || !slicesContains(api.EnvKeys, "OWN") {
+		t.Errorf("env keys = %v (launch env excluded, own included)", api.EnvKeys)
+	}
+	benv := config.EnvMap(api.Build.Env)
+	if benv["BUILD"] != "yes" || benv["OWN"] != "svc" || api.Build.Dir != api.Dir {
+		t.Errorf("build = %+v", api.Build)
+	}
+	if got := config.EnvMap(r.Tasks["t"].Env)["SHARED"]; got != "task" {
+		t.Errorf("task SHARED = %q", got)
+	}
+}
+
+func TestEnvFilesExplicitAndInterpolationOrder(t *testing.T) {
+	t.Parallel()
+	path := writeProject(t, `
+env_files: [config/dev.env, missing.env]
+services:
+  api: echo ${A} ${B:-none}
+`, map[string]string{
+		".env":           "B=ignored\n",
+		"config/dev.env": "A=dev\n",
+	})
+	p, err := config.Load(path, []string{"A=launch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.File.Services["api"].Run.Script; got != "echo launch none" {
+		t.Errorf("run = %q (launch env wins, default .env not loaded)", got)
+	}
+	if len(p.EnvFiles) != 1 {
+		t.Errorf("env files = %v", p.EnvFiles)
+	}
+}
+
+func TestLocalOverlay(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
+name: app
+services:
+  api:
+    run: ./api
+    env: {A: "1", B: "2"}
+    depends_on: [db]
+  db: postgres
+`, map[string]string{config.LocalFileName: `
+services:
+  api:
+    env: {B: local}
+    depends_on: []
+  extra: ./extra
+`})
+	api := p.File.Services["api"]
+	if api.Run.Script != "./api" || api.Env["A"] != "1" || api.Env["B"] != "local" || len(api.DependsOn) != 0 {
+		t.Errorf("api = %+v", api)
+	}
+	if p.File.Services["extra"] == nil || p.File.Services["db"] == nil {
+		t.Error("services not merged")
+	}
+}
+
+func TestInterpolatedNumbers(t *testing.T) {
+	t.Parallel()
+	path := writeProject(t, "services:\n  api:\n    run: x\n    port: ${API_PORT:-4000}\n", nil)
+	p, err := config.Load(path, []string{"API_PORT=4123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.File.Services["api"].Port.Number; got != 4123 {
+		t.Errorf("port = %d", got)
+	}
+}
+
+func TestUnknownFieldWarnings(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
+version: "1"
+services:
+  api:
+    run: x
+    comand: typo
+    port: 1
+    ready:
+      tcp: {prot: 1}
+  short: echo
+tasks:
+  t:
+    run: x
+    shell: bash
+`, nil)
+	got := strings.Join(p.Warnings, "\n")
+	for _, want := range []string{`"version"`, `"comand" at services.api.comand`, `"prot" at services.api.ready.tcp.prot`, `"shell" at tasks.t.shell`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("warnings %q missing %s", got, want)
+		}
+	}
+	if len(p.Warnings) != 4 {
+		t.Errorf("warnings = %q, want 4", p.Warnings)
+	}
+}
+
+func TestLinksAndPrimary(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
+primary: web
+links:
+  Zeta: https://z.example.com
+  Alpha: http://localhost:3001
+services:
+  web:
+    run: x
+    port: 3000
+`, nil)
+	want := config.Links{{Name: "Zeta", URL: "https://z.example.com"}, {Name: "Alpha", URL: "http://localhost:3001"}}
+	if !reflect.DeepEqual(p.File.Links, want) {
+		t.Errorf("links = %+v (order must be preserved)", p.File.Links)
+	}
+	if p.File.Primary != "web" {
+		t.Errorf("primary = %q", p.File.Primary)
+	}
+}
+
+func TestBuildForms(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
+services:
+  a:
+    run: x
+    build: cargo build
+  b:
+    run: x
+    build: [make, all]
+  c:
+    run: x
+    dir: c
+    build:
+      run: pnpm build
+      dir: web
+      sources: ["src/**/*.ts", package.json]
+`, nil)
+	s := p.File.Services
+	if s["a"].Build.Run.Script != "cargo build" || s["b"].Build.Run.Argv[1] != "all" {
+		t.Errorf("build shorthands = %+v %+v", s["a"].Build, s["b"].Build)
+	}
+	r := mustResolve(t, p, nil)
+	c := r.Services["c"].Build
+	if c.Dir != filepath.Join(p.Dir, "web") || c.Sources[0] != filepath.Join(p.Dir, "src/**/*.ts") {
+		t.Errorf("c build = %+v", c)
+	}
+}
+
+func TestAutostart(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, "services:\n  sb:\n    run: x\n    autostart: false\n", nil)
+	if p.File.Services["sb"].Starts() {
+		t.Fatal("autostart: false ignored")
 	}
 }
 
@@ -158,6 +535,7 @@ func TestInterpolate(t *testing.T) {
 		{in: "$HOME-bare", want: "$HOME-bare", warn: 0},
 		{in: "nested ${PORT}", want: "nested 8080", warn: 0},
 		{in: "unterminated ${PORT", want: "unterminated ${PORT", warn: 0},
+		{in: "ref ${api.port} ${my-api.ports.http}", want: "ref ${api.port} ${my-api.ports.http}", warn: 0},
 	}
 	for i, c := range cases {
 		warns := 0
@@ -187,19 +565,9 @@ func TestParseDotEnv(t *testing.T) {
 		"EXPORTED": "yes",
 		"EMPTY":    "",
 	}
-	if len(vars) != len(want) {
+	if !reflect.DeepEqual(vars, want) {
 		t.Fatalf("vars = %v, want %v", vars, want)
 	}
-	for k, v := range want {
-		if vars[k] != v {
-			t.Errorf("vars[%q] = %q, want %q", k, vars[k], v)
-		}
-	}
-}
-
-func load(path string) (*config.File, error) {
-	file, _, err := config.Load(path, nil)
-	return file, err
 }
 
 func TestParseDotEnvMalformed(t *testing.T) {
@@ -209,342 +577,37 @@ func TestParseDotEnvMalformed(t *testing.T) {
 	}
 }
 
-func TestLoadWithEnvInterpolation(t *testing.T) {
+func TestPortAssignmentsRoundTrip(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-services:
-  api:
-    command: echo port=${PORT:-8080}
-    env:
-      PATH: ${PATH}:/custom/bin
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	path := filepath.Join(t.TempDir(), "sub", "ports.json")
+	a, err := config.ReadPortAssignments(path)
+	if err != nil || len(a) != 0 {
+		t.Fatalf("missing file: %v %v", a, err)
+	}
+	want := config.PortAssignments{"web": 1234, "api.metrics": 2345}
+	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	dotenv := map[string]string{"PORT": "9090"}
-	env := config.InterpolationEnv([]string{"PATH=/usr/bin"}, dotenv)
-	file, _, err := config.Load(path, env)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	api := file.Services["api"]
-	if api.Command != "echo port=9090" {
-		t.Errorf("command = %q, want %q", api.Command, "echo port=9090")
-	}
-	if api.Env["PATH"] != "/usr/bin:/custom/bin" {
-		t.Errorf("env PATH = %q, want %q", api.Env["PATH"], "/usr/bin:/custom/bin")
+	got, err := config.ReadPortAssignments(path)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v %v, want %v", got, err, want)
 	}
 }
 
-func TestInterpolationLaunchEnvWins(t *testing.T) {
+func TestShellQuote(t *testing.T) {
 	t.Parallel()
-	env := config.InterpolationEnv([]string{"PORT=1"}, map[string]string{"PORT": "2", "X": "y"})
-	if env["PORT"] != "1" || env["X"] != "y" {
-		t.Fatalf("unexpected env: %v", env)
-	}
-}
-
-func TestChildEnvLayering(t *testing.T) {
-	t.Parallel()
-	launch := []string{"PATH=/usr/bin", "FOO=base", "KEEP=1"}
-	dotenv := map[string]string{"FOO": "dotenv", "DOT": "d"}
-	own := map[string]string{"FOO": "svc", "BAR": "new"}
-	got := config.EnvMap(config.ChildEnv(launch, dotenv, own))
-	want := map[string]string{"PATH": "/usr/bin", "FOO": "svc", "KEEP": "1", "DOT": "d", "BAR": "new"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("%s = %q, want %q", k, got[k], v)
+	for in, want := range map[string]string{"plain": "plain", "": "''", "a b": "'a b'", "it's": `'it'\''s'`, "--x=1": "--x=1"} {
+		if got := config.ShellQuote(in); got != want {
+			t.Errorf("ShellQuote(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
-func TestTaskTTYDefaultsTrue(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-services:
-  web:
-    command: echo hi
-tasks:
-  short: echo short
-  long:
-    command: echo long
-  plain:
-    command: echo plain
-    tty: false
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !file.Tasks["short"].Spec.IsTTY() || !file.Tasks["long"].Spec.IsTTY() || file.Tasks["plain"].Spec.IsTTY() {
-		t.Fatalf("unexpected tty defaults")
-	}
-}
-
-func TestProjectIDFromName(t *testing.T) {
-	t.Parallel()
-	dir := filepath.Join(t.TempDir(), "My Project")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "devyard.yml")
-	if err := os.WriteFile(path, []byte("version: \"1\"\nservices:\n  a:\n    command: x\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if file.ID() != "my-project" {
-		t.Fatalf("id = %q", file.ID())
-	}
-}
-
-func TestHealthcheckStartPeriod(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-services:
-  db:
-    command: x
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      start_period: 30s
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if file.Services["db"].Healthcheck.StartPeriod != 30*time.Second {
-		t.Fatalf("start_period = %v", file.Services["db"].Healthcheck.StartPeriod)
-	}
-}
-
-func TestTasksParsingAndValidation(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-services:
-  db:
-    command: echo db
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-tasks:
-  migrate: npx prisma db push
-  seed:
-    command: node scripts/seed.js
-    working_dir: ./backend
-    env:
-      NODE_ENV: development
-    depends_on:
-      db: { condition: service_healthy }
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(file.Tasks) != 2 {
-		t.Fatalf("Tasks length = %d, want 2", len(file.Tasks))
-	}
-	migrate := file.Tasks["migrate"]
-	if migrate.Spec.Command != "npx prisma db push" || migrate.Spec.Shell != "sh" {
-		t.Errorf("migrate task: %+v", migrate.Spec)
-	}
-	seed := file.Tasks["seed"]
-	if seed.Spec.Command != "node scripts/seed.js" || seed.Spec.WorkingDir != "./backend" || seed.Spec.Env["NODE_ENV"] != "development" {
-		t.Errorf("seed task: %+v", seed.Spec)
-	}
-	if seed.Spec.DependsOn.Entries["db"].Condition != config.ConditionServiceHealthy {
-		t.Errorf("seed depends_on db condition: %+v", seed.Spec.DependsOn)
-	}
-}
-
-func TestPortsAndProxyParsing(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-name: myproj
-proxy:
-  default_service: web
-services:
-  web:
-    command: echo web
-    port: 3000
-    proxy:
-      host: myapp
-  api:
-    command: echo api
-    ports:
-      http: 3000
-      metrics: 9100
-  db:
-    command: echo db
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	if file.Proxy == nil || file.Proxy.DefaultService != "web" {
-		t.Fatalf("project proxy: %+v", file.Proxy)
-	}
-
-	web := file.Services["web"]
-	if web.Ports == nil || len(web.Ports.Entries) != 1 {
-		t.Fatalf("web ports (shorthand): %+v", web.Ports)
-	}
-	if web.Ports.Entries[0].Port != 3000 {
-		t.Errorf("web default port = %d, want 3000", web.Ports.Entries[0].Port)
-	}
-	if web.Proxy == nil || web.Proxy.Host != "myapp" {
-		t.Fatalf("web proxy host: %+v", web.Proxy)
-	}
-
-	api := file.Services["api"]
-	if api.Ports == nil || len(api.Ports.Entries) != 2 {
-		t.Fatalf("api ports: %+v", api.Ports)
-	}
-	if api.Ports.Entries[0].Name != "http" || api.Ports.Entries[0].Port != 3000 {
-		t.Fatalf("api first port: %+v", api.Ports.Entries[0])
-	}
-	if api.Ports.Entries[1].Name != "metrics" || api.Ports.Entries[1].Port != 9100 {
-		t.Fatalf("api second port: %+v", api.Ports.Entries[1])
-	}
-	def, ok := api.Ports.Default()
-	if !ok || def.Name != "http" || def.Port != 3000 {
-		t.Fatalf("api default port: %+v", api.Ports)
-	}
-}
-
-func TestPortAndPortsMutuallyExclusive(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-services:
-  api:
-    command: echo api
-    port: 3000
-    ports:
-      http: 3000
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := load(path); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Fatalf("Load err = %v, want mutually exclusive error", err)
-	}
-}
-
-func TestDefaultServiceValidation(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-
-	// Unknown default service.
-	path := filepath.Join(dir, "a.yml")
-	content := `version: "1"
-proxy:
-  default_service: nope
-services:
-  api:
-    command: echo api
-    port: 3000
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := load(path)
-	if err == nil || !strings.Contains(err.Error(), "unknown service") {
-		t.Fatalf("unknown default_service err = %v", err)
-	}
-
-	// Default service without ports.
-	path = filepath.Join(dir, "b.yml")
-	content = `version: "1"
-proxy:
-  default_service: api
-services:
-  api:
-    command: echo api
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := load(path); err == nil || !strings.Contains(err.Error(), "exposes no ports") {
-		t.Fatalf("portless default_service err = %v", err)
-	}
-}
-
-func TestPortNameValidation(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	for i, name := range []string{"", "UPPER", "lead-", "-tail", "with.dot", "sp ace"} {
-		path := filepath.Join(dir, fmt.Sprintf("c%d.yml", i))
-		content := fmt.Sprintf("version: \"1\"\nservices:\n  api:\n    command: echo api\n    ports:\n      %q: 3000\n", name)
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := load(path); err == nil {
-			t.Errorf("port name %q: expected error", name)
+func slicesContains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
 		}
 	}
-
-	// Valid names pass.
-	path := filepath.Join(dir, "ok.yml")
-	content := `version: "1"
-services:
-  api:
-    command: echo api
-    ports:
-      http: 3000
-      metrics-v2: 9100
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := load(path); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-}
-
-func TestProxyHostValidation(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "devyard.yml")
-	content := `version: "1"
-services:
-  api:
-    command: echo api
-    port: 3000
-    proxy:
-      host: bad.host
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := load(path); err == nil || !strings.Contains(err.Error(), "proxy.host") {
-		t.Fatalf("Load err = %v, want proxy.host error", err)
-	}
+	return false
 }

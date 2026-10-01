@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/blesswinsamuel/devyard/internal/client"
+	"github.com/blesswinsamuel/devyard/internal/config"
 	pb "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
 )
 
@@ -68,7 +69,6 @@ func (c *Context) startProject(ctx context.Context, cl *client.Client, services 
 	}
 	resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{
 		ConfigPath: lc.Path,
-		EnvFile:    lc.EnvFile,
 		Env:        captureEnv(),
 		Start:      len(services) == 0,
 		Build:      build && len(services) == 0,
@@ -78,7 +78,7 @@ func (c *Context) startProject(ctx context.Context, cl *client.Client, services 
 	}
 	id := resp.Msg.Project.GetId()
 	if id == "" {
-		id = lc.File.ID()
+		id = lc.Project.ID
 	}
 	if len(services) > 0 {
 		if _, err := cl.StartProject(ctx, connect.NewRequest(&pb.StartProjectRequest{Project: id, Services: services, Build: build})); err != nil {
@@ -532,6 +532,19 @@ func newVersionCmd(c *Context) *cobra.Command {
 		Short: "Print the version",
 		Run: func(cmd *cobra.Command, args []string) {
 			c.Printf("devyard %s\n", Version)
+		},
+	}
+}
+
+func newSchemaCmd(c *Context) *cobra.Command {
+	return &cobra.Command{
+		Use:   "schema",
+		Short: "Print the JSON Schema of devyard.yml",
+		Long: "Print the JSON Schema of devyard.yml. Point your editor at it for completion and\n" +
+			"validation, e.g. with a `# yaml-language-server: $schema=<path>` comment.",
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			_, _ = c.Out.Write(config.SchemaJSON)
 		},
 	}
 }

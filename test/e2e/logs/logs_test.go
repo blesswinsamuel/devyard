@@ -18,12 +18,11 @@ import (
 
 func TestMain(m *testing.M) { harness.Main(m) }
 
-const cfg = `version: "1"
-services:
+const cfg = `services:
   a:
-    command: {{fixture "ticker"}} -prefix A -interval 20ms
+    run: {{fixture "ticker"}} -prefix A -interval 20ms
   b:
-    command: {{fixture "ticker"}} -prefix B -interval 20ms -stderr
+    run: {{fixture "ticker"}} -prefix B -interval 20ms -stderr
 tasks:
   t: {{fixture "ticker"}} -prefix T -interval 0 -count 5
 `
@@ -169,12 +168,11 @@ func TestLedger_S14_NoLossAcrossRotation(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
 	const n = 6000 // 6000 x 4 KiB = ~24 MiB, past any sane rotation threshold
-	p := sb.WriteProject("rot", fmt.Sprintf(`version: "1"
-services:
+	p := sb.WriteProject("rot", fmt.Sprintf(`services:
   burst:
-    command: {{fixture "ticker"}} -prefix R -interval 0 -count %d -line-size 4096
+    run: {{fixture "ticker"}} -prefix R -interval 0 -count %d -line-size 4096
   steady:
-    command: {{fixture "ticker"}} -prefix S -interval 1ms -line-size 8192
+    run: {{fixture "ticker"}} -prefix S -interval 1ms -line-size 8192
 `, n), nil)
 	p.Start()
 	d := sb.Daemon()

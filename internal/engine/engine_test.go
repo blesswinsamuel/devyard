@@ -9,12 +9,14 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/blesswinsamuel/devyard/internal/config"
 	"github.com/blesswinsamuel/devyard/internal/logstore"
 	"github.com/blesswinsamuel/devyard/internal/paths"
 	"github.com/blesswinsamuel/devyard/internal/runner"
@@ -174,7 +176,7 @@ func (e *env) project(name, yaml string) string {
 		e.t.Fatal(err)
 	}
 	path := filepath.Join(dir, "devyard.yml")
-	if err := os.WriteFile(path, []byte("version: \"1\"\nname: "+name+"\n"+yaml), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("name: "+name+"\n"+yaml), 0o644); err != nil {
 		e.t.Fatal(err)
 	}
 	return path
@@ -208,9 +210,9 @@ func TestStartStopProject(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p1", `services:
   a:
-    command: sleep 30
+    run: sleep 30
   b:
-    command: sleep 30
+    run: sleep 30
     depends_on: [a]
 `)
 	p := e.add(path, true)
@@ -234,15 +236,14 @@ func TestServiceHealthyDependency(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p2", `services:
   db:
-    command: sleep 0.5 && touch ready && sleep 30
-    healthcheck:
-      test: ["CMD-SHELL", "test -f ready"]
+    run: sleep 0.5 && touch ready && sleep 30
+    ready:
+      exec: "test -f ready"
       interval: 100ms
       retries: 100
   api:
-    command: sleep 30
-    depends_on:
-      db: {condition: service_healthy}
+    run: sleep 30
+    depends_on: [db]
 `)
 	e.add(path, true)
 	e.obs.waitFor(t, "api waiting", 10*time.Second, func(r *recorder) bool { return r.services["p2/api"].Status == StatusWaiting })
@@ -257,8 +258,8 @@ func TestLedgerS2ConcurrentRestartsSingleProcess(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p3", `services:
   a:
-    command: sleep 30
-    stop_grace_period: 1s
+    run: sleep 30
+    stop: {timeout: 1s}
 `)
 	p := e.add(path, true)
 	e.obs.waitService(t, "p3/a", StatusRunning)
@@ -297,7 +298,7 @@ func TestLedgerS3StopDuringBackoff(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p4", `services:
   crash:
-    command: exit 1
+    run: exit 1
     restart: always
 `)
 	p := e.add(path, true)
@@ -327,8 +328,8 @@ func TestLedgerS7KillDuringStop(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p5", `services:
   stubborn:
-    command: trap "" TERM; echo ready; while true; do sleep 0.1; done
-    stop_grace_period: 30s
+    run: trap "" TERM; echo ready; while true; do sleep 0.1; done
+    stop: {timeout: 30s}
 `)
 	p := e.add(path, true)
 	e.obs.waitService(t, "p5/stubborn", StatusRunning)
@@ -358,8 +359,8 @@ func TestStopEscalatesAfterGrace(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p6", `services:
   stubborn:
-    command: trap "" TERM; echo ready; while true; do sleep 0.1; done
-    stop_grace_period: 300ms
+    run: trap "" TERM; echo ready; while true; do sleep 0.1; done
+    stop: {timeout: 300ms}
 `)
 	p := e.add(path, true)
 	st := e.obs.waitService(t, "p6/stubborn", StatusRunning)
@@ -381,7 +382,7 @@ func TestLedgerS5AdoptionAcrossManagers(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p7", `services:
   ticker:
-    command: while true; do echo tick; sleep 0.1; done
+    run: while true; do echo tick; sleep 0.1; done
 `)
 	e.add(path, true)
 	before := e.obs.waitService(t, "p7/ticker", StatusRunning)
@@ -432,7 +433,8 @@ func TestExitWhileManagerAwayIsReported(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p8", `services:
   short:
-    command: sleep 0.5; exit 3
+    run: sleep 0.5; exit 3
+    restart: never
 `)
 	e.add(path, true)
 	e.obs.waitService(t, "p8/short", StatusRunning)
@@ -460,7 +462,7 @@ func TestStoppedProjectStaysStoppedAcrossManagers(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p9", `services:
   a:
-    command: sleep 30
+    run: sleep 30
 `)
 	p := e.add(path, true)
 	e.obs.waitService(t, "p9/a", StatusRunning)
@@ -482,7 +484,7 @@ func TestDaemonStopThenAutostart(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p10", `services:
   a:
-    command: sleep 30
+    run: sleep 30
 `)
 	e.add(path, true)
 	e.obs.waitService(t, "p10/a", StatusRunning)
@@ -501,25 +503,24 @@ func TestReloadReconciles(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p11", `services:
   keep:
-    command: sleep 30
+    run: sleep 30
   change:
-    command: sleep 30
+    run: sleep 30
   drop:
-    command: sleep 30
+    run: sleep 30
 `)
 	p := e.add(path, true)
 	keep := e.obs.waitService(t, "p11/keep", StatusRunning)
 	change := e.obs.waitService(t, "p11/change", StatusRunning)
 	drop := e.obs.waitService(t, "p11/drop", StatusRunning)
-	if err := os.WriteFile(path, []byte(`version: "1"
-name: p11
+	if err := os.WriteFile(path, []byte(`name: p11
 services:
   keep:
-    command: sleep 30
+    run: sleep 30
   change:
-    command: sleep 31
+    run: sleep 31
   added:
-    command: sleep 30
+    run: sleep 30
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +546,7 @@ func TestLedgerO1MissingConfigKeepsProject(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p12", `services:
   a:
-    command: sleep 30
+    run: sleep 30
 `)
 	p := e.add(path, true)
 	a := e.obs.waitService(t, "p12/a", StatusRunning)
@@ -585,11 +586,11 @@ func TestLedgerO1MissingConfigKeepsProject(t *testing.T) {
 func TestLedgerO11SameNameDifferentPath(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	path := e.project("dup", "services:\n  a:\n    command: sleep 30\n")
+	path := e.project("dup", "services:\n  a:\n    run: sleep 30\n")
 	e.add(path, false)
 	other := filepath.Join(e.root, "other", "devyard.yml")
 	_ = os.MkdirAll(filepath.Dir(other), 0o755)
-	_ = os.WriteFile(other, []byte("version: \"1\"\nname: dup\nservices:\n  b:\n    command: sleep 30\n"), 0o644)
+	_ = os.WriteFile(other, []byte("name: dup\nservices:\n  b:\n    run: sleep 30\n"), 0o644)
 	_, err := e.m.Add(ctx(t), AddOptions{ConfigPath: other})
 	if !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("err = %v", err)
@@ -614,12 +615,12 @@ func TestTaskRunAndConcurrency(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p13", `services:
   a:
-    command: sleep 30
+    run: sleep 30
 tasks:
   slow:
-    command: echo start; sleep 30
+    run: echo start; sleep 30
   quick:
-    command: echo "args:"
+    run: echo "args:"
     tty: false
 `)
 	p := e.add(path, false)
@@ -658,12 +659,12 @@ func TestStartServiceOnStoppedProjectStartsDependencies(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p14", `services:
   db:
-    command: sleep 30
+    run: sleep 30
   api:
-    command: sleep 30
+    run: sleep 30
     depends_on: [db]
   other:
-    command: sleep 30
+    run: sleep 30
 `)
 	p := e.add(path, false)
 	if err := p.StartService(ctx(t), "api", false); err != nil {
@@ -683,7 +684,7 @@ func TestStartServiceOnStoppedProjectStartsDependencies(t *testing.T) {
 func TestConcurrentStartsNoDuplicates(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	path := e.project("p15", "services:\n  a:\n    command: sleep 30\n")
+	path := e.project("p15", "services:\n  a:\n    run: sleep 30\n")
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
@@ -718,13 +719,13 @@ func TestRandomizedOperationsInvariants(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("chaos", `services:
   a:
-    command: sleep 30
-    stop_grace_period: 500ms
+    run: sleep 30
+    stop: {timeout: 500ms}
   b:
-    command: sleep 30
+    run: sleep 30
     depends_on: [a]
     restart: always
-    stop_grace_period: 500ms
+    stop: {timeout: 500ms}
 `)
 	p := e.add(path, true)
 	rng := rand.New(rand.NewPCG(1, 2))
@@ -775,12 +776,12 @@ func TestRandomizedOperationsInvariants(t *testing.T) {
 func TestConfigChangedWhileAwayRestartsOnAdoption(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
-	path := e.project("p16", "services:\n  a:\n    command: sleep 30\n  b:\n    command: sleep 30\n")
+	path := e.project("p16", "services:\n  a:\n    run: sleep 30\n  b:\n    run: sleep 30\n")
 	e.add(path, true)
 	a := e.obs.waitService(t, "p16/a", StatusRunning)
 	b := e.obs.waitService(t, "p16/b", StatusRunning)
 	_ = e.m.Shutdown(ctx(t), false)
-	_ = os.WriteFile(path, []byte("version: \"1\"\nname: p16\nservices:\n  a:\n    command: sleep 31\n  b:\n    command: sleep 30\n"), 0o644)
+	_ = os.WriteFile(path, []byte("name: p16\nservices:\n  a:\n    run: sleep 31\n  b:\n    run: sleep 30\n"), 0o644)
 	e.obs = newRecorder()
 	e.m = e.newManager()
 	_ = e.m.Load()
@@ -798,15 +799,14 @@ func TestDependentWaitsThroughTransientUnhealthy(t *testing.T) {
 	e := newEnv(t)
 	path := e.project("p17", `services:
   db:
-    command: sleep 1 && touch ready && sleep 30
-    healthcheck:
-      test: ["CMD-SHELL", "test -f ready"]
+    run: sleep 1 && touch ready && sleep 30
+    ready:
+      exec: "test -f ready"
       interval: 100ms
       retries: 1
   api:
-    command: sleep 30
-    depends_on:
-      db: {condition: service_healthy}
+    run: sleep 30
+    depends_on: [db]
 `)
 	e.add(path, true)
 	e.obs.waitFor(t, "db unhealthy while booting", 10*time.Second, func(r *recorder) bool { return r.services["p17/db"].Health == HealthUnhealthy })
@@ -828,4 +828,162 @@ func waitLog(t *testing.T, e *env, project, service, text string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("%s/%s never logged %q", project, service, text)
+}
+
+func TestAutostartFalseStartsOnlyWhenNamed(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	path := e.project("auto", `services:
+  db:
+    run: sleep 30
+  web:
+    run: sleep 30
+    depends_on: [db]
+  storybook:
+    run: sleep 30
+    autostart: false
+  helper:
+    run: sleep 30
+    autostart: false
+  api:
+    run: sleep 30
+    depends_on: [helper]
+`)
+	p := e.add(path, true)
+	for _, name := range []string{"db", "web", "api", "helper"} {
+		e.obs.waitService(t, "auto/"+name, StatusRunning)
+	}
+	if st := e.obs.service("auto/storybook"); st.Status != StatusStopped {
+		t.Fatalf("storybook started with the project: %+v", st)
+	}
+	e.obs.waitFor(t, "project running", 10*time.Second, func(r *recorder) bool { return r.projects["auto"].Status == ProjectRunning })
+	if err := p.StartService(ctx(t), "storybook", false); err != nil {
+		t.Fatal(err)
+	}
+	e.obs.waitService(t, "auto/storybook", StatusRunning)
+	if v := p.View(); !v.wanted("storybook") {
+		t.Fatal("storybook started by name is not wanted")
+	}
+}
+
+func TestAutoPortsPersistAcrossLoads(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	path := e.project("ports", `services:
+  web:
+    run: echo "port=$PORT"; sleep 30
+    port: auto
+`)
+	p := e.add(path, false)
+	port := p.View().ServiceDefs["web"].Ports[0].Port
+	if port == 0 {
+		t.Fatal("auto port not allocated")
+	}
+	if err := p.Reload(ctx(t), nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.View().ServiceDefs["web"].Ports[0].Port; got != port {
+		t.Fatalf("port changed across reload: %d -> %d", port, got)
+	}
+	env := config.EnvMap(p.View().ServiceDefs["web"].Env)
+	if env["PORT"] != strconv.Itoa(port) {
+		t.Fatalf("PORT = %q, want %d", env["PORT"], port)
+	}
+}
+
+func TestStopSignal(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	path := e.project("sig", `services:
+  a:
+    run: trap 'echo got-int > int.txt; kill $!; exit 0' INT; echo > trapped; sleep 30 & wait
+    stop: {signal: SIGINT, timeout: 5s}
+`)
+	p := e.add(path, true)
+	e.obs.waitService(t, "sig/a", StatusRunning)
+	e.obs.waitFor(t, "trap installed", 5*time.Second, func(*recorder) bool {
+		_, err := os.Stat(filepath.Join(filepath.Dir(path), "trapped"))
+		return err == nil
+	})
+	start := time.Now()
+	if err := p.Stop(ctx(t)); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("stop took %s: SIGINT not delivered", d)
+	}
+	if data, err := os.ReadFile(filepath.Join(filepath.Dir(path), "int.txt")); err != nil || !strings.Contains(string(data), "got-int") {
+		t.Fatalf("SIGINT handler did not run: %q %v", data, err)
+	}
+}
+
+func TestBuildSourcesSkipUnchangedBuild(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	path := e.project("bsrc", `services:
+  a:
+    run: sleep 30
+    build:
+      run: echo built >> builds.txt
+      sources: ["src/**/*.go"]
+`)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(filepath.Join(dir, "src", "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(dir, "src", "pkg", "main.go")
+	if err := os.WriteFile(src, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	builds := func() int {
+		data, _ := os.ReadFile(filepath.Join(dir, "builds.txt"))
+		return strings.Count(string(data), "built")
+	}
+	p := e.add(path, false)
+	restart := func() {
+		t.Helper()
+		if err := p.Stop(ctx(t)); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.Start(ctx(t), nil, false); err != nil {
+			t.Fatal(err)
+		}
+		e.obs.waitService(t, "bsrc/a", StatusRunning)
+	}
+	restart()
+	if n := builds(); n != 1 {
+		t.Fatalf("first start: %d builds, want 1", n)
+	}
+	restart()
+	if n := builds(); n != 1 {
+		t.Fatalf("unchanged sources: %d builds, want 1", n)
+	}
+	later := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(src, later, later); err != nil {
+		t.Fatal(err)
+	}
+	restart()
+	if n := builds(); n != 2 {
+		t.Fatalf("changed sources: %d builds, want 2", n)
+	}
+}
+
+func TestMatchGlob(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		pattern, path string
+		want          bool
+	}{
+		{"/p/src/**/*.go", "/p/src/main.go", true},
+		{"/p/src/**/*.go", "/p/src/a/b/main.go", true},
+		{"/p/src/**/*.go", "/p/src/main.ts", false},
+		{"/p/src/*.go", "/p/src/a/main.go", false},
+		{"/p/package.json", "/p/package.json", true},
+		{"/p/**", "/p/x/y", true},
+	}
+	for _, c := range cases {
+		if got := matchGlob(c.pattern, c.path); got != c.want {
+			t.Errorf("matchGlob(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
+		}
+	}
 }

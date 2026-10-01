@@ -19,10 +19,9 @@ import (
 
 func TestMain(m *testing.M) { harness.Main(m) }
 
-const cfg = `version: "1"
-services:
+const cfg = `services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `
 
 func requireGit(t *testing.T) {

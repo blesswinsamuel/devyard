@@ -17,12 +17,12 @@ import (
 
 func TestMain(m *testing.M) { harness.Main(m) }
 
-const pair = `version: "1"
-services:
+const pair = `services:
   tick:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
   once:
-    command: {{fixture "exiter"}} -code 4 -after 300ms
+    run: {{fixture "exiter"}} -code 4 -after 300ms
+    restart: never
 tasks:
   job: {{fixture "exiter"}} -code 2 -after 100ms
 `
@@ -187,12 +187,11 @@ func TestLedger_O13_ReconnectSnapshotMatchesTruth(t *testing.T) {
 func TestLedger_O13_SlowSubscriberConverges(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("slow", `version: "1"
-services:
+	p := sb.WriteProject("slow", `services:
   s1:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
   s2:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	d := sb.Daemon()
@@ -287,12 +286,11 @@ func applyChange(s *harness.State, m *v1.WatchResponse) {
 func TestLedger_S15_ExitedNeverFlipsToRunning(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("s15", `version: "1"
-services:
+	p := sb.WriteProject("s15", `services:
   blip:
-    command: {{fixture "exiter"}} -code 0
+    run: {{fixture "exiter"}} -code 0
   anchor:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	d := sb.Daemon()

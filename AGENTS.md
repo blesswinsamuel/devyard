@@ -108,9 +108,11 @@ socket; the web UI over the dashboard listener. See
 - **Process safety**: every child is started with `Setpgid`; teardown uses
   `killpg` (negative pid) so shell pipelines don't leak orphans. Don't add a
   code path that spawns a child without its own process group.
-- **Config changes**: update `internal/config/config.go` **and** the tests in
-  `internal/config/config_test.go` **and** [docs/config-schema.md](docs/config-schema.md).
-  Unknown fields should warn, not error.
+- **Config changes**: update `internal/config` **and** its tests **and**
+  [docs/config-schema.md](docs/config-schema.md), then regenerate the JSON
+  Schema with `go generate ./internal/config` (a test fails when it is stale).
+  Field comments on the config types are user-facing: they become the schema's
+  descriptions. Unknown fields should warn, not error.
 - **Global config changes**: update `internal/globalconfig/globalconfig.go` and
   its tests. The global config lives at
   `$XDG_CONFIG_HOME/devyard/config.yml`.

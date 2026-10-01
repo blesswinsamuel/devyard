@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blesswinsamuel/devyard/internal/config"
 	"github.com/blesswinsamuel/devyard/internal/logstore"
 	"github.com/blesswinsamuel/devyard/internal/runner"
 )
@@ -253,7 +254,7 @@ func (a *taskActor) cmdRun(args []string) runReply {
 	go func() {
 		var err error
 		for _, d := range deps {
-			if err = a.hub.waitReady(ctx, d.Name, d.Condition); err != nil {
+			if err = a.hub.waitReady(ctx, d); err != nil {
 				break
 			}
 		}
@@ -281,17 +282,13 @@ func (a *taskActor) onDeps(m evDeps) {
 }
 
 func (a *taskActor) launch(run int64, args []string) {
-	command := a.def.Command
-	if len(args) > 0 {
-		command += " " + shellJoin(args)
-	}
 	spec := runner.Spec{
 		Project:   a.def.Project,
 		Kind:      "task",
 		Name:      a.def.Name,
 		Run:       run,
-		Command:   command,
-		Shell:     a.def.Shell,
+		Argv:      a.def.Cmd.Args(args...),
+		Display:   taskDisplay(a.def.Cmd, args),
 		Dir:       a.def.Dir,
 		Env:       a.def.Env,
 		TTY:       a.def.TTY,
@@ -316,13 +313,13 @@ func (a *taskActor) launch(run int64, args []string) {
 	a.watch(proc, run)
 }
 
-// shellJoin quotes args for sh -c.
-func shellJoin(args []string) string {
-	quoted := make([]string, len(args))
-	for i, arg := range args {
-		quoted[i] = "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+// taskDisplay renders a task command with its extra arguments.
+func taskDisplay(cmd config.Command, args []string) string {
+	parts := []string{cmd.String()}
+	for _, arg := range args {
+		parts = append(parts, config.ShellQuote(arg))
 	}
-	return strings.Join(quoted, " ")
+	return strings.Join(parts, " ")
 }
 
 func (a *taskActor) watch(proc Proc, run int64) {

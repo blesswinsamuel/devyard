@@ -3,7 +3,7 @@ import { A } from "@solidjs/router";
 import { CopyButton } from "~/components/copy-button";
 import { HealthIndicator, StatusDot } from "~/components/status";
 import { UrlLinks } from "~/components/url-links";
-import { getService, type DependencyEntity, type ServiceEntity } from "~/data/entities";
+import { getService, type ServiceEntity } from "~/data/entities";
 import { usePorts } from "~/data/queries";
 import { formatDateTime, formatDuration, now } from "~/lib/format";
 import { paths } from "~/lib/paths";
@@ -27,24 +27,24 @@ function Code(props: { text: string }) {
   );
 }
 
-/** A dependency with its live status and whether its condition is met. */
-function DependencyRow(props: { project: string; dep: DependencyEntity }) {
-  const s = () => getService(props.project, props.dep.name);
-  const healthy = () => props.dep.condition === "service_healthy";
+/** A dependency with its live status and whether it is ready: running and,
+ * when it has a readiness probe, healthy. */
+function DependencyRow(props: { project: string; dep: string }) {
+  const s = () => getService(props.project, props.dep);
   const met = () => {
     const svc = s();
-    if (!svc || svc.status !== "running") return false;
-    return !healthy() || svc.health === "healthy";
+    if (!svc) return false;
+    if (svc.status === "exited") return svc.exitCode === 0;
+    return svc.status === "running" && (!svc.spec.ready || svc.health === "healthy");
   };
   return (
     <li class="flex flex-wrap items-center gap-2">
       <Show when={s()} fallback={<StatusDot tone="muted" />}>
         {(svc) => <StatusDot tone={serviceTone(svc())} />}
       </Show>
-      <A href={paths.service(props.project, props.dep.name)} class="focus-ring rounded-sm font-medium hover:underline">
-        {props.dep.name}
+      <A href={paths.service(props.project, props.dep)} class="focus-ring rounded-sm font-medium hover:underline">
+        {props.dep}
       </A>
-      <span class="text-2xs text-muted-foreground">{healthy() ? "must be healthy" : "must be started"}</span>
       <span class={met() ? "text-2xs text-success" : "text-2xs text-warning"}>
         {s() ? `${serviceLabel(s()!)}${s()!.health ? `, ${s()!.health}` : ""}` : "unknown service"}
         {met() ? " ✓" : ""}
@@ -71,13 +71,18 @@ export function ServiceDetails(props: { service: ServiceEntity }) {
               <Code text={spec().buildCommand} />
             </Row>
           </Show>
-          <Row label="Working dir">
-            <span class="font-mono text-xs break-all">{spec().workingDir || "—"}</span>
+          <Row label="Directory">
+            <span class="font-mono text-xs break-all">{spec().dir || "—"}</span>
           </Row>
-          <Row label="Shell">
-            <span class="font-mono text-xs">{spec().shell || "—"}</span>
-          </Row>
-          <Row label="Restart">{spec().restart || "no"}</Row>
+          <Row label="Restart">{spec().restart || "on-failure"}</Row>
+          <Show when={!spec().autostart}>
+            <Row label="Autostart">no (starts only when named)</Row>
+          </Show>
+          <Show when={spec().stopSignal}>
+            <Row label="Stop signal">
+              <span class="font-mono text-xs">{spec().stopSignal}</span>
+            </Row>
+          </Show>
           <Row label="TTY">{spec().tty ? "yes (attachable)" : "no"}</Row>
           <Row label="Depends on">
             <Show when={spec().dependsOn.length} fallback={<span class="text-muted-foreground">nothing</span>}>
@@ -94,6 +99,7 @@ export function ServiceDetails(props: { service: ServiceEntity }) {
                     <span class="tabular rounded-sm bg-muted px-1.5 font-mono text-xs">
                       {p.name ? `${p.name}:` : ""}
                       {p.port}
+                      {p.auto ? " (auto)" : ""}
                     </span>
                   )}
                 </For>
@@ -167,9 +173,12 @@ export function ServiceDetails(props: { service: ServiceEntity }) {
           </dl>
         </section>
 
-        <section class="rounded-lg border bg-card px-4 py-2" aria-label="Healthcheck">
-          <h3 class="pt-2 pb-1 text-sm font-semibold">Healthcheck</h3>
-          <Show when={spec().healthcheck} fallback={<p class="py-2 text-ui text-muted-foreground">No healthcheck configured.</p>}>
+        <section class="rounded-lg border bg-card px-4 py-2" aria-label="Readiness">
+          <h3 class="pt-2 pb-1 text-sm font-semibold">Readiness</h3>
+          <Show
+            when={spec().ready}
+            fallback={<p class="py-2 text-ui text-muted-foreground">No readiness probe; ready once started.</p>}
+          >
             {(hc) => (
               <dl>
                 <Row label="Health">
@@ -184,8 +193,8 @@ export function ServiceDetails(props: { service: ServiceEntity }) {
                     </pre>
                   </Row>
                 </Show>
-                <Row label="Test">
-                  <Code text={hc().test.join(" ")} />
+                <Row label={hc().kind.toUpperCase()}>
+                  <Code text={hc().target} />
                 </Row>
                 <Row label="Timing">
                   <span class="tabular">

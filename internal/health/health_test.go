@@ -2,11 +2,15 @@ package health_test
 
 import (
 	"context"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,25 +39,89 @@ func waitForState(t *testing.T, c *health.Checker, timeout time.Duration, want h
 	return false
 }
 
-func TestNewRejectsBadTestSpec(t *testing.T) {
+func TestNewRequiresExactlyOneProbe(t *testing.T) {
 	t.Parallel()
-	cases := [][]string{
+	cases := []health.Config{
 		{},
-		{"CMD"},
-		{"CMD-SHELL"},
-		{"NOPE", "echo hi"},
+		{URL: "http://127.0.0.1:1/", Addr: "127.0.0.1:1"},
+		{Addr: "127.0.0.1:1", Exec: []string{"true"}},
 	}
 	for i, tc := range cases {
-		_, err := health.New("svc", health.Config{Test: tc}, nil)
-		if err == nil {
-			t.Fatalf("case %d %v: expected error, got nil", i, tc)
+		if _, err := health.New("svc", tc, nil); err == nil {
+			t.Fatalf("case %d %+v: expected error, got nil", i, tc)
 		}
+	}
+}
+
+func TestHTTPProbe(t *testing.T) {
+	t.Parallel()
+	status := atomic.Int32{}
+	status.Store(http.StatusServiceUnavailable)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(int(status.Load()))
+	}))
+	t.Cleanup(srv.Close)
+	c, err := health.New("svc", health.Config{URL: srv.URL + "/health", Interval: 20 * time.Millisecond, Retries: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Stop)
+	c.EnsureStarted(context.Background())
+	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+		t.Fatalf("state = %s, want %s", c.State(), health.StateUnhealthy)
+	}
+	status.Store(http.StatusOK)
+	if !waitForState(t, c, 2*time.Second, health.StateHealthy) {
+		t.Fatalf("state = %s, want %s", c.State(), health.StateHealthy)
+	}
+}
+
+func TestHTTPProbeExpectedStatus(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	c, err := health.New("svc", health.Config{URL: srv.URL, Status: http.StatusNoContent, Interval: 20 * time.Millisecond, Retries: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Stop)
+	c.EnsureStarted(context.Background())
+	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+		t.Fatalf("state = %s, want %s", c.State(), health.StateUnhealthy)
+	}
+}
+
+func TestTCPProbe(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	c, err := health.New("svc", health.Config{Addr: addr, Interval: 20 * time.Millisecond, Retries: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Stop)
+	c.EnsureStarted(context.Background())
+	if !waitForState(t, c, 2*time.Second, health.StateHealthy) {
+		t.Fatalf("state = %s, want %s", c.State(), health.StateHealthy)
+	}
+	_ = ln.Close()
+	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+		t.Fatalf("state = %s, want %s", c.State(), health.StateUnhealthy)
 	}
 }
 
 func TestDefaultsApplied(t *testing.T) {
 	t.Parallel()
-	c, err := health.New("svc", health.Config{Test: []string{"CMD", "true"}}, nil)
+	c, err := health.New("svc", health.Config{Exec: []string{"true"}}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -66,7 +134,7 @@ func TestCMDProbeBecomesHealthy(t *testing.T) {
 	}
 	t.Parallel()
 	c := newChecker(t, health.Config{
-		Test:     []string{"CMD", "true"},
+		Exec:     []string{"true"},
 		Interval: 50 * time.Millisecond,
 		Retries:  3,
 		Timeout:  time.Second,
@@ -84,7 +152,7 @@ func TestCMDShellProbeBecomesHealthy(t *testing.T) {
 	}
 	t.Parallel()
 	c := newChecker(t, health.Config{
-		Test:     []string{"CMD-SHELL", "true"},
+		Exec:     []string{"sh", "-c", "true"},
 		Interval: 50 * time.Millisecond,
 		Retries:  3,
 		Timeout:  time.Second,
@@ -102,7 +170,7 @@ func TestFailingProbeGoesUnhealthyAfterRetries(t *testing.T) {
 	}
 	t.Parallel()
 	c := newChecker(t, health.Config{
-		Test:     []string{"CMD", "false"},
+		Exec:     []string{"false"},
 		Interval: 20 * time.Millisecond,
 		Retries:  3,
 		Timeout:  time.Second,
@@ -124,7 +192,7 @@ func TestRecoveryFromUnhealthyToHealthy(t *testing.T) {
 	marker := filepath.Join(dir, "up")
 	cmd := "test -f " + marker
 	c, err := health.New("svc", health.Config{
-		Test:       []string{"CMD-SHELL", cmd},
+		Exec:       []string{"sh", "-c", cmd},
 		Interval:   20 * time.Millisecond,
 		Retries:    3,
 		Timeout:    time.Second,
@@ -162,7 +230,7 @@ func TestProbeTimeoutKillsGroup(t *testing.T) {
 	// whole group before the child reaches the write.
 	cmd := "sleep 5; echo done > " + flag
 	c, err := health.New("svc", health.Config{
-		Test:       []string{"CMD-SHELL", cmd},
+		Exec:       []string{"sh", "-c", cmd},
 		Interval:   200 * time.Millisecond,
 		Retries:    1,
 		Timeout:    150 * time.Millisecond,
@@ -195,7 +263,7 @@ func TestEnsureStartedIdempotent(t *testing.T) {
 	}
 	t.Parallel()
 	c, err := health.New("svc", health.Config{
-		Test:     []string{"CMD", "true"},
+		Exec:     []string{"true"},
 		Interval: 50 * time.Millisecond,
 		Retries:  3,
 		Timeout:  time.Second,
@@ -235,7 +303,7 @@ func TestLogsTransitionToUnhealthy(t *testing.T) {
 		mu.Unlock()
 	}
 	c, err := health.New("svc", health.Config{
-		Test:     []string{"CMD", "false"},
+		Exec:     []string{"false"},
 		Interval: 20 * time.Millisecond,
 		Retries:  2,
 		Timeout:  time.Second,
@@ -283,7 +351,7 @@ func TestSetOnStateChange(t *testing.T) {
 		states []health.State
 	)
 	c, err := health.New("svc", health.Config{
-		Test:     []string{"CMD-SHELL", "test -f " + probeFile},
+		Exec:     []string{"sh", "-c", "test -f " + probeFile},
 		Interval: 20 * time.Millisecond,
 		Retries:  1,
 		Timeout:  time.Second,
@@ -343,7 +411,7 @@ func TestStartPeriodSuppressesEarlyFailures(t *testing.T) {
 	flag := dir + "/ok"
 	const startPeriod = 3 * time.Second
 	c, err := health.New("svc", health.Config{
-		Test:        []string{"CMD-SHELL", "test -f " + flag},
+		Exec:        []string{"sh", "-c", "test -f " + flag},
 		Interval:    20 * time.Millisecond,
 		Retries:     1,
 		Timeout:     time.Second,

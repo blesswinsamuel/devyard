@@ -31,7 +31,7 @@ func (r routes) ProxyRoutes() []proxy.Route {
 			for i, port := range def.Ports {
 				out = append(out, proxy.Route{
 					Label:     def.ProxyHost,
-					IsDefault: i == 0 && v.DefaultService == name,
+					IsDefault: i == 0 && v.Primary == name,
 					Project:   def.Project,
 					Service:   name,
 					PortName:  port.Name,

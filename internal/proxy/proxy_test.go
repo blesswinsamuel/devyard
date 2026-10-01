@@ -16,12 +16,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 // fakeResolver serves a canned route list; it implements Resolver.
@@ -165,31 +162,6 @@ func TestProxyUpstreamUnreachable(t *testing.T) {
 	}
 	if !strings.Contains(body, "unreachable") {
 		t.Errorf("error page missing 'unreachable': %s", body)
-	}
-}
-
-func TestServiceHostsHelper(t *testing.T) {
-	t.Parallel()
-
-	svc := config.Service{
-		Ports: &config.Ports{Entries: []config.ServicePort{
-			{Name: "http", Port: 3000},
-			{Name: "metrics", Port: 9100},
-		}},
-	}
-	hosts := ServiceHosts("proj", "web", svc, true, "localhost")
-	want := []string{
-		"proj.localhost",
-		"web.proj.localhost",
-		"http.web.proj.localhost",
-		"metrics.web.proj.localhost",
-	}
-	if !reflect.DeepEqual(hosts, want) {
-		t.Errorf("ServiceHosts = %v, want %v", hosts, want)
-	}
-
-	if got := ServiceHosts("proj", "db", config.Service{}, false, "localhost"); got != nil {
-		t.Errorf("ServiceHosts with no ports = %v, want nil", got)
 	}
 }
 

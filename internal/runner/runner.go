@@ -49,8 +49,9 @@ type Spec struct {
 	Name    string `json:"name"`
 	Run     int64  `json:"run"`
 
-	Command string   `json:"command"`
-	Shell   string   `json:"shell"`
+	// Argv is executed directly; Display is how it is shown in logs.
+	Argv    []string `json:"argv"`
+	Display string   `json:"display"`
 	Dir     string   `json:"dir"`
 	Env     []string `json:"env"`
 	TTY     bool     `json:"tty"`
@@ -65,7 +66,9 @@ type Spec struct {
 	ProcDir string `json:"proc_dir"`
 	// Socket is the runner's control socket path.
 	Socket string `json:"socket"`
-	// StopGrace is how long Stop waits after SIGTERM before SIGKILL.
+	// StopSignal is sent to stop the process (default SIGTERM).
+	StopSignal string `json:"stop_signal,omitempty"`
+	// StopGrace is how long Stop waits after StopSignal before SIGKILL.
 	StopGrace time.Duration `json:"stop_grace"`
 	// Ephemeral runs (interactive terminals) keep no log files; output is
 	// only available to attached clients and the replay buffer.
@@ -77,8 +80,8 @@ type Spec struct {
 
 // BuildSpec is a pre-start build command.
 type BuildSpec struct {
-	Command string   `json:"command"`
-	Shell   string   `json:"shell"`
+	Argv    []string `json:"argv"`
+	Display string   `json:"display"`
 	Dir     string   `json:"dir"`
 	Env     []string `json:"env"`
 }

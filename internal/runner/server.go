@@ -58,6 +58,7 @@ func Main() error {
 
 type server struct {
 	spec     Spec
+	stopSig  syscall.Signal
 	log      *logstore.Writer
 	ln       net.Listener
 	sockInfo os.FileInfo
@@ -84,8 +85,16 @@ func newServer(spec Spec) (*server, error) {
 	if spec.StopGrace <= 0 {
 		spec.StopGrace = defaultStopGrace
 	}
-	if spec.Shell == "" {
-		spec.Shell = "sh"
+	if len(spec.Argv) == 0 {
+		return nil, errors.New("runner: argv is required")
+	}
+	stopSig := syscall.SIGTERM
+	if spec.StopSignal != "" {
+		sig, err := ParseSignal(spec.StopSignal)
+		if err != nil {
+			return nil, fmt.Errorf("runner: stop signal: %w", err)
+		}
+		stopSig = sig
 	}
 	if err := os.MkdirAll(spec.ProcDir, 0o755); err != nil {
 		return nil, fmt.Errorf("runner: %w", err)
@@ -108,6 +117,7 @@ func newServer(spec Spec) (*server, error) {
 	s := &server{
 		sockInfo: sockInfo,
 		spec:     spec,
+		stopSig:  stopSig,
 		log:      w,
 		ln:       ln,
 		clients:  make(map[*attachClient]struct{}),
@@ -168,7 +178,7 @@ func (s *server) run() error {
 func (s *server) execute() {
 	if b := s.spec.Build; b != nil {
 		s.setPhase(PhaseBuilding)
-		s.log.Systemf("$ %s  (build)", b.Command)
+		s.log.Systemf("$ %s  (build)", b.Display)
 		code, sig, err := s.runBuild(b)
 		switch {
 		case s.isStopping():
@@ -237,7 +247,7 @@ func (s *server) started(pid int, phase string) {
 	s.notifyLocked()
 	s.mu.Unlock()
 	if stopping {
-		_ = syscall.Kill(-pid, syscall.SIGTERM)
+		_ = syscall.Kill(-pid, s.stopSig)
 	}
 }
 
@@ -256,7 +266,7 @@ func (s *server) ended() {
 	s.mu.Unlock()
 	if pgid > 0 && groupAlive(pgid) {
 		if !stopping {
-			_ = syscall.Kill(-pgid, syscall.SIGTERM)
+			_ = syscall.Kill(-pgid, s.stopSig)
 			deadline = time.Now().Add(s.spec.StopGrace)
 		}
 		for groupAlive(pgid) {
@@ -285,11 +295,10 @@ func groupAlive(pgid int) bool {
 }
 
 func (s *server) runBuild(b *BuildSpec) (int, string, error) {
-	shell := b.Shell
-	if shell == "" {
-		shell = "sh"
+	if len(b.Argv) == 0 {
+		return 0, "", errors.New("build argv is empty")
 	}
-	cmd := exec.Command(shell, "-c", b.Command)
+	cmd := exec.Command(b.Argv[0], b.Argv[1:]...)
 	cmd.Dir = b.Dir
 	cmd.Env = b.Env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -324,14 +333,14 @@ func (s *server) runBuild(b *BuildSpec) (int, string, error) {
 }
 
 func (s *server) runMain() (int, string, error) {
-	cmd := exec.Command(s.spec.Shell, "-c", s.spec.Command)
+	cmd := exec.Command(s.spec.Argv[0], s.spec.Argv[1:]...)
 	cmd.Dir = s.spec.Dir
 	env := s.spec.Env
 	if s.spec.TTY && !hasEnv(env, "TERM") {
 		env = append(env, "TERM=xterm-256color")
 	}
 	cmd.Env = env
-	s.log.Systemf("$ %s", s.spec.Command)
+	s.log.Systemf("$ %s", s.spec.Display)
 
 	if s.spec.TTY {
 		cols, rows := s.spec.Cols, s.spec.Rows
@@ -524,7 +533,7 @@ func (s *server) snapshot() Status {
 	return s.status
 }
 
-// requestStop sends SIGTERM to the running group and SIGKILL after grace.
+// requestStop sends the stop signal to the running group and SIGKILL after grace.
 // Safe to call repeatedly and at any phase.
 func (s *server) requestStop(grace time.Duration) {
 	if grace <= 0 {
@@ -538,7 +547,7 @@ func (s *server) requestStop(grace time.Duration) {
 	first := !s.stopping
 	s.stopping = true
 	if s.pgid > 0 {
-		_ = syscall.Kill(-s.pgid, syscall.SIGTERM)
+		_ = syscall.Kill(-s.pgid, s.stopSig)
 	}
 	if first {
 		s.stopDeadline = time.Now().Add(grace)

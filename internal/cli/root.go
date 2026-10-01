@@ -64,7 +64,6 @@ func NewRootCommand(c *Context) *cobra.Command {
 	root.SetErr(c.Err)
 	root.PersistentFlags().StringVar(&c.ConfigPath, "file", "", "Path to devyard.yml (default: search upwards from the current directory)")
 	root.PersistentFlags().StringVarP(&c.Project, "project", "p", "", "Registered project id (instead of the config in the current directory)")
-	root.PersistentFlags().StringVar(&c.EnvFile, "env-file", "", "Env file for variables and interpolation (default: .env next to the config)")
 	root.PersistentFlags().StringVarP(&c.Format, "format", "o", "table", "Output format: table or json")
 
 	daily := &cobra.Group{ID: "daily", Title: "Daily commands:"}
@@ -83,5 +82,6 @@ func NewRootCommand(c *Context) *cobra.Command {
 		root.AddCommand(cmd)
 	}
 	root.AddCommand(newVersionCmd(c))
+	root.AddCommand(newSchemaCmd(c))
 	return root
 }

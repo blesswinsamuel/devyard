@@ -129,9 +129,11 @@ export class Project extends Message<Project> {
   configPath = "";
 
   /**
-   * @generated from field: string env_file = 3;
+   * env_files lists the project env files that exist, in load order.
+   *
+   * @generated from field: repeated string env_files = 3;
    */
-  envFile = "";
+  envFiles: string[] = [];
 
   /**
    * status: "stopped" | "starting" | "running" | "degraded" | "stopping" | "error"
@@ -166,14 +168,21 @@ export class Project extends Message<Project> {
   servicesRunning = 0;
 
   /**
-   * @generated from field: string default_service = 9;
+   * primary is the service served at the project's own hostname.
+   *
+   * @generated from field: string primary = 9;
    */
-  defaultService = "";
+  primary = "";
 
   /**
    * @generated from field: int64 updated_at_unix_ms = 10;
    */
   updatedAtUnixMs = protoInt64.zero;
+
+  /**
+   * @generated from field: repeated devyard.v1.Link links = 11;
+   */
+  links: Link[] = [];
 
   constructor(data?: PartialMessage<Project>) {
     super();
@@ -185,14 +194,15 @@ export class Project extends Message<Project> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "config_path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "env_file", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "env_files", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 4, name: "status", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 5, name: "desired", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 6, name: "error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 7, name: "services_total", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 8, name: "services_running", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
-    { no: 9, name: "default_service", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 9, name: "primary", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 10, name: "updated_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 11, name: "links", kind: "message", T: Link, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Project {
@@ -213,108 +223,118 @@ export class Project extends Message<Project> {
 }
 
 /**
- * @generated from message devyard.v1.Dependency
+ * @generated from message devyard.v1.Link
  */
-export class Dependency extends Message<Dependency> {
+export class Link extends Message<Link> {
   /**
    * @generated from field: string name = 1;
    */
   name = "";
 
   /**
-   * condition: "service_started" | "service_healthy"
-   *
-   * @generated from field: string condition = 2;
+   * @generated from field: string url = 2;
    */
-  condition = "";
+  url = "";
 
-  constructor(data?: PartialMessage<Dependency>) {
+  constructor(data?: PartialMessage<Link>) {
     super();
     proto3.util.initPartial(data, this);
   }
 
   static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "devyard.v1.Dependency";
+  static readonly typeName = "devyard.v1.Link";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "condition", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "url", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Dependency {
-    return new Dependency().fromBinary(bytes, options);
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Link {
+    return new Link().fromBinary(bytes, options);
   }
 
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): Dependency {
-    return new Dependency().fromJson(jsonValue, options);
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): Link {
+    return new Link().fromJson(jsonValue, options);
   }
 
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): Dependency {
-    return new Dependency().fromJsonString(jsonString, options);
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): Link {
+    return new Link().fromJsonString(jsonString, options);
   }
 
-  static equals(a: Dependency | PlainMessage<Dependency> | undefined, b: Dependency | PlainMessage<Dependency> | undefined): boolean {
-    return proto3.util.equals(Dependency, a, b);
+  static equals(a: Link | PlainMessage<Link> | undefined, b: Link | PlainMessage<Link> | undefined): boolean {
+    return proto3.util.equals(Link, a, b);
   }
 }
 
 /**
- * @generated from message devyard.v1.Healthcheck
+ * Ready is a service's readiness probe.
+ *
+ * @generated from message devyard.v1.Ready
  */
-export class Healthcheck extends Message<Healthcheck> {
+export class Ready extends Message<Ready> {
   /**
-   * @generated from field: repeated string test = 1;
+   * kind: "http" | "tcp" | "exec"
+   *
+   * @generated from field: string kind = 1;
    */
-  test: string[] = [];
+  kind = "";
 
   /**
-   * @generated from field: int64 interval_ms = 2;
+   * target is the URL, address or command the probe checks.
+   *
+   * @generated from field: string target = 2;
+   */
+  target = "";
+
+  /**
+   * @generated from field: int64 interval_ms = 3;
    */
   intervalMs = protoInt64.zero;
 
   /**
-   * @generated from field: int64 timeout_ms = 3;
+   * @generated from field: int64 timeout_ms = 4;
    */
   timeoutMs = protoInt64.zero;
 
   /**
-   * @generated from field: int32 retries = 4;
+   * @generated from field: int32 retries = 5;
    */
   retries = 0;
 
   /**
-   * @generated from field: int64 start_period_ms = 5;
+   * @generated from field: int64 start_period_ms = 6;
    */
   startPeriodMs = protoInt64.zero;
 
-  constructor(data?: PartialMessage<Healthcheck>) {
+  constructor(data?: PartialMessage<Ready>) {
     super();
     proto3.util.initPartial(data, this);
   }
 
   static readonly runtime: typeof proto3 = proto3;
-  static readonly typeName = "devyard.v1.Healthcheck";
+  static readonly typeName = "devyard.v1.Ready";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "test", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
-    { no: 2, name: "interval_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
-    { no: 3, name: "timeout_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
-    { no: 4, name: "retries", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
-    { no: 5, name: "start_period_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 1, name: "kind", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "target", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "interval_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 4, name: "timeout_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 5, name: "retries", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 6, name: "start_period_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ]);
 
-  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Healthcheck {
-    return new Healthcheck().fromBinary(bytes, options);
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Ready {
+    return new Ready().fromBinary(bytes, options);
   }
 
-  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): Healthcheck {
-    return new Healthcheck().fromJson(jsonValue, options);
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): Ready {
+    return new Ready().fromJson(jsonValue, options);
   }
 
-  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): Healthcheck {
-    return new Healthcheck().fromJsonString(jsonString, options);
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): Ready {
+    return new Ready().fromJsonString(jsonString, options);
   }
 
-  static equals(a: Healthcheck | PlainMessage<Healthcheck> | undefined, b: Healthcheck | PlainMessage<Healthcheck> | undefined): boolean {
-    return proto3.util.equals(Healthcheck, a, b);
+  static equals(a: Ready | PlainMessage<Ready> | undefined, b: Ready | PlainMessage<Ready> | undefined): boolean {
+    return proto3.util.equals(Ready, a, b);
   }
 }
 
@@ -332,6 +352,13 @@ export class Port extends Message<Port> {
    */
   port = 0;
 
+  /**
+   * auto is true when devyard allocated the port.
+   *
+   * @generated from field: bool auto = 3;
+   */
+  auto = false;
+
   constructor(data?: PartialMessage<Port>) {
     super();
     proto3.util.initPartial(data, this);
@@ -342,6 +369,7 @@ export class Port extends Message<Port> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "port", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 3, name: "auto", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Port {
@@ -371,53 +399,60 @@ export class ServiceSpec extends Message<ServiceSpec> {
   command = "";
 
   /**
-   * @generated from field: string working_dir = 2;
+   * @generated from field: string dir = 2;
    */
-  workingDir = "";
+  dir = "";
 
   /**
-   * @generated from field: string shell = 3;
-   */
-  shell = "";
-
-  /**
-   * restart: "no" | "on-failure" | "always"
+   * restart: "never" | "on-failure" | "always"
    *
-   * @generated from field: string restart = 4;
+   * @generated from field: string restart = 3;
    */
   restart = "";
 
   /**
-   * @generated from field: repeated devyard.v1.Dependency depends_on = 5;
+   * depends_on lists the services this one waits for (until ready).
+   *
+   * @generated from field: repeated string depends_on = 4;
    */
-  dependsOn: Dependency[] = [];
+  dependsOn: string[] = [];
 
   /**
-   * @generated from field: devyard.v1.Healthcheck healthcheck = 6;
+   * @generated from field: devyard.v1.Ready ready = 5;
    */
-  healthcheck?: Healthcheck;
+  ready?: Ready;
 
   /**
-   * @generated from field: repeated devyard.v1.Port ports = 7;
+   * @generated from field: repeated devyard.v1.Port ports = 6;
    */
   ports: Port[] = [];
 
   /**
-   * @generated from field: bool tty = 8;
+   * @generated from field: bool tty = 7;
    */
   tty = false;
 
   /**
    * Environment variable names only; values are never exposed.
    *
-   * @generated from field: repeated string env_keys = 9;
+   * @generated from field: repeated string env_keys = 8;
    */
   envKeys: string[] = [];
 
   /**
-   * @generated from field: string build_command = 10;
+   * @generated from field: string build_command = 9;
    */
   buildCommand = "";
+
+  /**
+   * @generated from field: bool autostart = 10;
+   */
+  autostart = false;
+
+  /**
+   * @generated from field: string stop_signal = 11;
+   */
+  stopSignal = "";
 
   constructor(data?: PartialMessage<ServiceSpec>) {
     super();
@@ -428,15 +463,16 @@ export class ServiceSpec extends Message<ServiceSpec> {
   static readonly typeName = "devyard.v1.ServiceSpec";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "command", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "working_dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "shell", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "restart", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 5, name: "depends_on", kind: "message", T: Dependency, repeated: true },
-    { no: 6, name: "healthcheck", kind: "message", T: Healthcheck },
-    { no: 7, name: "ports", kind: "message", T: Port, repeated: true },
-    { no: 8, name: "tty", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
-    { no: 9, name: "env_keys", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
-    { no: 10, name: "build_command", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "restart", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "depends_on", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 5, name: "ready", kind: "message", T: Ready },
+    { no: 6, name: "ports", kind: "message", T: Port, repeated: true },
+    { no: 7, name: "tty", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 8, name: "env_keys", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 9, name: "build_command", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 10, name: "autostart", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 11, name: "stop_signal", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ServiceSpec {
@@ -608,27 +644,22 @@ export class TaskSpec extends Message<TaskSpec> {
   command = "";
 
   /**
-   * @generated from field: string working_dir = 2;
+   * @generated from field: string dir = 2;
    */
-  workingDir = "";
+  dir = "";
 
   /**
-   * @generated from field: string shell = 3;
-   */
-  shell = "";
-
-  /**
-   * @generated from field: bool tty = 4;
+   * @generated from field: bool tty = 3;
    */
   tty = false;
 
   /**
-   * @generated from field: repeated devyard.v1.Dependency depends_on = 5;
+   * @generated from field: repeated string depends_on = 4;
    */
-  dependsOn: Dependency[] = [];
+  dependsOn: string[] = [];
 
   /**
-   * @generated from field: repeated string env_keys = 6;
+   * @generated from field: repeated string env_keys = 5;
    */
   envKeys: string[] = [];
 
@@ -641,11 +672,10 @@ export class TaskSpec extends Message<TaskSpec> {
   static readonly typeName = "devyard.v1.TaskSpec";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "command", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "working_dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "shell", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "tty", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
-    { no: 5, name: "depends_on", kind: "message", T: Dependency, repeated: true },
-    { no: 6, name: "env_keys", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 2, name: "dir", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "tty", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "depends_on", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 5, name: "env_keys", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): TaskSpec {
@@ -1839,27 +1869,20 @@ export class AddProjectRequest extends Message<AddProjectRequest> {
   configPath = "";
 
   /**
-   * Optional explicit env file; defaults to .env next to the config.
-   *
-   * @generated from field: string env_file = 2;
-   */
-  envFile = "";
-
-  /**
    * Launch environment ("KEY=VALUE") captured from the caller's shell.
    * Empty means "use the daemon's environment".
    *
-   * @generated from field: repeated string env = 3;
+   * @generated from field: repeated string env = 2;
    */
   env: string[] = [];
 
   /**
-   * @generated from field: bool start = 4;
+   * @generated from field: bool start = 3;
    */
   start = false;
 
   /**
-   * @generated from field: bool build = 5;
+   * @generated from field: bool build = 4;
    */
   build = false;
 
@@ -1872,10 +1895,9 @@ export class AddProjectRequest extends Message<AddProjectRequest> {
   static readonly typeName = "devyard.v1.AddProjectRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "config_path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "env_file", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "env", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
-    { no: 4, name: "start", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
-    { no: 5, name: "build", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 2, name: "env", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 3, name: "start", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "build", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): AddProjectRequest {

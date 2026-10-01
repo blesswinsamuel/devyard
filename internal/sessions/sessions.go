@@ -244,8 +244,8 @@ func (m *Manager) newTerminal(ctx context.Context, project string, cols, rows in
 		Kind:      KindTerminal,
 		Name:      id,
 		Run:       1,
-		Command:   "exec " + shellQuote(shell) + " -i",
-		Shell:     "/bin/sh",
+		Argv:      []string{shell, "-i"},
+		Display:   shell + " -i",
 		Dir:       filepath.Dir(v.Reg.ConfigPath),
 		Env:       env,
 		TTY:       true,
@@ -270,16 +270,4 @@ func (m *Manager) newTerminal(ctx context.Context, project string, cols, rows in
 		_, err := proc.Stop(ctx, time.Second)
 		return err
 	}}, nil
-}
-
-func shellQuote(s string) string {
-	out := "'"
-	for _, r := range s {
-		if r == '\'' {
-			out += `'\''`
-		} else {
-			out += string(r)
-		}
-	}
-	return out + "'"
 }

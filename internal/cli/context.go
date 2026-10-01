@@ -29,7 +29,6 @@ type Context struct {
 
 	ConfigPath string
 	Project    string
-	EnvFile    string
 	Format     string
 }
 
@@ -138,8 +137,7 @@ func (c *Context) ensureDaemon(ctx context.Context) (*client.Client, error) {
 // localConfig is the config found from flags or the working directory.
 type localConfig struct {
 	Path    string
-	EnvFile string
-	File    *config.File
+	Project *config.Project
 }
 
 // loadLocalConfig loads the config named by --file or found by walking up
@@ -159,22 +157,14 @@ func (c *Context) loadLocalConfig() (*localConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	envFile, dotenv, err := config.ResolveDotEnv(abs, c.EnvFile)
+	proj, err := config.Load(abs, os.Environ())
 	if err != nil {
 		return nil, err
 	}
-	file, warnings, err := config.Load(abs, config.InterpolationEnv(os.Environ(), dotenv))
-	if err != nil {
-		return nil, err
-	}
-	for _, w := range warnings {
+	for _, w := range proj.Warnings {
 		c.Errorf("devyard: warning: %s\n", w)
 	}
-	explicitEnv := ""
-	if c.EnvFile != "" {
-		explicitEnv = envFile
-	}
-	return &localConfig{Path: abs, EnvFile: explicitEnv, File: file}, nil
+	return &localConfig{Path: abs, Project: proj}, nil
 }
 
 // projectID resolves the project to act on: -p (which must be registered)
@@ -195,7 +185,7 @@ func (c *Context) projectID(ctx context.Context, cl *client.Client) (string, err
 	if err != nil {
 		return "", err
 	}
-	return lc.File.ID(), nil
+	return lc.Project.ID, nil
 }
 
 func state(ctx context.Context, cl *client.Client) (*pb.Snapshot, error) {

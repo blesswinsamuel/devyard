@@ -83,7 +83,8 @@ message Project {
   // config's `name` (or its directory name).
   string id = 1;
   string config_path = 2;
-  string env_file = 3;
+  // env_files lists the project env files that exist, in load order.
+  repeated string env_files = 3;
   // status: "stopped" | "starting" | "running" | "degraded" | "stopping" | "error"
   string status = 4;
   // desired: "running" | "stopped" | "partial" (a selected subset of services)
@@ -93,42 +94,51 @@ message Project {
   string error = 6;
   int32 services_total = 7;
   int32 services_running = 8;
-  string default_service = 9;
+  // primary is the service served at the project's own hostname.
+  string primary = 9;
   int64 updated_at_unix_ms = 10;
+  repeated Link links = 11;
 }
 
-message Dependency {
+message Link {
   string name = 1;
-  // condition: "service_started" | "service_healthy"
-  string condition = 2;
+  string url = 2;
 }
 
-message Healthcheck {
-  repeated string test = 1;
-  int64 interval_ms = 2;
-  int64 timeout_ms = 3;
-  int32 retries = 4;
-  int64 start_period_ms = 5;
+// Ready is a service's readiness probe.
+message Ready {
+  // kind: "http" | "tcp" | "exec"
+  string kind = 1;
+  // target is the URL, address or command the probe checks.
+  string target = 2;
+  int64 interval_ms = 3;
+  int64 timeout_ms = 4;
+  int32 retries = 5;
+  int64 start_period_ms = 6;
 }
 
 message Port {
   string name = 1;
   int32 port = 2;
+  // auto is true when devyard allocated the port.
+  bool auto = 3;
 }
 
 message ServiceSpec {
   string command = 1;
-  string working_dir = 2;
-  string shell = 3;
-  // restart: "no" | "on-failure" | "always"
-  string restart = 4;
-  repeated Dependency depends_on = 5;
-  Healthcheck healthcheck = 6;
-  repeated Port ports = 7;
-  bool tty = 8;
+  string dir = 2;
+  // restart: "never" | "on-failure" | "always"
+  string restart = 3;
+  // depends_on lists the services this one waits for (until ready).
+  repeated string depends_on = 4;
+  Ready ready = 5;
+  repeated Port ports = 6;
+  bool tty = 7;
   // Environment variable names only; values are never exposed.
-  repeated string env_keys = 9;
-  string build_command = 10;
+  repeated string env_keys = 8;
+  string build_command = 9;
+  bool autostart = 10;
+  string stop_signal = 11;
 }
 
 message Service {
@@ -161,11 +171,10 @@ message Service {
 
 message TaskSpec {
   string command = 1;
-  string working_dir = 2;
-  string shell = 3;
-  bool tty = 4;
-  repeated Dependency depends_on = 5;
-  repeated string env_keys = 6;
+  string dir = 2;
+  bool tty = 3;
+  repeated string depends_on = 4;
+  repeated string env_keys = 5;
 }
 
 message Task {
@@ -323,13 +332,11 @@ message UpdateGlobalConfigResponse {}
 
 message AddProjectRequest {
   string config_path = 1;
-  // Optional explicit env file; defaults to .env next to the config.
-  string env_file = 2;
   // Launch environment ("KEY=VALUE") captured from the caller's shell.
   // Empty means "use the daemon's environment".
-  repeated string env = 3;
-  bool start = 4;
-  bool build = 5;
+  repeated string env = 2;
+  bool start = 3;
+  bool build = 4;
 }
 
 message AddProjectResponse {

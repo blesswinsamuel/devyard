@@ -23,8 +23,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/blesswinsamuel/devyard/internal/config"
 )
 
 // Route is a single host→upstream mapping with the service's live status,
@@ -331,29 +329,4 @@ func writeErrorPage(w http.ResponseWriter, status int, title, detail string) {
 </html>
 `, html.EscapeString(title), status, html.EscapeString(title), html.EscapeString(detail))
 	_, _ = w.Write([]byte(body))
-}
-
-// ServiceHosts returns the hostnames a service is reachable at (without the
-// proxy port), in display order: the project URL first when the service is
-// the project's default, then the service label, then each named port.
-func ServiceHosts(project, serviceName string, svc config.Service, isDefault bool, domainSuffix string) []string {
-	if svc.Ports == nil || len(svc.Ports.Entries) == 0 {
-		return nil
-	}
-	suffix := project + "." + domainSuffix
-	var hosts []string
-	if isDefault {
-		hosts = append(hosts, suffix)
-	}
-	label := serviceName
-	if svc.Proxy != nil && svc.Proxy.Host != "" {
-		label = svc.Proxy.Host
-	}
-	hosts = append(hosts, label+"."+suffix)
-	for _, entry := range svc.Ports.Entries {
-		if entry.Name != "" {
-			hosts = append(hosts, entry.Name+"."+label+"."+suffix)
-		}
-	}
-	return hosts
 }

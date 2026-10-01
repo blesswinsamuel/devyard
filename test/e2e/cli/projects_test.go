@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,10 +12,9 @@ import (
 	"github.com/blesswinsamuel/devyard/test/e2e/harness"
 )
 
-const oneTicker = `version: "1"
-services:
+const oneTicker = `services:
   a:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
 `
 
 // O5: -p with an unknown id is an error and never falls back to the cwd's
@@ -99,10 +99,9 @@ func TestLedger_O5_ProjectRemoveUnknownFails(t *testing.T) {
 func TestLedger_O17_ProjectAddNoStart(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("nostart", `version: "1"
-services:
+	p := sb.WriteProject("nostart", `services:
   a:
-    command: {{fixture "exiter"}} -count-file {{.Dir}}/launches -after 1m
+    run: {{fixture "exiter"}} -count-file {{.Dir}}/launches -after 1m
 `, nil)
 	d := sb.Daemon()
 	w := d.Watch(context.Background())
@@ -133,11 +132,10 @@ services:
 func TestLedger_O11_SameNameSecondCheckoutFails(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	cfg := `version: "1"
-name: dup
+	cfg := `name: dup
 services:
   a:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
 `
 	first := sb.WriteProject("dup-a", cfg, nil)
 	second := sb.WriteProject("dup-b", cfg, nil)
@@ -155,47 +153,72 @@ services:
 	}
 }
 
-// .env next to the config feeds interpolation and the child env; an explicit
-// --env-file replaces it.
+// .env and .env.local next to the config feed interpolation and the child
+// env (.env.local wins); an explicit env_files list replaces the defaults and
+// skips missing files; a service's own env_files layer over the project's.
 func TestCLI_DotEnvAndInterpolation(t *testing.T) {
 	t.Parallel()
-	cfg := `version: "1"
-services:
+	cfg := `services:
   web:
-    command: sh -c 'echo PORT=$PORT; echo INTERP=${PORT}; echo DEFAULTED=${MISSING:-fallback}; echo APP_NAME=$APP_NAME; echo OVERRIDDEN=$OVERRIDDEN; exec {{fixture "ticker"}} -interval 1s'
+    run: sh -c 'echo PORT=$PORT; echo INTERP=${PORT}; echo DEFAULTED=${MISSING:-fallback}; echo APP_NAME=$APP_NAME; echo OVERRIDDEN=$OVERRIDDEN; exec {{fixture "ticker"}} -interval 1s'
     env:
       OVERRIDDEN: svc
 `
-	t.Run("dotenv", func(t *testing.T) {
-		t.Parallel()
-		sb := harness.New(t)
-		p := sb.WriteProject("dotenv", cfg, map[string]string{".env": "PORT=9099\nAPP_NAME=myapp\nOVERRIDDEN=dotenv\n"})
-		p.Start()
+	expectLogs := func(t *testing.T, p *harness.Project, wants ...string) {
+		t.Helper()
 		harness.Eventually(t, "logs show env", func(c *harness.C) {
 			out := p.CLI("logs", "web").Stdout
-			for _, want := range []string{"PORT=9099", "INTERP=9099", "DEFAULTED=fallback", "APP_NAME=myapp", "OVERRIDDEN=svc"} {
+			for _, want := range wants {
 				if !strings.Contains(out, want) {
 					c.Errorf("missing %q in:\n%s", want, out)
 				}
 			}
 		})
-	})
-	t.Run("env-file-flag", func(t *testing.T) {
+	}
+	t.Run("dotenv", func(t *testing.T) {
 		t.Parallel()
 		sb := harness.New(t)
-		p := sb.WriteProject("envfile", cfg, map[string]string{".env": "PORT=1111\n", "custom.env": "PORT=7070\n"})
-		p.CLI("--env-file", p.Path("custom.env"), "start").MustSucceed(t)
-		harness.Eventually(t, "logs show custom env", func(c *harness.C) {
-			if out := p.CLI("logs", "web").Stdout; !strings.Contains(out, "PORT=7070") {
-				c.Errorf("%s", out)
-			}
+		p := sb.WriteProject("dotenv", cfg, map[string]string{".env": "PORT=9099\nAPP_NAME=myapp\nOVERRIDDEN=dotenv\n"})
+		p.Start()
+		expectLogs(t, p, "PORT=9099", "INTERP=9099", "DEFAULTED=fallback", "APP_NAME=myapp", "OVERRIDDEN=svc")
+	})
+	t.Run("dotenv-local-overrides", func(t *testing.T) {
+		t.Parallel()
+		sb := harness.New(t)
+		p := sb.WriteProject("dotenvlocal", cfg, map[string]string{
+			".env":       "PORT=1111\nAPP_NAME=myapp\n",
+			".env.local": "PORT=2222\n",
 		})
+		p.Start()
+		expectLogs(t, p, "PORT=2222", "INTERP=2222", "APP_NAME=myapp")
 	})
-	t.Run("missing-explicit-env-file", func(t *testing.T) {
+	t.Run("explicit-env-files", func(t *testing.T) {
 		t.Parallel()
 		sb := harness.New(t)
-		p := sb.WriteProject("noenvfile", cfg, nil)
-		p.CLI("--env-file", p.Path("nope.env"), "start").MustFail(t)
+		p := sb.WriteProject("envfiles", "env_files: [custom.env, nope.env]\n"+cfg, map[string]string{
+			".env":       "PORT=1111\nAPP_NAME=dotenv\n",
+			".env.local": "PORT=2222\n",
+			"custom.env": "PORT=7070\n",
+		})
+		p.Start()
+		expectLogs(t, p, "PORT=7070", "INTERP=7070")
+		if out := p.CLI("logs", "web").Stdout; strings.Contains(out, "APP_NAME=dotenv") || strings.Contains(out, "PORT=2222") {
+			t.Errorf("default env files loaded despite explicit env_files:\n%s", out)
+		}
+	})
+	t.Run("service-env-files", func(t *testing.T) {
+		t.Parallel()
+		sb := harness.New(t)
+		p := sb.WriteProject("svcenvfiles", `services:
+  web:
+    run: sh -c 'echo PORT=$PORT; echo APP_NAME=$APP_NAME; exec {{fixture "ticker"}} -interval 1s'
+    env_files: [web.env, missing.env]
+`, map[string]string{
+			".env":    "PORT=1111\nAPP_NAME=myapp\n",
+			"web.env": "PORT=3333\n",
+		})
+		p.Start()
+		expectLogs(t, p, "PORT=3333", "APP_NAME=myapp")
 	})
 }
 
@@ -205,10 +228,9 @@ func TestLedger_O10_LaunchEnvCapturedFromCLI(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
 	sb.CLIWith(harness.RunOpts{Env: []string{"DY_WHO=daemon"}}, "daemon", "start").MustSucceed(t)
-	p := sb.WriteProject("envcap", `version: "1"
-services:
+	p := sb.WriteProject("envcap", `services:
   s:
-    command: sh -c 'echo who=$DY_WHO; exec {{fixture "ticker"}} -interval 1s'
+    run: sh -c 'echo who=$DY_WHO; exec {{fixture "ticker"}} -interval 1s'
 `, nil)
 	p.CLIEnv([]string{"DY_WHO=cli"}, "start").MustSucceed(t)
 	d := sb.Daemon()
@@ -237,28 +259,26 @@ services:
 func TestLedger_O10_ReloadDiffsConfig(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("rl", `version: "1"
-services:
+	p := sb.WriteProject("rl", `services:
   keep:
-    command: {{fixture "ticker"}} -prefix K -interval 200ms
+    run: {{fixture "ticker"}} -prefix K -interval 200ms
   change:
-    command: {{fixture "ticker"}} -prefix C1 -interval 200ms
+    run: {{fixture "ticker"}} -prefix C1 -interval 200ms
   drop:
-    command: {{fixture "ticker"}} -prefix D -interval 200ms
+    run: {{fixture "ticker"}} -prefix D -interval 200ms
 `, nil)
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())
 	st := p.WaitRunning(w)
 	keepPid, changePid, dropPid := st.ServicePid("rl", "keep"), st.ServicePid("rl", "change"), st.ServicePid("rl", "drop")
 
-	p.WriteConfig(`version: "1"
-services:
+	p.WriteConfig(`services:
   keep:
-    command: {{fixture "ticker"}} -prefix K -interval 200ms
+    run: {{fixture "ticker"}} -prefix K -interval 200ms
   change:
-    command: {{fixture "ticker"}} -prefix C2 -interval 200ms
+    run: {{fixture "ticker"}} -prefix C2 -interval 200ms
   added:
-    command: {{fixture "ticker"}} -prefix A -interval 200ms
+    run: {{fixture "ticker"}} -prefix A -interval 200ms
 `)
 	p.CLI("reload").MustSucceed(t)
 	st = w.WaitFor(t, "reload applied", func(s harness.State) bool {
@@ -281,51 +301,53 @@ services:
 	}
 }
 
-// O10: the --env-file given at start is remembered by reload and by daemon
-// restarts.
-func TestLedger_O10_ReloadRemembersEnvFile(t *testing.T) {
+// O10: the project reports the env files that exist, in load order, and
+// reload and daemon restarts re-read them.
+func TestLedger_O10_ReloadRereadsEnvFiles(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
 	cfg := func(ver string) string {
-		return `version: "1"
+		return `env_files: [.env, missing.env, .env.local]
 services:
   s:
-    command: sh -c 'echo val=$VAL; exec {{fixture "ticker"}} -interval 1s'
+    run: sh -c 'echo val=$VAL; exec {{fixture "ticker"}} -interval 1s'
     env:
       VER: "` + ver + `"
 `
 	}
-	p := sb.WriteProject("rlenv", cfg("1"), map[string]string{".env": "VAL=dotenv\n", "custom.env": "VAL=custom\n"})
-	p.CLI("--env-file", p.Path("custom.env"), "start").MustSucceed(t)
+	p := sb.WriteProject("rlenv", cfg("1"), map[string]string{".env": "VAL=dotenv\n", ".env.local": "VAL=local1\n"})
+	p.Start()
 	d := sb.Daemon()
 	w := d.Watch(context.Background())
 	st := p.WaitRunning(w)
-	if got := st.Project("rlenv").GetEnvFile(); got != p.Path("custom.env") {
-		t.Errorf("project env_file = %q, want %s", got, p.Path("custom.env"))
+	want := []string{p.Path(".env"), p.Path(".env.local")}
+	if got := st.Project("rlenv").GetEnvFiles(); !slices.Equal(got, want) {
+		t.Errorf("project env_files = %q, want %q", got, want)
 	}
-	waitLog := func(desc string) {
+	waitLog := func(desc, val string) {
 		t.Helper()
 		harness.Eventually(t, desc, func(c *harness.C) {
 			out := p.CLI("logs", "s").Stdout
-			if !strings.Contains(out, "val=custom") || strings.Contains(out, "val=dotenv") {
+			if !strings.Contains(out, "val="+val) || strings.Contains(out, "val=dotenv") {
 				c.Errorf("%s", out)
 			}
 		})
 	}
-	waitLog("started with the custom env file")
+	waitLog("started with .env.local layered over .env", "local1")
 
 	pid := st.ServicePid("rlenv", "s")
+	p.WriteFile(".env.local", "VAL=local2\n")
 	p.WriteConfig(cfg("2"))
 	p.CLI("reload").MustSucceed(t)
 	st = w.WaitFor(t, "changed spec restarted", func(s harness.State) bool {
 		return s.Running("rlenv", "s") && s.ServicePid("rlenv", "s") != pid
 	})
-	waitLog("reload kept the env file")
+	waitLog("reload re-read the env file", "local2")
 
 	pid = st.ServicePid("rlenv", "s")
 	d.Restart(true)
 	w.WaitFor(t, "restarted by daemon restart -r", func(s harness.State) bool {
 		return s.Running("rlenv", "s") && s.ServicePid("rlenv", "s") != pid
 	})
-	waitLog("daemon restart kept the env file")
+	waitLog("daemon restart kept the env files", "local2")
 }

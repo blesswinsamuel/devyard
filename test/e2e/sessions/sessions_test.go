@@ -21,12 +21,11 @@ import (
 
 func TestMain(m *testing.M) { harness.Main(m) }
 
-const cfg = `version: "1"
-services:
+const cfg = `services:
   idle:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
   console:
-    command: sh -c 'while read l; do echo "console-got:$l"; done'
+    run: sh -c 'while read l; do echo "console-got:$l"; done'
     tty: true
 `
 
@@ -172,6 +171,8 @@ func TestSessions_TerminalOverAttachRPC(t *testing.T) {
 	}
 	pid := shellPid(t, s)
 	s.Send(t, "export DY_RPC=yes\r")
+	s.Send(t, "echo exported-$((1+1))\r")
+	s.Expect(t, "exported-2")
 	id := s.SessionID
 	s.Drop()
 	s2 := d.Attach(&v1.AttachTarget{Kind: "terminal", Project: p.ID, SessionId: id}, 80, 24)

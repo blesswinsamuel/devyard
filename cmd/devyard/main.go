@@ -1,4 +1,4 @@
-// Command devyard orchestrates local processes with a compose-style config.
+// Command devyard orchestrates local processes described by devyard.yml.
 package main
 
 import (

@@ -4,8 +4,8 @@ import { layoutGraph } from "./graph-layout";
 describe("layoutGraph", () => {
   it("places dependencies in earlier layers", () => {
     const g = layoutGraph([
-      { name: "web", deps: [{ name: "api", condition: "service_started" }] },
-      { name: "api", deps: [{ name: "db", condition: "service_healthy" }, { name: "cache", condition: "service_started" }] },
+      { name: "web", deps: ["api"] },
+      { name: "api", deps: ["db", "cache"] },
       { name: "db", deps: [] },
       { name: "cache", deps: [] },
     ]);
@@ -18,8 +18,8 @@ describe("layoutGraph", () => {
 
   it("survives cycles and unknown dependencies", () => {
     const g = layoutGraph([
-      { name: "a", deps: [{ name: "b", condition: "" }, { name: "ghost", condition: "" }] },
-      { name: "b", deps: [{ name: "a", condition: "" }] },
+      { name: "a", deps: ["b", "ghost"] },
+      { name: "b", deps: ["a"] },
     ]);
     expect(g.nodes).toHaveLength(2);
     expect(g.edges).toHaveLength(2);

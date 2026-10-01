@@ -122,7 +122,7 @@ func newProjectAddCmd(c *Context) *cobra.Command {
 				return err
 			}
 			resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{
-				ConfigPath: path, EnvFile: c.EnvFile, Env: captureEnv(), Start: !noStart,
+				ConfigPath: path, Env: captureEnv(), Start: !noStart,
 			}))
 			if err != nil {
 				return err

@@ -23,14 +23,13 @@ import (
 
 func TestMain(m *testing.M) { harness.Main(m) }
 
-const marked = `version: "1"
-services:
+const marked = `services:
   alpha:
-    command: {{fixture "ticker"}} -prefix A -interval 100ms
+    run: {{fixture "ticker"}} -prefix A -interval 100ms
     env:
       DY_MARK: {{.Name}}-alpha
   beta:
-    command: {{fixture "ticker"}} -prefix B -interval 100ms
+    run: {{fixture "ticker"}} -prefix B -interval 100ms
     env:
       DY_MARK: {{.Name}}-beta
 `
@@ -187,12 +186,12 @@ func TestLedger_S5_DaemonCrashKeepsServices(t *testing.T) {
 func TestLedger_O4_ExitWhileDaemonDownReported(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("o4", `version: "1"
-services:
+	p := sb.WriteProject("o4", `services:
   seven:
-    command: {{fixture "exiter"}} -code 7 -until-file exit-now
+    run: {{fixture "exiter"}} -code 7 -until-file exit-now
+    restart: never
   clean:
-    command: {{fixture "exiter"}} -code 0 -until-file exit-now
+    run: {{fixture "exiter"}} -code 0 -until-file exit-now
     restart: on-failure
 `, nil)
 	p.Start()
@@ -235,10 +234,9 @@ services:
 func TestLedger_S5_AdoptedServiceFollowsRestartPolicy(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("s5p", `version: "1"
-services:
+	p := sb.WriteProject("s5p", `services:
   svc:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
     restart: always
 `, nil)
 	p.Start()
@@ -263,11 +261,10 @@ services:
 func TestLedger_S5_AdoptedStopEscalates(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("s5e", `version: "1"
-services:
+	p := sb.WriteProject("s5e", `services:
   trap:
-    command: {{fixture "sigtrap"}}
-    stop_grace_period: 500ms
+    run: {{fixture "sigtrap"}}
+    stop: {timeout: 500ms}
 `, nil)
 	p.Start()
 	d := sb.Daemon()
@@ -290,17 +287,16 @@ services:
 func TestLedger_O8_S13_RestartWithSlowServices(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("o8", `version: "1"
-services:
+	p := sb.WriteProject("o8", `services:
   s1:
-    command: {{fixture "sigtrap"}} -term-delay 2s
-    stop_grace_period: 5s
+    run: {{fixture "sigtrap"}} -term-delay 2s
+    stop: {timeout: 5s}
   s2:
-    command: {{fixture "sigtrap"}} -term-delay 2s
-    stop_grace_period: 5s
+    run: {{fixture "sigtrap"}} -term-delay 2s
+    stop: {timeout: 5s}
   s3:
-    command: {{fixture "sigtrap"}} -term-delay 2s
-    stop_grace_period: 5s
+    run: {{fixture "sigtrap"}} -term-delay 2s
+    stop: {timeout: 5s}
 `, nil)
 	p.Start()
 	d := sb.Daemon()
@@ -375,12 +371,11 @@ func TestDaemon_StopLeavesNothing(t *testing.T) {
 func TestDaemon_AutostartResumesRunningProjects(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("auto", `version: "1"
-services:
+	p := sb.WriteProject("auto", `services:
   web:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
   worker:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	d := sb.Daemon()
@@ -394,10 +389,9 @@ services:
 func TestDaemon_AutostartHonorsStopped(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("autostop", `version: "1"
-services:
+	p := sb.WriteProject("autostop", `services:
   web:
-    command: {{fixture "ticker"}} -prefix W -interval 100ms
+    run: {{fixture "ticker"}} -prefix W -interval 100ms
 `, nil)
 	p.Start()
 	d := sb.Daemon()
@@ -426,12 +420,11 @@ services:
 func TestDaemon_RestartKeepsPartialSelection(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("sel", `version: "1"
-services:
+	p := sb.WriteProject("sel", `services:
   alpha:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
   beta:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start("alpha")
 	d := sb.Daemon()
@@ -461,16 +454,15 @@ services:
 func TestLedger_O20_BrokenConfigAtAutostartStillListed(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("broken", `version: "1"
-services:
+	p := sb.WriteProject("broken", `services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	d := sb.Daemon()
 	d.Watch(context.Background())
 	d.Stop()
-	p.WriteConfig("version: \"1\"\nservices: [\n")
+	p.WriteConfig("services: [\n")
 	sb.CLI("daemon", "start").MustSucceed(t)
 	w := sb.Daemon().Watch(context.Background())
 	w.WaitFor(t, "listed with an error", func(s harness.State) bool {

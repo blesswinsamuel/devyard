@@ -1,9 +1,10 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -54,34 +55,27 @@ func LoadDotEnv(path string) (map[string]string, error) {
 	return vars, nil
 }
 
-// ResolveDotEnv resolves the env file to use for a config file. An explicit
-// envFile must exist and is returned as-is (absolute). When empty, it falls
-// back to a .env file next to the config file, if one exists. The returned
-// path is empty when no env file applies, and the returned map is nil.
-func ResolveDotEnv(configPath, envFile string) (string, map[string]string, error) {
-	if envFile != "" {
-		abs, err := filepath.Abs(envFile)
+// loadEnvFiles loads env files (relative to base) in order; later files
+// win. Missing files are skipped. It returns the merged variables and the
+// paths that exist.
+func loadEnvFiles(base string, files []string) (map[string]string, []string, error) {
+	vars := map[string]string{}
+	var found []string
+	for _, f := range files {
+		path := resolvePath(base, f)
+		m, err := LoadDotEnv(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
-			return "", nil, fmt.Errorf("resolve env file: %w", err)
+			return nil, nil, err
 		}
-		vars, err := LoadDotEnv(abs)
-		if err != nil {
-			return "", nil, err
+		for k, v := range m {
+			vars[k] = v
 		}
-		return abs, vars, nil
+		found = append(found, path)
 	}
-	candidate := filepath.Join(filepath.Dir(configPath), ".env")
-	if _, err := os.Stat(candidate); err != nil {
-		if os.IsNotExist(err) {
-			return "", nil, nil
-		}
-		return "", nil, err
-	}
-	vars, err := LoadDotEnv(candidate)
-	if err != nil {
-		return "", nil, err
-	}
-	return candidate, vars, nil
+	return vars, found, nil
 }
 
 // Interpolate expands environment variable references in text. Supported
@@ -92,7 +86,8 @@ func ResolveDotEnv(configPath, envFile string) (string, map[string]string, error
 //	${VAR:-def}  -> def when VAR is unset or empty
 //	${VAR-def}   -> def when VAR is unset
 //
-// Bare $VAR references (e.g. inside shell commands) are left untouched. An
+// Bare $VAR references (e.g. inside shell commands) and service references
+// (${api.port}, see expandRefs) are left untouched. An
 // unset variable without a default is replaced with an empty string and a
 // warning is sent to warn (if non-nil).
 func Interpolate(text string, env map[string]string, warn func(string)) string {
@@ -125,6 +120,11 @@ func Interpolate(text string, env map[string]string, warn func(string)) string {
 				// Unterminated: leave the reference literal.
 				b.WriteByte('$')
 				i++
+				continue
+			}
+			if refPattern.MatchString(text[i+2 : end]) {
+				b.WriteString(text[i : end+1])
+				i = end + 1
 				continue
 			}
 			value, set, name := interpolateExpr(text[i+2:end], env)
@@ -167,4 +167,39 @@ func interpolateExpr(expr string, env map[string]string) (value string, set bool
 		return def, true, name
 	}
 	return "", false, name
+}
+
+// refPattern matches the body of a service reference: ${api.port},
+// ${api.url}, ${api.ports.metrics}. Env var names cannot contain dots, so
+// the two never overlap.
+var refPattern = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)\.(port|url|ports\.[a-z0-9][a-z0-9-]*)$`)
+
+// expandRefs replaces service references in s with lookup's result.
+func expandRefs(s string, lookup func(service, field string) (string, error)) (string, error) {
+	var b strings.Builder
+	for {
+		i := strings.Index(s, "${")
+		if i < 0 {
+			b.WriteString(s)
+			return b.String(), nil
+		}
+		end := strings.IndexByte(s[i:], '}')
+		if end < 0 {
+			b.WriteString(s)
+			return b.String(), nil
+		}
+		end += i
+		m := refPattern.FindStringSubmatch(s[i+2 : end])
+		if m == nil {
+			b.WriteString(s[:end+1])
+		} else {
+			v, err := lookup(m[1], m[2])
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(s[:i])
+			b.WriteString(v)
+		}
+		s = s[end+1:]
+	}
 }

@@ -69,12 +69,6 @@ const (
 	DesiredPartial = "partial"
 )
 
-// Dep is one depends_on edge.
-type Dep struct {
-	Name      string
-	Condition config.DependsOnCondition
-}
-
 // ProcessDef is the resolved, immutable definition of a service or task.
 type ProcessDef struct {
 	Project string
@@ -83,21 +77,27 @@ type ProcessDef struct {
 	// Order is the position in the project's dependency order.
 	Order int
 
-	Command string
-	Shell   string
+	Cmd     config.Command
 	Dir     string
 	Env     []string
 	EnvKeys []string
 	TTY     bool
-	Deps    []Dep
+	// Deps are the services this process waits for (until they are ready).
+	Deps []string
 
 	// Service-only.
-	Restart     config.RestartPolicy
-	Health      *config.Healthcheck
-	Build       *runner.BuildSpec
-	Ports       []config.ServicePort
-	ProxyHost   string
-	StopGrace   time.Duration
+	Restart config.RestartPolicy
+	Ready   *config.Probe
+	Build   *runner.BuildSpec
+	// BuildSources are absolute globs; when set, the build is skipped while
+	// the matched files are unchanged since the last successful build.
+	BuildSources []string
+	Ports        []config.ResolvedPort
+	ProxyHost    string
+	StopSignal   string
+	StopGrace    time.Duration
+	// Autostart is false for services that start only when named.
+	Autostart   bool
 	ProcDir     string
 	Socket      string
 	RuntimeHash string
@@ -144,13 +144,14 @@ type TaskState struct {
 type ProjectState struct {
 	ID             string
 	ConfigPath     string
-	EnvFile        string
+	EnvFiles       []string
 	Status         string
 	Desired        string
 	Error          string
 	ServicesTotal  int
 	ServicesActive int
-	DefaultService string
+	Primary        string
+	Links          []config.Link
 	UpdatedAt      time.Time
 }
 

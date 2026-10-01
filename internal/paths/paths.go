@@ -129,6 +129,9 @@ type ProjectDirs struct {
 // File is the project's registration file.
 func (p ProjectDirs) File() string { return filepath.Join(p.Root, "project.json") }
 
+// Ports is the project's auto-port assignments file.
+func (p ProjectDirs) Ports() string { return filepath.Join(p.Root, "ports.json") }
+
 // Proc returns the directory of one supervised process (service or task).
 func (p ProjectDirs) Proc(kind, name string) string {
 	return filepath.Join(p.Root, "procs", kind+"-"+name)

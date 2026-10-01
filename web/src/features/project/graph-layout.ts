@@ -1,6 +1,6 @@
 export interface GraphInput {
   name: string;
-  deps: { name: string; condition: string }[];
+  deps: string[];
 }
 
 export interface GraphNode {
@@ -12,7 +12,6 @@ export interface GraphNode {
 export interface GraphEdge {
   from: string;
   to: string;
-  condition: string;
 }
 
 /**
@@ -29,8 +28,8 @@ export function layoutGraph(items: GraphInput[]): { nodes: GraphNode[]; edges: G
     if (known !== undefined) return known;
     if (visiting.has(name)) return 0;
     visiting.add(name);
-    const deps = (byName.get(name)?.deps ?? []).filter((d) => byName.has(d.name));
-    const l = deps.length ? 1 + Math.max(...deps.map((d) => depth(d.name))) : 0;
+    const deps = (byName.get(name)?.deps ?? []).filter((d) => byName.has(d));
+    const l = deps.length ? 1 + Math.max(...deps.map((d) => depth(d))) : 0;
     visiting.delete(name);
     layer.set(name, l);
     return l;
@@ -46,7 +45,7 @@ export function layoutGraph(items: GraphInput[]): { nodes: GraphNode[]; edges: G
       return { name: i.name, layer: l, row };
     });
   const edges = items.flatMap((i) =>
-    i.deps.filter((d) => byName.has(d.name)).map((d) => ({ from: d.name, to: i.name, condition: d.condition })),
+    i.deps.filter((d) => byName.has(d)).map((d) => ({ from: d, to: i.name })),
   );
   return {
     nodes,

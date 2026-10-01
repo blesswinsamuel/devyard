@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strings"
 	"syscall"
 	"time"
 
@@ -106,8 +107,11 @@ type serviceActor struct {
 	// restartAfterStop re-launches once the current run has stopped.
 	restartAfterStop bool
 	buildNext        bool
-	stopWaiters      []chan error
-	stopTimer        *time.Timer
+	// buildSum is the sources fingerprint of the current run's build,
+	// recorded once the run gets past it.
+	buildSum    string
+	stopWaiters []chan error
+	stopTimer   *time.Timer
 
 	depsCancel context.CancelFunc
 	depsGen    int
@@ -554,7 +558,7 @@ func (a *serviceActor) begin() {
 	go func() {
 		var err error
 		for _, d := range deps {
-			if err = a.hub.waitReady(ctx, d.Name, d.Condition); err != nil {
+			if err = a.hub.waitReady(ctx, d); err != nil {
 				break
 			}
 		}
@@ -565,18 +569,8 @@ func (a *serviceActor) begin() {
 	}()
 }
 
-func depList(deps []Dep) string {
-	s := ""
-	for i, d := range deps {
-		if i > 0 {
-			s += ", "
-		}
-		s += d.Name
-		if d.Condition == config.ConditionServiceHealthy {
-			s += " (healthy)"
-		}
-	}
-	return s
+func depList(deps []string) string {
+	return strings.Join(deps, ", ")
 }
 
 func (a *serviceActor) onDeps(m evDeps) {
@@ -621,22 +615,33 @@ func (a *serviceActor) nextRun() int64 {
 func (a *serviceActor) launch() {
 	run := a.nextRun()
 	spec := runner.Spec{
-		Project:   a.def.Project,
-		Kind:      "service",
-		Name:      a.def.Name,
-		Run:       run,
-		Command:   a.def.Command,
-		Shell:     a.def.Shell,
-		Dir:       a.def.Dir,
-		Env:       a.def.Env,
-		TTY:       a.def.TTY,
-		ProcDir:   a.def.ProcDir,
-		Socket:    runSocket(a.def.Socket, run),
-		StopGrace: a.grace(),
-		Hash:      a.def.RuntimeHash,
+		Project:    a.def.Project,
+		Kind:       "service",
+		Name:       a.def.Name,
+		Run:        run,
+		Argv:       a.def.Cmd.Args(),
+		Display:    a.def.Cmd.String(),
+		Dir:        a.def.Dir,
+		Env:        a.def.Env,
+		TTY:        a.def.TTY,
+		ProcDir:    a.def.ProcDir,
+		Socket:     runSocket(a.def.Socket, run),
+		StopSignal: a.def.StopSignal,
+		StopGrace:  a.grace(),
+		Hash:       a.def.RuntimeHash,
 	}
-	if a.buildNext && a.def.Build != nil {
-		spec.Build = a.def.Build
+	a.buildSum = ""
+	if a.def.Build != nil {
+		if len(a.def.BuildSources) > 0 {
+			// A failed fingerprint (unreadable tree) just means "build".
+			sum, _ := sourcesSum(a.def.BuildSources)
+			if a.buildNext || sum == "" || sum != readBuildSum(a.def.ProcDir) {
+				spec.Build = a.def.Build
+				a.buildSum = sum
+			}
+		} else if a.buildNext {
+			spec.Build = a.def.Build
+		}
 	}
 	a.buildNext = false
 	a.run = run
@@ -694,24 +699,30 @@ func (a *serviceActor) onPhase(m evPhase) {
 	if next == StatusRunning {
 		a.st.StartedAt = time.Now()
 		a.startHealth(m.run)
+		if a.buildSum != "" {
+			writeBuildSum(a.def.ProcDir, a.buildSum)
+			a.buildSum = ""
+		}
 	}
 	a.publish()
 }
 
 func (a *serviceActor) startHealth(run int64) {
 	a.stopHealth()
-	hc := a.def.Health
+	hc := a.def.Ready
 	if hc == nil {
 		a.st.Health = HealthNone
 		return
 	}
 	c, err := health.New(a.def.Name, health.Config{
-		Test:        hc.Test,
+		URL:         hc.URL,
+		Status:      hc.Status,
+		Addr:        hc.Addr,
+		Exec:        hc.Exec,
 		Interval:    hc.Interval,
 		Retries:     hc.Retries,
 		Timeout:     hc.Timeout,
 		StartPeriod: hc.StartPeriod,
-		Shell:       a.def.Shell,
 		WorkingDir:  a.def.Dir,
 		Env:         a.def.Env,
 	}, nil)

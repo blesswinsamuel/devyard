@@ -65,10 +65,10 @@ func (c *Context) ensureRegistered(ctx context.Context, cl *client.Client) (stri
 	if err != nil {
 		return "", err
 	}
-	if p, err := findProject(ctx, cl, lc.File.ID()); err == nil && p.ConfigPath == lc.Path {
+	if p, err := findProject(ctx, cl, lc.Project.ID); err == nil && p.ConfigPath == lc.Path {
 		return p.Id, nil
 	}
-	resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{ConfigPath: lc.Path, EnvFile: lc.EnvFile, Env: captureEnv()}))
+	resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{ConfigPath: lc.Path, Env: captureEnv()}))
 	if err != nil {
 		return "", err
 	}

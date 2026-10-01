@@ -14,14 +14,13 @@ import (
 	"github.com/blesswinsamuel/devyard/test/e2e/harness"
 )
 
-const twoMarked = `version: "1"
-services:
+const twoMarked = `services:
   a:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
     env:
       DY_MARK: {{.Name}}-a
   b:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
     env:
       DY_MARK: {{.Name}}-b
 `
@@ -52,10 +51,9 @@ func TestAPI_GetDaemonReportsBoundAddrs(t *testing.T) {
 func TestAPI_AddProjectCapturesEnv(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("addenv", `version: "1"
-services:
+	p := sb.WriteProject("addenv", `services:
   s:
-    command: sh -c 'echo who=$DY_WHO; exec {{fixture "ticker"}} -interval 1s'
+    run: sh -c 'echo who=$DY_WHO; exec {{fixture "ticker"}} -interval 1s'
 `, nil)
 	d := sb.Daemon()
 	w := d.Watch(context.Background())
@@ -131,13 +129,12 @@ func TestLedger_O3_ConcurrentStartProjectNoDuplicates(t *testing.T) {
 func TestLedger_O9_StopDuringStartIsNotLost(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("o9", `version: "1"
-services:
+	p := sb.WriteProject("o9", `services:
   slow:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
     build: sleep 2
   after:
-    command: {{fixture "ticker"}} -interval 200ms
+    run: {{fixture "ticker"}} -interval 200ms
     depends_on: [slow]
 `, nil)
 	d := sb.Daemon()
@@ -169,11 +166,10 @@ services:
 func TestLedger_O11_SameNameDifferentPathAlreadyExists(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	cfg := `version: "1"
-name: same
+	cfg := `name: same
 services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `
 	one := sb.WriteProject("same-one", cfg, nil)
 	two := sb.WriteProject("same-two", cfg, nil)
@@ -219,10 +215,9 @@ func TestLedger_O5_RemoveProjectValidatesIDs(t *testing.T) {
 func TestLedger_O15_TypedErrors(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("o15", `version: "1"
-services:
+	p := sb.WriteProject("o15", `services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 tasks:
   t: {{fixture "exiter"}}
 `, nil)
@@ -260,10 +255,9 @@ tasks:
 // project reports an error and recovers on reload.
 func TestLedger_O1_MissingConfigKeepsProject(t *testing.T) {
 	t.Parallel()
-	sb, p, d, w := setup(t, "o1", `version: "1"
-services:
+	sb, p, d, w := setup(t, "o1", `services:
   a:
-    command: {{fixture "ticker"}} -prefix O1 -interval 100ms
+    run: {{fixture "ticker"}} -prefix O1 -interval 100ms
 `)
 	w.WaitFor(t, "running", func(s harness.State) bool { return s.Running("o1", "a") })
 	f := d.FollowLogs(&v1.LogsRequest{Project: "o1", Sources: []*v1.LogSource{harness.Svc("a")}})

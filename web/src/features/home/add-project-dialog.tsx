@@ -22,7 +22,6 @@ import { addProjectOpen, setAddProjectOpen } from "~/app/ui-state";
 export function AddProjectDialog() {
   const navigate = useNavigate();
   const [configPath, setConfigPath] = createSignal("");
-  const [envFile, setEnvFile] = createSignal("");
   const [start, setStart] = createSignal(true);
   const [build, setBuild] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
@@ -30,7 +29,6 @@ export function AddProjectDialog() {
 
   const reset = () => {
     setConfigPath("");
-    setEnvFile("");
     setError("");
     setBusy(false);
   };
@@ -43,7 +41,6 @@ export function AddProjectDialog() {
     try {
       const res = await api.addProject({
         configPath: configPath().trim(),
-        envFile: envFile().trim(),
         start: start(),
         build: start() && build(),
       });
@@ -90,16 +87,6 @@ export function AddProjectDialog() {
                 onInput={(e) => setConfigPath(e.currentTarget.value)}
               />
               <FieldDescription>Absolute path to the project's devyard.yml (or its directory).</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel for="env-file">Env file (optional)</FieldLabel>
-              <Input
-                id="env-file"
-                class="font-mono"
-                placeholder=".env next to the config"
-                value={envFile()}
-                onInput={(e) => setEnvFile(e.currentTarget.value)}
-              />
             </Field>
             <div class="flex flex-wrap gap-5">
               <CheckboxField label="Start now" checked={start()} onChange={setStart} />

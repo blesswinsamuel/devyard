@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -32,11 +31,12 @@ func newBuildCmd(c *Context) *cobra.Command {
 // runBuilds runs build commands locally, in the current environment, each
 // in its own process group. The first failure aborts.
 func (c *Context) runBuilds(lc *localConfig, names []string) error {
+	file := lc.Project.File
 	order := names
 	if len(order) == 0 {
 		deps := map[string][]string{}
-		for name, svc := range lc.File.Services {
-			deps[name] = svc.DependsOn.Order
+		for name, svc := range file.Services {
+			deps[name] = svc.DependsOn
 		}
 		g, err := dag.New(deps)
 		if err != nil {
@@ -46,34 +46,38 @@ func (c *Context) runBuilds(lc *localConfig, names []string) error {
 			return err
 		}
 	}
-	_, dotenv, err := config.ResolveDotEnv(lc.Path, c.EnvFile)
+	// Reuse the daemon's auto-port assignments so builds see the same
+	// ports as the running services.
+	assigned := config.PortAssignments{}
+	if d, err := dirs(); err == nil {
+		if pd, err := d.Project(lc.Project.ID); err == nil {
+			if a, err := config.ReadPortAssignments(pd.Ports()); err == nil {
+				assigned = a
+			}
+		}
+	}
+	res, err := lc.Project.Resolve(os.Environ(), assigned, nil)
 	if err != nil {
 		return err
 	}
-	base := filepath.Dir(lc.Path)
 	built := 0
 	for _, name := range order {
-		svc, ok := lc.File.Services[name]
+		svc, ok := res.Services[name]
 		if !ok {
 			return fmt.Errorf("unknown service %q", name)
 		}
-		if svc.Build == nil {
+		b := svc.Build
+		if b == nil {
 			if len(names) > 0 {
 				c.Errorf("devyard: %s has no build step\n", name)
 			}
 			continue
 		}
-		b := svc.Build.Spec
-		dir := b.WorkingDir
-		if dir == "" {
-			dir = base
-		} else if !filepath.IsAbs(dir) {
-			dir = filepath.Join(base, dir)
-		}
-		c.Errorf("%s │ %s\n", ui.ServicePrefix(name), ui.Dim("$ "+b.Command))
-		cmd := exec.Command(b.Shell, "-c", b.Command)
-		cmd.Dir = dir
-		cmd.Env = config.ChildEnv(os.Environ(), dotenv, b.Env)
+		c.Errorf("%s │ %s\n", ui.ServicePrefix(name), ui.Dim("$ "+b.Cmd.String()))
+		argv := b.Cmd.Args()
+		cmd := exec.Command(argv[0], argv[1:]...)
+		cmd.Dir = b.Dir
+		cmd.Env = b.Env
 		cmd.Stdout = c.Out
 		cmd.Stderr = c.Err
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

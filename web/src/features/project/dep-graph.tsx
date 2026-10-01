@@ -18,8 +18,8 @@ const TONE_VAR: Record<Tone, string> = {
   info: "var(--info)",
 };
 
-/** depends_on as a small left-to-right layered graph. Solid edges wait for
- * health (service_healthy); dashed edges only for start. */
+/** depends_on as a small left-to-right layered graph. Each edge means the
+ * dependent waits until the dependency is ready. */
 export function DependencyGraph(props: { services: ServiceEntity[] }) {
   const navigate = useNavigate();
   const graph = createMemo(() =>
@@ -67,11 +67,10 @@ export function DependencyGraph(props: { services: ServiceEntity[] }) {
                 stroke="var(--muted-foreground)"
                 stroke-opacity="0.6"
                 stroke-width="1.25"
-                stroke-dasharray={e.condition === "service_healthy" ? undefined : "4 3"}
                 marker-end="url(#dep-arrow)"
               >
                 <title>
-                  {e.to} waits for {e.from} ({e.condition || "service_started"})
+                  {e.to} waits for {e.from} to be ready
                 </title>
               </path>
             );

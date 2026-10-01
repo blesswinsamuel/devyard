@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"path/filepath"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,29 +17,28 @@ import (
 
 // loaded is a project's parsed configuration with every process resolved.
 type loaded struct {
-	file     *config.File
-	envFile  string
-	dotenv   map[string]string
+	project  *config.Project
 	warnings []string
 	order    []string // services in dependency order
-	services map[string]*ProcessDef
-	tasks    map[string]*ProcessDef
+	// autostart holds the services a project start launches: those with
+	// autostart and their dependencies.
+	autostart map[string]bool
+	services  map[string]*ProcessDef
+	tasks     map[string]*ProcessDef
 }
 
-// loadProject reads and resolves the project's config.
+// loadProject reads and resolves the project's config. It allocates and
+// persists ports for `auto` ports, so it must only run on the project's
+// actor.
 func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
-	envFile, dotenv, err := config.ResolveDotEnv(reg.ConfigPath, reg.EnvFile)
+	proj, err := config.Load(reg.ConfigPath, reg.Env)
 	if err != nil {
 		return nil, err
 	}
-	file, warnings, err := config.Load(reg.ConfigPath, config.InterpolationEnv(reg.Env, dotenv))
-	if err != nil {
-		return nil, err
+	if proj.ID != reg.ID {
+		return nil, fmt.Errorf("project name changed from %q to %q; remove the project and start it again", reg.ID, proj.ID)
 	}
-	if file.ID() != reg.ID {
-		return nil, fmt.Errorf("project name changed from %q to %q; remove the project and start it again", reg.ID, file.ID())
-	}
-	order, err := serviceOrder(file)
+	order, err := serviceOrder(proj.File)
 	if err != nil {
 		return nil, err
 	}
@@ -47,76 +46,97 @@ func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
 	if err != nil {
 		return nil, err
 	}
-	baseDir := filepath.Dir(reg.ConfigPath)
+	assigned, err := config.ReadPortAssignments(pd.Ports())
+	if err != nil {
+		return nil, err
+	}
+	res, err := proj.Resolve(reg.Env, assigned, nil)
+	if err != nil {
+		return nil, err
+	}
+	if !maps.Equal(assigned, res.Ports) {
+		if err := res.Ports.Save(pd.Ports()); err != nil {
+			return nil, err
+		}
+	}
+	file := proj.File
 	l := &loaded{
-		file:     file,
-		envFile:  envFile,
-		dotenv:   dotenv,
-		warnings: warnings,
-		order:    order,
-		services: make(map[string]*ProcessDef, len(file.Services)),
-		tasks:    make(map[string]*ProcessDef, len(file.Tasks)),
+		project:   proj,
+		warnings:  proj.Warnings,
+		order:     order,
+		autostart: map[string]bool{},
+		services:  make(map[string]*ProcessDef, len(file.Services)),
+		tasks:     make(map[string]*ProcessDef, len(file.Tasks)),
 	}
 	position := make(map[string]int, len(order))
 	for i, name := range order {
 		position[name] = i
 	}
 	for name, svc := range file.Services {
-		dir := resolveDir(baseDir, svc.WorkingDir)
-		env := config.ChildEnv(reg.Env, dotenv, svc.Env)
-		def := &ProcessDef{
-			Project:   reg.ID,
-			Kind:      "service",
-			Name:      name,
-			Order:     position[name],
-			Command:   svc.Command,
-			Shell:     svc.Shell,
-			Dir:       dir,
-			Env:       env,
-			EnvKeys:   envKeys(dotenv, svc.Env),
-			TTY:       svc.TTY,
-			Deps:      deps(svc.DependsOn),
-			Restart:   svc.Restart,
-			Health:    svc.Healthcheck,
-			ProcDir:   pd.Proc("service", name),
-			Socket:    dirs.RunnerSocket(reg.ID, "service", name),
-			StopGrace: defaultStopGrace,
-		}
-		if svc.StopGracePeriod > 0 {
-			def.StopGrace = svc.StopGracePeriod
-		}
-		if svc.Ports != nil {
-			def.Ports = svc.Ports.Entries
-		}
-		if svc.Proxy != nil {
-			def.ProxyHost = svc.Proxy.Host
-		}
-		if svc.Build != nil {
-			b := svc.Build.Spec
-			def.Build = &runner.BuildSpec{
-				Command: b.Command,
-				Shell:   b.Shell,
-				Dir:     resolveDir(baseDir, b.WorkingDir),
-				Env:     config.ChildEnv(reg.Env, dotenv, b.Env),
+		rs := res.Services[name]
+		if svc.Stop.Signal != "" {
+			if _, err := runner.ParseSignal(svc.Stop.Signal); err != nil {
+				return nil, fmt.Errorf("service %q: stop.signal: %w", name, err)
 			}
+		}
+		def := &ProcessDef{
+			Project:    reg.ID,
+			Kind:       "service",
+			Name:       name,
+			Order:      position[name],
+			Cmd:        rs.Cmd,
+			Dir:        rs.Dir,
+			Env:        rs.Env,
+			EnvKeys:    rs.EnvKeys,
+			TTY:        svc.TTY,
+			Deps:       sortedCopy(svc.DependsOn),
+			Restart:    svc.Restart,
+			Ready:      rs.Ready,
+			Ports:      rs.Ports,
+			ProxyHost:  svc.Host,
+			StopSignal: svc.Stop.Signal,
+			StopGrace:  svc.Stop.Timeout,
+			Autostart:  svc.Starts(),
+			ProcDir:    pd.Proc("service", name),
+			Socket:     dirs.RunnerSocket(reg.ID, "service", name),
+		}
+		if b := rs.Build; b != nil {
+			def.Build = &runner.BuildSpec{
+				Argv:    b.Cmd.Args(),
+				Display: b.Cmd.String(),
+				Dir:     b.Dir,
+				Env:     b.Env,
+			}
+			def.BuildSources = b.Sources
 		}
 		def.RuntimeHash = runtimeHash(def)
 		l.services[name] = def
 	}
+	var starts []string
+	for _, name := range order {
+		if l.services[name].Autostart {
+			starts = append(starts, name)
+		}
+	}
+	closure, err := l.closure(starts)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range closure {
+		l.autostart[name] = true
+	}
 	for name, task := range file.Tasks {
-		spec := task.Spec
-		env := config.ChildEnv(reg.Env, dotenv, spec.Env)
+		rt := res.Tasks[name]
 		def := &ProcessDef{
 			Project: reg.ID,
 			Kind:    "task",
 			Name:    name,
-			Command: spec.Command,
-			Shell:   spec.Shell,
-			Dir:     resolveDir(baseDir, spec.WorkingDir),
-			Env:     env,
-			EnvKeys: envKeys(dotenv, spec.Env),
-			TTY:     spec.IsTTY(),
-			Deps:    deps(spec.DependsOn),
+			Cmd:     rt.Cmd,
+			Dir:     rt.Dir,
+			Env:     rt.Env,
+			EnvKeys: rt.EnvKeys,
+			TTY:     task.IsTTY(),
+			Deps:    sortedCopy(task.DependsOn),
 			ProcDir: pd.Proc("task", name),
 			Socket:  dirs.RunnerSocket(reg.ID, "task", name),
 		}
@@ -126,48 +146,20 @@ func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
 	return l, nil
 }
 
-func resolveDir(base, dir string) string {
-	if dir == "" {
-		return base
-	}
-	if filepath.IsAbs(dir) {
-		return dir
-	}
-	return filepath.Join(base, dir)
-}
-
-func deps(d config.DependsOn) []Dep {
-	names := append([]string(nil), d.Order...)
-	sort.Strings(names)
-	out := make([]Dep, 0, len(names))
-	for _, n := range names {
-		out = append(out, Dep{Name: n, Condition: d.Entries[n].Condition})
-	}
+func sortedCopy(s []string) []string {
+	out := append([]string(nil), s...)
+	sort.Strings(out)
 	return out
-}
-
-// envKeys lists the variable names the project itself defines (env file and
-// the process's own env), not the whole launch environment.
-func envKeys(layers ...map[string]string) []string {
-	seen := make(map[string]bool)
-	var keys []string
-	for _, m := range layers {
-		for k := range m {
-			if !seen[k] {
-				seen[k] = true
-				keys = append(keys, k)
-			}
-		}
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // runtimeHash identifies the parts of a definition that require restarting
 // the process when they change.
 func runtimeHash(d *ProcessDef) string {
 	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "%s\x00%s\x00%s\x00%v\x00", d.Command, d.Shell, d.Dir, d.TTY)
+	for _, a := range d.Cmd.Args() {
+		_, _ = fmt.Fprintf(h, "%s\x00", a)
+	}
+	_, _ = fmt.Fprintf(h, "%s\x00%v\x00%s\x00", d.Dir, d.TTY, d.StopSignal)
 	for _, kv := range d.Env {
 		_, _ = fmt.Fprintf(h, "%s\x00", kv)
 	}
@@ -177,7 +169,7 @@ func runtimeHash(d *ProcessDef) string {
 func serviceOrder(file *config.File) ([]string, error) {
 	g := make(map[string][]string, len(file.Services))
 	for name, svc := range file.Services {
-		g[name] = append([]string(nil), svc.DependsOn.Order...)
+		g[name] = append([]string(nil), svc.DependsOn...)
 	}
 	graph, err := dag.New(g)
 	if err != nil {
@@ -201,7 +193,7 @@ func (l *loaded) closure(names []string) ([]string, error) {
 		}
 		want[n] = true
 		for _, d := range def.Deps {
-			if err := visit(d.Name); err != nil {
+			if err := visit(d); err != nil {
 				return err
 			}
 		}

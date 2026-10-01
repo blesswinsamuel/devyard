@@ -81,9 +81,24 @@ export function ProjectPage() {
                     </span>
                     <CopyButton text={p().configPath} label="Copy config path" />
                   </Meta>
-                  <Show when={p().envFile}>
+                  <Show when={p().envFiles.length}>
                     <Meta label="env">
-                      <span class="font-mono text-2xs">{p().envFile}</span>
+                      <span class="font-mono text-2xs" title={p().envFiles.join("\n")}>
+                        {p().envFiles.map((f) => f.split("/").pop()).join(", ")}
+                      </span>
+                    </Meta>
+                  </Show>
+                  <Show when={p().links.length}>
+                    <Meta label="links">
+                      <span class="flex flex-wrap gap-2">
+                        <For each={p().links}>
+                          {(l) => (
+                            <a href={l.url} target="_blank" rel="noreferrer" class="focus-ring rounded-sm text-ui hover:underline">
+                              {l.name}
+                            </a>
+                          )}
+                        </For>
+                      </span>
                     </Meta>
                   </Show>
                   <Meta label="services">

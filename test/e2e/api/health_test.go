@@ -14,28 +14,26 @@ import (
 )
 
 // The db healthcheck passes while <project>/db.healthy exists.
-const healthProject = `version: "1"
-services:
+const healthProject = `services:
   db:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
     restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "test -f {{.Dir}}/db.healthy"]
+    ready:
+      exec: "test -f {{.Dir}}/db.healthy"
       interval: 100ms
       timeout: 1s
       retries: %d
       start_period: %s
   api:
-    command: {{fixture "ticker"}} -interval 1s
-    depends_on:
-      db: { condition: service_healthy }
+    run: {{fixture "ticker"}} -interval 1s
+    depends_on: [db]
 `
 
 func healthCfg(retries int, startPeriod string) string {
 	return fmt.Sprintf(healthProject, retries, startPeriod)
 }
 
-// S9: a service_healthy dependent waits for health.
+// S9: a dependent waits until its dependency is ready (healthy).
 func TestLedger_S9_DependentWaitsForHealthy(t *testing.T) {
 	t.Parallel()
 	_, p, _, w := setup(t, "s9wait", healthCfg(2, "30s"))

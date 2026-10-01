@@ -57,27 +57,26 @@ func steps() int {
 var services = []string{"tick", "crash", "trap"}
 
 func config(interval string) string {
-	return `version: "1"
-services:
+	return `services:
   tick:
-    command: {{fixture "ticker"}} -interval ` + interval + `
+    run: {{fixture "ticker"}} -interval ` + interval + `
     restart: always
     env:
       DY_MARK: chaos-tick
   crash:
-    command: {{fixture "exiter"}} -code 1 -after 300ms
+    run: {{fixture "exiter"}} -code 1 -after 300ms
     restart: on-failure
     env:
       DY_MARK: chaos-crash
   trap:
-    command: {{fixture "sigtrap"}}
-    stop_grace_period: 300ms
+    run: {{fixture "sigtrap"}}
+    stop: {timeout: 300ms}
     env:
       DY_MARK: chaos-trap
     depends_on: [tick]
 tasks:
   job:
-    command: {{fixture "ticker"}} -interval 50ms -count 40
+    run: {{fixture "ticker"}} -interval 50ms -count 40
     tty: false
 `
 }

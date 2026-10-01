@@ -1,329 +1,379 @@
 # Config schema reference
 
-The shape of `devyard.yml`, with the exact validation rules enforced by
-`internal/config/config.go`. Update this doc whenever you change the schema.
+The shape of `devyard.yml`, with the exact rules enforced by
+`internal/config`. Update this doc, the tests in `internal/config`, and the
+generated JSON Schema (`go generate ./internal/config`) whenever you change
+the schema.
 
-For the user-level global config (`web.host`, `web.port`), see
+For the user-level global config (`web`, `proxy`), see
 [Global config](#global-config) at the bottom of this doc.
+
+## Example
+
+```yaml
+# yaml-language-server: $schema=https://…/devyard.schema.json
+name: myapp                    # optional; default = directory name
+primary: web                   # served at myapp.localhost
+env_files: [.env, .env.local]  # the default
+env: { LOG_LEVEL: debug }      # every service and task
+links:
+  Grafana: http://localhost:3001
+
+services:
+  db:
+    run: postgres -D .data/pg
+    port: 5432
+    ready: { tcp: {} }
+    stop: { signal: SIGINT }
+
+  api:
+    run: [cargo, run, --bin, api]    # a list is executed directly
+    dir: ./api
+    port: auto                       # devyard picks a free port → $PORT
+    depends_on: [db]                 # waits until db is ready
+    env: { DATABASE_URL: "postgres://localhost:${db.port}/myapp" }
+    ready:
+      http: { path: /health }
+    build:
+      run: cargo build --bin api
+      sources: [api/src/**, Cargo.lock]
+
+  web:
+    run: bun run dev --port $PORT
+    dir: ./web
+    port: auto
+    env: { API_URL: "${api.url}" }
+    tty: true
+    depends_on: [api]
+
+  storybook:
+    run: bun storybook --port $PORT
+    port: auto
+    autostart: false                 # only when named
+
+tasks:
+  migrate: sqlx migrate run
+  seed:
+    run: node scripts/seed.js
+    depends_on: [db]
+```
+
+## Editor support
+
+`devyard schema` prints a JSON Schema for the file (generated from the Go
+types; the source lives at `internal/config/devyard.schema.json`). Editors
+using the YAML language server pick it up from a modeline:
+
+```yaml
+# yaml-language-server: $schema=/path/to/devyard.schema.json
+```
+
+It gives completion, inline docs, and flags unknown fields.
 
 ## Top level
 
-```yaml
-version: "1"          # required
-name: myapp           # optional; defaults to the config file's directory name
-services:             # required, non-empty
-  <name>: <Service>
-tasks:                # optional
-  <name>: <Task>
-```
+| Field | Default | Notes |
+| --- | --- | --- |
+| `name` | directory name | The project id is the name as a slug (lowercase letters, digits, `-`, `_`; `My App` → `my-app`). Two configs that resolve to the same id conflict: the second `devyard start` fails until you set a distinct `name`. |
+| `primary` | — | Service served at `<project>.<domain>` and opened by the dashboard. Must have a port. |
+| `env_files` | `[.env, .env.local]` | Env files, relative to the config's directory, loaded in order (later files win). Missing files are skipped. `env_files: []` loads none. |
+| `env` | — | Variables for every service and task. |
+| `links` | — | Ordered map of name → absolute URL, shown on the project page. |
+| `services` | — | Map of name → [service](#services). |
+| `tasks` | — | Map of name → [task](#tasks). |
 
-- `version` **must** be present (any value is accepted today; the field gates
-  future migrations).
-- `name` defaults to `filepath.Base(filepath.Dir(configPath))` when omitted.
-  The project **id** is the name as a slug (lowercase letters, digits, `-`,
-  `_`; e.g. `My App` → `my-app`). Two different config files that resolve to
-  the same id conflict: the second `devyard start` fails until you set a
-  distinct `name:`.
-- `services` must have at least one entry.
+Every field is optional. An empty `devyard.yml` is a valid project (useful for
+the git UI and terminals alone).
 
-### Launch environment
+Unknown fields produce a warning with their path and line (`unknown field
+"comand" at services.api.comand (line 7)`), not an error.
 
-Services run with the environment of the shell that last ran `devyard start`
-(or `reload`, or `project add`) for the project. The daemon records it with the
-project (mode 0600), so they see the same `PATH`, version managers and tool
-settings as your terminal, and daemon restarts or autostart don't change it.
-`PWD`, `OLDPWD`, `SHLVL` and `_` are dropped. Projects added from the web UI
-use the daemon's environment until you `devyard reload` them from a shell.
+## Commands: `run`
 
-### Env files (`--env-file`, `.env`)
-
-A docker-compose-style env file supplies variables for two purposes:
-
-1. **Config interpolation** — `devyard.yml` may reference
-   `${VAR}` / `${VAR:-default}` anywhere in its text (command, env values,
-   working_dir, ...). References are expanded from the env file variables
-   overlaid by the launch environment (the launch environment wins for
-   duplicate keys) before the file is parsed.
-2. **Child process environment** — every process gets the launch environment,
-   overlaid with the env file variables, overlaid with its own `env` (later
-   layers win).
-
-The env file choice (`--env-file`) is remembered with the project, so reloads
-and autostart use the same file.
-
-The env file is located by default at `.env` next to the config file (optional;
-a missing default `.env` is not an error). Override it with
-`devyard --env-file <path>` — an explicit path must exist.
-
-Supported env file syntax: `KEY=VALUE` lines, blank lines, `#` comments,
-optional `export ` prefix, and single/double-quoted values.
-
-Interpolation forms:
-
-| Form | Meaning |
-| --- | --- |
-| `${VAR}` | Value of `VAR`; empty + a warning when unset |
-| `${VAR:-def}` | `def` when `VAR` is unset or empty |
-| `${VAR-def}` | `def` when `VAR` is unset |
-| `$$` | Literal `$` |
-
-Bare `$VAR` references (no braces) are left untouched, so shell-style
-`$HOME` inside `command` still reaches the shell.
-
-> Example: `PORT=${PORT:-8080}` in a service `command` becomes `8080` when the
-> env file (or process env) does not define `PORT`.
-
-## Service
+`run` is either a string or a list:
 
 ```yaml
-api:
-  command: cargo run --bin api      # required
-  working_dir: ./api                # optional, relative to the config file
-  env:                              # optional, additive over the parent env
-    DATABASE_URL: postgres://localhost/myapp
-  shell: sh                         # optional, default "sh"
-  depends_on: [db]                  # list OR map (see below)
-  healthcheck:                      # optional
-    test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-    interval: 5s
-    timeout: 2s
-    retries: 10
-  restart: always                   # no | on-failure | always
-  build: cargo build --bin api      # string OR object (see below)
+run: bun run dev --port $PORT        # runs with: sh -c '<string>'
+run: [cargo, run, --bin, api]        # executed directly, no shell
 ```
 
-| Field | Required | Default | Notes |
-| --- | :-: | --- | --- |
-| `command` | yes | — | Run via `<shell> -c <command>`, so pipelines work. |
-| `working_dir` | no | config dir | Relative paths resolve against the config file's directory. |
-| `env` | no | — | Map of string→string. **Additive** over the parent process env (parent keys not in `env` are preserved). Empty keys are rejected. |
-| `shell` | no | `sh` | Shell used to run `command`. |
-| `depends_on` | no | — | List of names or map of `name: { condition: ... }`. |
-| `healthcheck` | no | — | See below. |
-| `restart` | no | `no` | See below. |
-| `build` | no | — | Pre-start build step; string or object. |
-| `port` | no | — | The port the process listens on. Shorthand for a single unnamed `ports` entry. Exposes the service to the daemon's reverse proxy (see below). Not Docker's `ports:` mapping — there is no host↔container forwarding. |
-| `ports` | no | — | Ordered map of named ports (`http: 3000`). The **first entry is the service's default port**. |
-| `proxy` | no | — | Proxy options: `host` overrides the service's host label (default: service name). |
-| `tty` | no | `false` | Run in a pseudo-terminal (colors, progress bars, and `devyard attach`). |
-| `stop_grace_period` | no | `10s` | Time between SIGTERM and SIGKILL when stopping. |
+A string gets shell features (pipes, `&&`, `$VAR`). There is no `shell`
+setting: for another shell, use the list form
+(`run: [bash, -c, "source venv/bin/activate && exec uvicorn app:app"]`) or a
+script file.
 
-### `depends_on`
-
-Two forms, deserialized by a custom `UnmarshalYAML`:
+Services, tasks and `build` also accept the command alone:
 
 ```yaml
-depends_on: [api, db]                       # list: condition defaults to service_started
+services:
+  api: ./bin/api                     # same as { run: ./bin/api }
+tasks:
+  lint: [bun, run, lint]
 ```
+
+## Services
+
+| Field | Default | Notes |
+| --- | --- | --- |
+| `run` | **required** | See [Commands](#commands-run). |
+| `dir` | config dir | Working directory, relative to the config's directory. |
+| `env` | — | Variables for this service. |
+| `env_files` | — | Env files for this service, loaded after the project's. Missing files are skipped. |
+| `depends_on` | — | Services to wait for. See [Dependencies](#dependencies). |
+| `ready` | — | [Readiness probe](#readiness-ready). |
+| `restart` | `on-failure` | `never`, `on-failure` or `always`. See [Restarts](#restarts). |
+| `build` | — | [Build step](#builds). |
+| `tty` | `false` | Run in a pseudo-terminal (colors, progress bars, `devyard attach`). |
+| `port` | — | Port the service listens on: a number or `auto`. |
+| `ports` | — | Ordered map of named ports (`http: 3000`, `metrics: auto`); the first is the default port. Mutually exclusive with `port`. |
+| `host` | service name | Host label in the proxy URL. Lowercase letters, digits and dashes. |
+| `stop.signal` | `SIGTERM` | Signal sent to stop the service (`SIGINT`, `INT`, `2`, …). |
+| `stop.timeout` | `10s` | Wait after the signal before `SIGKILL`. |
+| `autostart` | `true` | When `false`, the service starts only when named (`devyard start storybook`) or needed by a service that starts. |
+
+Service names must be lowercase letters, digits and dashes: they appear in
+hostnames and `${service.port}` references.
+
+### Dependencies
 
 ```yaml
-depends_on:                                 # map: explicit conditions
-  db: { condition: service_healthy }
-  api: { condition: service_started }
+depends_on: [db, cache]
 ```
 
-Conditions:
+A service starts once each dependency is **ready**:
 
-| Condition | Meaning |
-| --- | --- |
-| `service_started` (default) | Dependent starts once the dependency has launched at least once. |
-| `service_healthy` | Dependent waits until the dependency's healthcheck is `healthy` (an `unhealthy` dependency may still recover, so it keeps waiting). Fails if the dependency exits or fails first. |
+- running, and healthy if it has a `ready` probe; or
+- exited with code 0 (a one-shot setup service).
 
-A dependency that is stopped is waited for (the dependent shows `waiting for
-<dep>`); starting a service also starts its whole `depends_on` chain.
+A dependency that is stopped is started along with the dependent and waited
+for (the dependent shows `waiting for db`). One that is unhealthy is waited
+for, since it may recover. One that exits non-zero or fails fails the
+dependent.
 
-Validation:
+Starting a service starts its whole `depends_on` chain. Cycles are rejected.
 
-- Every name referenced must exist in `services`.
-- `service_healthy` requires the referenced service to declare a
-  `healthcheck` (config validation rejects it otherwise).
-- Cycles are detected at DAG build time (`internal/dag`), not in `config`.
+### Readiness: `ready`
 
-### `healthcheck`
+A probe that tells devyard (and dependents) when the service is ready.
+Exactly one of `http`, `tcp` and `exec`:
 
 ```yaml
-healthcheck:
-  test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-  interval: 5s
-  timeout: 2s
-  retries: 10
+ready:
+  http: { path: /health }            # GET http://127.0.0.1:<port>/health → 2xx/3xx
+ready:
+  http: { path: /ping, port: admin, status: 204 }
+ready:
+  tcp: {}                            # connect to 127.0.0.1:<port>
+ready:
+  tcp: { port: 5432 }
+ready:
+  exec: pg_isready -q                # exit code 0; string or list
 ```
 
-| Field | Required | Default | Notes |
-| --- | :-: | --- | --- |
-| `test` | yes | — | `["CMD", "exe", "args..."]` (exec'd directly) or `["CMD-SHELL", "command"]` (run via `shell -c`). Must start with `CMD` or `CMD-SHELL` and have at least one more element. |
-| `interval` | no | `5s` | Time between probes. Go duration string. |
-| `timeout` | no | `2s` | Per-probe timeout; the probe process group is killed after this. |
-| `retries` | no | `3` | Consecutive failures required to flip to `unhealthy`. One success recovers to `healthy` and resets the counter. |
-| `start_period` | no | `0` | Grace period after start during which failing probes don't count (a success ends it early). Use it for services that take a while to boot. |
+| Field | Default | Notes |
+| --- | --- | --- |
+| `http.path` | `/` | Must start with `/`. Redirects are not followed. |
+| `http.port`, `tcp.port` | default port | A port name of the service or a number. |
+| `http.status` | any 2xx or 3xx | Expected status code. |
+| `exec` | — | Runs in the service's directory and environment, in its own process group (killed on timeout). |
+| `interval` | `2s` | Time between probes. |
+| `timeout` | `2s` | Time limit for one probe. |
+| `retries` | `30` | Consecutive failures that mark the service `unhealthy`. |
+| `start_period` | `0` | Grace period after start during which failures don't count. A success ends it early. |
 
-The checker is recreated for every run, so a restarted service starts over at
-`starting` (a crashed service is never reported healthy).
+The first probe runs as soon as the process starts. States:
+`starting → healthy | unhealthy`; a success recovers `unhealthy` to
+`healthy`. Each run gets a fresh probe, so a restarted service starts over
+at `starting`.
 
-The probe inherits the service's `shell`, `working_dir`, and `env`, so a
-`CMD-SHELL` probe runs in the same context as the service. State machine:
-`starting -> healthy | unhealthy`.
-
-### `restart`
+### Restarts
 
 | Policy | Behavior |
 | --- | --- |
-| `no` (default) | Never restart. |
-| `on-failure` | Restart on non-zero exit; gives up after 10 consecutive quick failures (status `failed`). |
+| `never` | Never restart. |
+| `on-failure` (default) | Restart after a non-zero exit; give up after 10 consecutive quick failures (status `failed`). |
 | `always` | Restart after any exit. |
 
-Backoff is exponential with jitter, from 0.5s up to 30s, and resets after a run
-that lasted 10s. `stop`, `restart` and `start` interrupt a pending backoff
-immediately. A killed service (`devyard kill`) stays down.
+Backoff is exponential with jitter, from 0.5s up to 30s, and resets after a
+run that lasted 10s. `stop`, `restart` and `start` interrupt a pending
+backoff. A killed service (`devyard kill`) stays down. The restart count is
+shown next to the service in the dashboard and in `devyard status`; it resets
+on an explicit start or restart.
 
 **Desired state.** Each project records what you want running:
 
-- `devyard start` → the whole project (`running`).
-- `devyard start <svc>` on a stopped project → that service and its
-  `depends_on` chain (`partial`).
+- `devyard start` → the project's autostart services (`running`).
+- `devyard start <svc>` → that service and its `depends_on` chain, in
+  addition to whatever already runs (`partial` on a stopped project).
 - `devyard stop` → nothing (`stopped`).
 
 When the daemon starts it adopts processes that are still running (they are
 never restarted), starts what the project wants running, and leaves stopped
-projects stopped. A service that exited on its own while the daemon was down
-is handled by its restart policy, exactly as if the daemon had seen it exit.
+projects stopped. A service that exited while the daemon was down is handled
+by its restart policy, as if the daemon had seen it exit.
 
-### `build`
-
-Two forms, deserialized by a custom `UnmarshalYAML`:
+### Builds
 
 ```yaml
-build: cargo build --bin api                 # string shorthand
+build: cargo build --bin api         # shorthand
+build:
+  run: pnpm build
+  dir: ./web                         # default: the service's dir
+  env: { NODE_ENV: production }      # added to the service's environment
+  sources: [web/src/**, web/package.json]
 ```
 
-```yaml
-build:                                       # object form
-  command: pnpm build                        # required
-  working_dir: ./web                         # optional, relative to config file
-  env:                                       # optional, additive over parent env
-    NODE_ENV: production
-  shell: bash                                # optional, default "sh"
-```
+- `devyard start --build` (and `devyard build`) run the build before
+  starting.
+- With `sources`, a plain start also builds when the matched files changed
+  since the last successful build (by path, size and modification time). List
+  inputs, not outputs. Patterns are relative to the config's directory; `**`
+  matches any number of directories.
+- A failed build aborts the start, so a service never runs on a broken build.
+- The build runs with the service's environment (including `$PORT`) plus
+  `build.env`.
 
-- Runs once before the service starts on `start`.
-- `devyard build [service...]` runs the build step for the named services
-  (or all, in start order, when none are named). Services without a `build`
-  are skipped.
-- `devyard start --build` forces a rebuild before starting.
-- A failed build aborts `start`/`start --build` so services never start on top of a
-  broken build.
-- `command` is required in the object form (validation rejects an empty
-  command). `env` is additive over the parent env, same rule as service `env`.
-
-## Named URLs (reverse proxy)
-
-Services that declare `port` or `ports` are automatically exposed by the
-daemon's built-in reverse proxy at **named URLs** — no port numbers to
-remember:
+## Ports and URLs
 
 ```yaml
-version: "1"
-name: myproject
-proxy:
-  default_service: web        # <project>.<domain> routes to this service
 services:
   web:
-    command: bun run dev
-    port: 3000                # → http://web.myproject.localhost:8080
+    run: bun run dev --port $PORT
+    port: auto
   api:
-    command: ./api
+    run: ./api
     ports:
-      http: 3000              # first entry = api's default port
-      metrics: 9100           # → metrics.api.myproject.localhost
-  db:
-    command: postgres -D ...
-    # no port/ports → not exposed through the proxy
+      http: 8080
+      metrics: auto
 ```
 
-Resulting URLs (default settings):
+- **`auto`** picks a free port the first time the service is resolved and
+  keeps it (per project, in the state directory) across restarts and daemon
+  restarts. Removing the port releases it.
+- Every service with ports gets `PORT` (the default port) and `PORT_<NAME>`
+  for each named port (`metrics-v2` → `PORT_METRICS_V2`). The service's own
+  `env` can override them.
+- **References**: `${api.port}`, `${api.ports.metrics}` and `${api.url}`
+  (`http://127.0.0.1:<default port>`) expand in `run`, `env`, `build` and
+  `ready.exec` of any service or task. Referencing an unknown service or port
+  is a config error.
+
+### Reverse proxy
+
+Services with a port are exposed by the daemon's reverse proxy at named URLs:
 
 | URL | Routes to |
 | --- | --- |
-| `web.myproject.localhost:8080` | web's default port (3000) |
-| `myproject.localhost:8080` | web (the `default_service`) |
-| `http.api.myproject.localhost:8080` | api's default port (3000) |
-| `metrics.api.myproject.localhost:8080` | api port `metrics` (9100) |
+| `web.myapp.localhost:8080` | web's default port |
+| `myapp.localhost:8080` | the `primary` service |
+| `metrics.api.myapp.localhost:8080` | api's `metrics` port |
 
-Rules:
-
-- A service is routed **only** if it declares `port` or `ports`. `port: N` is
-  shorthand for `ports: {<unnamed>: N}`; the two are mutually exclusive.
-- Hostnames are `<service>.<project>.<domain>`; a named port prefixes the
-  service label (`<port>.<service>.<project>.<domain>`). A `proxy.host` on
-  the service replaces the `<service>` label. The project's
-  `proxy.default_service` additionally serves `<project>.<domain>`.
-- Requests only forward while the service's supervisor reports it running.
-  Stopped/starting services get a styled 503 page; an unreachable upstream
-  gets a 502 page.
-- The proxy forwards to `127.0.0.1:<port>`, preserves the original `Host`
-  header, and passes WebSocket upgrades through.
-- Validation: `port` and `ports` are mutually exclusive; port names and
-  `proxy.host` must be lowercase letters, digits, and dashes; an unknown or
-  portless `proxy.default_service` is a config error.
+- Hostnames are `<host>.<project>.<domain>`, where `host` defaults to the
+  service name; a named port prefixes it (`<port>.<host>.<project>.<domain>`).
+- Requests forward only while the service is running. Stopped or starting
+  services get a styled 503 page; an unreachable upstream gets a 502 page.
+- The proxy forwards to `127.0.0.1:<port>`, preserves the `Host` header, and
+  passes WebSocket upgrades through.
 
 **LAN access.** `*.localhost` resolves to 127.0.0.1 on the machine itself only
 (RFC 6761). To reach the proxy from other machines, set `proxy.host: 0.0.0.0`
 in the global config and a `proxy.domain_suffix` that resolves to the host's
 IP on your LAN — e.g. `192-168-1-5.nip.io` (zero setup via nip.io/sslip.io) or
-a wildcard DNS zone. Note the proxy is unauthenticated; binding to a
-non-loopback address exposes your dev services to the network.
+a wildcard DNS zone. The proxy is unauthenticated; binding to a non-loopback
+address exposes your dev services to the network.
 
 ## Tasks
 
-Tasks define one-off, task-oriented commands (e.g. `db:migrate`, `seed`, `test`, `build`) that are executed on demand via `devyard task run <task>` (or shortcut `devyard run <task>`) or the Web UI.
+On-demand commands, run with `devyard run <task> [args...]` or from the web
+UI.
 
 ```yaml
 tasks:
-  # Short form (string command)
   migrate: npx prisma db push
-
-  # Long form (object specification)
   seed:
-    command: node scripts/seed.js
-    working_dir: ./backend
-    env:
-      NODE_ENV: development
-    shell: bash
-    depends_on:
-      db: { condition: service_healthy }
+    run: node scripts/seed.js
+    dir: ./backend
+    env: { NODE_ENV: development }
+    depends_on: [db]
 ```
 
-| Field | Required | Default | Notes |
-| --- | :-: | --- | --- |
-| `command` | yes | — | Command to run. Can be extended via CLI args (`devyard run <task> -- <args>`). |
-| `working_dir` | no | config dir | Relative path resolved against config file directory. |
-| `env` | no | — | Map of environment variables for the task process. |
-| `shell` | no | `sh` | Shell used to run command. |
-| `depends_on` | no | — | Dependent services auto-started and waited for before running the task. |
-| `tty` | no | `true` | Run in a pseudo-terminal so interactive prompts work. Set `false` for plain piped output (stdin is still available through `devyard run` / the web UI). |
+| Field | Default | Notes |
+| --- | --- | --- |
+| `run` | **required** | Extra arguments are appended (shell-quoted for a string `run`). |
+| `dir` | config dir | Relative to the config's directory. |
+| `env` | — | Variables for this task. |
+| `env_files` | — | Loaded after the project's env files. |
+| `depends_on` | — | Services started and waited for (until ready) before the task runs. |
+| `tty` | `true` | Run in a pseudo-terminal so prompts, colors and Ctrl-C work. Set `false` for separate stdout/stderr in the logs. |
 
 Task runs belong to the daemon: closing the browser tab or losing the CLI
 connection does not stop them, and they survive daemon restarts. `devyard
 run` attaches your terminal (keystrokes are forwarded; Ctrl-C stops the
 task). Stopping the project stops running tasks.
 
-## Intentionally absent
+## Environment
 
-`image`, `build:` (Docker context), `volumes`, and `networks` are **not** part
-of the schema. Processes bind ports and read the filesystem directly —
-there's nothing to map. Adding shims for these would mislead users about what
-`devyard` does.
+Every process gets, later layers winning:
 
-Note: the service-level `port`/`ports` fields described above are **not**
-Docker's `ports:` mapping (host↔container forwarding) — they declare the
-port(s) a process listens on so the reverse proxy can route named URLs to
-them. There is still no port forwarding of any kind.
+1. the **launch environment**: the environment of the shell that last ran
+   `devyard start` (or `reload`, or `project add`), minus `PWD`, `OLDPWD`,
+   `SHLVL` and `_`. The daemon stores it with the project (mode 0600), so
+   services see the same `PATH`, version managers and tool settings as your
+   terminal, regardless of daemon restarts or autostart. Projects added from
+   the web UI use the daemon's environment until you `devyard reload` them
+   from a shell;
+2. the project `env_files`;
+3. the project `env`;
+4. the service's or task's `env_files`;
+5. `PORT` / `PORT_<NAME>` (services);
+6. the service's or task's `env`.
 
-## Unknown fields
+The dashboard lists which variables the project defines (names only; values
+never leave the daemon).
 
-`yaml.v3` ignores unknown fields by default, so a typo like `comand:` is
-silently dropped — be careful when editing configs. (A warning pass is on the
-roadmap.)
+### Interpolation
+
+`${VAR}` references in any value are expanded when the file is loaded,
+from the project env files overlaid by the launch environment (the launch
+environment wins):
+
+| Form | Meaning |
+| --- | --- |
+| `${VAR}` | Value of `VAR`; empty and a warning when unset |
+| `${VAR:-def}` | `def` when `VAR` is unset or empty |
+| `${VAR-def}` | `def` when `VAR` is unset |
+| `$$` | Literal `$` |
+
+Bare `$VAR` (no braces) is left alone, so `$HOME` or `$PORT` in a string
+`run` reaches the shell. Service references (`${api.port}`) are not env
+variables; see [Ports and URLs](#ports-and-urls). Values are interpolated
+after parsing, so a variable can't inject YAML structure, and
+`port: ${API_PORT:-3000}` still parses as a number.
+
+Env file syntax: `KEY=VALUE` lines, blank lines, `#` comments, an optional
+`export ` prefix, and single- or double-quoted values.
+
+## Local overrides: `devyard.local.yml`
+
+An optional `devyard.local.yml` next to `devyard.yml` (keep it out of git)
+is merged over it: maps merge key by key, everything else (strings, lists)
+replaces.
+
+```yaml
+# devyard.local.yml
+services:
+  api:
+    env: { RUST_LOG: trace }       # added to api's env
+    depends_on: []                 # replaces the list
+```
+
+## Not part of the schema
+
+`image`, `volumes`, `networks`, Docker-style `ports:` mappings and
+healthcheck `CMD` arrays don't exist: processes bind ports and read the
+filesystem directly, and devyard is not a Docker Compose clone. The `port`
+and `ports` fields declare what a process listens on so the proxy can route
+to it; there is no port forwarding.
 
 ## Global config
 
@@ -366,7 +416,7 @@ Listener changes take effect after `devyard daemon restart` (services keep
 running). `allowed_hosts` applies immediately when saved from the web UI.
 
 Unknown fields in the global config produce a warning (printed to stderr) but
-do not error, matching the convention for `devyard.yml`.
+do not error, matching `devyard.yml`.
 
 Implementation: `internal/globalconfig/globalconfig.go`. Tests:
 `internal/globalconfig/globalconfig_test.go`.

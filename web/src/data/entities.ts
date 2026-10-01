@@ -2,7 +2,6 @@ import { createRoot, createMemo } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import type {
   DaemonInfo,
-  Dependency,
   GitStatus,
   Project,
   Service,
@@ -50,23 +49,23 @@ export interface DaemonEntity {
 export interface ProjectEntity {
   id: string;
   configPath: string;
-  envFile: string;
+  /** Project env files that exist, in load order. */
+  envFiles: string[];
   status: ProjectStatus;
   desired: ProjectDesired;
   error: string;
   servicesTotal: number;
   servicesRunning: number;
-  defaultService: string;
+  /** The service served at the project's own hostname. */
+  primary: string;
+  links: { name: string; url: string }[];
   updatedAt: number;
 }
 
-export interface DependencyEntity {
-  name: string;
-  condition: "service_started" | "service_healthy" | string;
-}
-
-export interface HealthcheckEntity {
-  test: string[];
+export interface ReadyEntity {
+  kind: "http" | "tcp" | "exec" | string;
+  /** The URL, address or command the probe checks. */
+  target: string;
   intervalMs: number;
   timeoutMs: number;
   retries: number;
@@ -75,15 +74,17 @@ export interface HealthcheckEntity {
 
 export interface ServiceSpecEntity {
   command: string;
-  workingDir: string;
-  shell: string;
+  dir: string;
   restart: string;
-  dependsOn: DependencyEntity[];
-  healthcheck: HealthcheckEntity | null;
-  ports: { name: string; port: number }[];
+  /** Services this one waits for (until they are ready). */
+  dependsOn: string[];
+  ready: ReadyEntity | null;
+  ports: { name: string; port: number; auto: boolean }[];
   tty: boolean;
   envKeys: string[];
   buildCommand: string;
+  autostart: boolean;
+  stopSignal: string;
 }
 
 export interface ServiceEntity {
@@ -108,10 +109,9 @@ export interface ServiceEntity {
 
 export interface TaskSpecEntity {
   command: string;
-  workingDir: string;
-  shell: string;
+  dir: string;
   tty: boolean;
-  dependsOn: DependencyEntity[];
+  dependsOn: string[];
   envKeys: string[];
 }
 
@@ -162,9 +162,6 @@ export const entityKey = (project: string, name: string) => `${project}/${name}`
 
 const num = (v: bigint | number | undefined) => (v === undefined ? 0 : Number(v));
 
-const toDeps = (deps: Dependency[]): DependencyEntity[] =>
-  deps.map((d) => ({ name: d.name, condition: d.condition }));
-
 export function toDaemon(d: DaemonInfo): DaemonEntity {
   return {
     pid: d.pid,
@@ -186,20 +183,21 @@ export function toProject(p: Project): ProjectEntity {
   return {
     id: p.id,
     configPath: p.configPath,
-    envFile: p.envFile,
+    envFiles: [...p.envFiles],
     status: (p.status || "stopped") as ProjectStatus,
     desired: (p.desired || "stopped") as ProjectDesired,
     error: p.error,
     servicesTotal: p.servicesTotal,
     servicesRunning: p.servicesRunning,
-    defaultService: p.defaultService,
+    primary: p.primary,
+    links: p.links.map((l) => ({ name: l.name, url: l.url })),
     updatedAt: num(p.updatedAtUnixMs),
   };
 }
 
 export function toService(s: Service): ServiceEntity {
   const spec = s.spec;
-  const hc = spec?.healthcheck;
+  const ready = spec?.ready;
   return {
     project: s.project,
     name: s.name,
@@ -218,24 +216,26 @@ export function toService(s: Service): ServiceEntity {
     order: s.order,
     spec: {
       command: spec?.command ?? "",
-      workingDir: spec?.workingDir ?? "",
-      shell: spec?.shell ?? "",
+      dir: spec?.dir ?? "",
       restart: spec?.restart ?? "",
-      dependsOn: toDeps(spec?.dependsOn ?? []),
-      healthcheck:
-        hc && hc.test.length
+      dependsOn: [...(spec?.dependsOn ?? [])],
+      ready:
+        ready && ready.kind
           ? {
-              test: [...hc.test],
-              intervalMs: num(hc.intervalMs),
-              timeoutMs: num(hc.timeoutMs),
-              retries: hc.retries,
-              startPeriodMs: num(hc.startPeriodMs),
+              kind: ready.kind,
+              target: ready.target,
+              intervalMs: num(ready.intervalMs),
+              timeoutMs: num(ready.timeoutMs),
+              retries: ready.retries,
+              startPeriodMs: num(ready.startPeriodMs),
             }
           : null,
-      ports: (spec?.ports ?? []).map((p) => ({ name: p.name, port: p.port })),
+      ports: (spec?.ports ?? []).map((p) => ({ name: p.name, port: p.port, auto: p.auto })),
       tty: spec?.tty ?? false,
       envKeys: [...(spec?.envKeys ?? [])],
       buildCommand: spec?.buildCommand ?? "",
+      autostart: spec?.autostart ?? true,
+      stopSignal: spec?.stopSignal ?? "",
     },
   };
 }
@@ -255,10 +255,9 @@ export function toTask(t: Task): TaskEntity {
     args: [...t.args],
     spec: {
       command: spec?.command ?? "",
-      workingDir: spec?.workingDir ?? "",
-      shell: spec?.shell ?? "",
+      dir: spec?.dir ?? "",
       tty: spec?.tty ?? true,
-      dependsOn: toDeps(spec?.dependsOn ?? []),
+      dependsOn: [...(spec?.dependsOn ?? [])],
       envKeys: [...(spec?.envKeys ?? [])],
     },
   };

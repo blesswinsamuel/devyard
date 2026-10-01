@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -48,9 +49,13 @@ type View struct {
 	TaskDefs    map[string]*ProcessDef
 	Services    map[string]*Service
 	Tasks       map[string]*Task
-	// DefaultService is the proxy's project-level default service.
-	DefaultService string
-	Warnings       []string
+	// Primary is the service served at the project's own hostname.
+	Primary  string
+	Links    []config.Link
+	EnvFiles []string
+	// Autostart holds the services a project start launches.
+	Autostart map[string]bool
+	Warnings  []string
 	// TerminalEnv is the environment for interactive shells in the
 	// project (launch environment plus env file).
 	TerminalEnv []string
@@ -79,7 +84,6 @@ type projReload struct {
 }
 type projReconfigure struct {
 	configPath string
-	envFile    string
 	env        []string
 	reply      chan error
 }
@@ -219,9 +223,9 @@ func (p *Project) Reload(ctx context.Context, env []string, setEnv bool) error {
 	return p.call(ctx, projReload{env: env, setEnv: setEnv, reply: r}, r)
 }
 
-func (p *Project) reconfigure(ctx context.Context, configPath, envFile string, env []string) error {
+func (p *Project) reconfigure(ctx context.Context, configPath string, env []string) error {
 	r := make(chan error, 1)
-	return p.call(ctx, projReconfigure{configPath: configPath, envFile: envFile, env: env, reply: r}, r)
+	return p.call(ctx, projReconfigure{configPath: configPath, env: env, reply: r}, r)
 }
 
 func (p *Project) remove(ctx context.Context) error {
@@ -281,6 +285,9 @@ func (p *Project) ServiceStates() map[string]ServiceState {
 	return p.hub.snapshot()
 }
 
+// wanted reports whether the view's registration wants a service running.
+func (v *View) wanted(name string) bool { return wanted(v.Reg, v.Autostart, name) }
+
 // --- status ------------------------------------------------------------------
 
 // recompute derives the project status from its services and publishes it
@@ -296,26 +303,19 @@ func (p *Project) recompute() {
 	}
 	states := p.hub.snapshot()
 	st := ProjectState{
-		ID:             p.id,
-		ConfigPath:     v.Reg.ConfigPath,
-		EnvFile:        v.Reg.EnvFile,
-		Desired:        v.Reg.Desired,
-		Error:          v.LoadErr,
-		ServicesTotal:  len(v.ServiceDefs),
-		DefaultService: v.DefaultService,
+		ID:            p.id,
+		ConfigPath:    v.Reg.ConfigPath,
+		EnvFiles:      v.EnvFiles,
+		Desired:       v.Reg.Desired,
+		Error:         v.LoadErr,
+		ServicesTotal: len(v.ServiceDefs),
+		Primary:       v.Primary,
+		Links:         v.Links,
 	}
 	if st.ServicesTotal == 0 {
 		st.ServicesTotal = len(states)
 	}
-	wanted := func(name string) bool {
-		switch v.Reg.Desired {
-		case DesiredRunning:
-			return true
-		case DesiredPartial:
-			return slices.Contains(v.Reg.Selected, name)
-		}
-		return false
-	}
+	wanted := func(name string) bool { return v.wanted(name) }
 	stopping, starting, degraded, active, wantedCount := false, false, false, 0, 0
 	for name, s := range states {
 		if s.Status == StatusRunning {
@@ -369,7 +369,7 @@ func (p *Project) recompute() {
 	}
 	cmp := p.lastStatus
 	cmp.UpdatedAt = time.Time{}
-	if cmp == st {
+	if reflect.DeepEqual(cmp, st) {
 		return
 	}
 	st.UpdatedAt = time.Now()
@@ -395,7 +395,7 @@ func (a *projectActor) publishView() {
 		Tasks:       make(map[string]*Task, len(a.tasks)),
 	}
 	v.Reg.Env = nil // never expose the captured environment
-	v.TerminalEnv = config.ChildEnv(a.reg.Env, nil, nil)
+	v.TerminalEnv = a.reg.Env
 	v.Reg.Selected = append([]string(nil), a.reg.Selected...)
 	if a.loadErr != nil {
 		v.LoadErr = a.loadErr.Error()
@@ -408,14 +408,12 @@ func (a *projectActor) publishView() {
 		for k, d := range a.ld.tasks {
 			v.TaskDefs[k] = d
 		}
-		if a.ld.file.Proxy != nil {
-			v.DefaultService = a.ld.file.Proxy.DefaultService
-		}
+		v.Primary = a.ld.project.File.Primary
+		v.Links = a.ld.project.File.Links
+		v.EnvFiles = a.ld.project.EnvFiles
+		v.Autostart = a.ld.autostart
 		v.Warnings = a.ld.warnings
-		v.TerminalEnv = config.ChildEnv(a.reg.Env, a.ld.dotenv, nil)
-		if a.ld.envFile != "" && v.Reg.EnvFile == "" {
-			v.Reg.EnvFile = a.ld.envFile
-		}
+		v.TerminalEnv = a.ld.project.TerminalEnv(a.reg.Env)
 	}
 	for k, s := range a.services {
 		v.Services[k] = s
@@ -428,11 +426,21 @@ func (a *projectActor) publishView() {
 }
 
 func (a *projectActor) wanted(name string) bool {
-	switch a.reg.Desired {
+	var autostart map[string]bool
+	if a.ld != nil {
+		autostart = a.ld.autostart
+	}
+	return wanted(a.reg, autostart, name)
+}
+
+// wanted reports whether the registration wants a service running: with
+// desired running, every autostart service plus those started by name.
+func wanted(reg Registration, autostart map[string]bool, name string) bool {
+	switch reg.Desired {
 	case DesiredRunning:
-		return true
+		return autostart[name] || slices.Contains(reg.Selected, name)
 	case DesiredPartial:
-		return slices.Contains(a.reg.Selected, name)
+		return slices.Contains(reg.Selected, name)
 	}
 	return false
 }
@@ -582,7 +590,11 @@ func (a *projectActor) cmdStart(names []string, build bool) error {
 	if len(names) == 0 {
 		a.reg.Desired = DesiredRunning
 		a.reg.Selected = nil
-		targets = a.ld.order
+		for _, name := range a.ld.order {
+			if a.ld.autostart[name] {
+				targets = append(targets, name)
+			}
+		}
 	} else {
 		closure, err := a.ld.closure(names)
 		if err != nil {
@@ -591,8 +603,8 @@ func (a *projectActor) cmdStart(names []string, build bool) error {
 		targets = closure
 		if a.reg.Desired != DesiredRunning {
 			a.reg.Desired = DesiredPartial
-			a.reg.Selected = union(a.reg.Selected, closure)
 		}
+		a.reg.Selected = union(a.reg.Selected, closure)
 	}
 	if err := a.save(); err != nil {
 		return err
@@ -704,7 +716,7 @@ func (a *projectActor) stopLevels() [][]string {
 		if a.ld != nil {
 			if def := a.ld.services[name]; def != nil {
 				for _, dep := range def.Deps {
-					d = max(d, depth[dep.Name]+1)
+					d = max(d, depth[dep]+1)
 				}
 			}
 		}
@@ -750,7 +762,6 @@ func (a *projectActor) cmdReconfigure(m projReconfigure) error {
 		// The old config no longer exists: the project moved.
 		a.reg.ConfigPath = m.configPath
 	}
-	a.reg.EnvFile = m.envFile
 	if m.env != nil {
 		a.reg.Env = CleanEnv(m.env)
 	}
@@ -816,7 +827,7 @@ func (a *projectActor) reload() error {
 		}
 		a.tasks[name] = startTask(def, a.launcher, a.p.hub, a.obs)
 	}
-	if a.reg.Desired == DesiredPartial {
+	if len(a.reg.Selected) > 0 {
 		var kept []string
 		for _, s := range a.reg.Selected {
 			if _, ok := ld.services[s]; ok {
@@ -847,11 +858,7 @@ func (a *projectActor) cmdRunTask(name string, args []string) (int64, error) {
 		return 0, fmt.Errorf("task %q in project %s: %w", name, a.reg.ID, ErrNotFound)
 	}
 	if len(def.Deps) > 0 {
-		var names []string
-		for _, d := range def.Deps {
-			names = append(names, d.Name)
-		}
-		if err := a.cmdStart(names, false); err != nil {
+		if err := a.cmdStart(def.Deps, false); err != nil {
 			return 0, err
 		}
 	}

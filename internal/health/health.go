@@ -4,11 +4,11 @@
 //
 //	starting -> healthy | unhealthy
 //
-// It runs the configured probe (CMD or CMD-SHELL) on an interval, up to
-// Retries consecutive failures before flipping to unhealthy. A subsequent
-// success recovers the state to healthy and resets the failure counter. The
-// probe runs in its own process group so a CMD-SHELL pipeline can be killed
-// wholesale after Timeout.
+// It runs the configured probe (an HTTP request, a TCP connect or a command)
+// on an interval, up to Retries consecutive failures before flipping to
+// unhealthy. A subsequent success recovers the state to healthy and resets
+// the failure counter. A command probe runs in its own process group so a
+// shell pipeline can be killed wholesale after Timeout.
 //
 // Checkers are frontend-agnostic: the supervisor owns them and exposes their
 // State via the control protocol's ServiceState.Health field, so the CLI and
@@ -19,6 +19,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -39,13 +42,17 @@ const (
 	StateUnhealthy State = "unhealthy"
 )
 
-// Config is the resolved healthcheck configuration for one service. Defaults
-// are applied by New if zero.
+// Config is the resolved probe configuration for one service. Exactly one of
+// URL, Addr and Exec is set. Defaults are applied by New if zero.
 type Config struct {
-	// Test is the healthcheck test spec. Test[0] must be "CMD" or "CMD-SHELL".
-	//   - CMD:        Test[1:] is exec'd directly (no shell).
-	//   - CMD-SHELL:  Test[1] is run via Shell -c.
-	Test []string
+	// URL is requested with GET; the probe passes on Status (any 2xx or
+	// 3xx when zero). Redirects are not followed.
+	URL    string
+	Status int
+	// Addr is dialed over TCP; the probe passes when it connects.
+	Addr string
+	// Exec is executed directly; the probe passes on exit code 0.
+	Exec []string
 	// Interval is the time between probes.
 	Interval time.Duration
 	// Retries is the number of consecutive failures required to mark the
@@ -53,8 +60,6 @@ type Config struct {
 	Retries int
 	// Timeout is how long a single probe may run before it is killed.
 	Timeout time.Duration
-	// Shell is the shell used for CMD-SHELL probes (default "sh").
-	Shell string
 	// WorkingDir is the probe process's working directory (optional).
 	WorkingDir string
 	// Env is the probe process's environment (optional; nil inherits parent).
@@ -87,16 +92,14 @@ type Checker struct {
 // New validates cfg and returns a Checker in StateStarting. It does not start
 // probing; call EnsureStarted.
 func New(name string, cfg Config, log func(string)) (*Checker, error) {
-	if len(cfg.Test) == 0 {
-		return nil, errors.New("health: test is required")
+	kinds := 0
+	for _, set := range []bool{cfg.URL != "", cfg.Addr != "", len(cfg.Exec) > 0} {
+		if set {
+			kinds++
+		}
 	}
-	switch cfg.Test[0] {
-	case "CMD", "CMD-SHELL":
-	default:
-		return nil, fmt.Errorf("health: test must start with CMD or CMD-SHELL, got %q", cfg.Test[0])
-	}
-	if len(cfg.Test) < 2 {
-		return nil, fmt.Errorf("health: %s requires a command argument", cfg.Test[0])
+	if kinds != 1 {
+		return nil, errors.New("health: exactly one of URL, Addr and Exec is required")
 	}
 	if cfg.Interval <= 0 {
 		cfg.Interval = 5 * time.Second
@@ -106,9 +109,6 @@ func New(name string, cfg Config, log func(string)) (*Checker, error) {
 	}
 	if cfg.Retries <= 0 {
 		cfg.Retries = 3
-	}
-	if cfg.Shell == "" {
-		cfg.Shell = "sh"
 	}
 	if log == nil {
 		log = func(string) {}
@@ -239,19 +239,56 @@ func (c *Checker) probeOnce(ctx context.Context) {
 	}
 }
 
-// runProbe spawns the probe command in its own process group and waits for it.
-// If the per-probe timeout elapses, the whole group is killed so a stuck
-// CMD-SHELL pipeline cannot leak children.
+// runProbe runs one probe, bounded by the per-probe timeout.
 func (c *Checker) runProbe(ctx context.Context) error {
 	probeCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
-
-	var cmd *exec.Cmd
-	if c.cfg.Test[0] == "CMD-SHELL" {
-		cmd = exec.CommandContext(probeCtx, c.cfg.Shell, "-c", c.cfg.Test[1])
-	} else {
-		cmd = exec.CommandContext(probeCtx, c.cfg.Test[1], c.cfg.Test[2:]...)
+	var err error
+	switch {
+	case c.cfg.URL != "":
+		err = c.probeHTTP(probeCtx)
+	case c.cfg.Addr != "":
+		var conn net.Conn
+		conn, err = (&net.Dialer{}).DialContext(probeCtx, "tcp", c.cfg.Addr)
+		if err == nil {
+			_ = conn.Close()
+		}
+	default:
+		err = c.probeExec(probeCtx)
 	}
+	if err != nil && probeCtx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("timed out after %s", c.cfg.Timeout)
+	}
+	return err
+}
+
+func (c *Checker) probeHTTP(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.URL, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	_ = resp.Body.Close()
+	ok := resp.StatusCode >= 200 && resp.StatusCode < 400
+	if c.cfg.Status != 0 {
+		ok = resp.StatusCode == c.cfg.Status
+	}
+	if !ok {
+		return fmt.Errorf("GET %s: status %d", c.cfg.URL, resp.StatusCode)
+	}
+	return nil
+}
+
+// probeExec spawns the probe command in its own process group and waits for
+// it. If the per-probe timeout elapses, the whole group is killed so a stuck
+// shell pipeline cannot leak children.
+func (c *Checker) probeExec(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, c.cfg.Exec[0], c.cfg.Exec[1:]...)
 	if c.cfg.WorkingDir != "" {
 		cmd.Dir = c.cfg.WorkingDir
 	}
@@ -262,7 +299,7 @@ func (c *Checker) runProbe(ctx context.Context) error {
 		return fmt.Errorf("set process group: %w", err)
 	}
 	// Take over the context's cancellation so we kill the whole group, not
-	// just the lead process (a CMD-SHELL pipeline would otherwise leak).
+	// just the lead process (a shell pipeline would otherwise leak).
 	cmd.Cancel = func() error {
 		_ = killProcessGroup(cmd)
 		return os.ErrProcessDone
@@ -272,10 +309,7 @@ func (c *Checker) runProbe(ctx context.Context) error {
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	if err := cmd.Run(); err != nil {
-		if probeCtx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("timed out after %s", c.cfg.Timeout)
-		}
-		if msg := strings.TrimSpace(out.String()); msg != "" {
+		if msg := strings.TrimSpace(out.String()); msg != "" && ctx.Err() == nil {
 			return fmt.Errorf("%w: %s", err, msg)
 		}
 		return err

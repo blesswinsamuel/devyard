@@ -32,9 +32,26 @@ function nodePath(n: TreeNode): string {
   return paths.task(n.project, n.name!);
 }
 
+/** Restarts since the last explicit start: muted, amber from 5 (a likely
+ * crash loop). Renders nothing at 0. */
+function RestartBadge(props: { count: number; title: string }) {
+  return (
+    <Show when={props.count > 0}>
+      <span
+        class={cn("tabular shrink-0 text-2xs", props.count >= 5 ? "text-warning" : "text-muted-foreground")}
+        title={props.title}
+        aria-label={props.title}
+      >
+        ↻{props.count}
+      </span>
+    </Show>
+  );
+}
+
 function ProjectRow(props: { node: TreeNode; onToggle: () => void }) {
   const p = () => getProject(props.node.project);
   const failing = createMemo(() => servicesOf(props.node.project).filter(isServiceFailing).length);
+  const restarts = createMemo(() => servicesOf(props.node.project).reduce((n, s) => n + s.restarts, 0));
   const git = () => getGit(props.node.project);
   return (
     <Show when={p()}>
@@ -62,6 +79,7 @@ function ProjectRow(props: { node: TreeNode; onToggle: () => void }) {
               </span>
             )}
           </Show>
+          <RestartBadge count={restarts()} title={`${restarts()} service ${restarts() === 1 ? "restart" : "restarts"}`} />
           <Show
             when={failing() > 0}
             fallback={
@@ -89,6 +107,10 @@ function ServiceRow(props: { node: TreeNode }) {
           <StatusDot tone={serviceTone(svc())} pulse={isTransitional(svc().status)} />
           <span class="min-w-0 flex-1 truncate">{svc().name}</span>
           <HealthIndicator health={svc().health} detail={svc().healthDetail} />
+          <RestartBadge
+            count={svc().restarts}
+            title={`${svc().restarts} ${svc().restarts === 1 ? "restart" : "restarts"} since start${svc().finishedAt ? `, last exit ${svc().exitCode}` : ""}`}
+          />
           <Show when={svc().status !== "running"}>
             <span class="shrink-0 text-2xs text-muted-foreground">{serviceLabel(svc())}</span>
           </Show>

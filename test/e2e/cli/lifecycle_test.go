@@ -14,20 +14,17 @@ import (
 )
 
 // threeTickers is alpha <- beta <- gamma with both depends_on forms.
-const threeTickers = `version: "1"
-services:
+const threeTickers = `services:
   alpha:
-    command: {{fixture "ticker"}} -prefix tick-a -interval 100ms
+    run: {{fixture "ticker"}} -prefix tick-a -interval 100ms
     restart: always
   beta:
-    command: {{fixture "ticker"}} -prefix tick-b -interval 100ms
+    run: {{fixture "ticker"}} -prefix tick-b -interval 100ms
     depends_on: [alpha]
     restart: always
   gamma:
-    command: {{fixture "ticker"}} -prefix tick-g -interval 100ms
-    depends_on:
-      alpha: { condition: service_started }
-      beta: { condition: service_started }
+    run: {{fixture "ticker"}} -prefix tick-g -interval 100ms
+    depends_on: [alpha, beta]
     restart: always
 `
 
@@ -136,12 +133,12 @@ func TestCLI_Lifecycle_StartStatusLogsRestartStopRemove(t *testing.T) {
 func TestCLI_StatusJSONFields(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("js", `version: "1"
-services:
+	p := sb.WriteProject("js", `services:
   ok:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
   bad:
-    command: {{fixture "exiter"}} -code 3
+    run: {{fixture "exiter"}} -code 3
+    restart: never
 `, nil)
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())
@@ -180,15 +177,13 @@ services:
 func TestCLI_StatusAllProjects(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	a := sb.WriteProject("pa", `version: "1"
-services:
+	a := sb.WriteProject("pa", `services:
   one:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
-	b := sb.WriteProject("pb", `version: "1"
-services:
+	b := sb.WriteProject("pb", `services:
   two:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	a.Start()
 	b.Start()
@@ -218,12 +213,11 @@ func TestCLI_StartFollowStopsProjectOnSignal(t *testing.T) {
 		t.Run(sig.String(), func(t *testing.T) {
 			t.Parallel()
 			sb := harness.New(t)
-			p := sb.WriteProject("fg", `version: "1"
-services:
+			p := sb.WriteProject("fg", `services:
   alpha:
-    command: {{fixture "ticker"}} -prefix tick-a -interval 100ms
+    run: {{fixture "ticker"}} -prefix tick-a -interval 100ms
   beta:
-    command: {{fixture "ticker"}} -prefix tick-b -interval 100ms
+    run: {{fixture "ticker"}} -prefix tick-b -interval 100ms
 `, nil)
 			proc := sb.CLIStart(harness.RunOpts{Dir: p.Dir}, "start", "-f")
 			proc.WaitOutput(t, "tick-a 3")
@@ -251,18 +245,16 @@ services:
 func TestCLI_BuildStringAndObjectForms(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("bld", `version: "1"
-services:
+	p := sb.WriteProject("bld", `services:
   maker:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
     build: echo built-maker-string-form
   shaper:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
     build:
-      command: echo built-shaper-object-form && echo shaper-env=$SHAPER_ENV
+      run: echo built-shaper-object-form && echo shaper-env=$SHAPER_ENV
       env:
         SHAPER_ENV: "yes"
-      shell: sh
 `, nil)
 	r := p.CLI("build").MustSucceed(t)
 	for _, want := range []string{"built-maker-string-form", "built-shaper-object-form", "shaper-env=yes"} {
@@ -279,10 +271,9 @@ services:
 func TestCLI_StartWithBuildRunsBuildFirst(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("sbld", `version: "1"
-services:
+	p := sb.WriteProject("sbld", `services:
   svc:
-    command: sh -c 'test -f built.marker && echo saw-build; exec {{fixture "ticker"}} -interval 1s'
+    run: sh -c 'test -f built.marker && echo saw-build; exec {{fixture "ticker"}} -interval 1s'
     build: touch built.marker
 `, nil)
 	p.Start("--build")
@@ -299,10 +290,9 @@ services:
 func TestCLI_BuildFailureAbortsStart(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("bfail", `version: "1"
-services:
+	p := sb.WriteProject("bfail", `services:
   svc:
-    command: {{fixture "exiter"}} -count-file started -after 1m
+    run: {{fixture "exiter"}} -count-file started -after 1m
     build: sh -c 'echo build-broke >&2; exit 1'
 `, nil)
 	p.CLI("start", "--build")
@@ -324,21 +314,18 @@ func TestCLI_ConfigErrors(t *testing.T) {
 	cases := []struct {
 		name, cfg, want string
 	}{
-		{"cycle", `version: "1"
-services:
-  a: { command: echo a, depends_on: [b] }
-  b: { command: echo b, depends_on: [a] }
+		{"cycle", `services:
+  a: { run: echo a, depends_on: [b] }
+  b: { run: echo b, depends_on: [a] }
 `, "cycle"},
-		{"empty-command", `version: "1"
-services:
+		{"empty-run", `services:
   s:
-    command: ""
-`, "command"},
-		{"unknown-dependency", `version: "1"
-services:
-  s: { command: echo s, depends_on: [ghost] }
+    run: ""
+`, "run is required"},
+		{"unknown-dependency", `services:
+  s: { run: echo s, depends_on: [ghost] }
 `, "ghost"},
-		{"invalid-yaml", "version: \"1\"\nservices: [\n", ""},
+		{"invalid-yaml", "services: [\n", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -371,10 +358,9 @@ services:
 func TestCLI_ProjectListJSON(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("listed", `version: "1"
-services:
+	p := sb.WriteProject("listed", `services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())
@@ -403,10 +389,9 @@ services:
 func TestCLI_ProjectByIDFromAnyDir(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("reg", `version: "1"
-services:
+	p := sb.WriteProject("reg", `services:
   app:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())
@@ -427,10 +412,9 @@ services:
 func TestCLI_ProjectAddAndStart(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("added", `version: "1"
-services:
+	p := sb.WriteProject("added", `services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	sb.CLI("project", "add", p.ConfigPath).MustSucceed(t)
 	w := sb.Daemon().Watch(context.Background())
@@ -444,13 +428,12 @@ services:
 func TestCLI_KillDefaultSIGKILLAndSignalFlag(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("kl", `version: "1"
-services:
+	p := sb.WriteProject("kl", `services:
   trap:
-    command: {{fixture "sigtrap"}}
-    stop_grace_period: 500ms
+    run: {{fixture "sigtrap"}}
+    stop: {timeout: 500ms}
   tick:
-    command: {{fixture "ticker"}} -interval 100ms
+    run: {{fixture "ticker"}} -interval 100ms
 `, nil)
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())
@@ -474,16 +457,14 @@ services:
 func TestCLI_StopThenStartAndLazyStart(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("lazy", `version: "1"
-services:
+	p := sb.WriteProject("lazy", `services:
   alpha:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
   beta:
-    command: {{fixture "ticker"}} -interval 1s
-    depends_on:
-      alpha: { condition: service_started }
+    run: {{fixture "ticker"}} -interval 1s
+    depends_on: [alpha]
   gamma:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())
@@ -512,12 +493,11 @@ services:
 func TestCLI_Top(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("top", `version: "1"
-services:
+	p := sb.WriteProject("top", `services:
   alpha:
-    command: {{fixture "ticker"}} -interval 100ms
+    run: {{fixture "ticker"}} -interval 100ms
   bravo:
-    command: {{fixture "ticker"}} -interval 100ms
+    run: {{fixture "ticker"}} -interval 100ms
 `, nil)
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())

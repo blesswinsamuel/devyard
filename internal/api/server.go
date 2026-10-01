@@ -173,7 +173,6 @@ func (s *Server) AddProject(ctx context.Context, req *connect.Request[pb.AddProj
 	}
 	p, err := s.Mgr.Add(ctx, engine.AddOptions{
 		ConfigPath: req.Msg.ConfigPath,
-		EnvFile:    req.Msg.EnvFile,
 		Env:        env,
 		Start:      req.Msg.Start,
 		Build:      req.Msg.Build,

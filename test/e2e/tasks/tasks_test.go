@@ -17,26 +17,25 @@ import (
 
 func TestMain(m *testing.M) { harness.Main(m) }
 
-const tasksCfg = `version: "1"
-services:
+const tasksCfg = `services:
   dep:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
   other:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 tasks:
   greet: {{fixture "prompter"}}
   plain:
-    command: {{fixture "prompter"}}
+    run: {{fixture "prompter"}}
     tty: false
   fail: {{fixture "exiter"}} -code 5 -after 100ms
   long: {{fixture "ticker"}} -prefix L -interval 100ms
   trap: {{fixture "sigtrap"}}
   big:
-    command: {{fixture "ticker"}} -interval 0 -count 3 -line-size 200000
+    run: {{fixture "ticker"}} -interval 0 -count 3 -line-size 200000
     tty: false
   echo: "echo got:"
   needs-dep:
-    command: echo dep-ready
+    run: echo dep-ready
     depends_on: [dep]
 `
 
@@ -135,13 +134,12 @@ func TestTasks_InteractiveViaAttachRPC(t *testing.T) {
 func TestTasks_AttachLineStdinForNonTTY(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("line", `version: "1"
-services:
+	p := sb.WriteProject("line", `services:
   idle:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 tasks:
   reader:
-    command: sh -c 'read l; echo "read:$l"'
+    run: sh -c 'read l; echo "read:$l"'
     tty: false
 `, nil)
 	p.Start()
@@ -321,13 +319,12 @@ func TestTasks_SurviveDaemonRestart(t *testing.T) {
 func TestTasks_CloseStdinDeliversEOF(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("eof", `version: "1"
-services:
+	p := sb.WriteProject("eof", `services:
   idle:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 tasks:
   cat:
-    command: sh -c 'cat; echo cat-saw-eof'
+    run: sh -c 'cat; echo cat-saw-eof'
     tty: false
 `, nil)
 	p.Start()

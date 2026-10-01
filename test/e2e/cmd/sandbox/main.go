@@ -23,43 +23,40 @@ import (
 	"github.com/blesswinsamuel/devyard/test/e2e/harness"
 )
 
-const demoConfig = `version: "1"
-name: demo
-proxy:
-  default_service: web
+const demoConfig = `name: demo
+primary: web
 services:
   web:
-    command: {{fixture "httpecho"}}
+    run: {{fixture "httpecho"}}
     port: {{port "web"}}
     env:
       PORT: "{{port "web"}}"
       NAME: web
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
+    ready:
+      exec: "true"
       interval: 1s
   api:
-    command: {{fixture "httpecho"}}
+    run: {{fixture "httpecho"}}
     ports:
       http: {{port "api"}}
     env:
       PORT: "{{port "api"}}"
       NAME: api
-    depends_on:
-      web: { condition: service_healthy }
+    depends_on: [web]
   worker:
-    command: {{fixture "ticker"}} -interval 500ms -stderr
+    run: {{fixture "ticker"}} -interval 500ms -stderr
     env:
       NAME: worker
   crasher:
-    command: {{fixture "exiter"}} -code 1 -after 2s
+    run: {{fixture "exiter"}} -code 1 -after 2s
     restart: on-failure
   console:
-    command: sh -c 'while read l; do echo "got: $l"; done'
+    run: sh -c 'while read l; do echo "got: $l"; done'
     tty: true
 tasks:
   greet: {{fixture "prompter"}}
   migrate:
-    command: {{fixture "ticker"}} -interval 100ms -count 20
+    run: {{fixture "ticker"}} -interval 100ms -count 20
     tty: false
   fail: {{fixture "exiter"}} -code 3
 `

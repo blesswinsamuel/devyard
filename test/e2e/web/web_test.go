@@ -70,10 +70,9 @@ func TestWeb_ConnectJSONRPC(t *testing.T) {
 func TestWeb_ConnectClientOverHTTP(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("webrpc", `version: "1"
-services:
+	p := sb.WriteProject("webrpc", `services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	d := sb.Daemon()
@@ -122,10 +121,9 @@ func TestLedger_O7_ForeignHostRejected(t *testing.T) {
 func TestLedger_O7_WebSocketForeignOriginRejected(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("wso", `version: "1"
-services:
+	p := sb.WriteProject("wso", `services:
   a:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `, nil)
 	p.Start()
 	d := sb.Daemon()

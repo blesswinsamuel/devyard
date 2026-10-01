@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=internal/config/devyard.schema.json
 # Local development for the web UI: Vite (SolidJS) frontend with running daemon.
 #
 # Prerequisites:
@@ -15,20 +16,17 @@
 # Then open the Vite app at http://127.0.0.1:19095 (proxies /ws and RPC
 # to the daemon on :9090).
 
-version: "1"
 name: devyard
-
-proxy:
-  default_service: frontend
+primary: frontend
 
 services:
   frontend:
-    command: bun run dev
-    working_dir: ./web
+    run: bun run dev
+    dir: ./web
     port: 19095
     build:
-      command: bun install
-      working_dir: ./web
+      run: bun install
+      sources: [web/package.json, web/bun.lock]
     restart: always
 
 tasks:

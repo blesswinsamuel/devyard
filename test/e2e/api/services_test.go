@@ -81,10 +81,9 @@ func (g *groupSampler) finish(t *testing.T) {
 // S1: tty services start and their output is logged.
 func TestLedger_S1_TTYServiceStartsAndLogs(t *testing.T) {
 	t.Parallel()
-	_, _, d, w := setup(t, "s1", `version: "1"
-services:
+	_, _, d, w := setup(t, "s1", `services:
   term:
-    command: sh -c 'if [ -t 1 ]; then echo on-a-tty; fi; exec {{fixture "ticker"}} -prefix T -interval 100ms'
+    run: sh -c 'if [ -t 1 ]; then echo on-a-tty; fi; exec {{fixture "ticker"}} -prefix T -interval 100ms'
     tty: true
 `)
 	st := w.WaitFor(t, "tty service running", func(s harness.State) bool { return s.Running("s1", "term") })
@@ -100,10 +99,9 @@ services:
 // survives them.
 func TestLedger_S2_ConcurrentRestartsSingleProcess(t *testing.T) {
 	t.Parallel()
-	sb, _, d, w := setup(t, "s2", `version: "1"
-services:
+	sb, _, d, w := setup(t, "s2", `services:
   svc:
-    command: {{fixture "ticker"}} -interval 100ms
+    run: {{fixture "ticker"}} -interval 100ms
     env:
       DY_MARK: s2
 `)
@@ -158,10 +156,9 @@ func waitGroup(t *testing.T, wg *sync.WaitGroup, d time.Duration, what string) {
 // an explicit start resets the restart counter.
 func TestLedger_S3_StopDuringBackoffIsPrompt(t *testing.T) {
 	t.Parallel()
-	_, _, d, w := setup(t, "s3", `version: "1"
-services:
+	_, _, d, w := setup(t, "s3", `services:
   crash:
-    command: {{fixture "exiter"}} -code 1 -after 50ms
+    run: {{fixture "exiter"}} -code 1 -after 50ms
     restart: always
 `)
 	st := w.WaitForWithin(t, 30*time.Second, "crash-looping service in backoff", func(s harness.State) bool {
@@ -204,11 +201,10 @@ services:
 // is in progress.
 func TestLedger_S7_KillDuringStop(t *testing.T) {
 	t.Parallel()
-	_, _, d, w := setup(t, "s7", `version: "1"
-services:
+	_, _, d, w := setup(t, "s7", `services:
   trap:
-    command: {{fixture "sigtrap"}}
-    stop_grace_period: 30s
+    run: {{fixture "sigtrap"}}
+    stop: {timeout: 30s}
 `)
 	st := w.WaitFor(t, "running", func(s harness.State) bool { return s.Running("s7", "trap") })
 	pid := st.ServicePid("s7", "trap")
@@ -235,11 +231,10 @@ services:
 
 func TestLedger_S16_StopEscalatesToSIGKILL(t *testing.T) {
 	t.Parallel()
-	_, _, d, w := setup(t, "s16", `version: "1"
-services:
+	_, _, d, w := setup(t, "s16", `services:
   trap:
-    command: {{fixture "sigtrap"}}
-    stop_grace_period: 500ms
+    run: {{fixture "sigtrap"}}
+    stop: {timeout: 500ms}
 `)
 	st := w.WaitFor(t, "running", func(s harness.State) bool { return s.Running("s16", "trap") })
 	pid := st.ServicePid("s16", "trap")
@@ -265,11 +260,10 @@ services:
 // S7: a non-fatal signal doesn't leave the service stuck in "stopping".
 func TestLedger_S7_NonFatalSignalKeepsRunning(t *testing.T) {
 	t.Parallel()
-	_, _, d, w := setup(t, "s7b", `version: "1"
-services:
+	_, _, d, w := setup(t, "s7b", `services:
   trap:
-    command: {{fixture "sigtrap"}}
-    stop_grace_period: 500ms
+    run: {{fixture "sigtrap"}}
+    stop: {timeout: 500ms}
 `)
 	st := w.WaitFor(t, "running", func(s harness.State) bool { return s.Running("s7b", "trap") })
 	pid := st.ServicePid("s7b", "trap")
@@ -295,13 +289,12 @@ services:
 // stopped (never stuck in stopping/backoff), and start recovers it.
 func TestLedger_S8_NoStuckStates(t *testing.T) {
 	t.Parallel()
-	_, _, d, w := setup(t, "s8", `version: "1"
-services:
+	_, _, d, w := setup(t, "s8", `services:
   flappy:
-    command: {{fixture "exiter"}} -code 1 -after 100ms
+    run: {{fixture "exiter"}} -code 1 -after 100ms
     restart: always
   steady:
-    command: {{fixture "ticker"}} -interval 100ms
+    run: {{fixture "ticker"}} -interval 100ms
 `)
 	w.WaitFor(t, "steady running", func(s harness.State) bool { return s.Running("s8", "steady") })
 	ctx := d.Ctx()
@@ -358,12 +351,11 @@ services:
 // must not wedge stop, status, or later commands.
 func TestLedger_S10_EscapedGrandchildDoesNotWedge(t *testing.T) {
 	t.Parallel()
-	sb, _, d, w := setup(t, "s10", `version: "1"
-services:
+	sb, _, d, w := setup(t, "s10", `services:
   forker:
-    command: {{fixture "forker"}} -hold 5m
+    run: {{fixture "forker"}} -hold 5m
   quick:
-    command: {{fixture "forker"}} -hold 5m -exit-after 300ms
+    run: {{fixture "forker"}} -hold 5m -exit-after 300ms
 `)
 	t.Cleanup(func() { killForkerGrandchildren(sb) })
 
@@ -409,12 +401,11 @@ func killForkerGrandchildren(sb *harness.Sandbox) {
 // S12: CPU is reported in percent of one core (Apple Silicon unit bug).
 func TestLedger_S12_StatsCPUPercent(t *testing.T) {
 	t.Parallel()
-	_, _, d, w := setup(t, "s12", `version: "1"
-services:
+	_, _, d, w := setup(t, "s12", `services:
   busy:
-    command: {{fixture "ticker"}} -busy -interval 1s
+    run: {{fixture "ticker"}} -busy -interval 1s
   idle:
-    command: {{fixture "ticker"}} -interval 1s
+    run: {{fixture "ticker"}} -interval 1s
 `)
 	st := w.WaitFor(t, "running", func(s harness.State) bool { return s.AllRunning("s12") })
 	d.WaitLog("s12", harness.Svc("busy"), "tick 1")
@@ -457,10 +448,9 @@ services:
 
 func TestAPI_ListPorts(t *testing.T) {
 	t.Parallel()
-	_, p, d, w := setup(t, "ports", `version: "1"
-services:
+	_, p, d, w := setup(t, "ports", `services:
   web:
-    command: {{fixture "httpecho"}}
+    run: {{fixture "httpecho"}}
     port: {{port "web"}}
     env:
       PORT: "{{port "web"}}"
@@ -484,30 +474,33 @@ services:
 func TestAPI_ServiceSpecExposed(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
-	p := sb.WriteProject("spec", `version: "1"
-services:
+	p := sb.WriteProject("spec", `services:
   db:
-    command: {{fixture "ticker"}} -interval 1s
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
+    run: {{fixture "ticker"}} -interval 1s
+    ready:
+      exec: "true"
       interval: 200ms
   api:
-    command: {{fixture "ticker"}} -interval 1s
-    working_dir: sub
-    restart: on-failure
+    run: {{fixture "ticker"}} -interval 1s
+    dir: sub
+    restart: always
+    stop:
+      signal: SIGINT
     env:
       SECRET_TOKEN: hunter2
-    depends_on:
-      db: { condition: service_healthy }
+    depends_on: [db]
 `, map[string]string{"sub/.keep": ""})
 	p.Start()
 	w := sb.Daemon().Watch(context.Background())
 	st := w.WaitFor(t, "api running", func(s harness.State) bool { return s.Running("spec", "api") })
 	spec := st.Service("spec", "api").GetSpec()
-	if spec.GetRestart() != "on-failure" || !strings.HasSuffix(spec.GetWorkingDir(), "/sub") {
+	if spec.GetRestart() != "always" || !strings.HasSuffix(spec.GetDir(), "/sub") || spec.GetStopSignal() != "SIGINT" || !spec.GetAutostart() {
 		t.Errorf("spec: %v", spec)
 	}
-	if len(spec.GetDependsOn()) != 1 || spec.GetDependsOn()[0].GetName() != "db" || spec.GetDependsOn()[0].GetCondition() != "service_healthy" {
+	if dbSpec := st.Service("spec", "db").GetSpec(); dbSpec.GetRestart() != "on-failure" {
+		t.Errorf("default restart = %q, want on-failure", dbSpec.GetRestart())
+	}
+	if len(spec.GetDependsOn()) != 1 || spec.GetDependsOn()[0] != "db" {
 		t.Errorf("depends_on: %v", spec.GetDependsOn())
 	}
 	found := false
@@ -522,7 +515,7 @@ services:
 	if !found {
 		t.Errorf("env_keys missing SECRET_TOKEN: %v", spec.GetEnvKeys())
 	}
-	if hc := st.Service("spec", "db").GetSpec().GetHealthcheck(); hc.GetIntervalMs() != 200 {
-		t.Errorf("healthcheck spec: %v", hc)
+	if r := st.Service("spec", "db").GetSpec().GetReady(); r.GetKind() != "exec" || !strings.Contains(r.GetTarget(), "true") || r.GetIntervalMs() != 200 || r.GetRetries() != 30 {
+		t.Errorf("ready spec: %v", r)
 	}
 }

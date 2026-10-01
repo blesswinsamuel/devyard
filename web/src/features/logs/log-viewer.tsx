@@ -6,6 +6,7 @@ import {
   For,
   on,
   onCleanup,
+  onMount,
   Show,
   untrack,
   type JSX,
@@ -244,6 +245,48 @@ export function LogViewer(props: LogViewerProps) {
   const sourceWidth = createMemo(() => {
     const names = (props.chipSources ?? []).map((s) => s.name.length);
     return Math.min(18, Math.max(6, ...names)) + 1;
+  });
+
+  const remeasureAll = () => {
+    virtualizer.measure();
+    if (prefs().wrap) {
+      if (scrollEl) scrollEl.scrollLeft = 0;
+      queueMicrotask(() => {
+        if (!scrollEl) return;
+        const rows = scrollEl.querySelectorAll<HTMLElement>("[data-index]");
+        for (const row of rows) {
+          virtualizer.measureElement(row);
+        }
+      });
+    }
+  };
+
+  createEffect(
+    on(
+      () => [prefs().wrap, prefs().timestamps, showSource()] as const,
+      (_curr, prev) => {
+        if (prev !== undefined) {
+          remeasureAll();
+        }
+      },
+      { defer: true },
+    ),
+  );
+
+  onMount(() => {
+    let lastWidth = scrollEl?.clientWidth ?? 0;
+    const ro = new ResizeObserver(() => {
+      if (!scrollEl) return;
+      const w = scrollEl.clientWidth;
+      if (w !== lastWidth) {
+        lastWidth = w;
+        if (prefs().wrap) {
+          remeasureAll();
+        }
+      }
+    });
+    if (scrollEl) ro.observe(scrollEl);
+    onCleanup(() => ro.disconnect());
   });
   const rowAt = (index: number): LogEntry | undefined => {
     stream().version();
@@ -526,7 +569,9 @@ export function LogViewer(props: LogViewerProps) {
                 <div
                   data-index={item.index}
                   ref={(el) => {
-                    if (prefs().wrap) queueMicrotask(() => el.isConnected && virtualizer.measureElement(el));
+                    queueMicrotask(() => {
+                      if (el.isConnected && prefs().wrap) virtualizer.measureElement(el);
+                    });
                   }}
                   class="absolute left-0 min-w-full"
                   style={{

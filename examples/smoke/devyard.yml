@@ -1,24 +1,23 @@
 # Smoke-test config for devyard.
 #
 # Uses only POSIX tools (sh, printf, test, tail, sleep) so it runs on macOS and
-# Linux without any external dependencies. Exercises: env, working_dir,
-# depends_on (list + map with service_healthy), healthcheck, and restart
-# policies.
+# Linux without any external dependencies. Exercises: env, dir,
+# depends_on, ready probes, and restart policies.
 #
 # Run from this directory:
 #
 #   devyard start -f    # foreground, Ctrl-C to stop
 #   devyard start       # detached
-#   devyard ps          # status
-#   devyard logs --follow
+#   devyard status      # status
+#   devyard logs -f
 #   devyard restart worker
 #   devyard stop
 #
 # Expected behavior:
-#   - api starts, writes ./api.ready, then idles forever; healthcheck flips to
+#   - api starts, writes ./api.ready, then idles forever; ready probe flips to
 #     healthy once the marker file exists.
-#   - worker waits for api to be healthy, prints 5 ticks, then exits 0.
-#   - crasher depends on api (service_started), exits 7, and is restarted by the
+#   - worker waits for api to be ready, prints 5 ticks, then exits 0.
+#   - crasher depends on api, exits 7, and is restarted by the
 #     on-failure policy until the backoff cap is hit.
 #
 # Note: `stop` records that the project should stay stopped, so the daemon
@@ -26,29 +25,27 @@
 # Killing the daemon (even with SIGKILL) never stops services: the next daemon
 # re-adopts them.
 
-version: "1"
 name: smoke
 
 services:
   api:
-    command: |
+    run: |
       printf 'api: starting (port %s)\n' "$PORT"
       touch "$READY_FILE"
       printf 'api: ready file written, idling\n'
       tail -f /dev/null
-    working_dir: .
     env:
       PORT: "8090"
       READY_FILE: "./api.ready"
-    healthcheck:
-      test: ["CMD-SHELL", "test -f \"$READY_FILE\""]
+    ready:
+      exec: test -f "$READY_FILE"
       interval: 1s
       timeout: 1s
       retries: 5
     restart: always
 
   worker:
-    command: |
+    run: |
       printf 'worker: api is healthy, starting work\n'
       i=0
       while [ "$i" -lt 5 ]; do
@@ -57,14 +54,11 @@ services:
         i=$((i + 1))
       done
       printf 'worker: done\n'
-    working_dir: .
-    depends_on:
-      api: { condition: service_healthy }
+    depends_on: [api]
 
   crasher:
-    command: |
+    run: |
       printf 'crasher: about to exit non-zero\n'
       exit 7
-    working_dir: .
     depends_on: [api]
     restart: on-failure

@@ -188,9 +188,13 @@ func TestLedger_S6_ConcurrentRunTaskSecondFails(t *testing.T) {
 	st := w.WaitFor(t, "long running", func(s harness.State) bool { return s.TaskRunning("s6", "long") })
 	_, err := d.Client().RunTask(d.Ctx(), connect.NewRequest(&v1.RunTaskRequest{Project: "s6", Task: "long"}))
 	harness.RequireCode(t, err, connect.CodeFailedPrecondition)
-	if n := countTaskProcs(d.Sandbox(), int(st.Task("s6", "long").GetPid())); n != 1 {
-		t.Errorf("%d live task process groups", n)
-	}
+	// The run is published as soon as it is started, possibly before the
+	// child has exec'd, so wait for it to show up in the process list.
+	harness.Eventually(t, "exactly one live task process group", func(c *harness.C) {
+		if n := countTaskProcs(d.Sandbox(), int(st.Task("s6", "long").GetPid())); n != 1 {
+			c.Errorf("%d live task process groups", n)
+		}
+	})
 }
 
 func countTaskProcs(sb *harness.Sandbox, pid int) int {

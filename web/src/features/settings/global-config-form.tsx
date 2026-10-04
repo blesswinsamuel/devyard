@@ -104,9 +104,8 @@ export function GlobalConfigForm() {
       });
       setDirty(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.globalConfig });
-      toast.success("Settings saved", {
-        description: "Listener changes apply after a daemon restart.",
-        action: { label: "Restart daemon", onClick: () => void runAction(getAction("daemon.restart"), { kind: "app" }) },
+      toast.success("Settings saved and applied", {
+        description: "Listener changes take effect right away; if the address you are using changed, reload this page there.",
       });
     } catch (err) {
       const info = errorInfo(err);

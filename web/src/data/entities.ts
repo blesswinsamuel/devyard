@@ -44,6 +44,8 @@ export interface DaemonEntity {
   proxyTlsAddr: string;
   domainSuffix: string;
   draining: boolean;
+  /** What the daemon could not apply of the global config; empty when applied. */
+  configError: string;
 }
 
 export interface ProjectEntity {
@@ -180,6 +182,7 @@ export function toDaemon(d: DaemonInfo): DaemonEntity {
     proxyTlsAddr: d.proxyTlsAddr,
     domainSuffix: d.domainSuffix,
     draining: d.draining,
+    configError: d.configError,
   };
 }
 

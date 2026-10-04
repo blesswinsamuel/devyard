@@ -423,7 +423,7 @@ a directory or the path of a config file; `~` is expanded.
   again when adding. `devyard project move` and dragging in the sidebar
   reorder the list.
 - These edits change the file in place: your comments and other keys stay.
-- Editing the list by hand works too (see below). A missing `projects` key
+- Editing the list by hand works too ([live reload](#live-reload)). A missing `projects` key
   changes nothing; an empty list removes every project. A directory that no
   longer exists is shown as a project in an error state, so you can see it and
   remove it.
@@ -450,11 +450,33 @@ on every project of the group, in order. Groups are edited in the file only.
 | `proxy.tls.key_file` | `""` | Path to custom private key PEM file. |
 | `proxy.tls.http_redirect` | `false` | When true, incoming HTTP requests redirect (307) to HTTPS. |
 
-Listener changes take effect after `devyard daemon restart` (services keep
-running). `allowed_hosts` applies immediately when saved from the web UI.
 `password_hash` is managed by `devyard auth set-password` / `devyard auth
-clear` and the settings UI (both apply it without a restart when a daemon
-is running); saving the global config from the web UI never touches it.
+clear` and the settings UI; saving the global config from the web UI never
+touches it.
+
+### Live reload
+
+The daemon watches the file; there is no need to restart it, and services are
+never touched by a settings change. About 150 ms after a save (by an editor,
+the CLI or the dashboard) it applies every part that changed:
+
+- `projects` and `groups`: projects are added, stopped and removed, and
+  reordered, as described above.
+- `web.host` / `web.port`: the dashboard moves to the new address. The new
+  listener is bound first, so an address that cannot be bound leaves the old
+  one serving; the old one is closed a few seconds later. Reload the page at
+  the new address.
+- `proxy.*`: the reverse proxy is rebuilt (host, port, TLS, certificates,
+  `domain_suffix`) and the URLs of services are updated. A bad address leaves
+  the old proxy serving.
+- `web.allowed_hosts` and `web.password_hash` apply immediately.
+
+A file that does not parse (or has an out-of-range value) changes nothing: the
+last good config stays in effect. A part that parses but cannot be applied (a
+port in use, a project that cannot be loaded) keeps its old behavior and the
+rest is applied. Either way the problem is shown as a banner in the dashboard,
+by `devyard daemon status`, and in `config_error` of `GetDaemon`; it clears
+when the file is fixed.
 
 Unknown fields in the global config produce a warning (printed to stderr) but
 do not error, matching `devyard.yml`.

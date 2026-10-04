@@ -58,15 +58,30 @@ type daemon struct {
 	log     *slog.Logger
 	started time.Time
 
-	mgr *engine.Manager
-	bus *events.Bus
+	mgr       *engine.Manager
+	bus       *events.Bus
+	projects  *projects.Service
+	presenter *presenter
+	resolver  *lateRoutes
+	dashboard http.Handler
 
+	// gcfg is the config in effect: each part is replaced only once it has
+	// been applied, so a failed apply leaves the old behavior in place.
 	gcfgMu sync.Mutex
 	gcfg   *globalconfig.Config
+	// applyMu serializes applying the config file.
+	applyMu sync.Mutex
 	// auth is the live password gate (nil = open dashboard), swapped by
 	// SetWebPassword/ClearWebPassword. Guarded by gcfgMu.
 	auth *web.Authenticator
+	// configErr describes what could not be applied of the config file
+	// (guarded by gcfgMu).
+	configErr string
 
+	// netMu serializes swaps of the listeners and guards the fields below.
+	netMu                            sync.Mutex
+	webSrv                           *http.Server
+	proxySrv                         *proxy.Server
 	webAddr, proxyAddr, proxyTLSAddr string
 
 	exitOnce        sync.Once
@@ -157,34 +172,34 @@ func Run(opts Options) (err error) {
 	}
 	defer git.Close()
 
-	var mgr *engine.Manager
-	resolver := &lateRoutes{}
-	psrv, err := d.startProxy(resolver)
+	d.resolver = &lateRoutes{}
+	psrv, err := d.startProxy(d.resolver, gcfg.Proxy)
 	if err != nil {
 		_ = ctlLn.Close()
 		_ = webLn.Close()
 		return err
 	}
+	d.proxySrv = psrv
 	d.proxyAddr = psrv.Addr()
 	if gcfg.Proxy.TLS.Enabled {
 		d.proxyTLSAddr = psrv.TLSAddr()
 	}
 
-	presenter := newPresenter(d.bus, git, d.urlConfig())
-	mgr = engine.NewManager(dirs, engine.RunnerLauncher{}, presenter, log)
+	d.presenter = newPresenter(d.bus, git, d.urlConfig())
+	mgr := engine.NewManager(dirs, engine.RunnerLauncher{}, d.presenter, log)
 	d.mgr = mgr
-	resolver.set(routes{mgr: mgr, bus: d.bus})
+	d.resolver.set(routes{mgr: mgr, bus: d.bus})
 	d.bus.SetDaemon(d.staticInfo())
 	if err := mgr.Load(); err != nil {
 		log.Error("loading projects failed", "error", err)
 	}
-	projSvc := projects.New(mgr, dirs, log)
-	if err := projSvc.Start(context.Background()); err != nil {
-		log.Error("applying the global config's project list failed", "error", err)
+	d.projects = projects.New(mgr, dirs, log)
+	if err := d.projects.Start(context.Background()); err != nil {
+		d.setConfigError(err)
 	}
 	sess := sessions.New(dirs, mgr, runner.LaunchOptions{})
 
-	apiServer := &api.Server{Mgr: mgr, Projects: projSvc, Bus: d.bus, Git: git, Sessions: sess, Daemon: d, Log: log}
+	apiServer := &api.Server{Mgr: mgr, Projects: d.projects, Bus: d.bus, Git: git, Sessions: sess, Daemon: d, Log: log}
 	path, apiHandler := devyardv1connect.NewDaemonServiceHandler(apiServer)
 	apiMux := http.NewServeMux()
 	apiMux.Handle(path, apiHandler)
@@ -197,10 +212,15 @@ func Run(opts Options) (err error) {
 	ctlSrv := &http.Server{Handler: apiMux, Protocols: protocols}
 	go func() { _ = ctlSrv.Serve(ctlLn) }()
 
-	dashboard := web.Handler(web.Options{API: apiMux, Sessions: sess, Hosts: d.hostPolicy, Auth: d.authenticator, Log: log})
-	webSrv := &http.Server{Handler: dashboard, ReadHeaderTimeout: 10 * time.Second}
-	go func() { _ = webSrv.Serve(webLn) }()
-	resolver.setDashboard(dashboard)
+	d.dashboard = web.Handler(web.Options{API: apiMux, Sessions: sess, Hosts: d.hostPolicy, Auth: d.authenticator, Log: log})
+	d.webSrv = d.serveWeb(webLn)
+	d.resolver.setDashboard(d.dashboard)
+
+	watchCtx, stopWatch := context.WithCancel(context.Background())
+	defer stopWatch()
+	if err := d.watchGlobalConfig(watchCtx); err != nil {
+		log.Warn("not watching the global config; edits need a daemon restart", "error", err)
+	}
 
 	log.Info("daemon ready", "socket", dirs.Socket(), "web", d.webAddr, "proxy", d.proxyAddr)
 
@@ -214,6 +234,7 @@ func Run(opts Options) (err error) {
 		mode = exitDetach
 	}
 
+	stopWatch()
 	// Let the RPC that requested the exit finish its response.
 	time.Sleep(100 * time.Millisecond)
 	stopServices := mode == exitStop || (mode == exitRestart && d.restartServices)
@@ -227,11 +248,13 @@ func Run(opts Options) (err error) {
 	}
 	closeCtx, cancelClose := context.WithTimeout(context.Background(), 2*time.Second)
 	_ = ctlSrv.Shutdown(closeCtx)
-	_ = webSrv.Shutdown(closeCtx)
+	d.netMu.Lock()
+	_ = d.webSrv.Shutdown(closeCtx)
 	cancelClose()
 	_ = ctlSrv.Close()
-	_ = webSrv.Close()
-	_ = psrv.Close()
+	_ = d.webSrv.Close()
+	_ = d.proxySrv.Close()
+	d.netMu.Unlock()
 	_ = os.Remove(dirs.Socket())
 	releaseLock()
 
@@ -285,8 +308,7 @@ func (l *lateRoutes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.ServeHTTP(w, r)
 }
 
-func (d *daemon) startProxy(resolver *lateRoutes) (*proxy.Server, error) {
-	cfg := d.gcfg.Proxy
+func (d *daemon) startProxy(resolver *lateRoutes, cfg globalconfig.ProxyConfig) (*proxy.Server, error) {
 	opts := proxy.ServerOptions{
 		Addr:             net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
 		DomainSuffix:     cfg.DomainSuffix,
@@ -325,13 +347,23 @@ func portOf(addr string) int {
 	return n
 }
 
+// urlConfig describes how service URLs are formed with the proxy as bound.
+// The caller holds netMu or is single-threaded (startup).
 func (d *daemon) urlConfig() urlConfig {
-	u := urlConfig{Suffix: d.gcfg.Proxy.DomainSuffix, Port: portOf(d.proxyAddr)}
-	if d.gcfg.Proxy.TLS.Enabled {
+	cfg := d.config()
+	u := urlConfig{Suffix: cfg.Proxy.DomainSuffix, Port: portOf(d.proxyAddr)}
+	if cfg.Proxy.TLS.Enabled {
 		u.TLS = true
 		u.Port = portOf(d.proxyTLSAddr)
 	}
 	return u
+}
+
+// config returns a copy of the config in effect.
+func (d *daemon) config() globalconfig.Config {
+	d.gcfgMu.Lock()
+	defer d.gcfgMu.Unlock()
+	return *d.gcfg
 }
 
 func (d *daemon) hostPolicy() web.HostPolicy {
@@ -341,16 +373,23 @@ func (d *daemon) hostPolicy() web.HostPolicy {
 }
 
 func (d *daemon) staticInfo() *pb.DaemonInfo {
+	d.netMu.Lock()
+	webAddr, proxyAddr, proxyTLSAddr := d.webAddr, d.proxyAddr, d.proxyTLSAddr
+	d.netMu.Unlock()
+	d.gcfgMu.Lock()
+	suffix, configErr := d.gcfg.Proxy.DomainSuffix, d.configErr
+	d.gcfgMu.Unlock()
 	return &pb.DaemonInfo{
 		Pid:             int32(os.Getpid()),
 		StartedAtUnixMs: d.started.UnixMilli(),
 		Version:         d.opts.Version,
 		GoVersion:       runtime.Version(),
-		WebAddr:         d.webAddr,
-		ProxyAddr:       d.proxyAddr,
-		ProxyTlsAddr:    d.proxyTLSAddr,
-		DomainSuffix:    d.gcfg.Proxy.DomainSuffix,
+		WebAddr:         webAddr,
+		ProxyAddr:       proxyAddr,
+		ProxyTlsAddr:    proxyTLSAddr,
+		DomainSuffix:    suffix,
 		Draining:        d.mgr != nil && d.mgr.Draining(),
+		ConfigError:     configErr,
 	}
 }
 
@@ -391,10 +430,11 @@ func (d *daemon) GlobalConfig() (*globalconfig.Config, string, error) {
 	return cfg, d.dirs.GlobalConfig(), err
 }
 
-// SaveGlobalConfig implements api.Daemon. Listener changes apply after a
-// daemon restart; allowed hosts apply immediately. The password hash is
-// managed by `devyard auth` / SetWebPassword and is not part of the wire
-// schema, so whatever is on disk is preserved.
+// SaveGlobalConfig implements api.Daemon: it writes the web and proxy
+// sections (leaving projects, groups and comments alone) and applies the
+// result, rebinding listeners when they changed. The password hash is managed
+// by `devyard auth` / SetWebPassword and is not part of the wire schema, so
+// whatever is on disk is preserved.
 func (d *daemon) SaveGlobalConfig(cfg *globalconfig.Config) error {
 	cur, err := globalconfig.Load(d.dirs.GlobalConfig(), nil)
 	if err != nil {
@@ -404,9 +444,9 @@ func (d *daemon) SaveGlobalConfig(cfg *globalconfig.Config) error {
 	if err := globalconfig.Save(d.dirs.GlobalConfig(), cfg); err != nil {
 		return err
 	}
-	d.gcfgMu.Lock()
-	d.gcfg.Web.AllowedHosts = cfg.Web.AllowedHosts
-	d.gcfgMu.Unlock()
+	if err := d.reloadGlobalConfig(context.Background()); err != nil {
+		return errNotApplied(err)
+	}
 	return nil
 }
 
@@ -435,6 +475,8 @@ func (d *daemon) ClearWebPassword() error { return d.applyWebPasswordHash("") }
 // applyWebPasswordHash persists the hash in the global config (preserving
 // every other field) and swaps the live gate.
 func (d *daemon) applyWebPasswordHash(hash string) error {
+	d.applyMu.Lock()
+	defer d.applyMu.Unlock()
 	cfg, err := globalconfig.Load(d.dirs.GlobalConfig(), nil)
 	if err != nil {
 		return fmt.Errorf("daemon: read global config: %w", err)
@@ -443,17 +485,9 @@ func (d *daemon) applyWebPasswordHash(hash string) error {
 	if err := globalconfig.Save(d.dirs.GlobalConfig(), cfg); err != nil {
 		return err
 	}
-	var auth *web.Authenticator
-	if hash != "" {
-		if auth, err = web.NewAuthenticator(hash); err != nil {
-			return fmt.Errorf("daemon: %w", err) // unreachable: the hash is ours
-		}
+	if err := d.setAuth(hash); err != nil {
+		return fmt.Errorf("daemon: %w", err) // unreachable: the hash is ours
 	}
-	d.gcfgMu.Lock()
-	d.gcfg.Web.PasswordHash = hash
-	d.auth = auth
-	d.gcfgMu.Unlock()
-	d.log.Info("dashboard password changed", "set", hash != "")
 	return nil
 }
 

@@ -72,6 +72,16 @@ export class DaemonInfo extends Message<DaemonInfo> {
    */
   draining = false;
 
+  /**
+   * config_error describes a problem with the global config that the daemon
+   * could not apply (a parse error, a listener that failed to bind, a
+   * project that failed to load). The last good config stays in effect.
+   * Empty when the config is applied.
+   *
+   * @generated from field: string config_error = 13;
+   */
+  configError = "";
+
   constructor(data?: PartialMessage<DaemonInfo>) {
     super();
     proto3.util.initPartial(data, this);
@@ -92,6 +102,7 @@ export class DaemonInfo extends Message<DaemonInfo> {
     { no: 10, name: "proxy_tls_addr", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 11, name: "domain_suffix", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 12, name: "draining", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 13, name: "config_error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): DaemonInfo {

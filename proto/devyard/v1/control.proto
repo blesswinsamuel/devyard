@@ -79,6 +79,11 @@ message DaemonInfo {
   string proxy_tls_addr = 10;
   string domain_suffix = 11;
   bool draining = 12;
+  // config_error describes a problem with the global config that the daemon
+  // could not apply (a parse error, a listener that failed to bind, a
+  // project that failed to load). The last good config stays in effect.
+  // Empty when the config is applied.
+  string config_error = 13;
 }
 
 message Project {

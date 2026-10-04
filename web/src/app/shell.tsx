@@ -14,7 +14,7 @@ import { Dock } from "~/features/terminal/dock";
 import { isMobile } from "~/lib/media";
 import { targetFromPath } from "~/lib/paths";
 import { cn } from "~/lib/utils";
-import { ReconnectBanner } from "./reconnect-banner";
+import { ConfigErrorBanner, ReconnectBanner } from "./reconnect-banner";
 import { bindNavigate, setRouteTarget } from "./runtime";
 import { installShortcuts } from "./shortcuts";
 import { TopBar } from "./top-bar";
@@ -65,6 +65,7 @@ export function Shell(props: ParentProps) {
       <div class="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <ReconnectBanner />
+        <ConfigErrorBanner />
         <main
           id="main"
           tabindex="-1"

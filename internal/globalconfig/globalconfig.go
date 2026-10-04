@@ -36,7 +36,7 @@ type WebConfig struct {
 	// PasswordHash is a bcrypt hash of the dashboard password (`devyard
 	// auth set-password`). When set, the API and websocket require a
 	// login cookie; the SPA serves a login screen. Empty leaves the
-	// dashboard open. Applied after a daemon restart.
+	// dashboard open.
 	PasswordHash string `yaml:"password_hash,omitempty"`
 }
 

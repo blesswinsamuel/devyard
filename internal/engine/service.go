@@ -47,6 +47,10 @@ type svcRestart struct {
 	build bool
 	reply chan error
 }
+
+// svcRepublish asks the actor to publish its state again (its derived
+// presentation, such as proxy URLs, changed).
+type svcRepublish struct{}
 type svcKill struct {
 	sig   string
 	reply chan error
@@ -241,6 +245,8 @@ func (a *serviceActor) loop(desired bool) {
 			m.reply <- a.cmdKill(m.sig)
 		case svcUpdate:
 			a.cmdUpdate(m)
+		case svcRepublish:
+			a.publish()
 		case svcAttach:
 			if a.proc == nil {
 				m.reply <- attachResult{err: fmt.Errorf("service %s: %w", a.def.Name, ErrNotRunning)}

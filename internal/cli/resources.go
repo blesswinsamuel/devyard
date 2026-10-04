@@ -7,6 +7,7 @@ import (
 	"math"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -424,6 +425,9 @@ func newDaemonCmd(c *Context) *cobra.Command {
 				c.Printf("Proxy:     %s (*.%s)\n", info.ProxyAddr, info.DomainSuffix)
 				c.Printf("Socket:    %s\n", d.Socket())
 				c.Printf("Log:       %s\n", d.DaemonLog())
+				if info.ConfigError != "" {
+					c.Printf("Config:    NOT APPLIED (the last good settings stay in effect): %s\n", strings.ReplaceAll(info.ConfigError, "\n", "\n           "))
+				}
 				return nil
 			},
 		},

@@ -34,6 +34,14 @@ type presenter struct {
 
 var _ engine.Observer = (*presenter)(nil)
 
+// setURLs changes how service URLs are formed (the proxy was rebound); the
+// engine is then asked to republish its services.
+func (p *presenter) setURLs(u urlConfig) {
+	p.mu.Lock()
+	p.urls = u
+	p.mu.Unlock()
+}
+
 func newPresenter(bus *events.Bus, git *gitstate.Tracker, urls urlConfig) *presenter {
 	return &presenter{bus: bus, git: git, urls: urls, defaults: map[string]string{}}
 }

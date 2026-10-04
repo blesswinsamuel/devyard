@@ -44,6 +44,12 @@ What's done, what's planned, and where each item lives in the code.
 - **Git.** Status, log, diff, stage, commit, push/pull/fetch. Remote
   operations are bounded by a timeout, and watchers handle shared
   repositories. (`internal/gitlog`, `internal/gitstate`)
+- **Project list and live global config.** An ordered `projects` list (and
+  `groups`) in the global config, edited by `add`, `project move|remove` and
+  the dashboard (drag to reorder) or by hand; projects without a devyard.yml;
+  a watched config that rebinds the web and proxy listeners and reports what it
+  could not apply. (`internal/projects`, `internal/globalconfig`,
+  `internal/daemon`)
 - **Hermetic e2e suites and CI** on Ubuntu and macOS. (`test/e2e`,
   `.github/workflows`)
 

@@ -231,6 +231,18 @@ func (m *Manager) Remove(ctx context.Context, id string) error {
 	return nil
 }
 
+// Republish makes every service publish its state again, for observers whose
+// presentation of it changed (for instance the proxy's URLs).
+func (m *Manager) Republish(ctx context.Context) {
+	for _, p := range m.List() {
+		if v := p.View(); v != nil {
+			for _, svc := range v.Services {
+				_ = svc.send(ctx, svcRepublish{})
+			}
+		}
+	}
+}
+
 // Draining reports whether the manager is shutting down.
 func (m *Manager) Draining() bool {
 	m.mu.Lock()

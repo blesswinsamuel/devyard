@@ -1,6 +1,7 @@
 # Binaries
 /devyard
 /bin/
+/dist/
 /internal/web/dist/*
 !/internal/web/dist/.gitkeep
 /web/src/assets/fonts/

@@ -43,11 +43,27 @@ combines:
 
 ## Installation
 
+### Shell script (macOS & Linux)
+
 ```bash
-go install github.com/blesswinsamuel/devyard/cmd/devyard@latest
+curl -fsSL https://raw.githubusercontent.com/blesswinsamuel/devyard/main/scripts/install.sh | sh
 ```
 
-From a clone (the web UI is embedded, so build it first):
+### Homebrew (macOS & Linux)
+
+```bash
+brew install blesswinsamuel/tap/devyard
+```
+
+### GitHub Releases
+
+Pre-compiled static binaries for macOS (`arm64`, `amd64`) and Linux (`amd64`, `arm64`) are available on the [GitHub Releases](https://github.com/blesswinsamuel/devyard/releases) page.
+
+> **Windows support**: `devyard` manages native Unix processes, PTYs, Unix domain sockets, and process groups. It is macOS and Linux only. Windows users can run devyard seamlessly inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/).
+
+### Building from source
+
+The web dashboard is embedded into the Go binary, so build the frontend assets first:
 
 ```bash
 git clone https://github.com/blesswinsamuel/devyard.git && cd devyard

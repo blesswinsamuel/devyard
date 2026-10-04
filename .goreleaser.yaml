@@ -1,0 +1,66 @@
+version: 2
+
+project_name: devyard
+
+before:
+  hooks:
+    - sh -c "cd web && bun install --frozen-lockfile && bun run build"
+
+builds:
+  - id: devyard-darwin
+    main: ./cmd/devyard
+    binary: devyard
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/blesswinsamuel/devyard/internal/cli.Version={{.Version}}
+
+  - id: devyard-linux
+    main: ./cmd/devyard
+    binary: devyard
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/blesswinsamuel/devyard/internal/cli.Version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+homebrew_casks:
+  - name: devyard
+    repository:
+      owner: blesswinsamuel
+      name: homebrew-tap
+      branch: main
+      token: "{{ index .Env \"HOMEBREW_TAP_GITHUB_TOKEN\" }}"
+    homepage: "https://github.com/blesswinsamuel/devyard"
+    description: "Orchestrate local processes with a compose-style config (no Docker)"
+    license: "MIT"
+    skip_upload: "{{ if not (index .Env \"HOMEBREW_TAP_GITHUB_TOKEN\") }}true{{ else }}auto{{ end }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

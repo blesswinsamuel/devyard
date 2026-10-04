@@ -51,11 +51,11 @@ homebrew_casks:
       owner: blesswinsamuel
       name: homebrew-tap
       branch: main
-      token: "{{ index .Env \"HOMEBREW_TAP_GITHUB_TOKEN\" }}"
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/blesswinsamuel/devyard"
     description: "Orchestrate local processes with a compose-style config (no Docker)"
     license: "MIT"
-    skip_upload: "{{ if not (index .Env \"HOMEBREW_TAP_GITHUB_TOKEN\") }}true{{ else }}auto{{ end }}"
+    skip_upload: auto
 
 changelog:
   sort: asc

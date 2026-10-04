@@ -113,6 +113,7 @@ devyard stop             # stop the project (it stays stopped across daemon rest
 | `attach <svc\|task>` | Attach to a running TTY service or task (Ctrl-] detaches). |
 | `build [svc...]` | Run build steps in the foreground. |
 | `web [--open]` | Print or open the dashboard URL. |
+| `auth set-password [--stdin]` / `auth clear` | Set (or remove) the dashboard password: the API and terminals then require a login. Applied after `daemon restart`. |
 | `schema` | Print the JSON Schema of `devyard.yml`. |
 | `project list\|add\|start\|stop\|restart\|reload\|remove\|logs` | Manage registered projects (`remove` deletes state and logs). |
 | `service …` / `task list\|run\|stop\|kill\|logs` | Resource-scoped variants of the above. |
@@ -134,7 +135,7 @@ See [docs/config-schema.md](docs/config-schema.md) for every field. Highlights:
   `.env.local`), which feed `${VAR}` interpolation and every process's environment.
 - **`devyard.local.yml`** next to the config is merged over it, for machine-specific tweaks.
 - **Global config** (`~/.config/devyard/config.yml`): dashboard and proxy listeners, domain
-  suffix, TLS, and `web.allowed_hosts`.
+  suffix, TLS, `web.allowed_hosts`, and the dashboard password (`devyard auth`).
 
 ## How it works
 
@@ -160,7 +161,7 @@ The dashboard is served at `http://127.0.0.1:9090` (and through the proxy at
 `http://devyard.localhost:8080`). It only answers to loopback names, IP addresses, `devyard`,
 names under the proxy domain suffix and `web.allowed_hosts`, which blocks DNS-rebinding attacks.
 Binding it to a non-loopback address exposes terminals to your network — only do that on a
-network you trust.
+network you trust, and set a password (`devyard auth set-password`) so only you can drive it.
 
 ## Comparison
 

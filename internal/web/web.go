@@ -5,7 +5,9 @@
 // literals, "devyard", names under the proxy domain suffix, or configured
 // extra hosts). This blocks DNS-rebinding attacks, where a malicious page
 // resolves its own domain to 127.0.0.1 to reach the dashboard. Websockets
-// additionally require a same-origin Origin header.
+// additionally require a same-origin Origin header. When web.password_hash
+// is set (`devyard auth set-password`), the API and websocket additionally
+// require a login cookie (auth.go).
 package web
 
 import (
@@ -78,21 +80,31 @@ type Options struct {
 	API      http.Handler // mounted at /devyard.v1.DaemonService/
 	Sessions *sessions.Manager
 	Hosts    func() HostPolicy
-	Log      *slog.Logger
+	// Auth, when non-nil, gates the API and /ws/attach behind a password.
+	Auth *Authenticator
+	Log  *slog.Logger
 }
+
+// apiPath is where the ConnectRPC API is mounted.
+const apiPath = "/devyard.v1.DaemonService/"
 
 // Handler returns the dashboard handler.
 func Handler(opts Options) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/devyard.v1.DaemonService/", opts.API)
+	mux.Handle(apiPath, opts.API)
 	mux.HandleFunc("/ws/attach", func(w http.ResponseWriter, r *http.Request) { serveAttach(w, r, opts) })
 	mux.Handle("/", spaHandler())
+	var next http.Handler = mux
+	if opts.Auth != nil {
+		mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) { opts.Auth.serveLogin(w, r) })
+		next = opts.Auth.wrap(mux)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !opts.Hosts().Allowed(r.Host) {
 			http.Error(w, "devyard: host not allowed (add it to web.allowed_hosts in the global config)", http.StatusForbidden)
 			return
 		}
-		mux.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 	})
 }
 

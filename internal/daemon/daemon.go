@@ -118,6 +118,15 @@ func Run(opts Options) (err error) {
 	}
 	log.Info("daemon starting", "pid", os.Getpid(), "version", opts.Version, "config", gcfg.String())
 
+	// Fail closed: a malformed hash refuses to start rather than serving
+	// an open dashboard.
+	var auth *web.Authenticator
+	if gcfg.Web.PasswordHash != "" {
+		if auth, err = web.NewAuthenticator(gcfg.Web.PasswordHash); err != nil {
+			return fmt.Errorf("daemon: %w", err)
+		}
+	}
+
 	// Bind every listener before touching projects so a port collision is
 	// reported immediately and URLs are known when services are published.
 	_ = os.Remove(dirs.Socket())
@@ -177,7 +186,7 @@ func Run(opts Options) (err error) {
 	ctlSrv := &http.Server{Handler: apiMux, Protocols: protocols}
 	go func() { _ = ctlSrv.Serve(ctlLn) }()
 
-	dashboard := web.Handler(web.Options{API: apiMux, Sessions: sess, Hosts: d.hostPolicy, Log: log})
+	dashboard := web.Handler(web.Options{API: apiMux, Sessions: sess, Hosts: d.hostPolicy, Auth: auth, Log: log})
 	webSrv := &http.Server{Handler: dashboard, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = webSrv.Serve(webLn) }()
 	resolver.setDashboard(dashboard)
@@ -372,8 +381,15 @@ func (d *daemon) GlobalConfig() (*globalconfig.Config, string, error) {
 }
 
 // SaveGlobalConfig implements api.Daemon. Listener changes apply after a
-// daemon restart; allowed hosts apply immediately.
+// daemon restart; allowed hosts apply immediately. The password hash is
+// managed by `devyard auth` and is not part of the wire schema, so
+// whatever is on disk is preserved.
 func (d *daemon) SaveGlobalConfig(cfg *globalconfig.Config) error {
+	cur, err := globalconfig.Load(d.dirs.GlobalConfig(), nil)
+	if err != nil {
+		return fmt.Errorf("daemon: read global config: %w", err)
+	}
+	cfg.Web.PasswordHash = cur.Web.PasswordHash
 	if err := globalconfig.Save(d.dirs.GlobalConfig(), cfg); err != nil {
 		return err
 	}

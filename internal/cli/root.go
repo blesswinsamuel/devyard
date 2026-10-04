@@ -83,5 +83,6 @@ func NewRootCommand(c *Context) *cobra.Command {
 	}
 	root.AddCommand(newVersionCmd(c))
 	root.AddCommand(newSchemaCmd(c))
+	root.AddCommand(newAuthCmd(c))
 	return root
 }

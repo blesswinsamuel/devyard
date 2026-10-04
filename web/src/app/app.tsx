@@ -5,17 +5,20 @@ import { TooltipProvider } from "~/components/ui/tooltip";
 import { ThemeProvider } from "~/components/theme";
 import { queryClient } from "~/data/queries";
 import { routes } from "./routes";
+import { AuthGate } from "./auth";
 import { Shell } from "./shell";
 
 export function App() {
   return (
     <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider delay={400}>
-          <Router root={Shell}>{routes}</Router>
-          <Toaster position="bottom-right" closeButton visibleToasts={4} />
-        </TooltipProvider>
-      </QueryClientProvider>
+      <AuthGate>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider delay={400}>
+            <Router root={Shell}>{routes}</Router>
+            <Toaster position="bottom-right" closeButton visibleToasts={4} />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </AuthGate>
     </ThemeProvider>
   );
 }

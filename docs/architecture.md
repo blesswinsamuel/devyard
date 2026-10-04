@@ -180,6 +180,12 @@ The dashboard serves the embedded SPA, the ConnectRPC API, and
   names, IP literals, `devyard`, anything under the proxy domain suffix, or
   `web.allowed_hosts`. This blocks DNS rebinding.
 - **Origin check:** websockets require the same Origin as the Host.
+- **Password (opt-in):** when `web.password_hash` is set
+  (`devyard auth set-password`), the API and `/ws/attach` require a login
+  cookie (bcrypt check via `POST /auth/login`; HMAC-signed expiry, no server
+  state, so sessions die with the daemon). The SPA itself is served either
+  way and renders a login screen. Unauthenticated API calls get a
+  Connect-protocol `unauthenticated` error body.
 
 ## Sessions (`internal/sessions`)
 

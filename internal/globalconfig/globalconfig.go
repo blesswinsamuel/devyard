@@ -34,6 +34,11 @@ type WebConfig struct {
 	// addition to loopback names, "devyard" and anything under the proxy
 	// domain suffix. This protects against DNS rebinding.
 	AllowedHosts []string `yaml:"allowed_hosts,omitempty"`
+	// PasswordHash is a bcrypt hash of the dashboard password (`devyard
+	// auth set-password`). When set, the API and websocket require a
+	// login cookie; the SPA serves a login screen. Empty leaves the
+	// dashboard open. Applied after a daemon restart.
+	PasswordHash string `yaml:"password_hash,omitempty"`
 }
 
 // ProxyTLSConfig holds TLS settings for the reverse proxy.
@@ -88,6 +93,7 @@ type raw struct {
 		Host         string   `yaml:"host"`
 		Port         *int     `yaml:"port"`
 		AllowedHosts []string `yaml:"allowed_hosts"`
+		PasswordHash string   `yaml:"password_hash"`
 	} `yaml:"web"`
 	Proxy *struct {
 		Host         string         `yaml:"host"`
@@ -135,6 +141,7 @@ func Parse(data []byte, warn io.Writer) (*Config, error) {
 			cfg.Web.Port = *r.Web.Port
 		}
 		cfg.Web.AllowedHosts = r.Web.AllowedHosts
+		cfg.Web.PasswordHash = r.Web.PasswordHash
 	}
 	if r.Proxy != nil {
 		if r.Proxy.Host != "" {

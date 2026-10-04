@@ -81,12 +81,28 @@ func TestTLS(t *testing.T) {
 	}
 }
 
+func TestPasswordHash(t *testing.T) {
+	hash := "$2a$10$Sqvqa5SIKdLY0cCcn.UhL.exGZzTLtOjfTWPzvH8E9PLYJEFDBh6K"
+	cfg, _ := parse(t, "web:\n  password_hash: "+hash+"\n")
+	if cfg.Web.PasswordHash != hash {
+		t.Fatalf("password hash: %q", cfg.Web.PasswordHash)
+	}
+	if strings.Contains(cfg.String(), hash) {
+		t.Fatalf("String() leaks the password hash: %s", cfg)
+	}
+	cfg, _ = parse(t, "web: {}\n")
+	if cfg.Web.PasswordHash != "" {
+		t.Fatalf("default password hash: %q", cfg.Web.PasswordHash)
+	}
+}
+
 func TestSaveRoundtrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "devyard", "config.yml")
 	in := globalconfig.Defaults()
 	in.Web.Port = 0
 	in.Proxy.DomainSuffix = "dev.lan"
 	in.Web.AllowedHosts = []string{"a.example"}
+	in.Web.PasswordHash = "$2a$10$Sqvqa5SIKdLY0cCcn.UhL.exGZzTLtOjfTWPzvH8E9PLYJEFDBh6K"
 	if err := globalconfig.Save(path, &in); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +110,7 @@ func TestSaveRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Web.Port != 0 || out.Proxy.DomainSuffix != "dev.lan" || len(out.Web.AllowedHosts) != 1 {
+	if out.Web.Port != 0 || out.Proxy.DomainSuffix != "dev.lan" || len(out.Web.AllowedHosts) != 1 || out.Web.PasswordHash != in.Web.PasswordHash {
 		t.Fatalf("roundtrip: %+v", out)
 	}
 }

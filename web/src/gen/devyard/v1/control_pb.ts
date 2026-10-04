@@ -184,6 +184,22 @@ export class Project extends Message<Project> {
    */
   links: Link[] = [];
 
+  /**
+   * has_config is false for a project without a devyard.yml (git view and
+   * terminals only).
+   *
+   * @generated from field: bool has_config = 12;
+   */
+  hasConfig = false;
+
+  /**
+   * position is the project's index in the global config's project list;
+   * clients show projects in this order.
+   *
+   * @generated from field: int32 position = 13;
+   */
+  position = 0;
+
   constructor(data?: PartialMessage<Project>) {
     super();
     proto3.util.initPartial(data, this);
@@ -203,6 +219,8 @@ export class Project extends Message<Project> {
     { no: 9, name: "primary", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 10, name: "updated_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
     { no: 11, name: "links", kind: "message", T: Link, repeated: true },
+    { no: 12, name: "has_config", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 13, name: "position", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Project {
@@ -1697,6 +1715,20 @@ export class GlobalConfig extends Message<GlobalConfig> {
    */
   proxy?: GlobalProxyConfig;
 
+  /**
+   * projects and groups are read-only here: UpdateGlobalConfig leaves them
+   * alone (projects change through AddProject, RemoveProject and
+   * MoveProject; groups are edited in the config file).
+   *
+   * @generated from field: repeated string projects = 3;
+   */
+  projects: string[] = [];
+
+  /**
+   * @generated from field: repeated devyard.v1.ProjectGroup groups = 4;
+   */
+  groups: ProjectGroup[] = [];
+
   constructor(data?: PartialMessage<GlobalConfig>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1707,6 +1739,8 @@ export class GlobalConfig extends Message<GlobalConfig> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "web", kind: "message", T: GlobalWebConfig },
     { no: 2, name: "proxy", kind: "message", T: GlobalProxyConfig },
+    { no: 3, name: "projects", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 4, name: "groups", kind: "message", T: ProjectGroup, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalConfig {
@@ -1723,6 +1757,51 @@ export class GlobalConfig extends Message<GlobalConfig> {
 
   static equals(a: GlobalConfig | PlainMessage<GlobalConfig> | undefined, b: GlobalConfig | PlainMessage<GlobalConfig> | undefined): boolean {
     return proto3.util.equals(GlobalConfig, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.ProjectGroup
+ */
+export class ProjectGroup extends Message<ProjectGroup> {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name = "";
+
+  /**
+   * members are project ids.
+   *
+   * @generated from field: repeated string members = 2;
+   */
+  members: string[] = [];
+
+  constructor(data?: PartialMessage<ProjectGroup>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.ProjectGroup";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "members", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ProjectGroup {
+    return new ProjectGroup().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ProjectGroup {
+    return new ProjectGroup().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ProjectGroup {
+    return new ProjectGroup().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ProjectGroup | PlainMessage<ProjectGroup> | undefined, b: ProjectGroup | PlainMessage<ProjectGroup> | undefined): boolean {
+    return proto3.util.equals(ProjectGroup, a, b);
   }
 }
 
@@ -1952,9 +2031,13 @@ export class SetWebPasswordResponse extends Message<SetWebPasswordResponse> {
  */
 export class AddProjectRequest extends Message<AddProjectRequest> {
   /**
-   * @generated from field: string config_path = 1;
+   * path is a project directory (with or without a devyard.yml) or the path
+   * of a config file. The project is appended to the global config's
+   * `projects` list.
+   *
+   * @generated from field: string path = 1;
    */
-  configPath = "";
+  path = "";
 
   /**
    * Launch environment ("KEY=VALUE") captured from the caller's shell.
@@ -1982,7 +2065,7 @@ export class AddProjectRequest extends Message<AddProjectRequest> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "devyard.v1.AddProjectRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "config_path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 1, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "env", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 3, name: "start", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 4, name: "build", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
@@ -2388,6 +2471,9 @@ export class RemoveProjectRequest extends Message<RemoveProjectRequest> {
 }
 
 /**
+ * RemoveProject stops the project, deletes its state and logs and removes it
+ * from the global config's `projects` list.
+ *
  * @generated from message devyard.v1.RemoveProjectResponse
  */
 export class RemoveProjectResponse extends Message<RemoveProjectResponse> {
@@ -2415,6 +2501,228 @@ export class RemoveProjectResponse extends Message<RemoveProjectResponse> {
 
   static equals(a: RemoveProjectResponse | PlainMessage<RemoveProjectResponse> | undefined, b: RemoveProjectResponse | PlainMessage<RemoveProjectResponse> | undefined): boolean {
     return proto3.util.equals(RemoveProjectResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.MoveProjectRequest
+ */
+export class MoveProjectRequest extends Message<MoveProjectRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * index is the new 0-based position in the project list (clamped).
+   *
+   * @generated from field: int32 index = 2;
+   */
+  index = 0;
+
+  constructor(data?: PartialMessage<MoveProjectRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.MoveProjectRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "index", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): MoveProjectRequest {
+    return new MoveProjectRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): MoveProjectRequest {
+    return new MoveProjectRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): MoveProjectRequest {
+    return new MoveProjectRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: MoveProjectRequest | PlainMessage<MoveProjectRequest> | undefined, b: MoveProjectRequest | PlainMessage<MoveProjectRequest> | undefined): boolean {
+    return proto3.util.equals(MoveProjectRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.MoveProjectResponse
+ */
+export class MoveProjectResponse extends Message<MoveProjectResponse> {
+  constructor(data?: PartialMessage<MoveProjectResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.MoveProjectResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): MoveProjectResponse {
+    return new MoveProjectResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): MoveProjectResponse {
+    return new MoveProjectResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): MoveProjectResponse {
+    return new MoveProjectResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: MoveProjectResponse | PlainMessage<MoveProjectResponse> | undefined, b: MoveProjectResponse | PlainMessage<MoveProjectResponse> | undefined): boolean {
+    return proto3.util.equals(MoveProjectResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.SuggestProjectPathsRequest
+ */
+export class SuggestProjectPathsRequest extends Message<SuggestProjectPathsRequest> {
+  /**
+   * prefix is a partial directory path ("~/dev/gi"); empty returns only the
+   * recently removed projects.
+   *
+   * @generated from field: string prefix = 1;
+   */
+  prefix = "";
+
+  constructor(data?: PartialMessage<SuggestProjectPathsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.SuggestProjectPathsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "prefix", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SuggestProjectPathsRequest {
+    return new SuggestProjectPathsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SuggestProjectPathsRequest {
+    return new SuggestProjectPathsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SuggestProjectPathsRequest {
+    return new SuggestProjectPathsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SuggestProjectPathsRequest | PlainMessage<SuggestProjectPathsRequest> | undefined, b: SuggestProjectPathsRequest | PlainMessage<SuggestProjectPathsRequest> | undefined): boolean {
+    return proto3.util.equals(SuggestProjectPathsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.PathSuggestion
+ */
+export class PathSuggestion extends Message<PathSuggestion> {
+  /**
+   * path is an absolute directory.
+   *
+   * @generated from field: string path = 1;
+   */
+  path = "";
+
+  /**
+   * @generated from field: bool has_config = 2;
+   */
+  hasConfig = false;
+
+  /**
+   * @generated from field: bool is_git = 3;
+   */
+  isGit = false;
+
+  /**
+   * listed is true when the directory is already a project.
+   *
+   * @generated from field: bool listed = 4;
+   */
+  listed = false;
+
+  constructor(data?: PartialMessage<PathSuggestion>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.PathSuggestion";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "has_config", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 3, name: "is_git", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "listed", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PathSuggestion {
+    return new PathSuggestion().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): PathSuggestion {
+    return new PathSuggestion().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): PathSuggestion {
+    return new PathSuggestion().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: PathSuggestion | PlainMessage<PathSuggestion> | undefined, b: PathSuggestion | PlainMessage<PathSuggestion> | undefined): boolean {
+    return proto3.util.equals(PathSuggestion, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.SuggestProjectPathsResponse
+ */
+export class SuggestProjectPathsResponse extends Message<SuggestProjectPathsResponse> {
+  /**
+   * recent lists removed projects that still exist, newest first.
+   *
+   * @generated from field: repeated devyard.v1.PathSuggestion recent = 1;
+   */
+  recent: PathSuggestion[] = [];
+
+  /**
+   * completions lists directories matching the prefix.
+   *
+   * @generated from field: repeated devyard.v1.PathSuggestion completions = 2;
+   */
+  completions: PathSuggestion[] = [];
+
+  constructor(data?: PartialMessage<SuggestProjectPathsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.SuggestProjectPathsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "recent", kind: "message", T: PathSuggestion, repeated: true },
+    { no: 2, name: "completions", kind: "message", T: PathSuggestion, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SuggestProjectPathsResponse {
+    return new SuggestProjectPathsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SuggestProjectPathsResponse {
+    return new SuggestProjectPathsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SuggestProjectPathsResponse {
+    return new SuggestProjectPathsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SuggestProjectPathsResponse | PlainMessage<SuggestProjectPathsResponse> | undefined, b: SuggestProjectPathsResponse | PlainMessage<SuggestProjectPathsResponse> | undefined): boolean {
+    return proto3.util.equals(SuggestProjectPathsResponse, a, b);
   }
 }
 

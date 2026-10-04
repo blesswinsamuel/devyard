@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toGit, toProject, toService, toTask } from "~/data/entities";
 import { git, project, service, task } from "~/test/fixtures";
-import { buildTree, gitSummary, treeKey, type TreeInput } from "./tree";
+import { buildTree, dropIndex, gitSummary, treeKey, type TreeInput } from "./tree";
 
 const input = (over: Partial<TreeInput> = {}): TreeInput => ({
   projects: [toProject(project({ id: "blog" })), toProject(project({ id: "shop" }))],
@@ -66,5 +66,23 @@ describe("gitSummary", () => {
   it("shows branch with ahead/behind", () => {
     expect(gitSummary(toGit(git({ ahead: 2, behind: 1 })))).toBe("main ↑2 ↓1");
     expect(gitSummary(toGit(git({ isRepo: false })))).toBe("");
+  });
+});
+
+describe("dropIndex", () => {
+  const order = ["a", "b", "c", "d"];
+  it("computes the index in the list without the dragged project", () => {
+    expect(dropIndex(order, "a", "c", false)).toBe(1); // b a c d
+    expect(dropIndex(order, "a", "c", true)).toBe(2); // b c a d
+    expect(dropIndex(order, "d", "a", false)).toBe(0);
+    expect(dropIndex(order, "d", "b", true)).toBe(2);
+    expect(dropIndex(order, "b", "d", true)).toBe(3);
+  });
+  it("ignores drops that change nothing", () => {
+    expect(dropIndex(order, "b", "b", true)).toBeNull();
+    expect(dropIndex(order, "b", "a", true)).toBeNull(); // already right after a
+    expect(dropIndex(order, "b", "c", false)).toBeNull(); // already right before c
+    expect(dropIndex(order, "x", "a", false)).toBeNull();
+    expect(dropIndex(order, "a", "x", false)).toBeNull();
   });
 });

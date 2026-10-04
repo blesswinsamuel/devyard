@@ -23,6 +23,29 @@ describe("action registry", () => {
     expect(new Set(ids(ACTIONS)).size).toBe(ACTIONS.length);
   });
 
+  it("offers move up/down by position in the project list", () => {
+    const state = stateWith({
+      projects: [project({ id: "b", position: 1 }), project({ id: "a", position: 0 }), project({ id: "c", position: 2 })],
+    });
+    const moves = (id: string) =>
+      ids(actionsFor(resolveContext({ kind: "project", project: id }, state))).filter((a) => a.startsWith("project.move"));
+    expect(moves("a")).toEqual(["project.move-down"]);
+    expect(moves("b")).toEqual(["project.move-up", "project.move-down"]);
+    expect(moves("c")).toEqual(["project.move-up"]);
+  });
+
+  it("moves a project one place through the API", async () => {
+    const state = stateWith({
+      projects: [project({ id: "a", position: 0 }), project({ id: "b", position: 1 }), project({ id: "c", position: 2 })],
+    });
+    const moveProject = vi.fn().mockResolvedValue({});
+    const env = { api: { moveProject } } as unknown as ActionEnv;
+    const ctx = (id: string) => resolveContext({ kind: "project", project: id }, state);
+    await getAction("project.move-down")!.run(ctx("a"), env);
+    await getAction("project.move-up")!.run(ctx("c"), env);
+    expect(moveProject.mock.calls).toEqual([[{ project: "a", index: 1 }], [{ project: "c", index: 1 }]]);
+  });
+
   it("offers stop/restart/kill for a running service, start for a stopped one", () => {
     const running = resolveContext(
       { kind: "service", project: "web", name: "api" },

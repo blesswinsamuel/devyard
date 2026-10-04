@@ -110,3 +110,19 @@ export function gitSummary(g: GitEntity | undefined): string {
   if (g.behind) parts.push(`↓${g.behind}`);
   return parts.join(" ");
 }
+
+/**
+ * The index to move `dragged` to when it is dropped before or after `target`
+ * in a list ordered as `order`: the position in the list without the dragged
+ * project, which is what the daemon expects. Null when the drop would not
+ * change anything.
+ */
+export function dropIndex(order: string[], dragged: string, target: string, after: boolean): number | null {
+  const from = order.indexOf(dragged);
+  if (from < 0 || dragged === target) return null;
+  const rest = order.filter((id) => id !== dragged);
+  const at = rest.indexOf(target);
+  if (at < 0) return null;
+  const index = at + (after ? 1 : 0);
+  return index === from ? null : index;
+}

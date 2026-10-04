@@ -13,6 +13,7 @@ export const queryKeys = {
   daemon: ["daemon"] as const,
   globalConfig: ["global-config"] as const,
   ports: (project: string) => ["ports", project] as const,
+  projectPaths: (prefix: string) => ["project-paths", prefix] as const,
   /** Prefix for every git query of a project; invalidated on change_seq. */
   git: (project: string) => ["git", project] as const,
   gitLog: (project: string) => ["git", project, "log"] as const,
@@ -35,6 +36,16 @@ export function useGlobalConfig() {
     queryKey: queryKeys.globalConfig,
     queryFn: () => api.getGlobalConfig({}),
     staleTime: Infinity,
+  }));
+}
+
+/** Directory completions for the add-project dialog (and recently removed projects). */
+export function useProjectPathSuggestions(prefix: () => string, enabled: () => boolean) {
+  return useQuery(() => ({
+    queryKey: queryKeys.projectPaths(prefix()),
+    queryFn: () => api.suggestProjectPaths({ prefix: prefix() }),
+    enabled: enabled(),
+    staleTime: 0,
   }));
 }
 

@@ -95,7 +95,7 @@ func TestLedger_O5_ProjectRemoveUnknownFails(t *testing.T) {
 	sb.CLI("project", "remove", "ghost").MustFail(t)
 }
 
-// O17: `project add --no-start` registers without ever starting services.
+// O17: `add --no-start` registers without ever starting services.
 func TestLedger_O17_ProjectAddNoStart(t *testing.T) {
 	t.Parallel()
 	sb := harness.New(t)
@@ -105,7 +105,7 @@ func TestLedger_O17_ProjectAddNoStart(t *testing.T) {
 `, nil)
 	d := sb.Daemon()
 	w := d.Watch(context.Background())
-	sb.CLI("project", "add", p.ConfigPath, "--no-start").MustSucceed(t)
+	sb.CLI("add", p.ConfigPath, "--no-start").MustSucceed(t)
 	w.WaitFor(t, "project registered", func(s harness.State) bool { return s.Project("nostart") != nil })
 	harness.Consistently(t, "no service started", 1500*time.Millisecond, func(c *harness.C) {
 		s := w.State()

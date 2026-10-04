@@ -29,6 +29,7 @@ import (
 	"github.com/blesswinsamuel/devyard/internal/globalconfig"
 	"github.com/blesswinsamuel/devyard/internal/paths"
 	"github.com/blesswinsamuel/devyard/internal/procstat"
+	"github.com/blesswinsamuel/devyard/internal/projects"
 	"github.com/blesswinsamuel/devyard/internal/proxy"
 	"github.com/blesswinsamuel/devyard/internal/runner"
 	"github.com/blesswinsamuel/devyard/internal/sessions"
@@ -177,9 +178,13 @@ func Run(opts Options) (err error) {
 	if err := mgr.Load(); err != nil {
 		log.Error("loading projects failed", "error", err)
 	}
+	projSvc := projects.New(mgr, dirs, log)
+	if err := projSvc.Start(context.Background()); err != nil {
+		log.Error("applying the global config's project list failed", "error", err)
+	}
 	sess := sessions.New(dirs, mgr, runner.LaunchOptions{})
 
-	apiServer := &api.Server{Mgr: mgr, Bus: d.bus, Git: git, Sessions: sess, Daemon: d, Log: log}
+	apiServer := &api.Server{Mgr: mgr, Projects: projSvc, Bus: d.bus, Git: git, Sessions: sess, Daemon: d, Log: log}
 	path, apiHandler := devyardv1connect.NewDaemonServiceHandler(apiServer)
 	apiMux := http.NewServeMux()
 	apiMux.Handle(path, apiHandler)

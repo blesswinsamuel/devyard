@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,12 +92,16 @@ func renderProjects(c *Context, list []*pb.Project) error {
 		_, _ = fmt.Fprintln(w, "(no projects)")
 		return w.Flush()
 	}
-	for _, p := range list {
+	for _, p := range sortedProjects(list) {
 		status := p.Status
 		if p.Error != "" {
 			status += " · " + p.Error
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%d/%d running\t%s\n", p.Id, status, p.ServicesRunning, p.ServicesTotal, p.ConfigPath)
+		services := fmt.Sprintf("%d/%d running", p.ServicesRunning, p.ServicesTotal)
+		if !p.HasConfig {
+			services = "no devyard.yml"
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Id, status, services, p.ConfigPath)
 	}
 	return w.Flush()
 }
@@ -145,4 +150,16 @@ func printLogLine(w io.Writer, l *pb.LogLine, prefixed bool) {
 		return
 	}
 	_, _ = fmt.Fprintln(w, text)
+}
+
+// sortedProjects orders projects as the project list does.
+func sortedProjects(list []*pb.Project) []*pb.Project {
+	out := slices.Clone(list)
+	slices.SortStableFunc(out, func(a, b *pb.Project) int {
+		if a.Position != b.Position {
+			return int(a.Position - b.Position)
+		}
+		return strings.Compare(a.Id, b.Id)
+	})
+	return out
 }

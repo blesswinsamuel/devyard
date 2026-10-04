@@ -36,6 +36,15 @@ Entity keys: projects by `id`, services and tasks by `project/name`, git
 status by `project`. `GetState` returns the same snapshot once, for scripts
 and the CLI.
 
+Projects come from the global config's `projects` list. `AddProject` appends a
+directory (or config file) to it and registers the project, `RemoveProject`
+drops it from the list and deletes its state, and `MoveProject` places a
+project at an index of the list. `Project.position` is the index clients sort
+by; `Project.has_config` is false for a directory without a devyard.yml.
+`SuggestProjectPaths` completes a directory prefix and lists recently removed
+projects for the add dialog. `GlobalConfig.projects` and `groups` are
+read-only in `UpdateGlobalConfig`.
+
 Mutating RPCs return once the owning actor has accepted the command:
 
 - `Stop*` returns once processes are gone.

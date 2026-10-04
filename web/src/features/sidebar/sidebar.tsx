@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { A, useLocation, useNavigate } from "@solidjs/router";
+import { toast } from "solid-sonner";
 import { ChevronRight, Command, PanelLeftClose, Play, Plus, Search, Settings } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
@@ -8,6 +9,8 @@ import { Logo } from "~/components/logo";
 import { HealthIndicator, StatusDot } from "~/components/status";
 import { Shortcut } from "~/components/shortcut";
 import { entities, getGit, getProject, getService, getTask, projectList, servicesOf, tasksOf } from "~/data/entities";
+import { api } from "~/data/client";
+import { errorInfo } from "~/data/errors";
 import { connection } from "~/data/sync";
 import { createPersistedSignal } from "~/lib/persistence";
 import { paths, targetFromPath, type RouteTarget } from "~/lib/paths";
@@ -15,7 +18,7 @@ import { isServiceFailing, isTransitional, projectTone, serviceLabel, serviceTon
 import { cn } from "~/lib/utils";
 import { targetAttrs } from "~/app/runtime";
 import { setAddProjectOpen, setPaletteOpen, setSidebarCollapsed } from "~/app/ui-state";
-import { buildTree, gitSummary, nodeId, treeKey, type TreeNode } from "./tree";
+import { buildTree, dropIndex, gitSummary, nodeId, treeKey, type TreeNode } from "./tree";
 
 const [expandedMap, setExpandedMap] = createPersistedSignal<Record<string, boolean>>("sidebar.expanded", {}, (raw) =>
   raw && typeof raw === "object" ? (raw as Record<string, boolean>) : undefined,
@@ -83,9 +86,11 @@ function ProjectRow(props: { node: TreeNode; onToggle: () => void }) {
           <Show
             when={failing() > 0}
             fallback={
-              <span class="tabular shrink-0 text-2xs text-muted-foreground" aria-label={`${project().servicesRunning} of ${project().servicesTotal} running`}>
-                {project().servicesRunning}/{project().servicesTotal}
-              </span>
+              <Show when={project().servicesTotal > 0}>
+                <span class="tabular shrink-0 text-2xs text-muted-foreground" aria-label={`${project().servicesRunning} of ${project().servicesTotal} running`}>
+                  {project().servicesRunning}/{project().servicesTotal}
+                </span>
+              </Show>
             }
           >
             <span class="tabular shrink-0 rounded-full bg-destructive/15 px-1.5 text-2xs font-medium text-destructive" aria-label={`${failing()} failing`}>
@@ -208,6 +213,59 @@ export function Sidebar(props: { onNavigate?: () => void; collapsible?: boolean 
 
   const phase = () => connection.state.phase;
 
+  // Drag a project row to reorder the project list (not while filtering:
+  // the visible rows are then not the list).
+  const [dragging, setDragging] = createSignal<string>();
+  const [drop, setDrop] = createSignal<{ project: string; after: boolean }>();
+  const reorderable = () => !filter().trim() && projectList().length > 1;
+  const endDrag = () => {
+    setDragging(undefined);
+    setDrop(undefined);
+  };
+  const dragProps = (node: TreeNode): Record<string, unknown> => ({
+    draggable: true,
+    onDragStart: (e: DragEvent) => {
+      e.dataTransfer?.setData("text/plain", node.project);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      setDragging(node.project);
+    },
+    onDragEnd: endDrag,
+    onDragOver: (e: DragEvent) => {
+      const from = dragging();
+      if (!from) return;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      if (dropIndex(projectList().map((p) => p.id), from, node.project, after) === null) {
+        setDrop(undefined);
+        return;
+      }
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      setDrop({ project: node.project, after });
+    },
+    onDrop: async (e: DragEvent) => {
+      e.preventDefault();
+      const from = dragging();
+      const target = drop();
+      endDrag();
+      if (!from || !target) return;
+      const index = dropIndex(projectList().map((p) => p.id), from, target.project, target.after);
+      if (index === null) return;
+      try {
+        await api.moveProject({ project: from, index });
+      } catch (err) {
+        const info = errorInfo(err);
+        toast.error(info.message ? `${info.reason}: ${info.message}` : info.reason);
+      }
+    },
+  });
+  const dropClass = (node: TreeNode) => {
+    if (node.kind !== "project") return undefined;
+    const d = drop();
+    if (d?.project === node.project) return d.after ? "shadow-[inset_0_-2px_0_0_var(--ring)]" : "shadow-[inset_0_2px_0_0_var(--ring)]";
+    return dragging() === node.project ? "opacity-50" : undefined;
+  };
+
   return (
     <div class="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
       <div class="flex h-(--header-h) shrink-0 items-center gap-2 border-b border-sidebar-border px-3">
@@ -278,6 +336,7 @@ export function Sidebar(props: { onNavigate?: () => void; collapsible?: boolean 
                   selectedId() === node.id
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "hover:bg-sidebar-accent/50",
+                  dropClass(node),
                 )}
                 triggerProps={{
                   role: "treeitem",
@@ -295,6 +354,7 @@ export function Sidebar(props: { onNavigate?: () => void; collapsible?: boolean 
                     activate(node);
                   },
                   onFocus: () => setFocused(node.id),
+                  ...(node.kind === "project" && reorderable() ? dragProps(node) : {}),
                 }}
               >
                 <Switch>

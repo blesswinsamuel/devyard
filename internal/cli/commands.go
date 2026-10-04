@@ -22,10 +22,12 @@ import (
 func newStartCmd(c *Context) *cobra.Command {
 	var follow, build bool
 	cmd := &cobra.Command{
-		Use:   "start [service...]",
-		Short: "Register the project and start all (or the named) services",
-		Long: "Registers the project (capturing this shell's environment for its services) and starts\n" +
-			"all services, or just the named ones plus their depends_on chain. Starts the daemon if needed.",
+		Use:   "start [service...|@group]",
+		Short: "Add the project and start all (or the named) services",
+		Long: "Adds the project to the project list (capturing this shell's environment for its\n" +
+			"services) and starts all services, or just the named ones plus their depends_on\n" +
+			"chain. Starts the daemon if needed. `@group` starts every project of a group from\n" +
+			"the global config.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cl, err := c.ensureDaemon(ctx)
@@ -33,6 +35,19 @@ func newStartCmd(c *Context) *cobra.Command {
 				return err
 			}
 			defer cl.Close()
+			if group, ok := groupArg(args); ok {
+				if follow {
+					return errors.New("--follow does not work with a group")
+				}
+				return c.forEachInGroup(ctx, cl, group, "started", func(id string) error {
+					// Refresh the launch environment from this shell, as start does.
+					if _, err := cl.ReloadProject(ctx, connect.NewRequest(&pb.ReloadProjectRequest{Project: id, Env: captureEnv(), UpdateEnv: true})); err != nil {
+						return err
+					}
+					_, err := cl.StartProject(ctx, connect.NewRequest(&pb.StartProjectRequest{Project: id, Build: build}))
+					return err
+				})
+			}
 			id, err := c.startProject(ctx, cl, args, build)
 			if err != nil {
 				return err
@@ -68,10 +83,10 @@ func (c *Context) startProject(ctx context.Context, cl *client.Client, services 
 		return "", err
 	}
 	resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{
-		ConfigPath: lc.Path,
-		Env:        captureEnv(),
-		Start:      len(services) == 0,
-		Build:      build && len(services) == 0,
+		Path:  lc.Path,
+		Env:   captureEnv(),
+		Start: len(services) == 0,
+		Build: build && len(services) == 0,
 	}))
 	if err != nil {
 		return "", err
@@ -191,7 +206,7 @@ func sourcesFor(kind string, names []string) []*pb.LogSource {
 
 func newStopCmd(c *Context) *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop [service...]",
+		Use:   "stop [service...|@group]",
 		Short: "Stop the project (it won't autostart) or the named services",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -200,6 +215,12 @@ func newStopCmd(c *Context) *cobra.Command {
 				return err
 			}
 			defer cl.Close()
+			if group, ok := groupArg(args); ok {
+				return c.forEachInGroup(ctx, cl, group, "stopped", func(id string) error {
+					_, err := cl.StopProject(ctx, connect.NewRequest(&pb.StopProjectRequest{Project: id}))
+					return err
+				})
+			}
 			id, err := c.projectID(ctx, cl)
 			if err != nil {
 				return err
@@ -225,7 +246,7 @@ func newStopCmd(c *Context) *cobra.Command {
 func newRestartCmd(c *Context) *cobra.Command {
 	var build bool
 	cmd := &cobra.Command{
-		Use:   "restart [service...]",
+		Use:   "restart [service...|@group]",
 		Short: "Restart the project's services or the named services",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -234,6 +255,12 @@ func newRestartCmd(c *Context) *cobra.Command {
 				return err
 			}
 			defer cl.Close()
+			if group, ok := groupArg(args); ok {
+				return c.forEachInGroup(ctx, cl, group, "restarted", func(id string) error {
+					_, err := cl.RestartProject(ctx, connect.NewRequest(&pb.RestartProjectRequest{Project: id, Build: build}))
+					return err
+				})
+			}
 			id, err := c.projectID(ctx, cl)
 			if err != nil {
 				return err

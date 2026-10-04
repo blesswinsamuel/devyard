@@ -68,7 +68,7 @@ func (c *Context) ensureRegistered(ctx context.Context, cl *client.Client) (stri
 	if p, err := findProject(ctx, cl, lc.Project.ID); err == nil && p.ConfigPath == lc.Path {
 		return p.Id, nil
 	}
-	resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{ConfigPath: lc.Path, Env: captureEnv()}))
+	resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{Path: lc.Path, Env: captureEnv()}))
 	if err != nil {
 		return "", err
 	}

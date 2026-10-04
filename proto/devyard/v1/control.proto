@@ -31,6 +31,8 @@ service DaemonService {
   rpc RestartProject(RestartProjectRequest) returns (RestartProjectResponse);
   rpc ReloadProject(ReloadProjectRequest) returns (ReloadProjectResponse);
   rpc RemoveProject(RemoveProjectRequest) returns (RemoveProjectResponse);
+  rpc MoveProject(MoveProjectRequest) returns (MoveProjectResponse);
+  rpc SuggestProjectPaths(SuggestProjectPathsRequest) returns (SuggestProjectPathsResponse);
 
   // Services
   rpc StartService(StartServiceRequest) returns (StartServiceResponse);
@@ -99,6 +101,12 @@ message Project {
   string primary = 9;
   int64 updated_at_unix_ms = 10;
   repeated Link links = 11;
+  // has_config is false for a project without a devyard.yml (git view and
+  // terminals only).
+  bool has_config = 12;
+  // position is the project's index in the global config's project list;
+  // clients show projects in this order.
+  int32 position = 13;
 }
 
 message Link {
@@ -315,6 +323,17 @@ message GlobalProxyConfig {
 message GlobalConfig {
   GlobalWebConfig web = 1;
   GlobalProxyConfig proxy = 2;
+  // projects and groups are read-only here: UpdateGlobalConfig leaves them
+  // alone (projects change through AddProject, RemoveProject and
+  // MoveProject; groups are edited in the config file).
+  repeated string projects = 3;
+  repeated ProjectGroup groups = 4;
+}
+
+message ProjectGroup {
+  string name = 1;
+  // members are project ids.
+  repeated string members = 2;
 }
 
 message GetGlobalConfigRequest {}
@@ -345,7 +364,10 @@ message SetWebPasswordResponse {}
 // -----------------------------------------------------------------------------
 
 message AddProjectRequest {
-  string config_path = 1;
+  // path is a project directory (with or without a devyard.yml) or the path
+  // of a config file. The project is appended to the global config's
+  // `projects` list.
+  string path = 1;
   // Launch environment ("KEY=VALUE") captured from the caller's shell.
   // Empty means "use the daemon's environment".
   repeated string env = 2;
@@ -393,7 +415,39 @@ message RemoveProjectRequest {
   string project = 1;
 }
 
+// RemoveProject stops the project, deletes its state and logs and removes it
+// from the global config's `projects` list.
 message RemoveProjectResponse {}
+
+message MoveProjectRequest {
+  string project = 1;
+  // index is the new 0-based position in the project list (clamped).
+  int32 index = 2;
+}
+
+message MoveProjectResponse {}
+
+message SuggestProjectPathsRequest {
+  // prefix is a partial directory path ("~/dev/gi"); empty returns only the
+  // recently removed projects.
+  string prefix = 1;
+}
+
+message PathSuggestion {
+  // path is an absolute directory.
+  string path = 1;
+  bool has_config = 2;
+  bool is_git = 3;
+  // listed is true when the directory is already a project.
+  bool listed = 4;
+}
+
+message SuggestProjectPathsResponse {
+  // recent lists removed projects that still exist, newest first.
+  repeated PathSuggestion recent = 1;
+  // completions lists directories matching the prefix.
+  repeated PathSuggestion completions = 2;
+}
 
 // -----------------------------------------------------------------------------
 // Services

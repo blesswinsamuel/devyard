@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { AddProjectRequest, AddProjectResponse, AttachRequest, AttachResponse, GetDaemonRequest, GetDaemonResponse, GetGlobalConfigRequest, GetGlobalConfigResponse, GetStateRequest, GetStateResponse, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, KillTaskRequest, KillTaskResponse, ListPortsRequest, ListPortsResponse, LogsRequest, LogsResponse, ReloadProjectRequest, ReloadProjectResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartProjectRequest, RestartProjectResponse, RestartServiceRequest, RestartServiceResponse, RunTaskRequest, RunTaskResponse, SetWebPasswordRequest, SetWebPasswordResponse, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StatsRequest, StatsResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, UpdateGlobalConfigRequest, UpdateGlobalConfigResponse, WatchRequest, WatchResponse } from "./control_pb.js";
+import { AddProjectRequest, AddProjectResponse, AttachRequest, AttachResponse, GetDaemonRequest, GetDaemonResponse, GetGlobalConfigRequest, GetGlobalConfigResponse, GetStateRequest, GetStateResponse, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitStageRequest, GitStageResponse, KillServiceRequest, KillServiceResponse, KillTaskRequest, KillTaskResponse, ListPortsRequest, ListPortsResponse, LogsRequest, LogsResponse, MoveProjectRequest, MoveProjectResponse, ReloadProjectRequest, ReloadProjectResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartProjectRequest, RestartProjectResponse, RestartServiceRequest, RestartServiceResponse, RunTaskRequest, RunTaskResponse, SetWebPasswordRequest, SetWebPasswordResponse, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StatsRequest, StatsResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SuggestProjectPathsRequest, SuggestProjectPathsResponse, UpdateGlobalConfigRequest, UpdateGlobalConfigResponse, WatchRequest, WatchResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -150,6 +150,24 @@ export const DaemonService = {
       name: "RemoveProject",
       I: RemoveProjectRequest,
       O: RemoveProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.MoveProject
+     */
+    moveProject: {
+      name: "MoveProject",
+      I: MoveProjectRequest,
+      O: MoveProjectResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.SuggestProjectPaths
+     */
+    suggestProjectPaths: {
+      name: "SuggestProjectPaths",
+      I: SuggestProjectPathsRequest,
+      O: SuggestProjectPathsResponse,
       kind: MethodKind.Unary,
     },
     /**

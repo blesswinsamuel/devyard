@@ -58,7 +58,7 @@ func TestAPI_AddProjectCapturesEnv(t *testing.T) {
 	d := sb.Daemon()
 	w := d.Watch(context.Background())
 	env := append(sb.Env(), "DY_WHO=api-caller")
-	resp, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{ConfigPath: p.ConfigPath, Env: env, Start: true}))
+	resp, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{Path: p.ConfigPath, Env: env, Start: true}))
 	harness.NoError(t, err, "AddProject")
 	if resp.Msg.GetProject().GetId() != "addenv" {
 		t.Errorf("project id %q", resp.Msg.GetProject().GetId())
@@ -98,7 +98,7 @@ func TestLedger_O3_ConcurrentStartProjectNoDuplicates(t *testing.T) {
 	p := sb.WriteProject("o3", twoMarked, nil)
 	d := sb.Daemon()
 	w := d.Watch(context.Background())
-	_, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{ConfigPath: p.ConfigPath, Env: sb.Env()}))
+	_, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{Path: p.ConfigPath, Env: sb.Env()}))
 	harness.NoError(t, err, "AddProject")
 	sa, sbm := sampleGroups(sb, "o3-a"), sampleGroups(sb, "o3-b")
 	var wg sync.WaitGroup
@@ -139,7 +139,7 @@ func TestLedger_O9_StopDuringStartIsNotLost(t *testing.T) {
 `, nil)
 	d := sb.Daemon()
 	w := d.Watch(context.Background())
-	_, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{ConfigPath: p.ConfigPath, Env: sb.Env()}))
+	_, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{Path: p.ConfigPath, Env: sb.Env()}))
 	harness.NoError(t, err, "AddProject")
 	go func() {
 		_, _ = d.Client().StartProject(context.Background(), connect.NewRequest(&v1.StartProjectRequest{Project: "o9", Build: true}))
@@ -174,12 +174,12 @@ services:
 	one := sb.WriteProject("same-one", cfg, nil)
 	two := sb.WriteProject("same-two", cfg, nil)
 	d := sb.Daemon()
-	_, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{ConfigPath: one.ConfigPath, Env: sb.Env()}))
+	_, err := d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{Path: one.ConfigPath, Env: sb.Env()}))
 	harness.NoError(t, err, "AddProject one")
-	_, err = d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{ConfigPath: two.ConfigPath, Env: sb.Env()}))
+	_, err = d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{Path: two.ConfigPath, Env: sb.Env()}))
 	harness.RequireCode(t, err, connect.CodeAlreadyExists)
 	// Re-adding the same path is idempotent.
-	_, err = d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{ConfigPath: one.ConfigPath, Env: sb.Env()}))
+	_, err = d.Client().AddProject(d.Ctx(), connect.NewRequest(&v1.AddProjectRequest{Path: one.ConfigPath, Env: sb.Env()}))
 	harness.NoError(t, err, "AddProject one again")
 	if got := d.State().Project("same").GetConfigPath(); got != one.ConfigPath {
 		t.Errorf("config path %q, want %q", got, one.ConfigPath)
@@ -241,7 +241,7 @@ tasks:
 	harness.RequireCode(t, err, connect.CodeInvalidArgument)
 	_, err = c.StartProject(ctx, connect.NewRequest(&v1.StartProjectRequest{Project: "../x"}))
 	harness.RequireCode(t, err, connect.CodeInvalidArgument)
-	_, err = c.AddProject(ctx, connect.NewRequest(&v1.AddProjectRequest{ConfigPath: filepath.Join(sb.Home, "nope", "devyard.yml")}))
+	_, err = c.AddProject(ctx, connect.NewRequest(&v1.AddProjectRequest{Path: filepath.Join(sb.Home, "nope", "devyard.yml")}))
 	if code := connect.CodeOf(err); code != connect.CodeNotFound && code != connect.CodeInvalidArgument && code != connect.CodeFailedPrecondition {
 		t.Errorf("AddProject(missing file): code %v, want NotFound, InvalidArgument or FailedPrecondition (%v)", code, err)
 	}

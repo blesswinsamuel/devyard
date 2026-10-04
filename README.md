@@ -8,7 +8,7 @@
 > One dev hub for all your projects and services — instead of processes scattered across a pile of terminal tabs.
 
 `devyard` runs your local dev services — API servers, web dev servers, databases, workers — from
-a small `devyard.yml`, without containers. Register as many projects as you like; one
+a small `devyard.yml`, without containers. Add as many projects as you like; one
 daemon supervises all of them, streams their logs, restarts them on crash, gates dependents on
 healthchecks, exposes them at named URLs, and gives you a fast web dashboard with terminals,
 interactive tasks and a git view.
@@ -99,7 +99,7 @@ tasks:
 ```
 
 ```bash
-devyard start            # register the project and start everything (starts the daemon)
+devyard start            # add the project and start everything (starts the daemon)
 devyard status           # status, pid, uptime, restarts, URLs
 devyard logs -f          # merged logs of all services (or: devyard logs api web)
 devyard restart api      # restart one service
@@ -112,9 +112,10 @@ devyard stop             # stop the project (it stays stopped across daemon rest
 
 | Command | What it does |
 | --- | --- |
-| `start [svc...] [-f] [--build]` | Register the project (capturing your shell's environment) and start its services (except `autostart: false` ones), or the named ones plus their `depends_on` chain. `-f` follows logs and stops on Ctrl-C. |
-| `stop [svc...]` | Stop the project (it won't autostart) or the named services. |
-| `restart [svc...] [--build]` | Restart the project's services or the named ones. |
+| `add [path] [--no-start]` | Add a directory (default: the current one) to the project list. A directory without a `devyard.yml` is a project too: it gets the git view and terminals. |
+| `start [svc...\|@group] [-f] [--build]` | Add the project (capturing your shell's environment) and start its services (except `autostart: false` ones), or the named ones plus their `depends_on` chain. `-f` follows logs and stops on Ctrl-C. `@group` starts every project of a [group](docs/config-schema.md#projects-and-groups). |
+| `stop [svc...\|@group]` | Stop the project (it won't autostart), the named services, or every project of a group. |
+| `restart [svc...\|@group] [--build]` | Restart the project's services, the named ones, or every project of a group. |
 | `reload` | Re-read `devyard.yml`: added services start, removed ones stop, changed ones restart, the rest keep running. Also refreshes the captured environment. |
 | `status [-a]` (`ps`) | Service status (`-a`: all projects; `-o json` for scripts). |
 | `logs [svc...] [-f] [--tail N] [--previous]` | Logs; merged with name prefixes when several services. |
@@ -126,7 +127,7 @@ devyard stop             # stop the project (it stays stopped across daemon rest
 | `web [--open]` | Print or open the dashboard URL. |
 | `auth set-password [--stdin]` / `auth clear` | Set (or remove) the dashboard password: the API and terminals then require a login. Applies immediately when a daemon runs (also available in Settings → Dashboard password). |
 | `schema` | Print the JSON Schema of `devyard.yml`. |
-| `project list\|add\|start\|stop\|restart\|reload\|remove\|logs` | Manage registered projects (`remove` deletes state and logs). |
+| `project list\|move\|start\|stop\|restart\|reload\|remove\|logs` | Manage projects. `move <project> <position\|first\|last>` reorders the list; `remove` takes the project off the list and deletes its state and logs. |
 | `service …` / `task list\|run\|stop\|kill\|logs` | Resource-scoped variants of the above. |
 | `daemon start\|stop\|restart [-r]\|status` | Manage the daemon. `restart` keeps services running unless `-r`. |
 

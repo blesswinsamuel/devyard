@@ -123,7 +123,15 @@ The manager is the registry of project actors. `Add` either registers a
 config or re-registers an existing one, so concurrent `devyard start` calls
 funnel into the same actor and never duplicate processes. Project ids are
 validated slugs. A different config declaring the same name fails with
-`ErrAlreadyExists`.
+`ErrAlreadyExists`. A directory without a config file registers as a project
+with no services.
+
+Which projects exist and their order are not manager state: they come from the
+`projects` list of the global config. `internal/projects` owns that list. Its
+`Add`, `Remove` and `Move` edit the file (keeping comments) and then call the
+manager, and `Reconcile` applies the file's list to the manager (register what
+is listed, stop and forget what is not, set the order). Every operation holds
+one lock, so a reconcile never sees a half-made edit.
 
 ## Logs (`internal/logstore`)
 

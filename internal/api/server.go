@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"connectrpc.com/connect"
@@ -17,6 +18,7 @@ import (
 	"github.com/blesswinsamuel/devyard/internal/gitstate"
 	"github.com/blesswinsamuel/devyard/internal/globalconfig"
 	"github.com/blesswinsamuel/devyard/internal/ports"
+	"github.com/blesswinsamuel/devyard/internal/projects"
 	"github.com/blesswinsamuel/devyard/internal/sessions"
 )
 
@@ -39,6 +41,7 @@ type Daemon interface {
 // Server implements devyardv1connect.DaemonServiceHandler.
 type Server struct {
 	Mgr      *engine.Manager
+	Projects *projects.Service
 	Bus      *events.Bus
 	Git      *gitstate.Tracker
 	Sessions *sessions.Manager
@@ -105,7 +108,14 @@ func (s *Server) SetWebPassword(ctx context.Context, req *connect.Request[pb.Set
 }
 
 func globalConfigToProto(c *globalconfig.Config) *pb.GlobalConfig {
+	var groups []*pb.ProjectGroup
+	for name, members := range c.Groups {
+		groups = append(groups, &pb.ProjectGroup{Name: name, Members: members})
+	}
+	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
 	return &pb.GlobalConfig{
+		Projects: c.Projects,
+		Groups:   groups,
 		Web: &pb.GlobalWebConfig{
 			Host:         c.Web.Host,
 			Port:         int32(c.Web.Port),
@@ -189,18 +199,18 @@ func (s *Server) GetState(ctx context.Context, _ *connect.Request[pb.GetStateReq
 // --- projects ----------------------------------------------------------------
 
 func (s *Server) AddProject(ctx context.Context, req *connect.Request[pb.AddProjectRequest]) (*connect.Response[pb.AddProjectResponse], error) {
-	if req.Msg.ConfigPath == "" {
-		return nil, invalid("config_path is required")
+	if req.Msg.Path == "" {
+		return nil, invalid("path is required")
 	}
 	var env []string
 	if len(req.Msg.Env) > 0 {
 		env = req.Msg.Env
 	}
-	p, err := s.Mgr.Add(ctx, engine.AddOptions{
-		ConfigPath: req.Msg.ConfigPath,
-		Env:        env,
-		Start:      req.Msg.Start,
-		Build:      req.Msg.Build,
+	p, err := s.Projects.Add(ctx, projects.AddOptions{
+		Path:  req.Msg.Path,
+		Env:   env,
+		Start: req.Msg.Start,
+		Build: req.Msg.Build,
 	})
 	resp := &pb.AddProjectResponse{}
 	if p != nil {
@@ -268,10 +278,32 @@ func (s *Server) RemoveProject(ctx context.Context, req *connect.Request[pb.Remo
 	if req.Msg.Project == "" {
 		return nil, invalid("project is required")
 	}
-	if err := s.Mgr.Remove(ctx, req.Msg.Project); err != nil {
+	if err := s.Projects.Remove(ctx, req.Msg.Project); err != nil {
 		return nil, toConnect(err)
 	}
 	return connect.NewResponse(&pb.RemoveProjectResponse{}), nil
+}
+
+func (s *Server) MoveProject(ctx context.Context, req *connect.Request[pb.MoveProjectRequest]) (*connect.Response[pb.MoveProjectResponse], error) {
+	if req.Msg.Project == "" {
+		return nil, invalid("project is required")
+	}
+	if err := s.Projects.Move(ctx, req.Msg.Project, int(req.Msg.Index)); err != nil {
+		return nil, toConnect(err)
+	}
+	return connect.NewResponse(&pb.MoveProjectResponse{}), nil
+}
+
+func (s *Server) SuggestProjectPaths(ctx context.Context, req *connect.Request[pb.SuggestProjectPathsRequest]) (*connect.Response[pb.SuggestProjectPathsResponse], error) {
+	recent, completions := s.Projects.Suggestions(req.Msg.Prefix)
+	toProto := func(in []projects.Suggestion) []*pb.PathSuggestion {
+		out := make([]*pb.PathSuggestion, len(in))
+		for i, x := range in {
+			out[i] = &pb.PathSuggestion{Path: x.Path, HasConfig: x.HasConfig, IsGit: x.IsGit, Listed: x.Listed}
+		}
+		return out
+	}
+	return connect.NewResponse(&pb.SuggestProjectPathsResponse{Recent: toProto(recent), Completions: toProto(completions)}), nil
 }
 
 // --- services ----------------------------------------------------------------

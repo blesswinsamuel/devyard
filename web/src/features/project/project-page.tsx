@@ -101,11 +101,13 @@ export function ProjectPage() {
                       </span>
                     </Meta>
                   </Show>
-                  <Meta label="services">
-                    <span class="tabular">
-                      {p().servicesRunning}/{p().servicesTotal} running
-                    </span>
-                  </Meta>
+                  <Show when={p().hasConfig}>
+                    <Meta label="services">
+                      <span class="tabular">
+                        {p().servicesRunning}/{p().servicesTotal} running
+                      </span>
+                    </Meta>
+                  </Show>
                 </>
               }
               actions={
@@ -130,7 +132,13 @@ export function ProjectPage() {
             <Section title="Services" count={services().length || undefined} id="services-heading">
               <Show
                 when={services().length}
-                fallback={<p class="rounded-lg border border-dashed p-6 text-center text-ui text-muted-foreground">No services defined.</p>}
+                fallback={
+                  <p class="rounded-lg border border-dashed p-6 text-center text-ui text-muted-foreground">
+                    <Show when={p().hasConfig} fallback={<>No <code class="font-mono">devyard.yml</code> here: this project has the git view and terminals. Create one to run services; it is picked up automatically.</>}>
+                      No services defined.
+                    </Show>
+                  </p>
+                }
               >
                 <ServicesTable services={services()} stats={stats} />
               </Show>

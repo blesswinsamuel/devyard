@@ -1,5 +1,7 @@
 import type { Component } from "solid-js";
 import {
+  ArrowDown,
+  ArrowUp,
   CloudDownload,
   Command,
   Download,
@@ -37,6 +39,7 @@ import { SERVICE_KILLABLE, SERVICE_STARTABLE, SERVICE_STOPPABLE, TASK_ACTIVE } f
 import type { DaemonClient } from "./client";
 import {
   entityKey,
+  sortProjects,
   type DaemonEntity,
   type EntityState,
   type GitEntity,
@@ -62,6 +65,8 @@ export interface ActionContext {
   service?: ServiceEntity;
   task?: TaskEntity;
   git?: GitEntity;
+  /** Project ids in list order. */
+  projectOrder: string[];
   daemon: DaemonEntity | null;
 }
 
@@ -500,6 +505,32 @@ export const ACTIONS: Action[] = [
     run: (c, env) => env.pinLogs(proj(c).id),
   },
   {
+    id: "project.move-up",
+    label: "Move up",
+    title: (c) => `Move ${proj(c).id} up in the project list`,
+    icon: ArrowUp,
+    group: "project",
+    scope: "project",
+    when: (c) => !!c.project && c.projectOrder.indexOf(c.project.id) > 0,
+    run: async (c, env) => {
+      const id = proj(c).id;
+      await env.api.moveProject({ project: id, index: c.projectOrder.indexOf(id) - 1 });
+    },
+  },
+  {
+    id: "project.move-down",
+    label: "Move down",
+    title: (c) => `Move ${proj(c).id} down in the project list`,
+    icon: ArrowDown,
+    group: "project",
+    scope: "project",
+    when: (c) => !!c.project && c.projectOrder.indexOf(c.project.id) >= 0 && c.projectOrder.indexOf(c.project.id) < c.projectOrder.length - 1,
+    run: async (c, env) => {
+      const id = proj(c).id;
+      await env.api.moveProject({ project: id, index: c.projectOrder.indexOf(id) + 1 });
+    },
+  },
+  {
     id: "project.remove",
     label: "Remove",
     title: (c) => `Remove project ${proj(c).id}`,
@@ -510,7 +541,7 @@ export const ACTIONS: Action[] = [
     when: (c) => !!c.project,
     confirm: (c) => ({
       title: `Remove ${proj(c).id}?`,
-      description: `Stops everything in ${proj(c).id} and unregisters it from the daemon, deleting its logs and state. Your devyard.yml and source files are not touched.`,
+      description: `Stops everything in ${proj(c).id}, removes it from the project list and deletes its logs and state. Your devyard.yml and source files are not touched. You can add it back from the Add project dialog.`,
       confirmLabel: "Remove project",
     }),
     run: async (c, env) => {
@@ -663,7 +694,11 @@ export function getAction(id: string): Action {
 }
 
 export function resolveContext(target: ActionTarget, state: EntityState): ActionContext {
-  const ctx: ActionContext = { target, daemon: state.daemon };
+  const ctx: ActionContext = {
+    target,
+    daemon: state.daemon,
+    projectOrder: sortProjects(Object.values(state.projects)).map((p) => p.id),
+  };
   if (target.kind === "app") return ctx;
   ctx.project = state.projects[target.project];
   ctx.git = state.git[target.project];

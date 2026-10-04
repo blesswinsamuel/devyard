@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/blesswinsamuel/devyard/internal/engine"
@@ -32,7 +31,6 @@ type fixture struct {
 	dirs paths.Dirs
 	mgr  *engine.Manager
 	svc  *projects.Service
-	mu   sync.Mutex
 }
 
 func newFixture(t *testing.T) *fixture {

@@ -15,7 +15,7 @@ import {
 import type { PartialMessage } from "@bufbuild/protobuf";
 
 export const project = (p: PartialMessage<Project> = {}) =>
-  new Project({ id: "web", configPath: "/src/web/devyard.yml", status: "running", desired: "running", ...p });
+  new Project({ id: "web", configPath: "/src/web/devyard.yml", hasConfig: true, status: "running", desired: "running", ...p });
 
 export const service = (s: PartialMessage<Service> = {}) =>
   new Service({

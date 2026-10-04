@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
@@ -19,7 +21,7 @@ import (
 // --- project ---------------------------------------------------------------
 
 func newProjectCmd(c *Context) *cobra.Command {
-	cmd := &cobra.Command{Use: "project", Aliases: []string{"projects", "p"}, Short: "Manage registered projects"}
+	cmd := &cobra.Command{Use: "project", Aliases: []string{"projects", "p"}, Short: "Manage projects"}
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:     "list",
@@ -37,8 +39,9 @@ func newProjectCmd(c *Context) *cobra.Command {
 					return err
 				}
 				if c.JSON() {
-					msgs := make([]proto.Message, len(snap.Projects))
-					for i, p := range snap.Projects {
+					sorted := sortedProjects(snap.Projects)
+					msgs := make([]proto.Message, len(sorted))
+					for i, p := range sorted {
 						msgs[i] = p
 					}
 					return c.printProtoJSON(msgs)
@@ -46,7 +49,7 @@ func newProjectCmd(c *Context) *cobra.Command {
 				return renderProjects(c, snap.Projects)
 			},
 		},
-		newProjectAddCmd(c),
+		newProjectMoveCmd(c),
 		projectAction(c, "start", "Start all services of a project", func(ctx context.Context, cl *client.Client, id string) error {
 			_, err := cl.StartProject(ctx, connect.NewRequest(&pb.StartProjectRequest{Project: id}))
 			return err
@@ -63,7 +66,7 @@ func newProjectCmd(c *Context) *cobra.Command {
 			_, err := cl.ReloadProject(ctx, connect.NewRequest(&pb.ReloadProjectRequest{Project: id}))
 			return err
 		}),
-		projectAction(c, "remove", "Stop a project and delete its registration, state and logs", func(ctx context.Context, cl *client.Client, id string) error {
+		projectAction(c, "remove", "Remove a project from the list: stop it and delete its state and logs", func(ctx context.Context, cl *client.Client, id string) error {
 			_, err := cl.RemoveProject(ctx, connect.NewRequest(&pb.RemoveProjectRequest{Project: id}))
 			return err
 		}),
@@ -104,12 +107,16 @@ func projectAction(c *Context, use, short string, fn func(context.Context, *clie
 	return cmd
 }
 
-func newProjectAddCmd(c *Context) *cobra.Command {
+// newAddCmd adds a project directory to the global config's project list.
+func newAddCmd(c *Context) *cobra.Command {
 	var noStart bool
 	cmd := &cobra.Command{
-		Use:   "add <path>",
-		Short: "Register a project config (and start it unless --no-start)",
-		Args:  cobra.ExactArgs(1),
+		Use:   "add [path]",
+		Short: "Add a project (default: the current directory)",
+		Long: "Adds a directory to the project list in the global config and registers it. The\n" +
+			"directory may have a devyard.yml or not: without one it is a project with only the\n" +
+			"git view and terminals. Services start unless --no-start.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cl, err := c.ensureDaemon(ctx)
@@ -117,22 +124,68 @@ func newProjectAddCmd(c *Context) *cobra.Command {
 				return err
 			}
 			defer cl.Close()
-			path, err := filepath.Abs(args[0])
+			target := "."
+			if len(args) == 1 {
+				target = args[0]
+			}
+			path, err := filepath.Abs(target)
 			if err != nil {
 				return err
 			}
 			resp, err := cl.AddProject(ctx, connect.NewRequest(&pb.AddProjectRequest{
-				ConfigPath: path, Env: captureEnv(), Start: !noStart,
+				Path: path, Env: captureEnv(), Start: !noStart,
 			}))
 			if err != nil {
 				return err
 			}
-			c.Errorf("devyard: registered project %q from %s\n", resp.Msg.Project.GetId(), path)
+			c.Errorf("devyard: added project %q (%s)\n", resp.Msg.Project.GetId(), path)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&noStart, "no-start", false, "Register without starting services")
+	cmd.Flags().BoolVar(&noStart, "no-start", false, "Add without starting services")
 	return cmd
+}
+
+// newProjectMoveCmd reorders the project list.
+func newProjectMoveCmd(c *Context) *cobra.Command {
+	return &cobra.Command{
+		Use:   "move <project> <position|first|last>",
+		Short: "Move a project to a position in the list (1 is first)",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			index, err := parsePosition(args[1])
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			cl, err := c.dial(ctx)
+			if err != nil {
+				return err
+			}
+			defer cl.Close()
+			if _, err := cl.MoveProject(ctx, connect.NewRequest(&pb.MoveProjectRequest{Project: args[0], Index: int32(index)})); err != nil {
+				return err
+			}
+			c.Errorf("devyard: moved project %q to %s\n", args[0], args[1])
+			return nil
+		},
+	}
+}
+
+// parsePosition converts a 1-based position (or first/last) to the 0-based
+// index of the protocol; last is any index past the end (the server clamps).
+func parsePosition(s string) (int, error) {
+	switch s {
+	case "first":
+		return 0, nil
+	case "last":
+		return math.MaxInt32, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("position must be a number from 1, first or last, got %q", s)
+	}
+	return n - 1, nil
 }
 
 func newProjectLogsCmd(c *Context) *cobra.Command {

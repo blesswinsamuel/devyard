@@ -316,7 +316,7 @@ task). Stopping the project stops running tasks.
 Every process gets, later layers winning:
 
 1. the **launch environment**: the environment of the shell that last ran
-   `devyard start` (or `reload`, or `project add`), minus `PWD`, `OLDPWD`,
+   `devyard start` (or `reload`, or `add`), minus `PWD`, `OLDPWD`,
    `SHLVL` and `_`. The daemon stores it with the project (mode 0600), so
    services see the same `PATH`, version managers and tool settings as your
    terminal, regardless of daemon restarts or autostart. Projects added from
@@ -379,9 +379,16 @@ to it; there is no port forwarding.
 
 In addition to the per-project `devyard.yml`, the daemon reads a
 user-level global config at `$XDG_CONFIG_HOME/devyard/config.yml`
-(default `~/.config/devyard/config.yml`) for default bind settings:
+(default `~/.config/devyard/config.yml`): the list of projects, groups of
+them, and the bind settings of the dashboard and the proxy.
 
 ```yaml
+projects:              # which projects exist, in display order
+  - ~/dev/myapp        # a directory (devyard.yml optional)
+  - ~/dev/notes
+  - ~/dev/legacy/devyard.yaml   # or the path of a config file
+groups:
+  work: [myapp, api]   # project ids; `devyard start @work`
 web:
   host: 127.0.0.1      # bind address (default: 127.0.0.1, loopback only)
   port: 9090           # TCP port (default: 9090; 0 = pick a free port)
@@ -398,6 +405,35 @@ proxy:
     key_file: ""       # custom PEM private key file (optional)
     http_redirect: false # redirect HTTP requests to HTTPS (default: false)
 ```
+
+### Projects and groups
+
+`projects` is the single source of truth for which projects exist and in
+which order the dashboard and `devyard project list` show them. Each entry is
+a directory or the path of a config file; `~` is expanded.
+
+- A **directory** is looked at for `devyard.yml`, then `devyard.yaml`. A
+  directory with neither is a project with no services: the dashboard still
+  gives it the git view and terminals, and a `devyard.yml` created later is
+  picked up without a reload.
+- `devyard add [path]`, `devyard start` and `devyard run` in a new directory,
+  and the dashboard's Add project dialog append to the list. `devyard project
+  remove` and the dashboard's Remove drop an entry, stop the project and
+  delete its state and logs; the dashboard offers the last 20 removed projects
+  again when adding. `devyard project move` and dragging in the sidebar
+  reorder the list.
+- These edits change the file in place: your comments and other keys stay.
+- Editing the list by hand works too (see below). A missing `projects` key
+  changes nothing; an empty list removes every project. A directory that no
+  longer exists is shown as a project in an error state, so you can see it and
+  remove it.
+- The first daemon to start without a `projects` key adopts the projects
+  already registered with it into the list.
+
+`groups` maps a name to project ids. `devyard start|stop|restart @name` acts
+on every project of the group, in order. Groups are edited in the file only.
+
+### Daemon settings
 
 | Field | Default | Notes |
 | --- | --- | --- |

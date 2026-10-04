@@ -51,6 +51,8 @@ func (p *presenter) ProjectChanged(st engine.ProjectState) {
 		Error:           st.Error,
 		ServicesTotal:   int32(st.ServicesTotal),
 		ServicesRunning: int32(st.ServicesActive),
+		HasConfig:       st.HasConfig,
+		Position:        int32(st.Position),
 		Primary:         st.Primary,
 		Links:           links(st.Links),
 		UpdatedAtUnixMs: st.UpdatedAt.UnixMilli(),

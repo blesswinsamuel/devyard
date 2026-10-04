@@ -416,7 +416,7 @@ func TestCLI_ProjectAddAndStart(t *testing.T) {
   a:
     run: {{fixture "ticker"}} -interval 1s
 `, nil)
-	sb.CLI("project", "add", p.ConfigPath).MustSucceed(t)
+	sb.CLI("add", p.ConfigPath).MustSucceed(t)
 	w := sb.Daemon().Watch(context.Background())
 	p.WaitRunning(w)
 	sb.CLI("project", "stop", "added").MustSucceed(t)

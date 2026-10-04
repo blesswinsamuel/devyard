@@ -49,6 +49,10 @@ export interface DaemonEntity {
 export interface ProjectEntity {
   id: string;
   configPath: string;
+  /** False for a project without a devyard.yml (git view and terminals only). */
+  hasConfig: boolean;
+  /** Index in the global config's project list; the sidebar order. */
+  position: number;
   /** Project env files that exist, in load order. */
   envFiles: string[];
   status: ProjectStatus;
@@ -183,6 +187,8 @@ export function toProject(p: Project): ProjectEntity {
   return {
     id: p.id,
     configPath: p.configPath,
+    hasConfig: p.hasConfig,
+    position: p.position,
     envFiles: [...p.envFiles],
     status: (p.status || "stopped") as ProjectStatus,
     desired: (p.desired || "stopped") as ProjectDesired,
@@ -403,10 +409,12 @@ const state = entities.state;
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
 
+/** Projects in list order: the global config's order, then by id. */
+export const sortProjects = (projects: ProjectEntity[]): ProjectEntity[] =>
+  [...projects].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
+
 const selectors = createRoot(() => {
-  const projectList = createMemo(() =>
-    Object.values(state.projects).sort((a, b) => a.id.localeCompare(b.id)),
-  );
+  const projectList = createMemo(() => sortProjects(Object.values(state.projects)));
   const servicesByProject = createMemo(() => {
     const map: Record<string, ServiceEntity[]> = {};
     for (const s of Object.values(state.services)) (map[s.project] ??= []).push(s);

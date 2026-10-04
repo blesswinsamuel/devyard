@@ -61,17 +61,6 @@ Pre-compiled static binaries for macOS (`arm64`, `amd64`) and Linux (`amd64`, `a
 
 > **Windows support**: `devyard` manages native Unix processes, PTYs, Unix domain sockets, and process groups. It is macOS and Linux only. Windows users can run devyard seamlessly inside [WSL2](https://learn.microsoft.com/en-us/windows/wsl/).
 
-### Building from source
-
-The web dashboard is embedded into the Go binary, so build the frontend assets first:
-
-```bash
-git clone https://github.com/blesswinsamuel/devyard.git && cd devyard
-(cd web && bun install && bun run build)
-go build -ldflags "-X github.com/blesswinsamuel/devyard/internal/cli.Version=$(git describe --tags --always)" \
-  -o devyard ./cmd/devyard
-```
-
 ## Quick start
 
 ```yaml

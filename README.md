@@ -113,7 +113,7 @@ devyard stop             # stop the project (it stays stopped across daemon rest
 | `attach <svc\|task>` | Attach to a running TTY service or task (Ctrl-] detaches). |
 | `build [svc...]` | Run build steps in the foreground. |
 | `web [--open]` | Print or open the dashboard URL. |
-| `auth set-password [--stdin]` / `auth clear` | Set (or remove) the dashboard password: the API and terminals then require a login. Applied after `daemon restart`. |
+| `auth set-password [--stdin]` / `auth clear` | Set (or remove) the dashboard password: the API and terminals then require a login. Applies immediately when a daemon runs (also available in Settings → Dashboard password). |
 | `schema` | Print the JSON Schema of `devyard.yml`. |
 | `project list\|add\|start\|stop\|restart\|reload\|remove\|logs` | Manage registered projects (`remove` deletes state and logs). |
 | `service …` / `task list\|run\|stop\|kill\|logs` | Resource-scoped variants of the above. |

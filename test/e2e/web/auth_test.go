@@ -162,10 +162,78 @@ func TestWebPasswordCLIRoundtrip(t *testing.T) {
 		t.Fatalf("settings save did not write allowed_hosts:\n%s", data)
 	}
 
-	// `devyard auth clear` removes it; a restart opens the dashboard.
+	// `devyard auth clear` (daemon running) goes through the RPC and opens
+	// the dashboard immediately, without a restart.
 	sb.CLI("auth", "clear").MustSucceed(t)
-	d.Restart(false)
 	if r := harness.HTTPDo(nil, http.MethodPost, d.WebURL()+rpcPath, "", jsonHeader(), strings.NewReader("{}")); r.Code != http.StatusOK {
-		t.Fatalf("RPC after clear+restart: %d, want 200 (open dashboard)", r.Code)
+		t.Fatalf("RPC after clear: %d, want 200 (open dashboard, no restart)", r.Code)
+	}
+}
+
+// SetWebPassword/ClearWebPassword apply without a restart: the live gate
+// is swapped, and the new key invalidates every existing session cookie.
+func TestWebPasswordRPC(t *testing.T) {
+	t.Parallel()
+	sb := gatedSandbox(t)
+	d := sb.Daemon()
+
+	// Login and grab a session cookie under the current password.
+	hc, code := loginClient(t, d, testPassword)
+	if code != http.StatusNoContent {
+		t.Fatalf("login: %d", code)
+	}
+	if r := harness.HTTPDo(hc, http.MethodPost, d.WebURL()+rpcPath, "", jsonHeader(), strings.NewReader("{}")); r.Code != http.StatusOK {
+		t.Fatalf("RPC after login: %d", r.Code)
+	}
+
+	// Change the password over the control socket.
+	ctx := d.Ctx()
+	if _, err := d.Client().SetWebPassword(ctx, connect.NewRequest(&v1.SetWebPasswordRequest{Password: "rotated"})); err != nil {
+		t.Fatal(err)
+	}
+
+	// Applied immediately: the API is gated again and the old session
+	// cookie no longer works (the gate has a fresh key).
+	if r := harness.HTTPDo(nil, http.MethodPost, d.WebURL()+rpcPath, "", jsonHeader(), strings.NewReader("{}")); r.Code != http.StatusUnauthorized {
+		t.Fatalf("RPC after SetWebPassword: %d, want 401 (immediate)", r.Code)
+	}
+	if r := harness.HTTPDo(hc, http.MethodPost, d.WebURL()+rpcPath, "", jsonHeader(), strings.NewReader("{}")); r.Code != http.StatusUnauthorized {
+		t.Fatalf("old session cookie still works after a password change: %d, want 401", r.Code)
+	}
+	if _, code := loginClient(t, d, testPassword); code != http.StatusUnauthorized {
+		t.Fatalf("old password still accepted: %d", code)
+	}
+	hc2, code := loginClient(t, d, "rotated")
+	if code != http.StatusNoContent {
+		t.Fatalf("login with the new password: %d", code)
+	}
+	if r := harness.HTTPDo(hc2, http.MethodPost, d.WebURL()+rpcPath, "", jsonHeader(), strings.NewReader("{}")); r.Code != http.StatusOK {
+		t.Fatalf("RPC with the new password: %d", r.Code)
+	}
+
+	// The hash survives a settings save, and the UI-visible status flag
+	// reflects it.
+	g, err := d.Client().GetGlobalConfig(ctx, connect.NewRequest(&v1.GetGlobalConfigRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !g.Msg.GetConfig().GetWeb().GetPasswordSet() {
+		t.Fatal("GetGlobalConfig reports no password set")
+	}
+	cfg := g.Msg.GetConfig()
+	cfg.Web.AllowedHosts = []string{"box.example"}
+	if _, err := d.Client().UpdateGlobalConfig(ctx, connect.NewRequest(&v1.UpdateGlobalConfigRequest{Config: cfg})); err != nil {
+		t.Fatal(err)
+	}
+	if _, code := loginClient(t, d, "rotated"); code != http.StatusNoContent {
+		t.Fatalf("login after settings save: %d (hash wiped?)", code)
+	}
+
+	// Clearing opens the dashboard immediately.
+	if _, err := d.Client().SetWebPassword(ctx, connect.NewRequest(&v1.SetWebPasswordRequest{Clear: true})); err != nil {
+		t.Fatal(err)
+	}
+	if r := harness.HTTPDo(nil, http.MethodPost, d.WebURL()+rpcPath, "", jsonHeader(), strings.NewReader("{}")); r.Code != http.StatusOK {
+		t.Fatalf("RPC after clear RPC: %d, want 200 (no restart)", r.Code)
 	}
 }

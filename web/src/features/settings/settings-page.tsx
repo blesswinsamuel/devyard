@@ -13,6 +13,7 @@ import { formatBytes, formatDuration, now } from "~/lib/format";
 import { setThemePref, themePref, type ThemePref } from "~/lib/theme";
 import { ShortcutsReference } from "~/features/shortcuts/shortcuts";
 import { GlobalConfigForm } from "./global-config-form";
+import { WebPasswordField } from "./web-password-field";
 
 function Card(props: { title: string; description?: string; children: JSX.Element; id: string }) {
   return (
@@ -137,6 +138,13 @@ export function SettingsPage() {
       </Card>
       <Card id="global-config" title="Global configuration" description="Listener and proxy settings shared by all projects.">
         <GlobalConfigForm />
+      </Card>
+      <Card
+        id="web-password"
+        title="Dashboard password"
+        description="Optional. When set, the dashboard, terminals and logs require a login."
+      >
+        <WebPasswordField />
       </Card>
       <Card id="shortcuts" title="Keyboard shortcuts">
         <ShortcutsReference />

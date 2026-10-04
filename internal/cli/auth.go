@@ -2,21 +2,28 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 
+	"connectrpc.com/connect"
+
+	"github.com/blesswinsamuel/devyard/internal/client"
+	pb "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
 	"github.com/blesswinsamuel/devyard/internal/globalconfig"
 )
 
 // newAuthCmd manages the dashboard password (web.password_hash in the
-// global config). The daemon applies it at startup.
+// global config). A running daemon applies changes immediately; without
+// one, the file is written and the next daemon start picks it up.
 func newAuthCmd(c *Context) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
@@ -33,11 +40,21 @@ func newSetPasswordCmd(c *Context) *cobra.Command {
 		Short: "Set the web dashboard password (bcrypt-hashed in the global config)",
 		Long: "Prompts for the password and stores its bcrypt hash as web.password_hash\n" +
 			"in the global config. The API, terminals and logs then require a login\n" +
-			"before they load; restart the daemon to apply it.",
+			"before they load. A running daemon applies it immediately; otherwise it\n" +
+			"applies when the daemon starts.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			pw, err := readNewPassword(c, fromStdin)
 			if err != nil {
 				return err
+			}
+			if cl, ok := c.tryDial(ctx); ok {
+				defer cl.Close()
+				if _, err := cl.SetWebPassword(ctx, connect.NewRequest(&pb.SetWebPasswordRequest{Password: pw})); err != nil {
+					return err
+				}
+				c.Errorf("devyard: dashboard password set (applied immediately; everyone must log in again)\n")
+				return nil
 			}
 			hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 			if err != nil {
@@ -46,7 +63,7 @@ func newSetPasswordCmd(c *Context) *cobra.Command {
 			if err := saveGlobalConfig(func(cfg *globalconfig.Config) { cfg.Web.PasswordHash = string(hash) }); err != nil {
 				return err
 			}
-			c.Errorf("devyard: dashboard password set (restart to apply: `devyard daemon restart`)\n")
+			c.Errorf("devyard: dashboard password set (applies when the daemon starts)\n")
 			return nil
 		},
 	}
@@ -59,13 +76,36 @@ func newAuthClearCmd(c *Context) *cobra.Command {
 		Use:   "clear",
 		Short: "Remove the web dashboard password",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			if cl, ok := c.tryDial(ctx); ok {
+				defer cl.Close()
+				if _, err := cl.SetWebPassword(ctx, connect.NewRequest(&pb.SetWebPasswordRequest{Clear: true})); err != nil {
+					return err
+				}
+				c.Errorf("devyard: dashboard password cleared (the dashboard is open again)\n")
+				return nil
+			}
 			if err := saveGlobalConfig(func(cfg *globalconfig.Config) { cfg.Web.PasswordHash = "" }); err != nil {
 				return err
 			}
-			c.Errorf("devyard: dashboard password cleared (restart to apply: `devyard daemon restart`)\n")
+			c.Errorf("devyard: dashboard password cleared (applies when the daemon starts)\n")
 			return nil
 		},
 	}
+}
+
+// tryDial connects to a running daemon, reporting whether one answered.
+func (c *Context) tryDial(ctx context.Context) (*client.Client, bool) {
+	d, err := dirs()
+	if err != nil {
+		return nil, false
+	}
+	cl := client.Dial(d.Socket())
+	if _, err := cl.Ping(ctx, time.Second); err != nil {
+		cl.Close()
+		return nil, false
+	}
+	return cl, true
 }
 
 // saveGlobalConfig loads the global config, applies mutate and saves it.

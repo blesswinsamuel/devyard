@@ -22,7 +22,7 @@ func authHandler(t *testing.T, password string) (http.Handler, *Authenticator) {
 	h := Handler(Options{
 		API:   http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
 		Hosts: func() HostPolicy { return HostPolicy{DomainSuffix: "localhost"} },
-		Auth:  a,
+		Auth:  func() *Authenticator { return a },
 	})
 	return h, a
 }
@@ -161,6 +161,78 @@ func TestAuthCookieValidation(t *testing.T) {
 	if call(other.token(a.now().Add(sessionTTL))) != http.StatusUnauthorized {
 		t.Fatal("foreign-daemon token accepted")
 	}
+}
+
+// The gate is consulted per request: swapping the authenticator (password
+// changed/cleared via SetWebPassword) takes effect immediately, and a nil
+// authenticator disables the gate entirely.
+func TestAuthGateDynamicSwap(t *testing.T) {
+	var cur *Authenticator
+	h := Handler(Options{
+		API:   http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
+		Hosts: func() HostPolicy { return HostPolicy{DomainSuffix: "localhost"} },
+		Auth:  func() *Authenticator { return cur },
+	})
+	apiReq := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, apiPath+"GetDaemon", nil)
+		req.Host = "localhost:9090"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	cur, err := NewAuthenticator(string(hashOf(t, "one")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if apiReq().Code != http.StatusUnauthorized {
+		t.Fatal("API not gated while a password is set")
+	}
+
+	// A password change: the old session cookie stops working (fresh key)
+	// while a fresh login succeeds.
+	cookie := loginCookie(h, "one")
+	next, err := NewAuthenticator(string(hashOf(t, "two")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur = next
+	req := httptest.NewRequest(http.MethodPost, apiPath+"GetDaemon", nil)
+	req.Host = "localhost:9090"
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatal("cookie from the old gate still unlocks the API")
+	}
+	if c := loginCookie(h, "two"); c.Value == "" {
+		t.Fatal("login with the new password failed")
+	}
+
+	// Clearing the password opens the dashboard and 404s the login route.
+	cur = nil
+	if apiReq().Code != http.StatusOK {
+		t.Fatal("API still gated after clearing the password")
+	}
+	req = httptest.NewRequest(http.MethodPost, "/auth/login", strings.NewReader(`{"password":"two"}`))
+	req.Host = "localhost:9090"
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("login with no password set: %d, want 404", rec.Code)
+	}
+}
+
+// loginCookie posts the password and returns the session cookie (an empty
+// cookie when login fails).
+func loginCookie(h http.Handler, password string) *http.Cookie {
+	rec := login(h, password)
+	cookies := rec.Result().Cookies()
+	if rec.Code != http.StatusNoContent || len(cookies) != 1 {
+		return &http.Cookie{}
+	}
+	return cookies[0]
 }
 
 func hashOf(t *testing.T, password string) []byte {

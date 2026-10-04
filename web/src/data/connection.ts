@@ -30,6 +30,8 @@ export interface WatchConnectionOptions {
   onMessage: (msg: WatchResponse) => void;
   /** Called when a stream delivers its first message. */
   onLive?: (reconnected: boolean) => void;
+  /** Called when a stream fails or ends (before the retry is scheduled). */
+  onError?: (err: unknown) => void;
   backoff?: BackoffOptions;
   /** Abort and reconnect when nothing (not even a heartbeat) arrives for this long. */
   heartbeatTimeoutMs?: number;
@@ -80,6 +82,7 @@ export function createWatchConnection(opts: WatchConnectionOptions) {
         }
         error = "stream closed by daemon";
       } catch (err) {
+        opts.onError?.(err);
         error = ac.signal.aborted && ac.signal.reason instanceof Error ? ac.signal.reason.message : errorMessage(err);
       } finally {
         clearTimeout(timer);

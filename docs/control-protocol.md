@@ -14,7 +14,10 @@ Regenerate with `buf generate` after editing the proto.
 | Web UI sessions | `ws(s)://<dashboard>/ws/attach`: one websocket per interactive session (browsers cannot do bidi Connect). |
 
 Every dashboard request must carry an allowed `Host` header (see
-`internal/web`). Websockets must be same-origin.
+`internal/web`). Websockets must be same-origin. When a dashboard password
+is set, the API and `/ws/attach` additionally require a login cookie
+(`Unauthenticated` otherwise; see "Global config and the dashboard
+password" below).
 
 ## Observing state: `Watch`
 
@@ -136,6 +139,26 @@ interval.
 its listeners and lock, and spawns its replacement. Services keep running
 (they belong to their runners) unless `restart_services` is set. Clients
 wait for `GetDaemon` to report a new pid.
+
+## Global config and the dashboard password
+
+`GetGlobalConfig` returns the global config (`web`, `proxy`) and its path;
+`UpdateGlobalConfig` saves it. `web.password_set` is read-only status —
+the bcrypt hash itself never crosses the wire.
+
+`SetWebPassword{password}` bcrypt-hashes the password, persists it as
+`web.password_hash` and swaps the live login gate **without a restart**:
+the fresh HMAC key invalidates every existing session cookie, so all
+clients must log in again (`Unauthenticated` until then).
+`SetWebPassword{clear: true}` removes the password and opens the
+dashboard, also immediately. On the dashboard listener these RPCs sit
+behind the login; on the control socket they are file-permission gated,
+like every other RPC.
+
+The settings UI sets a password and then re-logins this device with the
+same `POST /auth/login` the login screen uses, so the flow is seamless.
+When a password appears elsewhere (e.g. the CLI), the SPA's `Watch`
+stream fails with `Unauthenticated` and reloads into the login screen.
 
 ## Changing the protocol
 

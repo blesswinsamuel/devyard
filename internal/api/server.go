@@ -30,6 +30,10 @@ type Daemon interface {
 	RequestRestart(restartServices bool)
 	GlobalConfig() (*globalconfig.Config, string, error)
 	SaveGlobalConfig(*globalconfig.Config) error
+	// SetWebPassword sets the dashboard password (bcrypt-hashed) and
+	// applies it without a restart. ClearWebPassword removes it.
+	SetWebPassword(password string) error
+	ClearWebPassword() error
 }
 
 // Server implements devyardv1connect.DaemonServiceHandler.
@@ -84,9 +88,30 @@ func (s *Server) UpdateGlobalConfig(ctx context.Context, req *connect.Request[pb
 	return connect.NewResponse(&pb.UpdateGlobalConfigResponse{}), nil
 }
 
+func (s *Server) SetWebPassword(ctx context.Context, req *connect.Request[pb.SetWebPasswordRequest]) (*connect.Response[pb.SetWebPasswordResponse], error) {
+	if req.Msg.Clear {
+		if err := s.Daemon.ClearWebPassword(); err != nil {
+			return nil, toConnect(err)
+		}
+	} else {
+		if req.Msg.Password == "" {
+			return nil, invalid("password is required (or clear)")
+		}
+		if err := s.Daemon.SetWebPassword(req.Msg.Password); err != nil {
+			return nil, toConnect(err)
+		}
+	}
+	return connect.NewResponse(&pb.SetWebPasswordResponse{}), nil
+}
+
 func globalConfigToProto(c *globalconfig.Config) *pb.GlobalConfig {
 	return &pb.GlobalConfig{
-		Web: &pb.GlobalWebConfig{Host: c.Web.Host, Port: int32(c.Web.Port), AllowedHosts: c.Web.AllowedHosts},
+		Web: &pb.GlobalWebConfig{
+			Host:         c.Web.Host,
+			Port:         int32(c.Web.Port),
+			AllowedHosts: c.Web.AllowedHosts,
+			PasswordSet:  c.Web.PasswordHash != "",
+		},
 		Proxy: &pb.GlobalProxyConfig{
 			Host:         c.Proxy.Host,
 			Port:         int32(c.Proxy.Port),

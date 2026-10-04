@@ -45,3 +45,8 @@ export function isCanceled(err: unknown): boolean {
   if (err instanceof ConnectError) return err.code === Code.Canceled;
   return err instanceof DOMException && err.name === "AbortError";
 }
+
+/** Whether the daemon rejected the call because the dashboard needs a login. */
+export function isUnauthenticated(err: unknown): boolean {
+  return errorInfo(err).code === Code.Unauthenticated;
+}

@@ -181,11 +181,14 @@ The dashboard serves the embedded SPA, the ConnectRPC API, and
   `web.allowed_hosts`. This blocks DNS rebinding.
 - **Origin check:** websockets require the same Origin as the Host.
 - **Password (opt-in):** when `web.password_hash` is set
-  (`devyard auth set-password`), the API and `/ws/attach` require a login
-  cookie (bcrypt check via `POST /auth/login`; HMAC-signed expiry, no server
-  state, so sessions die with the daemon). The SPA itself is served either
-  way and renders a login screen. Unauthenticated API calls get a
-  Connect-protocol `unauthenticated` error body.
+  (`devyard auth set-password` or the settings UI), the API and `/ws/attach`
+  require a login cookie (bcrypt check via `POST /auth/login`; HMAC-signed
+  expiry, no server state, so sessions die with the daemon — or with a
+  password change, which swaps the gate's key). The SPA itself is served
+  either way and renders a login screen. Unauthenticated API calls get a
+  Connect-protocol `unauthenticated` error body. `SetWebPassword` swaps
+  the live gate without a restart; the daemon holds it behind a getter
+  like the Host allowlist.
 
 ## Sessions (`internal/sessions`)
 

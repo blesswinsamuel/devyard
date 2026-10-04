@@ -80,8 +80,11 @@ type Options struct {
 	API      http.Handler // mounted at /devyard.v1.DaemonService/
 	Sessions *sessions.Manager
 	Hosts    func() HostPolicy
-	// Auth, when non-nil, gates the API and /ws/attach behind a password.
-	Auth *Authenticator
+	// Auth returns the current password gate, or nil when the dashboard is
+	// open. Consulted per request so the daemon can change or clear the
+	// password (SetWebPassword) without a restart. A nil Auth disables
+	// the gate entirely.
+	Auth func() *Authenticator
 	Log  *slog.Logger
 }
 
@@ -96,8 +99,8 @@ func Handler(opts Options) http.Handler {
 	mux.Handle("/", spaHandler())
 	var next http.Handler = mux
 	if opts.Auth != nil {
-		mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) { opts.Auth.serveLogin(w, r) })
-		next = opts.Auth.wrap(mux)
+		mux.HandleFunc("/auth/login", serveLoginRoute(opts.Auth))
+		next = authWrap(opts.Auth, mux)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !opts.Hosts().Allowed(r.Host) {

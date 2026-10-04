@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/blesswinsamuel/devyard/internal/api"
 	"github.com/blesswinsamuel/devyard/internal/engine"
 	"github.com/blesswinsamuel/devyard/internal/events"
@@ -60,6 +62,9 @@ type daemon struct {
 
 	gcfgMu sync.Mutex
 	gcfg   *globalconfig.Config
+	// auth is the live password gate (nil = open dashboard), swapped by
+	// SetWebPassword/ClearWebPassword. Guarded by gcfgMu.
+	auth *web.Authenticator
 
 	webAddr, proxyAddr, proxyTLSAddr string
 
@@ -120,11 +125,12 @@ func Run(opts Options) (err error) {
 
 	// Fail closed: a malformed hash refuses to start rather than serving
 	// an open dashboard.
-	var auth *web.Authenticator
 	if gcfg.Web.PasswordHash != "" {
-		if auth, err = web.NewAuthenticator(gcfg.Web.PasswordHash); err != nil {
-			return fmt.Errorf("daemon: %w", err)
+		a, aerr := web.NewAuthenticator(gcfg.Web.PasswordHash)
+		if aerr != nil {
+			return fmt.Errorf("daemon: %w", aerr)
 		}
+		d.auth = a
 	}
 
 	// Bind every listener before touching projects so a port collision is
@@ -186,7 +192,7 @@ func Run(opts Options) (err error) {
 	ctlSrv := &http.Server{Handler: apiMux, Protocols: protocols}
 	go func() { _ = ctlSrv.Serve(ctlLn) }()
 
-	dashboard := web.Handler(web.Options{API: apiMux, Sessions: sess, Hosts: d.hostPolicy, Auth: auth, Log: log})
+	dashboard := web.Handler(web.Options{API: apiMux, Sessions: sess, Hosts: d.hostPolicy, Auth: d.authenticator, Log: log})
 	webSrv := &http.Server{Handler: dashboard, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = webSrv.Serve(webLn) }()
 	resolver.setDashboard(dashboard)
@@ -382,8 +388,8 @@ func (d *daemon) GlobalConfig() (*globalconfig.Config, string, error) {
 
 // SaveGlobalConfig implements api.Daemon. Listener changes apply after a
 // daemon restart; allowed hosts apply immediately. The password hash is
-// managed by `devyard auth` and is not part of the wire schema, so
-// whatever is on disk is preserved.
+// managed by `devyard auth` / SetWebPassword and is not part of the wire
+// schema, so whatever is on disk is preserved.
 func (d *daemon) SaveGlobalConfig(cfg *globalconfig.Config) error {
 	cur, err := globalconfig.Load(d.dirs.GlobalConfig(), nil)
 	if err != nil {
@@ -396,6 +402,53 @@ func (d *daemon) SaveGlobalConfig(cfg *globalconfig.Config) error {
 	d.gcfgMu.Lock()
 	d.gcfg.Web.AllowedHosts = cfg.Web.AllowedHosts
 	d.gcfgMu.Unlock()
+	return nil
+}
+
+// authenticator returns the live password gate (nil = open dashboard).
+func (d *daemon) authenticator() *web.Authenticator {
+	d.gcfgMu.Lock()
+	defer d.gcfgMu.Unlock()
+	return d.auth
+}
+
+// SetWebPassword implements api.Daemon: persist a bcrypt hash of password
+// in the global config and swap the live gate. Existing sessions stop
+// working (the new gate gets a fresh key).
+func (d *daemon) SetWebPassword(password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("daemon: hash password: %w", err)
+	}
+	return d.applyWebPasswordHash(string(hash))
+}
+
+// ClearWebPassword implements api.Daemon: remove the password and open the
+// dashboard. Both changes apply without a restart.
+func (d *daemon) ClearWebPassword() error { return d.applyWebPasswordHash("") }
+
+// applyWebPasswordHash persists the hash in the global config (preserving
+// every other field) and swaps the live gate.
+func (d *daemon) applyWebPasswordHash(hash string) error {
+	cfg, err := globalconfig.Load(d.dirs.GlobalConfig(), nil)
+	if err != nil {
+		return fmt.Errorf("daemon: read global config: %w", err)
+	}
+	cfg.Web.PasswordHash = hash
+	if err := globalconfig.Save(d.dirs.GlobalConfig(), cfg); err != nil {
+		return err
+	}
+	var auth *web.Authenticator
+	if hash != "" {
+		if auth, err = web.NewAuthenticator(hash); err != nil {
+			return fmt.Errorf("daemon: %w", err) // unreachable: the hash is ours
+		}
+	}
+	d.gcfgMu.Lock()
+	d.gcfg.Web.PasswordHash = hash
+	d.auth = auth
+	d.gcfgMu.Unlock()
+	d.log.Info("dashboard password changed", "set", hash != "")
 	return nil
 }
 

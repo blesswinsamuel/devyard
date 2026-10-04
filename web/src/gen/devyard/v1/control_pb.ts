@@ -1528,6 +1528,14 @@ export class GlobalWebConfig extends Message<GlobalWebConfig> {
    */
   allowedHosts: string[] = [];
 
+  /**
+   * Read-only: whether a dashboard password is configured. The hash itself
+   * is never exposed; SetWebPassword manages it.
+   *
+   * @generated from field: bool password_set = 4;
+   */
+  passwordSet = false;
+
   constructor(data?: PartialMessage<GlobalWebConfig>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1539,6 +1547,7 @@ export class GlobalWebConfig extends Message<GlobalWebConfig> {
     { no: 1, name: "host", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "port", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 3, name: "allowed_hosts", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 4, name: "password_set", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalWebConfig {
@@ -1856,6 +1865,85 @@ export class UpdateGlobalConfigResponse extends Message<UpdateGlobalConfigRespon
 
   static equals(a: UpdateGlobalConfigResponse | PlainMessage<UpdateGlobalConfigResponse> | undefined, b: UpdateGlobalConfigResponse | PlainMessage<UpdateGlobalConfigResponse> | undefined): boolean {
     return proto3.util.equals(UpdateGlobalConfigResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.SetWebPasswordRequest
+ */
+export class SetWebPasswordRequest extends Message<SetWebPasswordRequest> {
+  /**
+   * The new dashboard password. Hashed (bcrypt) server-side; the plaintext
+   * is never stored. Ignored when clear is true.
+   *
+   * @generated from field: string password = 1;
+   */
+  password = "";
+
+  /**
+   * Remove the password: the dashboard becomes open again.
+   *
+   * @generated from field: bool clear = 2;
+   */
+  clear = false;
+
+  constructor(data?: PartialMessage<SetWebPasswordRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.SetWebPasswordRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "password", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "clear", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SetWebPasswordRequest {
+    return new SetWebPasswordRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SetWebPasswordRequest {
+    return new SetWebPasswordRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SetWebPasswordRequest {
+    return new SetWebPasswordRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SetWebPasswordRequest | PlainMessage<SetWebPasswordRequest> | undefined, b: SetWebPasswordRequest | PlainMessage<SetWebPasswordRequest> | undefined): boolean {
+    return proto3.util.equals(SetWebPasswordRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.SetWebPasswordResponse
+ */
+export class SetWebPasswordResponse extends Message<SetWebPasswordResponse> {
+  constructor(data?: PartialMessage<SetWebPasswordResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.SetWebPasswordResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): SetWebPasswordResponse {
+    return new SetWebPasswordResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): SetWebPasswordResponse {
+    return new SetWebPasswordResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): SetWebPasswordResponse {
+    return new SetWebPasswordResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: SetWebPasswordResponse | PlainMessage<SetWebPasswordResponse> | undefined, b: SetWebPasswordResponse | PlainMessage<SetWebPasswordResponse> | undefined): boolean {
+    return proto3.util.equals(SetWebPasswordResponse, a, b);
   }
 }
 

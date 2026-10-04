@@ -404,7 +404,7 @@ proxy:
 | `web.host` | `127.0.0.1` | Bind address for the daemon's web dashboard. Set to `0.0.0.0` for remote access. |
 | `web.port` | `9090` | TCP port for the web UI. `0` picks a free port (see `devyard daemon status`). |
 | `web.allowed_hosts` | `[]` | Extra hostnames the dashboard answers to (`*.example.com` matches subdomains). Loopback names, IP addresses, `devyard` and names under `proxy.domain_suffix` are always allowed; anything else gets 403, which blocks DNS-rebinding attacks. |
-| `web.password_hash` | `""` | bcrypt hash of the dashboard password (`devyard auth set-password` writes it; never hand-write it). When set, the API, terminals and logs require a login (the SPA shows a login screen); empty leaves the dashboard open. Set it when binding to `0.0.0.0` or exposing the dashboard beyond loopback. Applied after `devyard daemon restart`. |
+| `web.password_hash` | `""` | bcrypt hash of the dashboard password (`devyard auth set-password` or the settings UI; never hand-write it). When set, the API, terminals and logs require a login (the SPA shows a login screen); empty leaves the dashboard open. Set it when binding to `0.0.0.0` or exposing the dashboard beyond loopback. Applies without a restart when set through the daemon (`devyard auth` with one running, or the settings UI); a hand-edited file applies at the next start. |
 | `proxy.host` | `127.0.0.1` | Bind address for the daemon's reverse proxy. Set to `0.0.0.0` for LAN access. |
 | `proxy.port` | `8080` | TCP port for the reverse proxy. `0` picks a free port. |
 | `proxy.domain_suffix` | `localhost` | Domain routes are served under. Set to a nip.io name (e.g. `192-168-1-5.nip.io`) or a wildcard DNS zone for LAN access. |
@@ -415,10 +415,10 @@ proxy:
 | `proxy.tls.http_redirect` | `false` | When true, incoming HTTP requests redirect (307) to HTTPS. |
 
 Listener changes take effect after `devyard daemon restart` (services keep
-running). `allowed_hosts` applies immediately when saved from the web UI;
+running). `allowed_hosts` applies immediately when saved from the web UI.
 `password_hash` is managed by `devyard auth set-password` / `devyard auth
-clear` and applies after a restart (saving the global config from the web
-UI never touches it).
+clear` and the settings UI (both apply it without a restart when a daemon
+is running); saving the global config from the web UI never touches it.
 
 Unknown fields in the global config produce a warning (printed to stderr) but
 do not error, matching `devyard.yml`.

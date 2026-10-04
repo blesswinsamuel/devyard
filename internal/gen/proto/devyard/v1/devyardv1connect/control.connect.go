@@ -47,6 +47,9 @@ const (
 	// DaemonServiceUpdateGlobalConfigProcedure is the fully-qualified name of the DaemonService's
 	// UpdateGlobalConfig RPC.
 	DaemonServiceUpdateGlobalConfigProcedure = "/devyard.v1.DaemonService/UpdateGlobalConfig"
+	// DaemonServiceSetWebPasswordProcedure is the fully-qualified name of the DaemonService's
+	// SetWebPassword RPC.
+	DaemonServiceSetWebPasswordProcedure = "/devyard.v1.DaemonService/SetWebPassword"
 	// DaemonServiceWatchProcedure is the fully-qualified name of the DaemonService's Watch RPC.
 	DaemonServiceWatchProcedure = "/devyard.v1.DaemonService/Watch"
 	// DaemonServiceGetStateProcedure is the fully-qualified name of the DaemonService's GetState RPC.
@@ -119,6 +122,7 @@ type DaemonServiceClient interface {
 	RestartDaemon(context.Context, *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error)
 	GetGlobalConfig(context.Context, *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error)
 	UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error)
+	SetWebPassword(context.Context, *connect.Request[v1.SetWebPasswordRequest]) (*connect.Response[v1.SetWebPasswordResponse], error)
 	// State observation
 	Watch(context.Context, *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WatchResponse], error)
 	GetState(context.Context, *connect.Request[v1.GetStateRequest]) (*connect.Response[v1.GetStateResponse], error)
@@ -192,6 +196,12 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			httpClient,
 			baseURL+DaemonServiceUpdateGlobalConfigProcedure,
 			connect.WithSchema(daemonServiceMethods.ByName("UpdateGlobalConfig")),
+			connect.WithClientOptions(opts...),
+		),
+		setWebPassword: connect.NewClient[v1.SetWebPasswordRequest, v1.SetWebPasswordResponse](
+			httpClient,
+			baseURL+DaemonServiceSetWebPasswordProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("SetWebPassword")),
 			connect.WithClientOptions(opts...),
 		),
 		watch: connect.NewClient[v1.WatchRequest, v1.WatchResponse](
@@ -360,6 +370,7 @@ type daemonServiceClient struct {
 	restartDaemon      *connect.Client[v1.RestartDaemonRequest, v1.RestartDaemonResponse]
 	getGlobalConfig    *connect.Client[v1.GetGlobalConfigRequest, v1.GetGlobalConfigResponse]
 	updateGlobalConfig *connect.Client[v1.UpdateGlobalConfigRequest, v1.UpdateGlobalConfigResponse]
+	setWebPassword     *connect.Client[v1.SetWebPasswordRequest, v1.SetWebPasswordResponse]
 	watch              *connect.Client[v1.WatchRequest, v1.WatchResponse]
 	getState           *connect.Client[v1.GetStateRequest, v1.GetStateResponse]
 	addProject         *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
@@ -411,6 +422,11 @@ func (c *daemonServiceClient) GetGlobalConfig(ctx context.Context, req *connect.
 // UpdateGlobalConfig calls devyard.v1.DaemonService.UpdateGlobalConfig.
 func (c *daemonServiceClient) UpdateGlobalConfig(ctx context.Context, req *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error) {
 	return c.updateGlobalConfig.CallUnary(ctx, req)
+}
+
+// SetWebPassword calls devyard.v1.DaemonService.SetWebPassword.
+func (c *daemonServiceClient) SetWebPassword(ctx context.Context, req *connect.Request[v1.SetWebPasswordRequest]) (*connect.Response[v1.SetWebPasswordResponse], error) {
+	return c.setWebPassword.CallUnary(ctx, req)
 }
 
 // Watch calls devyard.v1.DaemonService.Watch.
@@ -551,6 +567,7 @@ type DaemonServiceHandler interface {
 	RestartDaemon(context.Context, *connect.Request[v1.RestartDaemonRequest]) (*connect.Response[v1.RestartDaemonResponse], error)
 	GetGlobalConfig(context.Context, *connect.Request[v1.GetGlobalConfigRequest]) (*connect.Response[v1.GetGlobalConfigResponse], error)
 	UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error)
+	SetWebPassword(context.Context, *connect.Request[v1.SetWebPasswordRequest]) (*connect.Response[v1.SetWebPasswordResponse], error)
 	// State observation
 	Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error
 	GetState(context.Context, *connect.Request[v1.GetStateRequest]) (*connect.Response[v1.GetStateResponse], error)
@@ -620,6 +637,12 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		DaemonServiceUpdateGlobalConfigProcedure,
 		svc.UpdateGlobalConfig,
 		connect.WithSchema(daemonServiceMethods.ByName("UpdateGlobalConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceSetWebPasswordHandler := connect.NewUnaryHandler(
+		DaemonServiceSetWebPasswordProcedure,
+		svc.SetWebPassword,
+		connect.WithSchema(daemonServiceMethods.ByName("SetWebPassword")),
 		connect.WithHandlerOptions(opts...),
 	)
 	daemonServiceWatchHandler := connect.NewServerStreamHandler(
@@ -790,6 +813,8 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGetGlobalConfigHandler.ServeHTTP(w, r)
 		case DaemonServiceUpdateGlobalConfigProcedure:
 			daemonServiceUpdateGlobalConfigHandler.ServeHTTP(w, r)
+		case DaemonServiceSetWebPasswordProcedure:
+			daemonServiceSetWebPasswordHandler.ServeHTTP(w, r)
 		case DaemonServiceWatchProcedure:
 			daemonServiceWatchHandler.ServeHTTP(w, r)
 		case DaemonServiceGetStateProcedure:
@@ -869,6 +894,10 @@ func (UnimplementedDaemonServiceHandler) GetGlobalConfig(context.Context, *conne
 
 func (UnimplementedDaemonServiceHandler) UpdateGlobalConfig(context.Context, *connect.Request[v1.UpdateGlobalConfigRequest]) (*connect.Response[v1.UpdateGlobalConfigResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.UpdateGlobalConfig is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) SetWebPassword(context.Context, *connect.Request[v1.SetWebPasswordRequest]) (*connect.Response[v1.SetWebPasswordResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.SetWebPassword is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error {

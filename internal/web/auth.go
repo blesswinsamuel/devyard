@@ -1,13 +1,17 @@
-// Password authentication for the dashboard. It is opt-in: an Authenticator
-// exists only when web.password_hash is set (`devyard auth set-password`),
-// and a nil *Authenticator leaves the dashboard open.
+// Password authentication for the dashboard. It is opt-in: the gate
+// exists only when web.password_hash is set (`devyard auth set-password`
+// or the settings UI), and a nil *Authenticator leaves the dashboard
+// open. The daemon holds the authenticator behind a getter (see
+// web.Options.Auth) and can change or clear the password without a
+// restart.
 //
 // Login (POST /auth/login, JSON {"password": ...}) checks bcrypt and sets an
 // HttpOnly cookie holding an HMAC-signed expiry: no server state, and
-// sessions from a previous daemon stop working after a restart. The API and
-// /ws/attach require the cookie; the SPA is served either way and shows a
-// login screen. Connect errors are returned as Connect-protocol JSON bodies
-// so connect clients decode a proper unauthenticated error.
+// sessions from a previous daemon (or password) stop working after a swap.
+// The API and /ws/attach require the cookie; the SPA is served either way
+// and shows a login screen. Connect errors are returned as
+// Connect-protocol JSON bodies so connect clients decode a proper
+// unauthenticated error.
 package web
 
 import (
@@ -55,12 +59,13 @@ func NewAuthenticator(passwordHash string) (*Authenticator, error) {
 	return &Authenticator{hash: hash, key: key, now: time.Now}, nil
 }
 
-// wrap requires a login cookie for the API and /ws/attach. Everything else
-// (the SPA and /auth/login) passes through: the SPA renders the login
-// screen itself.
-func (a *Authenticator) wrap(next http.Handler) http.Handler {
+// authWrap requires a login cookie for the API and /ws/attach, consulting
+// get per request: a nil authenticator (no password configured) disables
+// the gate. Everything else (the SPA and /auth/login) passes through: the
+// SPA renders the login screen itself.
+func authWrap(get func() *Authenticator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.authorized(r) || !protectedPath(r.URL.Path) {
+		if a := get(); a == nil || a.authorized(r) || !protectedPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -70,6 +75,19 @@ func (a *Authenticator) wrap(next http.Handler) http.Handler {
 		}
 		writeConnectError(w, http.StatusUnauthorized, connectCodeUnauthenticated, "login required (POST /auth/login)")
 	})
+}
+
+// serveLoginRoute routes POST /auth/login: a 404 when no password is
+// configured, the login check otherwise.
+func serveLoginRoute(get func() *Authenticator) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		a := get()
+		if a == nil {
+			http.Error(w, "devyard: no password set", http.StatusNotFound)
+			return
+		}
+		a.serveLogin(w, r)
+	}
 }
 
 func protectedPath(p string) bool {

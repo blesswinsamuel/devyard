@@ -1,4 +1,3 @@
-import { Code } from "@connectrpc/connect";
 import { createSignal, onMount, Show, type ParentProps } from "solid-js";
 import { Logo } from "~/components/logo";
 import { Button } from "~/components/ui/button";
@@ -7,12 +6,7 @@ import { Field, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
 import { Spinner } from "~/components/ui/spinner";
 import { api } from "~/data/client";
-import { errorInfo } from "~/data/errors";
-
-/** Whether the daemon rejected the call because the dashboard needs a login. */
-export function isUnauthenticated(err: unknown): boolean {
-  return errorInfo(err).code === Code.Unauthenticated;
-}
+import { isUnauthenticated } from "~/data/errors";
 
 /**
  * Delays the app until it is known whether the dashboard wants a login:

@@ -18,6 +18,7 @@ service DaemonService {
   rpc RestartDaemon(RestartDaemonRequest) returns (RestartDaemonResponse);
   rpc GetGlobalConfig(GetGlobalConfigRequest) returns (GetGlobalConfigResponse);
   rpc UpdateGlobalConfig(UpdateGlobalConfigRequest) returns (UpdateGlobalConfigResponse);
+  rpc SetWebPassword(SetWebPasswordRequest) returns (SetWebPasswordResponse);
 
   // State observation
   rpc Watch(WatchRequest) returns (stream WatchResponse);
@@ -291,6 +292,9 @@ message GlobalWebConfig {
   string host = 1;
   int32 port = 2;
   repeated string allowed_hosts = 3;
+  // Read-only: whether a dashboard password is configured. The hash itself
+  // is never exposed; SetWebPassword manages it.
+  bool password_set = 4;
 }
 
 message GlobalProxyTLSConfig {
@@ -325,6 +329,16 @@ message UpdateGlobalConfigRequest {
 }
 
 message UpdateGlobalConfigResponse {}
+
+message SetWebPasswordRequest {
+  // The new dashboard password. Hashed (bcrypt) server-side; the plaintext
+  // is never stored. Ignored when clear is true.
+  string password = 1;
+  // Remove the password: the dashboard becomes open again.
+  bool clear = 2;
+}
+
+message SetWebPasswordResponse {}
 
 // -----------------------------------------------------------------------------
 // Projects

@@ -55,6 +55,12 @@ curl -fsSL https://raw.githubusercontent.com/blesswinsamuel/devyard/main/scripts
 brew install blesswinsamuel/tap/devyard
 ```
 
+### mise (macOS & Linux)
+
+```bash
+mise use -g github:blesswinsamuel/devyard
+```
+
 ### GitHub Releases
 
 Pre-compiled static binaries for macOS (`arm64`, `amd64`) and Linux (`amd64`, `arm64`) are available on the [GitHub Releases](https://github.com/blesswinsamuel/devyard/releases) page.

@@ -52,30 +52,14 @@ func New(mgr *engine.Manager, dirs paths.Dirs, log *slog.Logger) *Service {
 	}
 }
 
-// Start brings the engine in line with the list at daemon startup. A global
-// config without a `projects` key yet adopts the projects already
-// registered, so projects added before the list existed are not lost.
+// Start brings the engine in line with the global config's project list at
+// daemon startup.
 func (s *Service) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cfg, err := globalconfig.Load(s.configPath, nil)
 	if err != nil {
 		return err
-	}
-	if !cfg.ProjectsSet {
-		var adopted []string
-		for _, p := range s.mgr.List() {
-			if _, err := globalconfig.AddProject(s.configPath, p.ConfigPath()); err != nil {
-				return err
-			}
-			adopted = append(adopted, p.ID())
-		}
-		if len(adopted) > 0 {
-			s.log.Info("adopted registered projects into the global config", "projects", adopted)
-		}
-		if cfg, err = globalconfig.Load(s.configPath, nil); err != nil {
-			return err
-		}
 	}
 	return s.reconcileLocked(ctx, cfg)
 }

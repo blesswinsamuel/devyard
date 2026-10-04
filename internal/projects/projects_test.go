@@ -90,7 +90,7 @@ func (f *fixture) ids() []string {
 
 const svcConfig = "services:\n  a:\n    run: sleep 30\n"
 
-func TestStartAdoptsRegisteredProjectsOnce(t *testing.T) {
+func TestStartAppliesTheList(t *testing.T) {
 	f := newFixture(t)
 	a, b := f.project("a", svcConfig), f.project("b", svcConfig)
 	for _, d := range []string{a, b} {
@@ -98,21 +98,24 @@ func TestStartAdoptsRegisteredProjectsOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Without a `projects` key the config does not say which projects
+	// exist: what is registered stays, and nothing is written.
 	if err := f.svc.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	cfg := f.config()
-	if !cfg.ProjectsSet || !reflect.DeepEqual(cfg.Projects, []string{"~/dev/a", "~/dev/b"}) {
-		t.Fatalf("adopted list = %v (set=%v)", cfg.Projects, cfg.ProjectsSet)
+	if got := f.ids(); !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Fatalf("projects = %v", got)
 	}
-	// With the key present, the list is authoritative: a registered
-	// project that is not listed goes away.
+	if _, err := os.Stat(f.dirs.GlobalConfig()); err == nil {
+		t.Fatal("Start wrote the global config")
+	}
+	// With the key, the list is authoritative: unlisted projects go away.
 	f.writeConfig("projects:\n  - ~/dev/a\n")
 	if err := f.svc.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.ids(); !reflect.DeepEqual(got, []string{"a"}) {
-		t.Fatalf("projects after restart = %v", got)
+		t.Fatalf("projects after Start = %v", got)
 	}
 }
 

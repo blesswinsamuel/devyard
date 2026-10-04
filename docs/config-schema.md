@@ -430,8 +430,6 @@ a directory or the path of a config file; `~` is expanded.
   changes nothing; an empty list removes every project. A directory that no
   longer exists is shown as a project in an error state, so you can see it and
   remove it.
-- The first daemon to start without a `projects` key adopts the projects
-  already registered with it into the list.
 
 An entry is a path, or a map with a `path` and a `reload` policy (see [Config
 changes](#config-changes)); the CLI and the dashboard keep the map form intact

@@ -244,9 +244,12 @@ type Project struct {
 	// Path is the absolute path of devyard.yml.
 	Path string
 	// Dir is the project directory; relative paths resolve against it.
-	Dir  string
-	ID   string
-	File *File
+	Dir string
+	// Missing is true when the config file does not exist (only possible
+	// with LoadAllowMissing): a git-only project.
+	Missing bool
+	ID      string
+	File    *File
 	// DotEnv holds the merged variables of the project's env files.
 	DotEnv map[string]string
 	// EnvFiles lists the project env files that exist, in load order.
@@ -261,6 +264,17 @@ type Project struct {
 // project env files and interpolates ${VAR} references from the env files
 // overlaid by the launch environment.
 func Load(path string, launch []string) (*Project, error) {
+	return load(path, launch, false)
+}
+
+// LoadAllowMissing is Load, except that a missing config file is an empty
+// project: a directory without a devyard.yml is still a project (git view,
+// terminals), just one with nothing to run.
+func LoadAllowMissing(path string, launch []string) (*Project, error) {
+	return load(path, launch, true)
+}
+
+func load(path string, launch []string, allowMissing bool) (*Project, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
@@ -268,7 +282,14 @@ func Load(path string, launch []string) (*Project, error) {
 	p := &Project{Path: abs, Dir: filepath.Dir(abs)}
 	root, err := readNode(abs)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("read config: %w", err)
+		if !allowMissing {
+			return nil, fmt.Errorf("read config: %w", err)
+		}
+		err = nil
+		p.Missing = true
+		if info, statErr := os.Stat(p.Dir); statErr != nil || !info.IsDir() {
+			return nil, fmt.Errorf("read config: project directory %s does not exist", p.Dir)
+		}
 	}
 	if err != nil {
 		return nil, err

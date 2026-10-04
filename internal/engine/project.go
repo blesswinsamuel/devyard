@@ -28,6 +28,9 @@ type Project struct {
 	inbox chan any
 	done  chan struct{}
 	view  atomic.Pointer[View]
+	// position is the index in the global project list (see
+	// Manager.SetOrder).
+	position atomic.Int32
 
 	statusMu   sync.Mutex
 	lastStatus ProjectState
@@ -42,8 +45,10 @@ type Project struct {
 // swapped in whenever the structure changes; readers never see partial
 // updates.
 type View struct {
-	Reg         Registration
-	LoadErr     string
+	Reg     Registration
+	LoadErr string
+	// HasConfig is false for a project without a devyard.yml.
+	HasConfig   bool
 	Order       []string
 	ServiceDefs map[string]*ProcessDef
 	TaskDefs    map[string]*ProcessDef
@@ -63,6 +68,16 @@ type View struct {
 
 // ID returns the project id.
 func (p *Project) ID() string { return p.id }
+
+// ConfigPath returns the project's config file path (which need not exist).
+func (p *Project) ConfigPath() string { return p.View().Reg.ConfigPath }
+
+// setPosition records the project's index in the project list.
+func (p *Project) setPosition(i int) {
+	if p.position.Swap(int32(i)) != int32(i) {
+		p.recompute()
+	}
+}
 
 // View returns the current snapshot.
 func (p *Project) View() *View { return p.view.Load() }
@@ -137,8 +152,9 @@ func (o projectObserver) ServiceRemoved(project, name string) {
 func (o projectObserver) TaskChanged(def *ProcessDef, st TaskState) { o.p.obs.TaskChanged(def, st) }
 func (o projectObserver) TaskRemoved(project, name string)          { o.p.obs.TaskRemoved(project, name) }
 
-func newProject(dirs paths.Dirs, reg Registration, launcher Launcher, obs Observer) *Project {
+func newProject(dirs paths.Dirs, reg Registration, launcher Launcher, obs Observer, position int) *Project {
 	p := &Project{id: reg.ID, inbox: make(chan any, 16), done: make(chan struct{}), obs: obs, hub: newHub()}
+	p.position.Store(int32(position))
 	a := &projectActor{
 		p:        p,
 		dirs:     dirs,
@@ -305,6 +321,8 @@ func (p *Project) recompute() {
 	st := ProjectState{
 		ID:            p.id,
 		ConfigPath:    v.Reg.ConfigPath,
+		HasConfig:     v.HasConfig,
+		Position:      int(p.position.Load()),
 		EnvFiles:      v.EnvFiles,
 		Desired:       v.Reg.Desired,
 		Error:         v.LoadErr,
@@ -408,6 +426,7 @@ func (a *projectActor) publishView() {
 		for k, d := range a.ld.tasks {
 			v.TaskDefs[k] = d
 		}
+		v.HasConfig = !a.ld.project.Missing
 		v.Primary = a.ld.project.File.Primary
 		v.Links = a.ld.project.File.Links
 		v.EnvFiles = a.ld.project.EnvFiles
@@ -446,7 +465,11 @@ func wanted(reg Registration, autostart map[string]bool, name string) bool {
 }
 
 func (a *projectActor) initialize() {
+	configured := a.reg.Configured
 	a.ld, a.loadErr = loadProject(a.dirs, &a.reg)
+	if a.reg.Configured != configured {
+		_ = a.save()
+	}
 	if a.loadErr != nil {
 		a.adoptOrphans()
 		a.publishView()
@@ -557,6 +580,13 @@ func (a *projectActor) loop() {
 // running services) and reloads once it is back.
 func (a *projectActor) checkConfig() {
 	_, err := os.Stat(a.reg.ConfigPath)
+	if !a.reg.Configured {
+		// No config yet (a git-only project): pick it up when it appears.
+		if err == nil {
+			_ = a.reload()
+		}
+		return
+	}
 	switch {
 	case err != nil && !a.configMissing:
 		a.configMissing = true
@@ -775,11 +805,15 @@ func (a *projectActor) reload() error {
 	if err := a.save(); err != nil {
 		return err
 	}
+	configured := a.reg.Configured
 	ld, err := loadProject(a.dirs, &a.reg)
 	if err != nil {
 		a.loadErr = err
 		a.publishView()
 		return fmt.Errorf("project %s: %w: %v", a.reg.ID, ErrConfig, err)
+	}
+	if a.reg.Configured != configured {
+		_ = a.save()
 	}
 	a.loadErr = nil
 	a.ld = ld

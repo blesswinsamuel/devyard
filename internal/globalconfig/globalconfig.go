@@ -1,14 +1,13 @@
 // Package globalconfig loads and saves the user-level config file at
 // $XDG_CONFIG_HOME/devyard/config.yml (see paths.Dirs.GlobalConfig). It holds
-// settings that apply across all projects: the web dashboard listener and
-// the reverse proxy.
+// settings that apply across all projects: the list of projects (and groups
+// of them), the web dashboard listener and the reverse proxy.
 package globalconfig
 
 import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -74,8 +73,19 @@ func (p *ProxyConfig) EffectiveTLSPort() int {
 
 // Config is the global config schema.
 type Config struct {
-	Web   WebConfig   `yaml:"web"`
-	Proxy ProxyConfig `yaml:"proxy"`
+	// Projects lists the projects devyard manages, in display order. Each
+	// entry is a directory (with a devyard.yml, or without one for a
+	// git-only project) or the path of a config file; `~` is expanded.
+	Projects []string `yaml:"projects,omitempty"`
+	// ProjectsSet reports whether the file has a `projects` key at all: an
+	// absent key leaves the registered projects alone, an empty list
+	// removes them.
+	ProjectsSet bool `yaml:"-"`
+	// Groups name sets of project ids, started and stopped together
+	// (`devyard start @work`).
+	Groups map[string][]string `yaml:"groups,omitempty"`
+	Web    WebConfig           `yaml:"web"`
+	Proxy  ProxyConfig         `yaml:"proxy"`
 }
 
 // Defaults returns the default config.
@@ -89,7 +99,9 @@ func Defaults() Config {
 // raw mirrors Config with pointers so an explicit `port: 0` (ephemeral) can
 // be told apart from an absent port (default).
 type raw struct {
-	Web *struct {
+	Projects *[]string           `yaml:"projects"`
+	Groups   map[string][]string `yaml:"groups"`
+	Web      *struct {
 		Host         string   `yaml:"host"`
 		Port         *int     `yaml:"port"`
 		AllowedHosts []string `yaml:"allowed_hosts"`
@@ -102,6 +114,8 @@ type raw struct {
 		TLS          ProxyTLSConfig `yaml:"tls"`
 	} `yaml:"proxy"`
 }
+
+var knownKeys = map[string]bool{"projects": true, "groups": true, "web": true, "proxy": true}
 
 // Load reads the config at path. A missing file yields Defaults. Unknown
 // top-level fields produce a warning on warn but are not an error.
@@ -124,7 +138,7 @@ func Parse(data []byte, warn io.Writer) (*Config, error) {
 		return nil, fmt.Errorf("globalconfig: parse: %w", err)
 	}
 	for key := range top {
-		if key != "web" && key != "proxy" && warn != nil {
+		if !knownKeys[key] && warn != nil {
 			_, _ = fmt.Fprintf(warn, "devyard: warning: unknown field %q in global config\n", key)
 		}
 	}
@@ -133,6 +147,11 @@ func Parse(data []byte, warn io.Writer) (*Config, error) {
 		return nil, fmt.Errorf("globalconfig: parse: %w", err)
 	}
 	cfg := Defaults()
+	if r.Projects != nil {
+		cfg.ProjectsSet = true
+		cfg.Projects = *r.Projects
+	}
+	cfg.Groups = r.Groups
 	if r.Web != nil {
 		if r.Web.Host != "" {
 			cfg.Web.Host = r.Web.Host
@@ -164,8 +183,11 @@ func Parse(data []byte, warn io.Writer) (*Config, error) {
 	return &cfg, nil
 }
 
-// Validate checks value ranges.
+// Validate checks value ranges, the project list and the groups.
 func (c *Config) Validate() error {
+	if err := c.validateProjects(); err != nil {
+		return err
+	}
 	for name, port := range map[string]int{"web.port": c.Web.Port, "proxy.port": c.Proxy.Port, "proxy.tls.port": c.Proxy.TLS.Port} {
 		if port < 0 || port > 65535 {
 			return fmt.Errorf("globalconfig: %s must be between 0 and 65535, got %d", name, port)
@@ -174,23 +196,57 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Save writes cfg to path atomically.
+// Save writes the web and proxy sections of cfg to path atomically. Other
+// content (comments, projects, groups, unknown keys) is left as it is; use
+// AddProject, RemoveProject and MoveProject for the project list.
 func Save(path string, cfg *Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("globalconfig: %w", err)
+	return edit(path, func(root *yaml.Node) error {
+		for _, section := range []struct {
+			key string
+			v   any
+		}{{"web", cfg.Web}, {"proxy", cfg.Proxy}} {
+			var n yaml.Node
+			if err := n.Encode(section.v); err != nil {
+				return fmt.Errorf("globalconfig: marshal: %w", err)
+			}
+			if cur := mapValue(root, section.key); cur != nil {
+				mergeNode(cur, &n)
+				continue
+			}
+			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: section.key}, &n)
+		}
+		return nil
+	})
+}
+
+// mergeNode makes dst equal to src, keeping dst's comments: mappings merge
+// key by key (keys missing from src are dropped), anything else is replaced.
+func mergeNode(dst, src *yaml.Node) {
+	if dst.Kind != yaml.MappingNode || src.Kind != yaml.MappingNode {
+		head, line, foot := dst.HeadComment, dst.LineComment, dst.FootComment
+		*dst = *src
+		dst.HeadComment, dst.LineComment, dst.FootComment = head, line, foot
+		return
 	}
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("globalconfig: marshal: %w", err)
+	var content []*yaml.Node
+	for i := 0; i+1 < len(src.Content); i += 2 {
+		key, val := src.Content[i], src.Content[i+1]
+		if cur := mapValue(dst, key.Value); cur != nil {
+			mergeNode(cur, val)
+			for j := 0; j+1 < len(dst.Content); j += 2 {
+				if dst.Content[j].Value == key.Value {
+					content = append(content, dst.Content[j], cur)
+					break
+				}
+			}
+			continue
+		}
+		content = append(content, key, val)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("globalconfig: write: %w", err)
-	}
-	return os.Rename(tmp, path)
+	dst.Content = content
 }
 
 // String summarizes the config for logs.

@@ -125,6 +125,14 @@ func (r *recorder) waitFor(t *testing.T, desc string, timeout time.Duration, pre
 	}
 }
 
+func (r *recorder) waitProject(t *testing.T, id string) ProjectState {
+	t.Helper()
+	r.waitFor(t, "project "+id, 10*time.Second, func(r *recorder) bool { _, ok := r.projects[id]; return ok })
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.projects[id]
+}
+
 func (r *recorder) waitService(t *testing.T, key, status string) ServiceState {
 	t.Helper()
 	r.waitFor(t, key+" "+status, 15*time.Second, func(r *recorder) bool { return r.services[key].Status == status })
@@ -985,5 +993,120 @@ func TestMatchGlob(t *testing.T) {
 		if got := matchGlob(c.pattern, c.path); got != c.want {
 			t.Errorf("matchGlob(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
 		}
+	}
+}
+
+func TestGitOnlyProjectWithoutConfig(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	dir := filepath.Join(e.root, "notes")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "devyard.yml")
+	p := e.add(path, false)
+	if p.ID() != "notes" {
+		t.Fatalf("id = %q", p.ID())
+	}
+	st := e.obs.waitProject(t, "notes")
+	if st.HasConfig || st.Error != "" || st.ServicesTotal != 0 {
+		t.Fatalf("git-only project state: %+v", st)
+	}
+	if err := p.Start(ctx(t), nil, false); err != nil {
+		t.Fatalf("starting a project without services: %v", err)
+	}
+	// A config that appears later is picked up without a reload.
+	if err := os.WriteFile(path, []byte("services:\n  a:\n    run: sleep 30\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.obs.waitFor(t, "config picked up", 10*time.Second, func(r *recorder) bool { return r.projects["notes"].HasConfig && r.projects["notes"].ServicesTotal == 1 })
+	// Once configured, deleting the file is an error and keeps the service.
+	if err := p.Start(ctx(t), nil, false); err != nil {
+		t.Fatal(err)
+	}
+	e.obs.waitService(t, "notes/a", StatusRunning)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	e.obs.waitFor(t, "config error", 10*time.Second, func(r *recorder) bool { return r.projects["notes"].Error != "" })
+	if st := e.obs.service("notes/a"); st.Status != StatusRunning {
+		t.Fatalf("service stopped when the config was deleted: %+v", st)
+	}
+}
+
+func TestAddMissingDirectoryFails(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	_, err := e.m.Add(context.Background(), AddOptions{ConfigPath: filepath.Join(e.root, "gone", "devyard.yml")})
+	if !errors.Is(err, ErrConfig) {
+		t.Fatalf("err = %v, want ErrConfig", err)
+	}
+}
+
+func TestTolerantAddRegistersBrokenConfig(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	dir := filepath.Join(e.root, "broken")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "devyard.yml")
+	if err := os.WriteFile(path, []byte("services:\n  a: [unterminated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.m.Add(context.Background(), AddOptions{ConfigPath: path}); !errors.Is(err, ErrConfig) {
+		t.Fatalf("strict add: %v", err)
+	}
+	if _, err := e.m.Add(context.Background(), AddOptions{ConfigPath: path, Tolerant: true}); err != nil {
+		t.Fatalf("tolerant add: %v", err)
+	}
+	st := e.obs.waitProject(t, "broken")
+	if st.Error == "" || st.Status != ProjectError {
+		t.Fatalf("broken project state: %+v", st)
+	}
+	// Fixing the file and reloading recovers it.
+	if err := os.WriteFile(path, []byte("services:\n  a:\n    run: sleep 30\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := e.m.Get("broken")
+	if err := p.Reload(ctx(t), nil, false); err != nil {
+		t.Fatal(err)
+	}
+	e.obs.waitFor(t, "recovered", 5*time.Second, func(r *recorder) bool { return r.projects["broken"].Error == "" })
+}
+
+func TestProjectOrder(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	var paths []string
+	for _, n := range []string{"alpha", "beta", "gamma"} {
+		path := e.project(n, "services:\n  a:\n    run: sleep 30\n")
+		e.add(path, false)
+		paths = append(paths, path)
+	}
+	ids := func() string {
+		var out []string
+		for _, p := range e.m.List() {
+			out = append(out, p.ID())
+		}
+		return strings.Join(out, ",")
+	}
+	if got := ids(); got != "alpha,beta,gamma" {
+		t.Fatalf("default order: %s", got)
+	}
+	e.m.SetOrder([]string{paths[2], paths[0], paths[1]})
+	if got := ids(); got != "gamma,alpha,beta" {
+		t.Fatalf("after SetOrder: %s", got)
+	}
+	e.obs.waitFor(t, "positions published", 5*time.Second, func(r *recorder) bool {
+		return r.projects["gamma"].Position == 0 && r.projects["alpha"].Position == 1 && r.projects["beta"].Position == 2
+	})
+	// A project missing from the list sorts after the listed ones.
+	e.m.SetOrder([]string{paths[1]})
+	if got := ids(); got != "beta,alpha,gamma" {
+		t.Fatalf("partial order: %s", got)
+	}
+	if p, ok := e.m.ByConfigPath(paths[1]); !ok || p.ID() != "beta" {
+		t.Fatalf("ByConfigPath: %v %v", p, ok)
 	}
 }

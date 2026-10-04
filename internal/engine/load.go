@@ -31,9 +31,16 @@ type loaded struct {
 // persists ports for `auto` ports, so it must only run on the project's
 // actor.
 func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
-	proj, err := config.Load(reg.ConfigPath, reg.Env)
+	loadConfig := config.Load
+	if !reg.Configured {
+		loadConfig = config.LoadAllowMissing
+	}
+	proj, err := loadConfig(reg.ConfigPath, reg.Env)
 	if err != nil {
 		return nil, err
+	}
+	if !proj.Missing {
+		reg.Configured = true
 	}
 	if proj.ID != reg.ID {
 		return nil, fmt.Errorf("project name changed from %q to %q; remove the project and start it again", reg.ID, proj.ID)

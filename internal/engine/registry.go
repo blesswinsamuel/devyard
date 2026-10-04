@@ -19,6 +19,11 @@ import (
 type Registration struct {
 	ID         string `json:"id"`
 	ConfigPath string `json:"config_path"`
+	// Configured is set once the config file has existed. Until then a
+	// missing file is an empty project (git view and terminals only);
+	// afterwards a missing file is an error, so deleting devyard.yml never
+	// silently removes the services of a project.
+	Configured bool `json:"configured,omitempty"`
 	// Env is the launch environment captured from the shell that
 	// registered or last started the project.
 	Env []string `json:"env,omitempty"`

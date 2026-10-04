@@ -142,8 +142,12 @@ type TaskState struct {
 
 // ProjectState is the published state of a project.
 type ProjectState struct {
-	ID             string
-	ConfigPath     string
+	ID         string
+	ConfigPath string
+	// HasConfig is false for a project without a devyard.yml.
+	HasConfig bool
+	// Position is the project's index in the global config's project list.
+	Position       int
 	EnvFiles       []string
 	Status         string
 	Desired        string

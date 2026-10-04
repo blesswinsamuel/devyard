@@ -67,6 +67,34 @@ func TestEmptyConfigIsAProject(t *testing.T) {
 	}
 }
 
+func TestLoadAllowMissing(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "My Notes")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("A=1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, config.FileName)
+	if _, err := config.Load(path, nil); err == nil {
+		t.Fatal("Load of a missing config must fail")
+	}
+	p, err := config.LoadAllowMissing(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Missing || p.ID != "my-notes" || len(p.File.Services) != 0 || p.DotEnv["A"] != "1" {
+		t.Fatalf("git-only project = %+v", p)
+	}
+	if err := os.WriteFile(path, []byte("name: notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if p, err = config.LoadAllowMissing(path, nil); err != nil || p.Missing || p.ID != "notes" {
+		t.Fatalf("existing config: %+v %v", p, err)
+	}
+}
+
 func TestProjectIDFromName(t *testing.T) {
 	t.Parallel()
 	if p := mustLoad(t, "name: My App\n", nil); p.ID != "my-app" {

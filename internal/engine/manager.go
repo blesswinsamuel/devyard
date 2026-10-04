@@ -24,6 +24,8 @@ type Manager struct {
 
 	mu       sync.Mutex
 	projects map[string]*Project
+	// order lists project config paths in display order (SetOrder).
+	order    []string
 	draining bool
 }
 
@@ -49,8 +51,8 @@ func (m *Manager) Load() error {
 			m.log.Error("skipping unreadable project registration", "project", id, "error", err)
 			continue
 		}
-		p := newProject(m.dirs, *reg, m.launcher, m.obs)
 		m.mu.Lock()
+		p := newProject(m.dirs, *reg, m.launcher, m.obs, m.positionLocked(reg.ConfigPath))
 		m.projects[id] = p
 		m.mu.Unlock()
 		if v := p.View(); v.LoadErr != "" {
@@ -67,6 +69,9 @@ type AddOptions struct {
 	Env   []string
 	Start bool
 	Build bool
+	// Tolerant registers the project even when its config cannot be
+	// parsed: it shows the error, under the id of its directory name.
+	Tolerant bool
 }
 
 // Add registers a project from its config, or updates the registration of
@@ -82,12 +87,23 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) (*Project, error) {
 		env = os.Environ()
 	}
 	env = CleanEnv(env)
-	// Parse once to learn the project id.
-	proj, err := config.Load(abs, env)
-	if err != nil {
+	// Parse once to learn the project id. A directory without a config is
+	// a project too (git view, terminals).
+	var id string
+	configured := false
+	proj, err := config.LoadAllowMissing(abs, env)
+	switch {
+	case err == nil:
+		id, configured = proj.ID, !proj.Missing
+	case opts.Tolerant:
+		if id = paths.Slugify(filepath.Base(filepath.Dir(abs))); id == "" {
+			return nil, fmt.Errorf("%w: %v", ErrConfig, err)
+		}
+		_, statErr := os.Stat(abs)
+		configured = statErr == nil
+	default:
 		return nil, fmt.Errorf("%w: %v", ErrConfig, err)
 	}
-	id := proj.ID
 
 	m.mu.Lock()
 	if m.draining {
@@ -99,6 +115,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) (*Project, error) {
 		reg := Registration{
 			ID:         id,
 			ConfigPath: abs,
+			Configured: configured,
 			Env:        env,
 			Desired:    DesiredStopped,
 			CreatedAt:  time.Now(),
@@ -107,7 +124,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) (*Project, error) {
 			m.mu.Unlock()
 			return nil, err
 		}
-		p = newProject(m.dirs, reg, m.launcher, m.obs)
+		p = newProject(m.dirs, reg, m.launcher, m.obs, m.positionLocked(abs))
 		m.projects[id] = p
 	}
 	m.mu.Unlock()
@@ -139,7 +156,48 @@ func (m *Manager) Get(id string) (*Project, error) {
 	return p, nil
 }
 
-// List returns all projects sorted by id.
+// ByConfigPath returns the project registered from the config file path.
+func (m *Manager) ByConfigPath(configPath string) (*Project, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, p := range m.projects {
+		if p.ConfigPath() == configPath {
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+// SetOrder sets the display order of projects: the config paths in order.
+// Projects not listed come after, by id.
+func (m *Manager) SetOrder(configPaths []string) {
+	m.mu.Lock()
+	m.order = append([]string(nil), configPaths...)
+	projects := make([]*Project, 0, len(m.projects))
+	for _, p := range m.projects {
+		projects = append(projects, p)
+	}
+	m.mu.Unlock()
+	for _, p := range projects {
+		m.mu.Lock()
+		pos := m.positionLocked(p.ConfigPath())
+		m.mu.Unlock()
+		p.setPosition(pos)
+	}
+}
+
+// positionLocked is a project's index in the display order; unlisted
+// projects share the position after the last listed one.
+func (m *Manager) positionLocked(configPath string) int {
+	for i, c := range m.order {
+		if c == configPath {
+			return i
+		}
+	}
+	return len(m.order)
+}
+
+// List returns all projects in display order (see SetOrder), then by id.
 func (m *Manager) List() []*Project {
 	m.mu.Lock()
 	out := make([]*Project, 0, len(m.projects))
@@ -147,7 +205,12 @@ func (m *Manager) List() []*Project {
 		out = append(out, p)
 	}
 	m.mu.Unlock()
-	sort.Slice(out, func(i, j int) bool { return out[i].id < out[j].id })
+	sort.Slice(out, func(i, j int) bool {
+		if pi, pj := out[i].position.Load(), out[j].position.Load(); pi != pj {
+			return pi < pj
+		}
+		return out[i].id < out[j].id
+	})
 	return out
 }
 

@@ -13,6 +13,8 @@ daemon supervises all of them, streams their logs, restarts them on crash, gates
 healthchecks, exposes them at named URLs, and gives you a fast web dashboard with terminals,
 interactive tasks and a git view.
 
+<img width="1406" height="1154" alt="image" src="https://github.com/user-attachments/assets/f120c6e7-c2cf-4e24-bfc7-fead0468a264" />
+
 ## Why?
 
 `docker compose` is great for reproducing production, but for everyday local dev it drags in a

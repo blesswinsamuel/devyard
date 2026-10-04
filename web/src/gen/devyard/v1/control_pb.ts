@@ -211,6 +211,22 @@ export class Project extends Message<Project> {
    */
   position = 0;
 
+  /**
+   * drift describes how the config files on disk differ from what the
+   * project runs; empty state when they are the same.
+   *
+   * @generated from field: devyard.v1.ConfigDrift drift = 14;
+   */
+  drift?: ConfigDrift;
+
+  /**
+   * reload_policy is what happens when the config files change: "prompt"
+   * (show the change, apply it on ReloadProject), "auto" or "off".
+   *
+   * @generated from field: string reload_policy = 15;
+   */
+  reloadPolicy = "";
+
   constructor(data?: PartialMessage<Project>) {
     super();
     proto3.util.initPartial(data, this);
@@ -232,6 +248,8 @@ export class Project extends Message<Project> {
     { no: 11, name: "links", kind: "message", T: Link, repeated: true },
     { no: 12, name: "has_config", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 13, name: "position", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 14, name: "drift", kind: "message", T: ConfigDrift },
+    { no: 15, name: "reload_policy", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): Project {
@@ -248,6 +266,148 @@ export class Project extends Message<Project> {
 
   static equals(a: Project | PlainMessage<Project> | undefined, b: Project | PlainMessage<Project> | undefined): boolean {
     return proto3.util.equals(Project, a, b);
+  }
+}
+
+/**
+ * ConfigChange is one difference between a project's running config and its
+ * files.
+ *
+ * @generated from message devyard.v1.ConfigChange
+ */
+export class ConfigChange extends Message<ConfigChange> {
+  /**
+   * kind: "project" | "service" | "task"
+   *
+   * @generated from field: string kind = 1;
+   */
+  kind = "";
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name = "";
+
+  /**
+   * op: "added" | "removed" | "changed"
+   *
+   * @generated from field: string op = 3;
+   */
+  op = "";
+
+  /**
+   * details say what changed, e.g. "run changed" or "env DATABASE_URL
+   * changed". Environment values are never included.
+   *
+   * @generated from field: repeated string details = 4;
+   */
+  details: string[] = [];
+
+  /**
+   * restart is true when applying the change restarts the service.
+   *
+   * @generated from field: bool restart = 5;
+   */
+  restart = false;
+
+  constructor(data?: PartialMessage<ConfigChange>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.ConfigChange";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "kind", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "op", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "details", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 5, name: "restart", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ConfigChange {
+    return new ConfigChange().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ConfigChange {
+    return new ConfigChange().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ConfigChange {
+    return new ConfigChange().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ConfigChange | PlainMessage<ConfigChange> | undefined, b: ConfigChange | PlainMessage<ConfigChange> | undefined): boolean {
+    return proto3.util.equals(ConfigChange, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.ConfigDrift
+ */
+export class ConfigDrift extends Message<ConfigDrift> {
+  /**
+   * state: "" (in sync) | "pending" (valid changes wait to be applied) |
+   * "invalid" (the files do not load; the running config is unchanged)
+   *
+   * @generated from field: string state = 1;
+   */
+  state = "";
+
+  /**
+   * error says why the files are invalid.
+   *
+   * @generated from field: string error = 2;
+   */
+  error = "";
+
+  /**
+   * @generated from field: repeated devyard.v1.ConfigChange changes = 3;
+   */
+  changes: ConfigChange[] = [];
+
+  /**
+   * diff is a unified diff of the YAML files (env files are left out: they
+   * hold secrets).
+   *
+   * @generated from field: string diff = 4;
+   */
+  diff = "";
+
+  /**
+   * @generated from field: int64 since_unix_ms = 5;
+   */
+  sinceUnixMs = protoInt64.zero;
+
+  constructor(data?: PartialMessage<ConfigDrift>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.ConfigDrift";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "state", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "error", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "changes", kind: "message", T: ConfigChange, repeated: true },
+    { no: 4, name: "diff", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "since_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ConfigDrift {
+    return new ConfigDrift().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ConfigDrift {
+    return new ConfigDrift().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ConfigDrift {
+    return new ConfigDrift().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ConfigDrift | PlainMessage<ConfigDrift> | undefined, b: ConfigDrift | PlainMessage<ConfigDrift> | undefined): boolean {
+    return proto3.util.equals(ConfigDrift, a, b);
   }
 }
 
@@ -1740,6 +1900,14 @@ export class GlobalConfig extends Message<GlobalConfig> {
    */
   groups: ProjectGroup[] = [];
 
+  /**
+   * reload is the default policy for config changes of a project: "prompt",
+   * "auto" or "off". Per-project overrides are set in the config file.
+   *
+   * @generated from field: string reload = 5;
+   */
+  reload = "";
+
   constructor(data?: PartialMessage<GlobalConfig>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1752,6 +1920,7 @@ export class GlobalConfig extends Message<GlobalConfig> {
     { no: 2, name: "proxy", kind: "message", T: GlobalProxyConfig },
     { no: 3, name: "projects", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 4, name: "groups", kind: "message", T: ProjectGroup, repeated: true },
+    { no: 5, name: "reload", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GlobalConfig {

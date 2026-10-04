@@ -116,6 +116,7 @@ func globalConfigToProto(c *globalconfig.Config) *pb.GlobalConfig {
 	return &pb.GlobalConfig{
 		Projects: c.Projects,
 		Groups:   groups,
+		Reload:   c.Reload,
 		Web: &pb.GlobalWebConfig{
 			Host:         c.Web.Host,
 			Port:         int32(c.Web.Port),
@@ -139,6 +140,9 @@ func globalConfigToProto(c *globalconfig.Config) *pb.GlobalConfig {
 
 func globalConfigFromProto(p *pb.GlobalConfig) *globalconfig.Config {
 	c := globalconfig.Defaults()
+	if p.GetReload() != "" {
+		c.Reload = p.Reload
+	}
 	if w := p.GetWeb(); w != nil {
 		if w.Host != "" {
 			c.Web.Host = w.Host

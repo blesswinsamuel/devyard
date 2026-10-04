@@ -32,6 +32,9 @@ type Project struct {
 	// Manager.SetOrder).
 	position atomic.Int32
 
+	// policy returns the reload policy of the project with the config path.
+	policy func(configPath string) string
+
 	statusMu   sync.Mutex
 	lastStatus ProjectState
 	// stopping is set while a project-wide stop is in progress, so the
@@ -48,7 +51,9 @@ type View struct {
 	Reg     Registration
 	LoadErr string
 	// HasConfig is false for a project without a devyard.yml.
-	HasConfig   bool
+	HasConfig bool
+	// Drift is how the config files differ from what runs.
+	Drift       Drift
 	Order       []string
 	ServiceDefs map[string]*ProcessDef
 	TaskDefs    map[string]*ProcessDef
@@ -128,11 +133,18 @@ type projectActor struct {
 	tasks    map[string]*Task
 	// configMissing is set while the config file does not exist.
 	configMissing bool
+	// drift is how the files on disk differ from the loaded config; lastSeen
+	// is what the inputs hashed to at the previous check (a change must hold
+	// for two checks before it is looked at) and examined what they hashed
+	// to when drift was last computed.
+	drift    Drift
+	lastSeen config.Sums
+	examined config.Sums
 }
 
 // configCheckInterval is how often a project checks that its config file
-// still exists.
-const configCheckInterval = 2 * time.Second
+// still exists and whether its config files changed.
+const configCheckInterval = time.Second
 
 // projectObserver forwards entity events and recomputes the project status.
 type projectObserver struct {
@@ -152,8 +164,8 @@ func (o projectObserver) ServiceRemoved(project, name string) {
 func (o projectObserver) TaskChanged(def *ProcessDef, st TaskState) { o.p.obs.TaskChanged(def, st) }
 func (o projectObserver) TaskRemoved(project, name string)          { o.p.obs.TaskRemoved(project, name) }
 
-func newProject(dirs paths.Dirs, reg Registration, launcher Launcher, obs Observer, position int) *Project {
-	p := &Project{id: reg.ID, inbox: make(chan any, 16), done: make(chan struct{}), obs: obs, hub: newHub()}
+func newProject(dirs paths.Dirs, reg Registration, launcher Launcher, obs Observer, position int, policy func(string) string) *Project {
+	p := &Project{id: reg.ID, inbox: make(chan any, 16), done: make(chan struct{}), obs: obs, hub: newHub(), policy: policy}
 	p.position.Store(int32(position))
 	a := &projectActor{
 		p:        p,
@@ -322,6 +334,8 @@ func (p *Project) recompute() {
 		ID:            p.id,
 		ConfigPath:    v.Reg.ConfigPath,
 		HasConfig:     v.HasConfig,
+		ReloadPolicy:  p.policy(v.Reg.ConfigPath),
+		Drift:         v.Drift,
 		Position:      int(p.position.Load()),
 		EnvFiles:      v.EnvFiles,
 		Desired:       v.Reg.Desired,
@@ -427,6 +441,7 @@ func (a *projectActor) publishView() {
 			v.TaskDefs[k] = d
 		}
 		v.HasConfig = !a.ld.project.Missing
+		v.Drift = a.drift
 		v.Primary = a.ld.project.File.Primary
 		v.Links = a.ld.project.File.Links
 		v.EnvFiles = a.ld.project.EnvFiles
@@ -466,11 +481,13 @@ func wanted(reg Registration, autostart map[string]bool, name string) bool {
 
 func (a *projectActor) initialize() {
 	configured := a.reg.Configured
-	a.ld, a.loadErr = loadProject(a.dirs, &a.reg)
+	a.ld, a.loadErr = loadProject(a.dirs, &a.reg, false)
 	if a.reg.Configured != configured {
 		_ = a.save()
 	}
 	if a.loadErr != nil {
+		// Reload by itself once the files change (see checkDrift).
+		a.examined = a.inputSums()
 		a.adoptOrphans()
 		a.publishView()
 		return
@@ -579,6 +596,13 @@ func (a *projectActor) loop() {
 // checkConfig reports a config file that disappeared (without touching
 // running services) and reloads once it is back.
 func (a *projectActor) checkConfig() {
+	a.checkConfigFile()
+	if !a.configMissing {
+		a.checkDrift()
+	}
+}
+
+func (a *projectActor) checkConfigFile() {
 	_, err := os.Stat(a.reg.ConfigPath)
 	if !a.reg.Configured {
 		// No config yet (a git-only project): pick it up when it appears.
@@ -806,7 +830,7 @@ func (a *projectActor) reload() error {
 		return err
 	}
 	configured := a.reg.Configured
-	ld, err := loadProject(a.dirs, &a.reg)
+	ld, err := loadProject(a.dirs, &a.reg, false)
 	if err != nil {
 		a.loadErr = err
 		a.publishView()
@@ -817,6 +841,8 @@ func (a *projectActor) reload() error {
 	}
 	a.loadErr = nil
 	a.ld = ld
+	// What is on disk is now what runs.
+	a.drift, a.lastSeen, a.examined = Drift{}, nil, nil
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 

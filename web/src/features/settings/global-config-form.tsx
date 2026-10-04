@@ -16,6 +16,7 @@ import { getAction } from "~/data/actions";
 import { runAction } from "~/app/runtime";
 
 interface FormState {
+  reload: string;
   webHost: string;
   webPort: string;
   allowedHosts: string;
@@ -32,6 +33,7 @@ interface FormState {
 function toForm(res: GetGlobalConfigResponse | undefined): FormState {
   const c = res?.config;
   return {
+    reload: c?.reload || "prompt",
     webHost: c?.web?.host ?? "",
     webPort: c?.web?.port ? String(c.web.port) : "",
     allowedHosts: (c?.web?.allowedHosts ?? []).join("\n"),
@@ -80,6 +82,7 @@ export function GlobalConfigForm() {
     try {
       await api.updateGlobalConfig({
         config: {
+          reload: f.reload,
           web: {
             host: f.webHost.trim(),
             port: port(f.webPort),
@@ -160,6 +163,27 @@ export function GlobalConfigForm() {
         <Show when={query.isError}>
           <p class="text-ui text-destructive">Couldn't load settings: {errorInfo(query.error).message}</p>
         </Show>
+        <FieldSet>
+          <FieldLegend>Config changes</FieldLegend>
+          <Field>
+            <FieldLabel for="gc-reload">When a project's config files change</FieldLabel>
+            <select
+              id="gc-reload"
+              class="focus-ring h-8 w-full max-w-xs rounded-md border bg-background px-2 text-ui"
+              value={form.reload}
+              onChange={(e) => set("reload", e.currentTarget.value)}
+            >
+              <option value="prompt">Show the change and wait for me to apply it</option>
+              <option value="auto">Apply it right away</option>
+              <option value="off">Ignore it until I reload</option>
+            </select>
+            <FieldDescription>
+              Applying restarts only the services whose definition changed. A config that does not load is never
+              applied. Set <code class="font-mono">reload:</code> on a project's entry in the config file to override
+              this for one project.
+            </FieldDescription>
+          </Field>
+        </FieldSet>
         <FieldSet>
           <FieldLegend>Dashboard</FieldLegend>
           <FieldGroup class="grid gap-4 sm:grid-cols-2">

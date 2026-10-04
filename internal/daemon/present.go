@@ -61,6 +61,8 @@ func (p *presenter) ProjectChanged(st engine.ProjectState) {
 		ServicesRunning: int32(st.ServicesActive),
 		HasConfig:       st.HasConfig,
 		Position:        int32(st.Position),
+		ReloadPolicy:    st.ReloadPolicy,
+		Drift:           configDrift(st.Drift),
 		Primary:         st.Primary,
 		Links:           links(st.Links),
 		UpdatedAtUnixMs: st.UpdatedAt.UnixMilli(),
@@ -144,6 +146,17 @@ func (p *presenter) TaskChanged(def *engine.ProcessDef, st engine.TaskState) {
 }
 
 func (p *presenter) TaskRemoved(project, name string) { p.bus.RemoveTask(project, name) }
+
+func configDrift(d engine.Drift) *pb.ConfigDrift {
+	if d.State == engine.DriftNone {
+		return nil
+	}
+	out := &pb.ConfigDrift{State: d.State, Error: d.Error, Diff: d.Diff, SinceUnixMs: ms(d.Since)}
+	for _, c := range d.Changes {
+		out.Changes = append(out.Changes, &pb.ConfigChange{Kind: c.Kind, Name: c.Name, Op: c.Op, Details: c.Details, Restart: c.Restart})
+	}
+	return out
+}
 
 func links(ls []config.Link) []*pb.Link {
 	out := make([]*pb.Link, len(ls))

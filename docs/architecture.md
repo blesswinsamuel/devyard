@@ -117,6 +117,19 @@ Per-service commands that must stay responsive (stop, restart, kill,
 attach) go directly to the service actor through the `View`, so a kill is
 never queued behind a slow project stop.
 
+### Config drift
+
+Each project actor remembers a content hash of every file its config was built
+from (`config.Sums`, recorded by the loader as it reads them) and the raw YAML.
+Its once-a-second config check hashes those files again. A change that holds
+for two checks is previewed: the loader runs again without persisting
+anything, and the resulting definitions are compared with the loaded ones
+(`diffLoaded`). The outcome is `Drift` on the project's view: `pending` with a
+change list and a diff, `invalid` with the error, or nothing (including when
+only comments changed, which also refreshes the baseline). The reload policy
+(from the global config, handed to the manager as a function) decides whether a
+pending change is applied by the actor itself with the normal reload.
+
 ### Manager
 
 The manager is the registry of project actors. `Add` either registers a

@@ -387,8 +387,11 @@ projects:              # which projects exist, in display order
   - ~/dev/myapp        # a directory (devyard.yml optional)
   - ~/dev/notes
   - ~/dev/legacy/devyard.yaml   # or the path of a config file
+  - path: ~/dev/scratch         # the map form takes options
+    reload: auto
 groups:
   work: [myapp, api]   # project ids; `devyard start @work`
+reload: prompt         # when a devyard.yml changes: prompt | auto | off
 web:
   host: 127.0.0.1      # bind address (default: 127.0.0.1, loopback only)
   port: 9090           # TCP port (default: 9090; 0 = pick a free port)
@@ -430,8 +433,49 @@ a directory or the path of a config file; `~` is expanded.
 - The first daemon to start without a `projects` key adopts the projects
   already registered with it into the list.
 
+An entry is a path, or a map with a `path` and a `reload` policy (see [Config
+changes](#config-changes)); the CLI and the dashboard keep the map form intact
+when they reorder or remove entries.
+
 `groups` maps a name to project ids. `devyard start|stop|restart @name` acts
 on every project of the group, in order. Groups are edited in the file only.
+
+### Config changes
+
+When a project's config files change while the daemon runs, devyard compares
+them with what the project runs and does what the project's **reload policy**
+says. The policy is `reload` at the top of the global config (default
+`prompt`), overridable per project with `reload` in its map-form entry:
+
+| Policy | Behavior |
+| --- | --- |
+| `prompt` | Show the change (dashboard banner, `devyard status`, `devyard diff`) and wait for `devyard reload` or Apply. Nothing running is touched. |
+| `auto` | Apply a valid change right away. |
+| `off` | Ignore changes until an explicit `devyard reload`. |
+
+Details:
+
+- **What is watched**: `devyard.yml`, `devyard.local.yml`, and the env files
+  (project, service and task level, including ones that do not exist yet).
+  Files are compared by content; a change must hold still for about a second,
+  so a save made in several steps is not caught half way.
+- **What counts as a change**: the config is loaded the way a reload would
+  load it and the resulting services and tasks are compared. Edits that change
+  nothing (comments, formatting, an unused variable in an env file) are not
+  changes. The change list says what differs (`run`, `env` variables by name,
+  `ports`, `depends_on`, …) and which services restart.
+- **Applying** (`devyard reload`, the dashboard's Apply, or `auto`) starts new
+  services, stops removed ones, restarts the services whose definition changed
+  and leaves the rest running.
+- **A config that does not load** (`invalid`) is reported with its error and
+  never applied; what runs is unchanged. The same goes for a project whose
+  config never loaded: it loads by itself once the file is fixed.
+- `devyard diff` prints the change list and a unified diff of the YAML files.
+  The diff shows `devyard.yml` as written; changes to env files are listed by
+  variable name only, their values are never shown.
+- After a daemon restart the files on disk are what runs (services whose
+  definition changed are restarted as they are re-adopted), so there is no
+  pending change to remember.
 
 ### Daemon settings
 

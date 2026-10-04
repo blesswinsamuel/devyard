@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { A, useLocation, useNavigate } from "@solidjs/router";
 import { toast } from "solid-sonner";
-import { ChevronRight, Command, PanelLeftClose, Play, Plus, Search, Settings } from "lucide-solid";
+import { ChevronRight, Command, FileDiff, PanelLeftClose, Play, Plus, Search, Settings } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { ActionContextMenu } from "~/components/actions";
@@ -79,6 +79,18 @@ function ProjectRow(props: { node: TreeNode; onToggle: () => void }) {
                 <Show when={git() && !git()!.isClean}>
                   <span class="size-1.5 shrink-0 rounded-full bg-warning" aria-label="uncommitted changes" />
                 </Show>
+              </span>
+            )}
+          </Show>
+          <Show when={project().drift}>
+            {(d) => (
+              <span
+                class={cn("shrink-0", d().state === "invalid" ? "text-destructive" : "text-warning")}
+                title={d().state === "invalid" ? "Config changed but does not load" : "Config changed on disk: not applied yet"}
+                role="img"
+                aria-label={d().state === "invalid" ? "config changed but does not load" : "config changed"}
+              >
+                <FileDiff class="size-3" />
               </span>
             )}
           </Show>

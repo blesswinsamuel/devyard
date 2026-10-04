@@ -256,7 +256,14 @@ type Project struct {
 	EnvFiles []string
 	// Inputs lists every file the config is built from, existing or not
 	// (devyard.yml, devyard.local.yml and the project env files).
-	Inputs   []string
+	Inputs []string
+	// Sums holds the content hash of every input file as it was read ("" for
+	// a missing file); Resolved.Sums adds the service and task env files.
+	// Comparing them with the files on disk tells whether the config
+	// changed since it was loaded.
+	Sums Sums
+	// Texts holds the raw text of the YAML inputs that exist.
+	Texts    map[string]string
 	Warnings []string
 }
 
@@ -279,8 +286,8 @@ func load(path string, launch []string, allowMissing bool) (*Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
-	p := &Project{Path: abs, Dir: filepath.Dir(abs)}
-	root, err := readNode(abs)
+	p := &Project{Path: abs, Dir: filepath.Dir(abs), Sums: Sums{}, Texts: map[string]string{}}
+	root, err := readNode(abs, p.Sums, p.Texts)
 	if errors.Is(err, os.ErrNotExist) {
 		if !allowMissing {
 			return nil, fmt.Errorf("read config: %w", err)
@@ -299,7 +306,7 @@ func load(path string, launch []string, allowMissing bool) (*Project, error) {
 	}
 	local := filepath.Join(p.Dir, LocalFileName)
 	p.Inputs = []string{abs, local}
-	overlay, err := readNode(local)
+	overlay, err := readNode(local, p.Sums, p.Texts)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -320,7 +327,7 @@ func load(path string, launch []string, allowMissing bool) (*Project, error) {
 	for _, f := range envFiles {
 		p.Inputs = append(p.Inputs, resolvePath(p.Dir, f))
 	}
-	p.DotEnv, p.EnvFiles, err = loadEnvFiles(p.Dir, envFiles)
+	p.DotEnv, p.EnvFiles, err = loadEnvFiles(p.Dir, envFiles, p.Sums)
 	if err != nil {
 		return nil, err
 	}
@@ -341,8 +348,11 @@ func load(path string, launch []string, allowMissing bool) (*Project, error) {
 	return p, nil
 }
 
-func readNode(path string) (*yaml.Node, error) {
-	data, err := os.ReadFile(path)
+func readNode(path string, sums Sums, texts map[string]string) (*yaml.Node, error) {
+	data, err := sums.read(path)
+	if err == nil {
+		texts[path] = string(data)
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, err

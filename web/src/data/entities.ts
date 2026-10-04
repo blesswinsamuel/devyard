@@ -48,6 +48,27 @@ export interface DaemonEntity {
   configError: string;
 }
 
+export interface ConfigChangeEntity {
+  kind: "project" | "service" | "task" | string;
+  name: string;
+  op: "added" | "removed" | "changed" | string;
+  /** What changed, e.g. "run changed" or "env TOKEN changed" (never values). */
+  details: string[];
+  /** Applying the change restarts the service. */
+  restart: boolean;
+}
+
+/** How the config files on disk differ from what the project runs. */
+export interface DriftEntity {
+  /** pending: valid changes await apply; invalid: the files do not load. */
+  state: "pending" | "invalid";
+  error: string;
+  changes: ConfigChangeEntity[];
+  /** Unified diff of the YAML files. */
+  diff: string;
+  since: number;
+}
+
 export interface ProjectEntity {
   id: string;
   configPath: string;
@@ -55,6 +76,9 @@ export interface ProjectEntity {
   hasConfig: boolean;
   /** Index in the global config's project list; the sidebar order. */
   position: number;
+  drift: DriftEntity | null;
+  /** What happens when the config files change: prompt, auto or off. */
+  reloadPolicy: string;
   /** Project env files that exist, in load order. */
   envFiles: string[];
   status: ProjectStatus;
@@ -192,6 +216,22 @@ export function toProject(p: Project): ProjectEntity {
     configPath: p.configPath,
     hasConfig: p.hasConfig,
     position: p.position,
+    drift: p.drift?.state
+      ? {
+          state: p.drift.state as DriftEntity["state"],
+          error: p.drift.error,
+          changes: p.drift.changes.map((c) => ({
+            kind: c.kind,
+            name: c.name,
+            op: c.op,
+            details: [...c.details],
+            restart: c.restart,
+          })),
+          diff: p.drift.diff,
+          since: num(p.drift.sinceUnixMs),
+        }
+      : null,
+    reloadPolicy: p.reloadPolicy || "prompt",
     envFiles: [...p.envFiles],
     status: (p.status || "stopped") as ProjectStatus,
     desired: (p.desired || "stopped") as ProjectDesired,

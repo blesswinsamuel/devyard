@@ -92,6 +92,7 @@ func (s *Service) Reconcile(ctx context.Context, cfg *globalconfig.Config) error
 }
 
 func (s *Service) reconcileLocked(ctx context.Context, cfg *globalconfig.Config) error {
+	s.mgr.SetReloadPolicy(cfg.ReloadPolicy)
 	if !cfg.ProjectsSet {
 		return nil
 	}

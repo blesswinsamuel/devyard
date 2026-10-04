@@ -50,6 +50,9 @@ What's done, what's planned, and where each item lives in the code.
   a watched config that rebinds the web and proxy listeners and reports what it
   could not apply. (`internal/projects`, `internal/globalconfig`,
   `internal/daemon`)
+- **Config drift.** Config files are watched; changes show as a pending diff
+  (dashboard banner, `devyard diff`) and apply on request, automatically or
+  never per `reload` policy; invalid files never apply. (`internal/engine`)
 - **Hermetic e2e suites and CI** on Ubuntu and macOS. (`test/e2e`,
   `.github/workflows`)
 

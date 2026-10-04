@@ -350,12 +350,14 @@ func newStatusCmd(c *Context) *cobra.Command {
 				}
 				return c.printProtoJSON(msgs)
 			}
-			if !all {
-				for _, p := range snap.Projects {
-					if p.Id == project && p.Error != "" {
-						c.Errorf("devyard: project %q has a config error: %s\n", project, p.Error)
-					}
+			for _, p := range snap.Projects {
+				if !all && p.Id != project {
+					continue
 				}
+				if p.Error != "" && !all {
+					c.Errorf("devyard: project %q has a config error: %s\n", p.Id, p.Error)
+				}
+				c.Errorf("%s", driftNote(p))
 			}
 			return renderServices(c, list, all)
 		},

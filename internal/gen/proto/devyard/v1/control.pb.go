@@ -192,7 +192,13 @@ type Project struct {
 	HasConfig bool `protobuf:"varint,12,opt,name=has_config,json=hasConfig,proto3" json:"has_config,omitempty"`
 	// position is the project's index in the global config's project list;
 	// clients show projects in this order.
-	Position      int32 `protobuf:"varint,13,opt,name=position,proto3" json:"position,omitempty"`
+	Position int32 `protobuf:"varint,13,opt,name=position,proto3" json:"position,omitempty"`
+	// drift describes how the config files on disk differ from what the
+	// project runs; empty state when they are the same.
+	Drift *ConfigDrift `protobuf:"bytes,14,opt,name=drift,proto3" json:"drift,omitempty"`
+	// reload_policy is what happens when the config files change: "prompt"
+	// (show the change, apply it on ReloadProject), "auto" or "off".
+	ReloadPolicy  string `protobuf:"bytes,15,opt,name=reload_policy,json=reloadPolicy,proto3" json:"reload_policy,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -318,6 +324,184 @@ func (x *Project) GetPosition() int32 {
 	return 0
 }
 
+func (x *Project) GetDrift() *ConfigDrift {
+	if x != nil {
+		return x.Drift
+	}
+	return nil
+}
+
+func (x *Project) GetReloadPolicy() string {
+	if x != nil {
+		return x.ReloadPolicy
+	}
+	return ""
+}
+
+// ConfigChange is one difference between a project's running config and its
+// files.
+type ConfigChange struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// kind: "project" | "service" | "task"
+	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// op: "added" | "removed" | "changed"
+	Op string `protobuf:"bytes,3,opt,name=op,proto3" json:"op,omitempty"`
+	// details say what changed, e.g. "run changed" or "env DATABASE_URL
+	// changed". Environment values are never included.
+	Details []string `protobuf:"bytes,4,rep,name=details,proto3" json:"details,omitempty"`
+	// restart is true when applying the change restarts the service.
+	Restart       bool `protobuf:"varint,5,opt,name=restart,proto3" json:"restart,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigChange) Reset() {
+	*x = ConfigChange{}
+	mi := &file_devyard_v1_control_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigChange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigChange) ProtoMessage() {}
+
+func (x *ConfigChange) ProtoReflect() protoreflect.Message {
+	mi := &file_devyard_v1_control_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigChange.ProtoReflect.Descriptor instead.
+func (*ConfigChange) Descriptor() ([]byte, []int) {
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ConfigChange) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ConfigChange) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ConfigChange) GetOp() string {
+	if x != nil {
+		return x.Op
+	}
+	return ""
+}
+
+func (x *ConfigChange) GetDetails() []string {
+	if x != nil {
+		return x.Details
+	}
+	return nil
+}
+
+func (x *ConfigChange) GetRestart() bool {
+	if x != nil {
+		return x.Restart
+	}
+	return false
+}
+
+type ConfigDrift struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// state: "" (in sync) | "pending" (valid changes wait to be applied) |
+	// "invalid" (the files do not load; the running config is unchanged)
+	State string `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	// error says why the files are invalid.
+	Error   string          `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Changes []*ConfigChange `protobuf:"bytes,3,rep,name=changes,proto3" json:"changes,omitempty"`
+	// diff is a unified diff of the YAML files (env files are left out: they
+	// hold secrets).
+	Diff          string `protobuf:"bytes,4,opt,name=diff,proto3" json:"diff,omitempty"`
+	SinceUnixMs   int64  `protobuf:"varint,5,opt,name=since_unix_ms,json=sinceUnixMs,proto3" json:"since_unix_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigDrift) Reset() {
+	*x = ConfigDrift{}
+	mi := &file_devyard_v1_control_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigDrift) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigDrift) ProtoMessage() {}
+
+func (x *ConfigDrift) ProtoReflect() protoreflect.Message {
+	mi := &file_devyard_v1_control_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigDrift.ProtoReflect.Descriptor instead.
+func (*ConfigDrift) Descriptor() ([]byte, []int) {
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ConfigDrift) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ConfigDrift) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ConfigDrift) GetChanges() []*ConfigChange {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
+func (x *ConfigDrift) GetDiff() string {
+	if x != nil {
+		return x.Diff
+	}
+	return ""
+}
+
+func (x *ConfigDrift) GetSinceUnixMs() int64 {
+	if x != nil {
+		return x.SinceUnixMs
+	}
+	return 0
+}
+
 type Link struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -328,7 +512,7 @@ type Link struct {
 
 func (x *Link) Reset() {
 	*x = Link{}
-	mi := &file_devyard_v1_control_proto_msgTypes[2]
+	mi := &file_devyard_v1_control_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -340,7 +524,7 @@ func (x *Link) String() string {
 func (*Link) ProtoMessage() {}
 
 func (x *Link) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[2]
+	mi := &file_devyard_v1_control_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -353,7 +537,7 @@ func (x *Link) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Link.ProtoReflect.Descriptor instead.
 func (*Link) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{2}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Link) GetName() string {
@@ -387,7 +571,7 @@ type Ready struct {
 
 func (x *Ready) Reset() {
 	*x = Ready{}
-	mi := &file_devyard_v1_control_proto_msgTypes[3]
+	mi := &file_devyard_v1_control_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -399,7 +583,7 @@ func (x *Ready) String() string {
 func (*Ready) ProtoMessage() {}
 
 func (x *Ready) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[3]
+	mi := &file_devyard_v1_control_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -412,7 +596,7 @@ func (x *Ready) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ready.ProtoReflect.Descriptor instead.
 func (*Ready) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{3}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Ready) GetKind() string {
@@ -469,7 +653,7 @@ type Port struct {
 
 func (x *Port) Reset() {
 	*x = Port{}
-	mi := &file_devyard_v1_control_proto_msgTypes[4]
+	mi := &file_devyard_v1_control_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -481,7 +665,7 @@ func (x *Port) String() string {
 func (*Port) ProtoMessage() {}
 
 func (x *Port) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[4]
+	mi := &file_devyard_v1_control_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -494,7 +678,7 @@ func (x *Port) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Port.ProtoReflect.Descriptor instead.
 func (*Port) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{4}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Port) GetName() string {
@@ -540,7 +724,7 @@ type ServiceSpec struct {
 
 func (x *ServiceSpec) Reset() {
 	*x = ServiceSpec{}
-	mi := &file_devyard_v1_control_proto_msgTypes[5]
+	mi := &file_devyard_v1_control_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -552,7 +736,7 @@ func (x *ServiceSpec) String() string {
 func (*ServiceSpec) ProtoMessage() {}
 
 func (x *ServiceSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[5]
+	mi := &file_devyard_v1_control_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -565,7 +749,7 @@ func (x *ServiceSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceSpec.ProtoReflect.Descriptor instead.
 func (*ServiceSpec) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{5}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ServiceSpec) GetCommand() string {
@@ -679,7 +863,7 @@ type Service struct {
 
 func (x *Service) Reset() {
 	*x = Service{}
-	mi := &file_devyard_v1_control_proto_msgTypes[6]
+	mi := &file_devyard_v1_control_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -691,7 +875,7 @@ func (x *Service) String() string {
 func (*Service) ProtoMessage() {}
 
 func (x *Service) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[6]
+	mi := &file_devyard_v1_control_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -704,7 +888,7 @@ func (x *Service) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Service.ProtoReflect.Descriptor instead.
 func (*Service) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{6}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Service) GetProject() string {
@@ -832,7 +1016,7 @@ type TaskSpec struct {
 
 func (x *TaskSpec) Reset() {
 	*x = TaskSpec{}
-	mi := &file_devyard_v1_control_proto_msgTypes[7]
+	mi := &file_devyard_v1_control_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -844,7 +1028,7 @@ func (x *TaskSpec) String() string {
 func (*TaskSpec) ProtoMessage() {}
 
 func (x *TaskSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[7]
+	mi := &file_devyard_v1_control_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -857,7 +1041,7 @@ func (x *TaskSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskSpec.ProtoReflect.Descriptor instead.
 func (*TaskSpec) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{7}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TaskSpec) GetCommand() string {
@@ -915,7 +1099,7 @@ type Task struct {
 
 func (x *Task) Reset() {
 	*x = Task{}
-	mi := &file_devyard_v1_control_proto_msgTypes[8]
+	mi := &file_devyard_v1_control_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -927,7 +1111,7 @@ func (x *Task) String() string {
 func (*Task) ProtoMessage() {}
 
 func (x *Task) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[8]
+	mi := &file_devyard_v1_control_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -940,7 +1124,7 @@ func (x *Task) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Task.ProtoReflect.Descriptor instead.
 func (*Task) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{8}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Task) GetProject() string {
@@ -1045,7 +1229,7 @@ type GitStatus struct {
 
 func (x *GitStatus) Reset() {
 	*x = GitStatus{}
-	mi := &file_devyard_v1_control_proto_msgTypes[9]
+	mi := &file_devyard_v1_control_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1057,7 +1241,7 @@ func (x *GitStatus) String() string {
 func (*GitStatus) ProtoMessage() {}
 
 func (x *GitStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[9]
+	mi := &file_devyard_v1_control_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1070,7 +1254,7 @@ func (x *GitStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitStatus.ProtoReflect.Descriptor instead.
 func (*GitStatus) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{9}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GitStatus) GetProject() string {
@@ -1183,7 +1367,7 @@ type EntityRef struct {
 
 func (x *EntityRef) Reset() {
 	*x = EntityRef{}
-	mi := &file_devyard_v1_control_proto_msgTypes[10]
+	mi := &file_devyard_v1_control_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1195,7 +1379,7 @@ func (x *EntityRef) String() string {
 func (*EntityRef) ProtoMessage() {}
 
 func (x *EntityRef) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[10]
+	mi := &file_devyard_v1_control_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1208,7 +1392,7 @@ func (x *EntityRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityRef.ProtoReflect.Descriptor instead.
 func (*EntityRef) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{10}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *EntityRef) GetKind() string {
@@ -1245,7 +1429,7 @@ type Snapshot struct {
 
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
-	mi := &file_devyard_v1_control_proto_msgTypes[11]
+	mi := &file_devyard_v1_control_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1441,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[11]
+	mi := &file_devyard_v1_control_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1454,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{11}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Snapshot) GetDaemon() *DaemonInfo {
@@ -1325,7 +1509,7 @@ type Change struct {
 
 func (x *Change) Reset() {
 	*x = Change{}
-	mi := &file_devyard_v1_control_proto_msgTypes[12]
+	mi := &file_devyard_v1_control_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1337,7 +1521,7 @@ func (x *Change) String() string {
 func (*Change) ProtoMessage() {}
 
 func (x *Change) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[12]
+	mi := &file_devyard_v1_control_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1350,7 +1534,7 @@ func (x *Change) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Change.ProtoReflect.Descriptor instead.
 func (*Change) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{12}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Change) GetChange() isChange_Change {
@@ -1462,7 +1646,7 @@ type WatchRequest struct {
 
 func (x *WatchRequest) Reset() {
 	*x = WatchRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[13]
+	mi := &file_devyard_v1_control_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1474,7 +1658,7 @@ func (x *WatchRequest) String() string {
 func (*WatchRequest) ProtoMessage() {}
 
 func (x *WatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[13]
+	mi := &file_devyard_v1_control_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1487,7 +1671,7 @@ func (x *WatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchRequest.ProtoReflect.Descriptor instead.
 func (*WatchRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{13}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{15}
 }
 
 type WatchResponse struct {
@@ -1507,7 +1691,7 @@ type WatchResponse struct {
 
 func (x *WatchResponse) Reset() {
 	*x = WatchResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[14]
+	mi := &file_devyard_v1_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1519,7 +1703,7 @@ func (x *WatchResponse) String() string {
 func (*WatchResponse) ProtoMessage() {}
 
 func (x *WatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[14]
+	mi := &file_devyard_v1_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1532,7 +1716,7 @@ func (x *WatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchResponse.ProtoReflect.Descriptor instead.
 func (*WatchResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{14}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *WatchResponse) GetRevision() uint64 {
@@ -1607,7 +1791,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_devyard_v1_control_proto_msgTypes[15]
+	mi := &file_devyard_v1_control_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1619,7 +1803,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[15]
+	mi := &file_devyard_v1_control_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1632,7 +1816,7 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
 func (*Heartbeat) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{15}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{17}
 }
 
 type GetStateRequest struct {
@@ -1643,7 +1827,7 @@ type GetStateRequest struct {
 
 func (x *GetStateRequest) Reset() {
 	*x = GetStateRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[16]
+	mi := &file_devyard_v1_control_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1655,7 +1839,7 @@ func (x *GetStateRequest) String() string {
 func (*GetStateRequest) ProtoMessage() {}
 
 func (x *GetStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[16]
+	mi := &file_devyard_v1_control_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1668,7 +1852,7 @@ func (x *GetStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStateRequest.ProtoReflect.Descriptor instead.
 func (*GetStateRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{16}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{18}
 }
 
 type GetStateResponse struct {
@@ -1681,7 +1865,7 @@ type GetStateResponse struct {
 
 func (x *GetStateResponse) Reset() {
 	*x = GetStateResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[17]
+	mi := &file_devyard_v1_control_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1693,7 +1877,7 @@ func (x *GetStateResponse) String() string {
 func (*GetStateResponse) ProtoMessage() {}
 
 func (x *GetStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[17]
+	mi := &file_devyard_v1_control_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1706,7 +1890,7 @@ func (x *GetStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStateResponse.ProtoReflect.Descriptor instead.
 func (*GetStateResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{17}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetStateResponse) GetRevision() uint64 {
@@ -1731,7 +1915,7 @@ type GetDaemonRequest struct {
 
 func (x *GetDaemonRequest) Reset() {
 	*x = GetDaemonRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[18]
+	mi := &file_devyard_v1_control_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1743,7 +1927,7 @@ func (x *GetDaemonRequest) String() string {
 func (*GetDaemonRequest) ProtoMessage() {}
 
 func (x *GetDaemonRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[18]
+	mi := &file_devyard_v1_control_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1756,7 +1940,7 @@ func (x *GetDaemonRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDaemonRequest.ProtoReflect.Descriptor instead.
 func (*GetDaemonRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{18}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{20}
 }
 
 type GetDaemonResponse struct {
@@ -1768,7 +1952,7 @@ type GetDaemonResponse struct {
 
 func (x *GetDaemonResponse) Reset() {
 	*x = GetDaemonResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[19]
+	mi := &file_devyard_v1_control_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1780,7 +1964,7 @@ func (x *GetDaemonResponse) String() string {
 func (*GetDaemonResponse) ProtoMessage() {}
 
 func (x *GetDaemonResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[19]
+	mi := &file_devyard_v1_control_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1793,7 +1977,7 @@ func (x *GetDaemonResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDaemonResponse.ProtoReflect.Descriptor instead.
 func (*GetDaemonResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{19}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetDaemonResponse) GetInfo() *DaemonInfo {
@@ -1811,7 +1995,7 @@ type StopDaemonRequest struct {
 
 func (x *StopDaemonRequest) Reset() {
 	*x = StopDaemonRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[20]
+	mi := &file_devyard_v1_control_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1823,7 +2007,7 @@ func (x *StopDaemonRequest) String() string {
 func (*StopDaemonRequest) ProtoMessage() {}
 
 func (x *StopDaemonRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[20]
+	mi := &file_devyard_v1_control_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1836,7 +2020,7 @@ func (x *StopDaemonRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopDaemonRequest.ProtoReflect.Descriptor instead.
 func (*StopDaemonRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{20}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{22}
 }
 
 type StopDaemonResponse struct {
@@ -1847,7 +2031,7 @@ type StopDaemonResponse struct {
 
 func (x *StopDaemonResponse) Reset() {
 	*x = StopDaemonResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[21]
+	mi := &file_devyard_v1_control_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1859,7 +2043,7 @@ func (x *StopDaemonResponse) String() string {
 func (*StopDaemonResponse) ProtoMessage() {}
 
 func (x *StopDaemonResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[21]
+	mi := &file_devyard_v1_control_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1872,7 +2056,7 @@ func (x *StopDaemonResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopDaemonResponse.ProtoReflect.Descriptor instead.
 func (*StopDaemonResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{21}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{23}
 }
 
 type RestartDaemonRequest struct {
@@ -1886,7 +2070,7 @@ type RestartDaemonRequest struct {
 
 func (x *RestartDaemonRequest) Reset() {
 	*x = RestartDaemonRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[22]
+	mi := &file_devyard_v1_control_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1898,7 +2082,7 @@ func (x *RestartDaemonRequest) String() string {
 func (*RestartDaemonRequest) ProtoMessage() {}
 
 func (x *RestartDaemonRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[22]
+	mi := &file_devyard_v1_control_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1911,7 +2095,7 @@ func (x *RestartDaemonRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartDaemonRequest.ProtoReflect.Descriptor instead.
 func (*RestartDaemonRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{22}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *RestartDaemonRequest) GetRestartServices() bool {
@@ -1929,7 +2113,7 @@ type RestartDaemonResponse struct {
 
 func (x *RestartDaemonResponse) Reset() {
 	*x = RestartDaemonResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[23]
+	mi := &file_devyard_v1_control_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1941,7 +2125,7 @@ func (x *RestartDaemonResponse) String() string {
 func (*RestartDaemonResponse) ProtoMessage() {}
 
 func (x *RestartDaemonResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[23]
+	mi := &file_devyard_v1_control_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1954,7 +2138,7 @@ func (x *RestartDaemonResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartDaemonResponse.ProtoReflect.Descriptor instead.
 func (*RestartDaemonResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{23}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{25}
 }
 
 type GlobalWebConfig struct {
@@ -1971,7 +2155,7 @@ type GlobalWebConfig struct {
 
 func (x *GlobalWebConfig) Reset() {
 	*x = GlobalWebConfig{}
-	mi := &file_devyard_v1_control_proto_msgTypes[24]
+	mi := &file_devyard_v1_control_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1983,7 +2167,7 @@ func (x *GlobalWebConfig) String() string {
 func (*GlobalWebConfig) ProtoMessage() {}
 
 func (x *GlobalWebConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[24]
+	mi := &file_devyard_v1_control_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1996,7 +2180,7 @@ func (x *GlobalWebConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GlobalWebConfig.ProtoReflect.Descriptor instead.
 func (*GlobalWebConfig) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{24}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GlobalWebConfig) GetHost() string {
@@ -2040,7 +2224,7 @@ type GlobalProxyTLSConfig struct {
 
 func (x *GlobalProxyTLSConfig) Reset() {
 	*x = GlobalProxyTLSConfig{}
-	mi := &file_devyard_v1_control_proto_msgTypes[25]
+	mi := &file_devyard_v1_control_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2052,7 +2236,7 @@ func (x *GlobalProxyTLSConfig) String() string {
 func (*GlobalProxyTLSConfig) ProtoMessage() {}
 
 func (x *GlobalProxyTLSConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[25]
+	mi := &file_devyard_v1_control_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2065,7 +2249,7 @@ func (x *GlobalProxyTLSConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GlobalProxyTLSConfig.ProtoReflect.Descriptor instead.
 func (*GlobalProxyTLSConfig) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{25}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GlobalProxyTLSConfig) GetEnabled() bool {
@@ -2115,7 +2299,7 @@ type GlobalProxyConfig struct {
 
 func (x *GlobalProxyConfig) Reset() {
 	*x = GlobalProxyConfig{}
-	mi := &file_devyard_v1_control_proto_msgTypes[26]
+	mi := &file_devyard_v1_control_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2127,7 +2311,7 @@ func (x *GlobalProxyConfig) String() string {
 func (*GlobalProxyConfig) ProtoMessage() {}
 
 func (x *GlobalProxyConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[26]
+	mi := &file_devyard_v1_control_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2140,7 +2324,7 @@ func (x *GlobalProxyConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GlobalProxyConfig.ProtoReflect.Descriptor instead.
 func (*GlobalProxyConfig) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{26}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GlobalProxyConfig) GetHost() string {
@@ -2178,15 +2362,18 @@ type GlobalConfig struct {
 	// projects and groups are read-only here: UpdateGlobalConfig leaves them
 	// alone (projects change through AddProject, RemoveProject and
 	// MoveProject; groups are edited in the config file).
-	Projects      []string        `protobuf:"bytes,3,rep,name=projects,proto3" json:"projects,omitempty"`
-	Groups        []*ProjectGroup `protobuf:"bytes,4,rep,name=groups,proto3" json:"groups,omitempty"`
+	Projects []string        `protobuf:"bytes,3,rep,name=projects,proto3" json:"projects,omitempty"`
+	Groups   []*ProjectGroup `protobuf:"bytes,4,rep,name=groups,proto3" json:"groups,omitempty"`
+	// reload is the default policy for config changes of a project: "prompt",
+	// "auto" or "off". Per-project overrides are set in the config file.
+	Reload        string `protobuf:"bytes,5,opt,name=reload,proto3" json:"reload,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GlobalConfig) Reset() {
 	*x = GlobalConfig{}
-	mi := &file_devyard_v1_control_proto_msgTypes[27]
+	mi := &file_devyard_v1_control_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2198,7 +2385,7 @@ func (x *GlobalConfig) String() string {
 func (*GlobalConfig) ProtoMessage() {}
 
 func (x *GlobalConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[27]
+	mi := &file_devyard_v1_control_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2211,7 +2398,7 @@ func (x *GlobalConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GlobalConfig.ProtoReflect.Descriptor instead.
 func (*GlobalConfig) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{27}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GlobalConfig) GetWeb() *GlobalWebConfig {
@@ -2242,6 +2429,13 @@ func (x *GlobalConfig) GetGroups() []*ProjectGroup {
 	return nil
 }
 
+func (x *GlobalConfig) GetReload() string {
+	if x != nil {
+		return x.Reload
+	}
+	return ""
+}
+
 type ProjectGroup struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -2253,7 +2447,7 @@ type ProjectGroup struct {
 
 func (x *ProjectGroup) Reset() {
 	*x = ProjectGroup{}
-	mi := &file_devyard_v1_control_proto_msgTypes[28]
+	mi := &file_devyard_v1_control_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2265,7 +2459,7 @@ func (x *ProjectGroup) String() string {
 func (*ProjectGroup) ProtoMessage() {}
 
 func (x *ProjectGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[28]
+	mi := &file_devyard_v1_control_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2278,7 +2472,7 @@ func (x *ProjectGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectGroup.ProtoReflect.Descriptor instead.
 func (*ProjectGroup) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{28}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ProjectGroup) GetName() string {
@@ -2303,7 +2497,7 @@ type GetGlobalConfigRequest struct {
 
 func (x *GetGlobalConfigRequest) Reset() {
 	*x = GetGlobalConfigRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[29]
+	mi := &file_devyard_v1_control_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2315,7 +2509,7 @@ func (x *GetGlobalConfigRequest) String() string {
 func (*GetGlobalConfigRequest) ProtoMessage() {}
 
 func (x *GetGlobalConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[29]
+	mi := &file_devyard_v1_control_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2328,7 +2522,7 @@ func (x *GetGlobalConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGlobalConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetGlobalConfigRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{29}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{31}
 }
 
 type GetGlobalConfigResponse struct {
@@ -2341,7 +2535,7 @@ type GetGlobalConfigResponse struct {
 
 func (x *GetGlobalConfigResponse) Reset() {
 	*x = GetGlobalConfigResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[30]
+	mi := &file_devyard_v1_control_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2353,7 +2547,7 @@ func (x *GetGlobalConfigResponse) String() string {
 func (*GetGlobalConfigResponse) ProtoMessage() {}
 
 func (x *GetGlobalConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[30]
+	mi := &file_devyard_v1_control_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2366,7 +2560,7 @@ func (x *GetGlobalConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGlobalConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetGlobalConfigResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{30}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetGlobalConfigResponse) GetConfig() *GlobalConfig {
@@ -2392,7 +2586,7 @@ type UpdateGlobalConfigRequest struct {
 
 func (x *UpdateGlobalConfigRequest) Reset() {
 	*x = UpdateGlobalConfigRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[31]
+	mi := &file_devyard_v1_control_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2404,7 +2598,7 @@ func (x *UpdateGlobalConfigRequest) String() string {
 func (*UpdateGlobalConfigRequest) ProtoMessage() {}
 
 func (x *UpdateGlobalConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[31]
+	mi := &file_devyard_v1_control_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2417,7 +2611,7 @@ func (x *UpdateGlobalConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGlobalConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGlobalConfigRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{31}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *UpdateGlobalConfigRequest) GetConfig() *GlobalConfig {
@@ -2435,7 +2629,7 @@ type UpdateGlobalConfigResponse struct {
 
 func (x *UpdateGlobalConfigResponse) Reset() {
 	*x = UpdateGlobalConfigResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[32]
+	mi := &file_devyard_v1_control_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2447,7 +2641,7 @@ func (x *UpdateGlobalConfigResponse) String() string {
 func (*UpdateGlobalConfigResponse) ProtoMessage() {}
 
 func (x *UpdateGlobalConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[32]
+	mi := &file_devyard_v1_control_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2460,7 +2654,7 @@ func (x *UpdateGlobalConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGlobalConfigResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGlobalConfigResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{32}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{34}
 }
 
 type SetWebPasswordRequest struct {
@@ -2476,7 +2670,7 @@ type SetWebPasswordRequest struct {
 
 func (x *SetWebPasswordRequest) Reset() {
 	*x = SetWebPasswordRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[33]
+	mi := &file_devyard_v1_control_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2488,7 +2682,7 @@ func (x *SetWebPasswordRequest) String() string {
 func (*SetWebPasswordRequest) ProtoMessage() {}
 
 func (x *SetWebPasswordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[33]
+	mi := &file_devyard_v1_control_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2501,7 +2695,7 @@ func (x *SetWebPasswordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebPasswordRequest.ProtoReflect.Descriptor instead.
 func (*SetWebPasswordRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{33}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SetWebPasswordRequest) GetPassword() string {
@@ -2526,7 +2720,7 @@ type SetWebPasswordResponse struct {
 
 func (x *SetWebPasswordResponse) Reset() {
 	*x = SetWebPasswordResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[34]
+	mi := &file_devyard_v1_control_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2538,7 +2732,7 @@ func (x *SetWebPasswordResponse) String() string {
 func (*SetWebPasswordResponse) ProtoMessage() {}
 
 func (x *SetWebPasswordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[34]
+	mi := &file_devyard_v1_control_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2551,7 +2745,7 @@ func (x *SetWebPasswordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebPasswordResponse.ProtoReflect.Descriptor instead.
 func (*SetWebPasswordResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{34}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{36}
 }
 
 type AddProjectRequest struct {
@@ -2571,7 +2765,7 @@ type AddProjectRequest struct {
 
 func (x *AddProjectRequest) Reset() {
 	*x = AddProjectRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[35]
+	mi := &file_devyard_v1_control_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2583,7 +2777,7 @@ func (x *AddProjectRequest) String() string {
 func (*AddProjectRequest) ProtoMessage() {}
 
 func (x *AddProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[35]
+	mi := &file_devyard_v1_control_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2596,7 +2790,7 @@ func (x *AddProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddProjectRequest.ProtoReflect.Descriptor instead.
 func (*AddProjectRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{35}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *AddProjectRequest) GetPath() string {
@@ -2636,7 +2830,7 @@ type AddProjectResponse struct {
 
 func (x *AddProjectResponse) Reset() {
 	*x = AddProjectResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[36]
+	mi := &file_devyard_v1_control_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2648,7 +2842,7 @@ func (x *AddProjectResponse) String() string {
 func (*AddProjectResponse) ProtoMessage() {}
 
 func (x *AddProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[36]
+	mi := &file_devyard_v1_control_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2661,7 +2855,7 @@ func (x *AddProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddProjectResponse.ProtoReflect.Descriptor instead.
 func (*AddProjectResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{36}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AddProjectResponse) GetProject() *Project {
@@ -2683,7 +2877,7 @@ type StartProjectRequest struct {
 
 func (x *StartProjectRequest) Reset() {
 	*x = StartProjectRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[37]
+	mi := &file_devyard_v1_control_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2695,7 +2889,7 @@ func (x *StartProjectRequest) String() string {
 func (*StartProjectRequest) ProtoMessage() {}
 
 func (x *StartProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[37]
+	mi := &file_devyard_v1_control_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2708,7 +2902,7 @@ func (x *StartProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartProjectRequest.ProtoReflect.Descriptor instead.
 func (*StartProjectRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{37}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *StartProjectRequest) GetProject() string {
@@ -2740,7 +2934,7 @@ type StartProjectResponse struct {
 
 func (x *StartProjectResponse) Reset() {
 	*x = StartProjectResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[38]
+	mi := &file_devyard_v1_control_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2752,7 +2946,7 @@ func (x *StartProjectResponse) String() string {
 func (*StartProjectResponse) ProtoMessage() {}
 
 func (x *StartProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[38]
+	mi := &file_devyard_v1_control_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2765,7 +2959,7 @@ func (x *StartProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartProjectResponse.ProtoReflect.Descriptor instead.
 func (*StartProjectResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{38}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{40}
 }
 
 type StopProjectRequest struct {
@@ -2777,7 +2971,7 @@ type StopProjectRequest struct {
 
 func (x *StopProjectRequest) Reset() {
 	*x = StopProjectRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[39]
+	mi := &file_devyard_v1_control_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2789,7 +2983,7 @@ func (x *StopProjectRequest) String() string {
 func (*StopProjectRequest) ProtoMessage() {}
 
 func (x *StopProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[39]
+	mi := &file_devyard_v1_control_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2802,7 +2996,7 @@ func (x *StopProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopProjectRequest.ProtoReflect.Descriptor instead.
 func (*StopProjectRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{39}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *StopProjectRequest) GetProject() string {
@@ -2820,7 +3014,7 @@ type StopProjectResponse struct {
 
 func (x *StopProjectResponse) Reset() {
 	*x = StopProjectResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[40]
+	mi := &file_devyard_v1_control_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2832,7 +3026,7 @@ func (x *StopProjectResponse) String() string {
 func (*StopProjectResponse) ProtoMessage() {}
 
 func (x *StopProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[40]
+	mi := &file_devyard_v1_control_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2845,7 +3039,7 @@ func (x *StopProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopProjectResponse.ProtoReflect.Descriptor instead.
 func (*StopProjectResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{40}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{42}
 }
 
 type RestartProjectRequest struct {
@@ -2859,7 +3053,7 @@ type RestartProjectRequest struct {
 
 func (x *RestartProjectRequest) Reset() {
 	*x = RestartProjectRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[41]
+	mi := &file_devyard_v1_control_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2871,7 +3065,7 @@ func (x *RestartProjectRequest) String() string {
 func (*RestartProjectRequest) ProtoMessage() {}
 
 func (x *RestartProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[41]
+	mi := &file_devyard_v1_control_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2884,7 +3078,7 @@ func (x *RestartProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartProjectRequest.ProtoReflect.Descriptor instead.
 func (*RestartProjectRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{41}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *RestartProjectRequest) GetProject() string {
@@ -2909,7 +3103,7 @@ type RestartProjectResponse struct {
 
 func (x *RestartProjectResponse) Reset() {
 	*x = RestartProjectResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[42]
+	mi := &file_devyard_v1_control_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2921,7 +3115,7 @@ func (x *RestartProjectResponse) String() string {
 func (*RestartProjectResponse) ProtoMessage() {}
 
 func (x *RestartProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[42]
+	mi := &file_devyard_v1_control_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2934,7 +3128,7 @@ func (x *RestartProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartProjectResponse.ProtoReflect.Descriptor instead.
 func (*RestartProjectResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{42}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{44}
 }
 
 type ReloadProjectRequest struct {
@@ -2949,7 +3143,7 @@ type ReloadProjectRequest struct {
 
 func (x *ReloadProjectRequest) Reset() {
 	*x = ReloadProjectRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[43]
+	mi := &file_devyard_v1_control_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2961,7 +3155,7 @@ func (x *ReloadProjectRequest) String() string {
 func (*ReloadProjectRequest) ProtoMessage() {}
 
 func (x *ReloadProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[43]
+	mi := &file_devyard_v1_control_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2974,7 +3168,7 @@ func (x *ReloadProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadProjectRequest.ProtoReflect.Descriptor instead.
 func (*ReloadProjectRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{43}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ReloadProjectRequest) GetProject() string {
@@ -3006,7 +3200,7 @@ type ReloadProjectResponse struct {
 
 func (x *ReloadProjectResponse) Reset() {
 	*x = ReloadProjectResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[44]
+	mi := &file_devyard_v1_control_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3018,7 +3212,7 @@ func (x *ReloadProjectResponse) String() string {
 func (*ReloadProjectResponse) ProtoMessage() {}
 
 func (x *ReloadProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[44]
+	mi := &file_devyard_v1_control_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3031,7 +3225,7 @@ func (x *ReloadProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadProjectResponse.ProtoReflect.Descriptor instead.
 func (*ReloadProjectResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{44}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{46}
 }
 
 type RemoveProjectRequest struct {
@@ -3043,7 +3237,7 @@ type RemoveProjectRequest struct {
 
 func (x *RemoveProjectRequest) Reset() {
 	*x = RemoveProjectRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[45]
+	mi := &file_devyard_v1_control_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3055,7 +3249,7 @@ func (x *RemoveProjectRequest) String() string {
 func (*RemoveProjectRequest) ProtoMessage() {}
 
 func (x *RemoveProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[45]
+	mi := &file_devyard_v1_control_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3068,7 +3262,7 @@ func (x *RemoveProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveProjectRequest.ProtoReflect.Descriptor instead.
 func (*RemoveProjectRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{45}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RemoveProjectRequest) GetProject() string {
@@ -3088,7 +3282,7 @@ type RemoveProjectResponse struct {
 
 func (x *RemoveProjectResponse) Reset() {
 	*x = RemoveProjectResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[46]
+	mi := &file_devyard_v1_control_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3100,7 +3294,7 @@ func (x *RemoveProjectResponse) String() string {
 func (*RemoveProjectResponse) ProtoMessage() {}
 
 func (x *RemoveProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[46]
+	mi := &file_devyard_v1_control_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3113,7 +3307,7 @@ func (x *RemoveProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveProjectResponse.ProtoReflect.Descriptor instead.
 func (*RemoveProjectResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{46}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{48}
 }
 
 type MoveProjectRequest struct {
@@ -3127,7 +3321,7 @@ type MoveProjectRequest struct {
 
 func (x *MoveProjectRequest) Reset() {
 	*x = MoveProjectRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[47]
+	mi := &file_devyard_v1_control_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3139,7 +3333,7 @@ func (x *MoveProjectRequest) String() string {
 func (*MoveProjectRequest) ProtoMessage() {}
 
 func (x *MoveProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[47]
+	mi := &file_devyard_v1_control_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3152,7 +3346,7 @@ func (x *MoveProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveProjectRequest.ProtoReflect.Descriptor instead.
 func (*MoveProjectRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{47}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *MoveProjectRequest) GetProject() string {
@@ -3177,7 +3371,7 @@ type MoveProjectResponse struct {
 
 func (x *MoveProjectResponse) Reset() {
 	*x = MoveProjectResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[48]
+	mi := &file_devyard_v1_control_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3189,7 +3383,7 @@ func (x *MoveProjectResponse) String() string {
 func (*MoveProjectResponse) ProtoMessage() {}
 
 func (x *MoveProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[48]
+	mi := &file_devyard_v1_control_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3202,7 +3396,7 @@ func (x *MoveProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveProjectResponse.ProtoReflect.Descriptor instead.
 func (*MoveProjectResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{48}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{50}
 }
 
 type SuggestProjectPathsRequest struct {
@@ -3216,7 +3410,7 @@ type SuggestProjectPathsRequest struct {
 
 func (x *SuggestProjectPathsRequest) Reset() {
 	*x = SuggestProjectPathsRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[49]
+	mi := &file_devyard_v1_control_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3228,7 +3422,7 @@ func (x *SuggestProjectPathsRequest) String() string {
 func (*SuggestProjectPathsRequest) ProtoMessage() {}
 
 func (x *SuggestProjectPathsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[49]
+	mi := &file_devyard_v1_control_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3241,7 +3435,7 @@ func (x *SuggestProjectPathsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuggestProjectPathsRequest.ProtoReflect.Descriptor instead.
 func (*SuggestProjectPathsRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{49}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *SuggestProjectPathsRequest) GetPrefix() string {
@@ -3265,7 +3459,7 @@ type PathSuggestion struct {
 
 func (x *PathSuggestion) Reset() {
 	*x = PathSuggestion{}
-	mi := &file_devyard_v1_control_proto_msgTypes[50]
+	mi := &file_devyard_v1_control_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3277,7 +3471,7 @@ func (x *PathSuggestion) String() string {
 func (*PathSuggestion) ProtoMessage() {}
 
 func (x *PathSuggestion) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[50]
+	mi := &file_devyard_v1_control_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3290,7 +3484,7 @@ func (x *PathSuggestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PathSuggestion.ProtoReflect.Descriptor instead.
 func (*PathSuggestion) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{50}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *PathSuggestion) GetPath() string {
@@ -3333,7 +3527,7 @@ type SuggestProjectPathsResponse struct {
 
 func (x *SuggestProjectPathsResponse) Reset() {
 	*x = SuggestProjectPathsResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[51]
+	mi := &file_devyard_v1_control_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3345,7 +3539,7 @@ func (x *SuggestProjectPathsResponse) String() string {
 func (*SuggestProjectPathsResponse) ProtoMessage() {}
 
 func (x *SuggestProjectPathsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[51]
+	mi := &file_devyard_v1_control_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3358,7 +3552,7 @@ func (x *SuggestProjectPathsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuggestProjectPathsResponse.ProtoReflect.Descriptor instead.
 func (*SuggestProjectPathsResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{51}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *SuggestProjectPathsResponse) GetRecent() []*PathSuggestion {
@@ -3386,7 +3580,7 @@ type StartServiceRequest struct {
 
 func (x *StartServiceRequest) Reset() {
 	*x = StartServiceRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[52]
+	mi := &file_devyard_v1_control_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3398,7 +3592,7 @@ func (x *StartServiceRequest) String() string {
 func (*StartServiceRequest) ProtoMessage() {}
 
 func (x *StartServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[52]
+	mi := &file_devyard_v1_control_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3411,7 +3605,7 @@ func (x *StartServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartServiceRequest.ProtoReflect.Descriptor instead.
 func (*StartServiceRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{52}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *StartServiceRequest) GetProject() string {
@@ -3443,7 +3637,7 @@ type StartServiceResponse struct {
 
 func (x *StartServiceResponse) Reset() {
 	*x = StartServiceResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[53]
+	mi := &file_devyard_v1_control_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3455,7 +3649,7 @@ func (x *StartServiceResponse) String() string {
 func (*StartServiceResponse) ProtoMessage() {}
 
 func (x *StartServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[53]
+	mi := &file_devyard_v1_control_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3468,7 +3662,7 @@ func (x *StartServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartServiceResponse.ProtoReflect.Descriptor instead.
 func (*StartServiceResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{53}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{55}
 }
 
 type StopServiceRequest struct {
@@ -3481,7 +3675,7 @@ type StopServiceRequest struct {
 
 func (x *StopServiceRequest) Reset() {
 	*x = StopServiceRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[54]
+	mi := &file_devyard_v1_control_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3493,7 +3687,7 @@ func (x *StopServiceRequest) String() string {
 func (*StopServiceRequest) ProtoMessage() {}
 
 func (x *StopServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[54]
+	mi := &file_devyard_v1_control_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3506,7 +3700,7 @@ func (x *StopServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopServiceRequest.ProtoReflect.Descriptor instead.
 func (*StopServiceRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{54}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *StopServiceRequest) GetProject() string {
@@ -3531,7 +3725,7 @@ type StopServiceResponse struct {
 
 func (x *StopServiceResponse) Reset() {
 	*x = StopServiceResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[55]
+	mi := &file_devyard_v1_control_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3543,7 +3737,7 @@ func (x *StopServiceResponse) String() string {
 func (*StopServiceResponse) ProtoMessage() {}
 
 func (x *StopServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[55]
+	mi := &file_devyard_v1_control_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3556,7 +3750,7 @@ func (x *StopServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopServiceResponse.ProtoReflect.Descriptor instead.
 func (*StopServiceResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{55}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{57}
 }
 
 type RestartServiceRequest struct {
@@ -3570,7 +3764,7 @@ type RestartServiceRequest struct {
 
 func (x *RestartServiceRequest) Reset() {
 	*x = RestartServiceRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[56]
+	mi := &file_devyard_v1_control_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3582,7 +3776,7 @@ func (x *RestartServiceRequest) String() string {
 func (*RestartServiceRequest) ProtoMessage() {}
 
 func (x *RestartServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[56]
+	mi := &file_devyard_v1_control_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3595,7 +3789,7 @@ func (x *RestartServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartServiceRequest.ProtoReflect.Descriptor instead.
 func (*RestartServiceRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{56}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *RestartServiceRequest) GetProject() string {
@@ -3627,7 +3821,7 @@ type RestartServiceResponse struct {
 
 func (x *RestartServiceResponse) Reset() {
 	*x = RestartServiceResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[57]
+	mi := &file_devyard_v1_control_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3639,7 +3833,7 @@ func (x *RestartServiceResponse) String() string {
 func (*RestartServiceResponse) ProtoMessage() {}
 
 func (x *RestartServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[57]
+	mi := &file_devyard_v1_control_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3652,7 +3846,7 @@ func (x *RestartServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartServiceResponse.ProtoReflect.Descriptor instead.
 func (*RestartServiceResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{57}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{59}
 }
 
 type KillServiceRequest struct {
@@ -3667,7 +3861,7 @@ type KillServiceRequest struct {
 
 func (x *KillServiceRequest) Reset() {
 	*x = KillServiceRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[58]
+	mi := &file_devyard_v1_control_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3679,7 +3873,7 @@ func (x *KillServiceRequest) String() string {
 func (*KillServiceRequest) ProtoMessage() {}
 
 func (x *KillServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[58]
+	mi := &file_devyard_v1_control_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3692,7 +3886,7 @@ func (x *KillServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillServiceRequest.ProtoReflect.Descriptor instead.
 func (*KillServiceRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{58}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *KillServiceRequest) GetProject() string {
@@ -3724,7 +3918,7 @@ type KillServiceResponse struct {
 
 func (x *KillServiceResponse) Reset() {
 	*x = KillServiceResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[59]
+	mi := &file_devyard_v1_control_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3736,7 +3930,7 @@ func (x *KillServiceResponse) String() string {
 func (*KillServiceResponse) ProtoMessage() {}
 
 func (x *KillServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[59]
+	mi := &file_devyard_v1_control_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3749,7 +3943,7 @@ func (x *KillServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillServiceResponse.ProtoReflect.Descriptor instead.
 func (*KillServiceResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{59}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{61}
 }
 
 type RunTaskRequest struct {
@@ -3763,7 +3957,7 @@ type RunTaskRequest struct {
 
 func (x *RunTaskRequest) Reset() {
 	*x = RunTaskRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[60]
+	mi := &file_devyard_v1_control_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3775,7 +3969,7 @@ func (x *RunTaskRequest) String() string {
 func (*RunTaskRequest) ProtoMessage() {}
 
 func (x *RunTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[60]
+	mi := &file_devyard_v1_control_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3788,7 +3982,7 @@ func (x *RunTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunTaskRequest.ProtoReflect.Descriptor instead.
 func (*RunTaskRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{60}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *RunTaskRequest) GetProject() string {
@@ -3821,7 +4015,7 @@ type RunTaskResponse struct {
 
 func (x *RunTaskResponse) Reset() {
 	*x = RunTaskResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[61]
+	mi := &file_devyard_v1_control_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3833,7 +4027,7 @@ func (x *RunTaskResponse) String() string {
 func (*RunTaskResponse) ProtoMessage() {}
 
 func (x *RunTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[61]
+	mi := &file_devyard_v1_control_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3846,7 +4040,7 @@ func (x *RunTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunTaskResponse.ProtoReflect.Descriptor instead.
 func (*RunTaskResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{61}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *RunTaskResponse) GetRun() int64 {
@@ -3866,7 +4060,7 @@ type StopTaskRequest struct {
 
 func (x *StopTaskRequest) Reset() {
 	*x = StopTaskRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[62]
+	mi := &file_devyard_v1_control_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3878,7 +4072,7 @@ func (x *StopTaskRequest) String() string {
 func (*StopTaskRequest) ProtoMessage() {}
 
 func (x *StopTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[62]
+	mi := &file_devyard_v1_control_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3891,7 +4085,7 @@ func (x *StopTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopTaskRequest.ProtoReflect.Descriptor instead.
 func (*StopTaskRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{62}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *StopTaskRequest) GetProject() string {
@@ -3916,7 +4110,7 @@ type StopTaskResponse struct {
 
 func (x *StopTaskResponse) Reset() {
 	*x = StopTaskResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[63]
+	mi := &file_devyard_v1_control_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3928,7 +4122,7 @@ func (x *StopTaskResponse) String() string {
 func (*StopTaskResponse) ProtoMessage() {}
 
 func (x *StopTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[63]
+	mi := &file_devyard_v1_control_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3941,7 +4135,7 @@ func (x *StopTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopTaskResponse.ProtoReflect.Descriptor instead.
 func (*StopTaskResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{63}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{65}
 }
 
 type KillTaskRequest struct {
@@ -3955,7 +4149,7 @@ type KillTaskRequest struct {
 
 func (x *KillTaskRequest) Reset() {
 	*x = KillTaskRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[64]
+	mi := &file_devyard_v1_control_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3967,7 +4161,7 @@ func (x *KillTaskRequest) String() string {
 func (*KillTaskRequest) ProtoMessage() {}
 
 func (x *KillTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[64]
+	mi := &file_devyard_v1_control_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3980,7 +4174,7 @@ func (x *KillTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillTaskRequest.ProtoReflect.Descriptor instead.
 func (*KillTaskRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{64}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *KillTaskRequest) GetProject() string {
@@ -4012,7 +4206,7 @@ type KillTaskResponse struct {
 
 func (x *KillTaskResponse) Reset() {
 	*x = KillTaskResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[65]
+	mi := &file_devyard_v1_control_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4024,7 +4218,7 @@ func (x *KillTaskResponse) String() string {
 func (*KillTaskResponse) ProtoMessage() {}
 
 func (x *KillTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[65]
+	mi := &file_devyard_v1_control_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4037,7 +4231,7 @@ func (x *KillTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillTaskResponse.ProtoReflect.Descriptor instead.
 func (*KillTaskResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{65}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{67}
 }
 
 type LogSource struct {
@@ -4051,7 +4245,7 @@ type LogSource struct {
 
 func (x *LogSource) Reset() {
 	*x = LogSource{}
-	mi := &file_devyard_v1_control_proto_msgTypes[66]
+	mi := &file_devyard_v1_control_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4063,7 +4257,7 @@ func (x *LogSource) String() string {
 func (*LogSource) ProtoMessage() {}
 
 func (x *LogSource) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[66]
+	mi := &file_devyard_v1_control_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4076,7 +4270,7 @@ func (x *LogSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogSource.ProtoReflect.Descriptor instead.
 func (*LogSource) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{66}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *LogSource) GetKind() string {
@@ -4118,7 +4312,7 @@ type LogsRequest struct {
 
 func (x *LogsRequest) Reset() {
 	*x = LogsRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[67]
+	mi := &file_devyard_v1_control_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4130,7 +4324,7 @@ func (x *LogsRequest) String() string {
 func (*LogsRequest) ProtoMessage() {}
 
 func (x *LogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[67]
+	mi := &file_devyard_v1_control_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4143,7 +4337,7 @@ func (x *LogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogsRequest.ProtoReflect.Descriptor instead.
 func (*LogsRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{67}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *LogsRequest) GetProject() string {
@@ -4210,7 +4404,7 @@ type LogLine struct {
 
 func (x *LogLine) Reset() {
 	*x = LogLine{}
-	mi := &file_devyard_v1_control_proto_msgTypes[68]
+	mi := &file_devyard_v1_control_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4222,7 +4416,7 @@ func (x *LogLine) String() string {
 func (*LogLine) ProtoMessage() {}
 
 func (x *LogLine) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[68]
+	mi := &file_devyard_v1_control_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4235,7 +4429,7 @@ func (x *LogLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogLine.ProtoReflect.Descriptor instead.
 func (*LogLine) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{68}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *LogLine) GetSource() *LogSource {
@@ -4294,7 +4488,7 @@ type LogsResponse struct {
 
 func (x *LogsResponse) Reset() {
 	*x = LogsResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[69]
+	mi := &file_devyard_v1_control_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4306,7 +4500,7 @@ func (x *LogsResponse) String() string {
 func (*LogsResponse) ProtoMessage() {}
 
 func (x *LogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[69]
+	mi := &file_devyard_v1_control_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4319,7 +4513,7 @@ func (x *LogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogsResponse.ProtoReflect.Descriptor instead.
 func (*LogsResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{69}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *LogsResponse) GetLines() []*LogLine {
@@ -4358,7 +4552,7 @@ type AttachTarget struct {
 
 func (x *AttachTarget) Reset() {
 	*x = AttachTarget{}
-	mi := &file_devyard_v1_control_proto_msgTypes[70]
+	mi := &file_devyard_v1_control_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4370,7 +4564,7 @@ func (x *AttachTarget) String() string {
 func (*AttachTarget) ProtoMessage() {}
 
 func (x *AttachTarget) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[70]
+	mi := &file_devyard_v1_control_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4383,7 +4577,7 @@ func (x *AttachTarget) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachTarget.ProtoReflect.Descriptor instead.
 func (*AttachTarget) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{70}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *AttachTarget) GetKind() string {
@@ -4430,7 +4624,7 @@ type AttachRequest struct {
 
 func (x *AttachRequest) Reset() {
 	*x = AttachRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[71]
+	mi := &file_devyard_v1_control_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4442,7 +4636,7 @@ func (x *AttachRequest) String() string {
 func (*AttachRequest) ProtoMessage() {}
 
 func (x *AttachRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[71]
+	mi := &file_devyard_v1_control_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4455,7 +4649,7 @@ func (x *AttachRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachRequest.ProtoReflect.Descriptor instead.
 func (*AttachRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{71}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *AttachRequest) GetMsg() isAttachRequest_Msg {
@@ -4558,7 +4752,7 @@ type AttachOpen struct {
 
 func (x *AttachOpen) Reset() {
 	*x = AttachOpen{}
-	mi := &file_devyard_v1_control_proto_msgTypes[72]
+	mi := &file_devyard_v1_control_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4570,7 +4764,7 @@ func (x *AttachOpen) String() string {
 func (*AttachOpen) ProtoMessage() {}
 
 func (x *AttachOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[72]
+	mi := &file_devyard_v1_control_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4583,7 +4777,7 @@ func (x *AttachOpen) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachOpen.ProtoReflect.Descriptor instead.
 func (*AttachOpen) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{72}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *AttachOpen) GetTarget() *AttachTarget {
@@ -4617,7 +4811,7 @@ type AttachResize struct {
 
 func (x *AttachResize) Reset() {
 	*x = AttachResize{}
-	mi := &file_devyard_v1_control_proto_msgTypes[73]
+	mi := &file_devyard_v1_control_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4629,7 +4823,7 @@ func (x *AttachResize) String() string {
 func (*AttachResize) ProtoMessage() {}
 
 func (x *AttachResize) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[73]
+	mi := &file_devyard_v1_control_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4642,7 +4836,7 @@ func (x *AttachResize) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachResize.ProtoReflect.Descriptor instead.
 func (*AttachResize) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{73}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *AttachResize) GetCols() int32 {
@@ -4673,7 +4867,7 @@ type AttachResponse struct {
 
 func (x *AttachResponse) Reset() {
 	*x = AttachResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[74]
+	mi := &file_devyard_v1_control_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4685,7 +4879,7 @@ func (x *AttachResponse) String() string {
 func (*AttachResponse) ProtoMessage() {}
 
 func (x *AttachResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[74]
+	mi := &file_devyard_v1_control_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4698,7 +4892,7 @@ func (x *AttachResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachResponse.ProtoReflect.Descriptor instead.
 func (*AttachResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{74}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AttachResponse) GetMsg() isAttachResponse_Msg {
@@ -4769,7 +4963,7 @@ type AttachReady struct {
 
 func (x *AttachReady) Reset() {
 	*x = AttachReady{}
-	mi := &file_devyard_v1_control_proto_msgTypes[75]
+	mi := &file_devyard_v1_control_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4781,7 +4975,7 @@ func (x *AttachReady) String() string {
 func (*AttachReady) ProtoMessage() {}
 
 func (x *AttachReady) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[75]
+	mi := &file_devyard_v1_control_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4794,7 +4988,7 @@ func (x *AttachReady) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachReady.ProtoReflect.Descriptor instead.
 func (*AttachReady) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{75}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *AttachReady) GetSessionId() string {
@@ -4821,7 +5015,7 @@ type AttachExit struct {
 
 func (x *AttachExit) Reset() {
 	*x = AttachExit{}
-	mi := &file_devyard_v1_control_proto_msgTypes[76]
+	mi := &file_devyard_v1_control_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4833,7 +5027,7 @@ func (x *AttachExit) String() string {
 func (*AttachExit) ProtoMessage() {}
 
 func (x *AttachExit) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[76]
+	mi := &file_devyard_v1_control_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4846,7 +5040,7 @@ func (x *AttachExit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachExit.ProtoReflect.Descriptor instead.
 func (*AttachExit) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{76}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *AttachExit) GetExitCode() int32 {
@@ -4873,7 +5067,7 @@ type StatsRequest struct {
 
 func (x *StatsRequest) Reset() {
 	*x = StatsRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[77]
+	mi := &file_devyard_v1_control_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4885,7 +5079,7 @@ func (x *StatsRequest) String() string {
 func (*StatsRequest) ProtoMessage() {}
 
 func (x *StatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[77]
+	mi := &file_devyard_v1_control_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4898,7 +5092,7 @@ func (x *StatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatsRequest.ProtoReflect.Descriptor instead.
 func (*StatsRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{77}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *StatsRequest) GetProject() string {
@@ -4930,7 +5124,7 @@ type ProcessStat struct {
 
 func (x *ProcessStat) Reset() {
 	*x = ProcessStat{}
-	mi := &file_devyard_v1_control_proto_msgTypes[78]
+	mi := &file_devyard_v1_control_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4942,7 +5136,7 @@ func (x *ProcessStat) String() string {
 func (*ProcessStat) ProtoMessage() {}
 
 func (x *ProcessStat) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[78]
+	mi := &file_devyard_v1_control_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4955,7 +5149,7 @@ func (x *ProcessStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessStat.ProtoReflect.Descriptor instead.
 func (*ProcessStat) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{78}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *ProcessStat) GetKind() string {
@@ -5010,7 +5204,7 @@ type StatsResponse struct {
 
 func (x *StatsResponse) Reset() {
 	*x = StatsResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[79]
+	mi := &file_devyard_v1_control_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5022,7 +5216,7 @@ func (x *StatsResponse) String() string {
 func (*StatsResponse) ProtoMessage() {}
 
 func (x *StatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[79]
+	mi := &file_devyard_v1_control_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5035,7 +5229,7 @@ func (x *StatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatsResponse.ProtoReflect.Descriptor instead.
 func (*StatsResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{79}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *StatsResponse) GetTsUnixMs() int64 {
@@ -5066,7 +5260,7 @@ type PortBinding struct {
 
 func (x *PortBinding) Reset() {
 	*x = PortBinding{}
-	mi := &file_devyard_v1_control_proto_msgTypes[80]
+	mi := &file_devyard_v1_control_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5078,7 +5272,7 @@ func (x *PortBinding) String() string {
 func (*PortBinding) ProtoMessage() {}
 
 func (x *PortBinding) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[80]
+	mi := &file_devyard_v1_control_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5091,7 +5285,7 @@ func (x *PortBinding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PortBinding.ProtoReflect.Descriptor instead.
 func (*PortBinding) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{80}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *PortBinding) GetProject() string {
@@ -5145,7 +5339,7 @@ type ListPortsRequest struct {
 
 func (x *ListPortsRequest) Reset() {
 	*x = ListPortsRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[81]
+	mi := &file_devyard_v1_control_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5157,7 +5351,7 @@ func (x *ListPortsRequest) String() string {
 func (*ListPortsRequest) ProtoMessage() {}
 
 func (x *ListPortsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[81]
+	mi := &file_devyard_v1_control_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5170,7 +5364,7 @@ func (x *ListPortsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortsRequest.ProtoReflect.Descriptor instead.
 func (*ListPortsRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{81}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ListPortsRequest) GetProject() string {
@@ -5189,7 +5383,7 @@ type ListPortsResponse struct {
 
 func (x *ListPortsResponse) Reset() {
 	*x = ListPortsResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[82]
+	mi := &file_devyard_v1_control_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5201,7 +5395,7 @@ func (x *ListPortsResponse) String() string {
 func (*ListPortsResponse) ProtoMessage() {}
 
 func (x *ListPortsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[82]
+	mi := &file_devyard_v1_control_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5214,7 +5408,7 @@ func (x *ListPortsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortsResponse.ProtoReflect.Descriptor instead.
 func (*ListPortsResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{82}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ListPortsResponse) GetPorts() []*PortBinding {
@@ -5235,7 +5429,7 @@ type GitRef struct {
 
 func (x *GitRef) Reset() {
 	*x = GitRef{}
-	mi := &file_devyard_v1_control_proto_msgTypes[83]
+	mi := &file_devyard_v1_control_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5247,7 +5441,7 @@ func (x *GitRef) String() string {
 func (*GitRef) ProtoMessage() {}
 
 func (x *GitRef) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[83]
+	mi := &file_devyard_v1_control_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5260,7 +5454,7 @@ func (x *GitRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitRef.ProtoReflect.Descriptor instead.
 func (*GitRef) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{83}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *GitRef) GetName() string {
@@ -5299,7 +5493,7 @@ type GitBranch struct {
 
 func (x *GitBranch) Reset() {
 	*x = GitBranch{}
-	mi := &file_devyard_v1_control_proto_msgTypes[84]
+	mi := &file_devyard_v1_control_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5311,7 +5505,7 @@ func (x *GitBranch) String() string {
 func (*GitBranch) ProtoMessage() {}
 
 func (x *GitBranch) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[84]
+	mi := &file_devyard_v1_control_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5324,7 +5518,7 @@ func (x *GitBranch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitBranch.ProtoReflect.Descriptor instead.
 func (*GitBranch) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{84}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *GitBranch) GetName() string {
@@ -5386,7 +5580,7 @@ type GitTag struct {
 
 func (x *GitTag) Reset() {
 	*x = GitTag{}
-	mi := &file_devyard_v1_control_proto_msgTypes[85]
+	mi := &file_devyard_v1_control_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5398,7 +5592,7 @@ func (x *GitTag) String() string {
 func (*GitTag) ProtoMessage() {}
 
 func (x *GitTag) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[85]
+	mi := &file_devyard_v1_control_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5411,7 +5605,7 @@ func (x *GitTag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitTag.ProtoReflect.Descriptor instead.
 func (*GitTag) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{85}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *GitTag) GetName() string {
@@ -5440,7 +5634,7 @@ type GitStash struct {
 
 func (x *GitStash) Reset() {
 	*x = GitStash{}
-	mi := &file_devyard_v1_control_proto_msgTypes[86]
+	mi := &file_devyard_v1_control_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5452,7 +5646,7 @@ func (x *GitStash) String() string {
 func (*GitStash) ProtoMessage() {}
 
 func (x *GitStash) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[86]
+	mi := &file_devyard_v1_control_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5465,7 +5659,7 @@ func (x *GitStash) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitStash.ProtoReflect.Descriptor instead.
 func (*GitStash) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{86}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *GitStash) GetIndex() string {
@@ -5517,7 +5711,7 @@ type GitCommit struct {
 
 func (x *GitCommit) Reset() {
 	*x = GitCommit{}
-	mi := &file_devyard_v1_control_proto_msgTypes[87]
+	mi := &file_devyard_v1_control_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5529,7 +5723,7 @@ func (x *GitCommit) String() string {
 func (*GitCommit) ProtoMessage() {}
 
 func (x *GitCommit) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[87]
+	mi := &file_devyard_v1_control_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5542,7 +5736,7 @@ func (x *GitCommit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitCommit.ProtoReflect.Descriptor instead.
 func (*GitCommit) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{87}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *GitCommit) GetHash() string {
@@ -5652,7 +5846,7 @@ type GitFileChange struct {
 
 func (x *GitFileChange) Reset() {
 	*x = GitFileChange{}
-	mi := &file_devyard_v1_control_proto_msgTypes[88]
+	mi := &file_devyard_v1_control_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5664,7 +5858,7 @@ func (x *GitFileChange) String() string {
 func (*GitFileChange) ProtoMessage() {}
 
 func (x *GitFileChange) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[88]
+	mi := &file_devyard_v1_control_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5677,7 +5871,7 @@ func (x *GitFileChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitFileChange.ProtoReflect.Descriptor instead.
 func (*GitFileChange) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{88}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *GitFileChange) GetPath() string {
@@ -5747,7 +5941,7 @@ type GitDiffResult struct {
 
 func (x *GitDiffResult) Reset() {
 	*x = GitDiffResult{}
-	mi := &file_devyard_v1_control_proto_msgTypes[89]
+	mi := &file_devyard_v1_control_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5759,7 +5953,7 @@ func (x *GitDiffResult) String() string {
 func (*GitDiffResult) ProtoMessage() {}
 
 func (x *GitDiffResult) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[89]
+	mi := &file_devyard_v1_control_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5772,7 +5966,7 @@ func (x *GitDiffResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitDiffResult.ProtoReflect.Descriptor instead.
 func (*GitDiffResult) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{89}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *GitDiffResult) GetCommit() *GitCommit {
@@ -5805,7 +5999,7 @@ type GitLogRequest struct {
 
 func (x *GitLogRequest) Reset() {
 	*x = GitLogRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[90]
+	mi := &file_devyard_v1_control_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5817,7 +6011,7 @@ func (x *GitLogRequest) String() string {
 func (*GitLogRequest) ProtoMessage() {}
 
 func (x *GitLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[90]
+	mi := &file_devyard_v1_control_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5830,7 +6024,7 @@ func (x *GitLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitLogRequest.ProtoReflect.Descriptor instead.
 func (*GitLogRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{90}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *GitLogRequest) GetProject() string {
@@ -5852,7 +6046,7 @@ type GitLogResponse struct {
 
 func (x *GitLogResponse) Reset() {
 	*x = GitLogResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[91]
+	mi := &file_devyard_v1_control_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5864,7 +6058,7 @@ func (x *GitLogResponse) String() string {
 func (*GitLogResponse) ProtoMessage() {}
 
 func (x *GitLogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[91]
+	mi := &file_devyard_v1_control_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5877,7 +6071,7 @@ func (x *GitLogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitLogResponse.ProtoReflect.Descriptor instead.
 func (*GitLogResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{91}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *GitLogResponse) GetCommits() []*GitCommit {
@@ -5921,7 +6115,7 @@ type GitDiffRequest struct {
 
 func (x *GitDiffRequest) Reset() {
 	*x = GitDiffRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[92]
+	mi := &file_devyard_v1_control_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5933,7 +6127,7 @@ func (x *GitDiffRequest) String() string {
 func (*GitDiffRequest) ProtoMessage() {}
 
 func (x *GitDiffRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[92]
+	mi := &file_devyard_v1_control_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5946,7 +6140,7 @@ func (x *GitDiffRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitDiffRequest.ProtoReflect.Descriptor instead.
 func (*GitDiffRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{92}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *GitDiffRequest) GetProject() string {
@@ -5986,7 +6180,7 @@ type GitDiffResponse struct {
 
 func (x *GitDiffResponse) Reset() {
 	*x = GitDiffResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[93]
+	mi := &file_devyard_v1_control_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5998,7 +6192,7 @@ func (x *GitDiffResponse) String() string {
 func (*GitDiffResponse) ProtoMessage() {}
 
 func (x *GitDiffResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[93]
+	mi := &file_devyard_v1_control_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6011,7 +6205,7 @@ func (x *GitDiffResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitDiffResponse.ProtoReflect.Descriptor instead.
 func (*GitDiffResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{93}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *GitDiffResponse) GetResult() *GitDiffResult {
@@ -6033,7 +6227,7 @@ type GitStageRequest struct {
 
 func (x *GitStageRequest) Reset() {
 	*x = GitStageRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[94]
+	mi := &file_devyard_v1_control_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6045,7 +6239,7 @@ func (x *GitStageRequest) String() string {
 func (*GitStageRequest) ProtoMessage() {}
 
 func (x *GitStageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[94]
+	mi := &file_devyard_v1_control_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6058,7 +6252,7 @@ func (x *GitStageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitStageRequest.ProtoReflect.Descriptor instead.
 func (*GitStageRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{94}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *GitStageRequest) GetProject() string {
@@ -6097,7 +6291,7 @@ type GitStageResponse struct {
 
 func (x *GitStageResponse) Reset() {
 	*x = GitStageResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[95]
+	mi := &file_devyard_v1_control_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6109,7 +6303,7 @@ func (x *GitStageResponse) String() string {
 func (*GitStageResponse) ProtoMessage() {}
 
 func (x *GitStageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[95]
+	mi := &file_devyard_v1_control_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6122,7 +6316,7 @@ func (x *GitStageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitStageResponse.ProtoReflect.Descriptor instead.
 func (*GitStageResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{95}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{97}
 }
 
 type GitCommitRequest struct {
@@ -6135,7 +6329,7 @@ type GitCommitRequest struct {
 
 func (x *GitCommitRequest) Reset() {
 	*x = GitCommitRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[96]
+	mi := &file_devyard_v1_control_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6147,7 +6341,7 @@ func (x *GitCommitRequest) String() string {
 func (*GitCommitRequest) ProtoMessage() {}
 
 func (x *GitCommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[96]
+	mi := &file_devyard_v1_control_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6160,7 +6354,7 @@ func (x *GitCommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitCommitRequest.ProtoReflect.Descriptor instead.
 func (*GitCommitRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{96}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *GitCommitRequest) GetProject() string {
@@ -6185,7 +6379,7 @@ type GitCommitResponse struct {
 
 func (x *GitCommitResponse) Reset() {
 	*x = GitCommitResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[97]
+	mi := &file_devyard_v1_control_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6197,7 +6391,7 @@ func (x *GitCommitResponse) String() string {
 func (*GitCommitResponse) ProtoMessage() {}
 
 func (x *GitCommitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[97]
+	mi := &file_devyard_v1_control_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6210,7 +6404,7 @@ func (x *GitCommitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitCommitResponse.ProtoReflect.Descriptor instead.
 func (*GitCommitResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{97}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{99}
 }
 
 type GitPushRequest struct {
@@ -6222,7 +6416,7 @@ type GitPushRequest struct {
 
 func (x *GitPushRequest) Reset() {
 	*x = GitPushRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[98]
+	mi := &file_devyard_v1_control_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6234,7 +6428,7 @@ func (x *GitPushRequest) String() string {
 func (*GitPushRequest) ProtoMessage() {}
 
 func (x *GitPushRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[98]
+	mi := &file_devyard_v1_control_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6247,7 +6441,7 @@ func (x *GitPushRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitPushRequest.ProtoReflect.Descriptor instead.
 func (*GitPushRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{98}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *GitPushRequest) GetProject() string {
@@ -6266,7 +6460,7 @@ type GitPushResponse struct {
 
 func (x *GitPushResponse) Reset() {
 	*x = GitPushResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[99]
+	mi := &file_devyard_v1_control_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6278,7 +6472,7 @@ func (x *GitPushResponse) String() string {
 func (*GitPushResponse) ProtoMessage() {}
 
 func (x *GitPushResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[99]
+	mi := &file_devyard_v1_control_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6291,7 +6485,7 @@ func (x *GitPushResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitPushResponse.ProtoReflect.Descriptor instead.
 func (*GitPushResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{99}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *GitPushResponse) GetOutput() string {
@@ -6310,7 +6504,7 @@ type GitPullRequest struct {
 
 func (x *GitPullRequest) Reset() {
 	*x = GitPullRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[100]
+	mi := &file_devyard_v1_control_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6322,7 +6516,7 @@ func (x *GitPullRequest) String() string {
 func (*GitPullRequest) ProtoMessage() {}
 
 func (x *GitPullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[100]
+	mi := &file_devyard_v1_control_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6335,7 +6529,7 @@ func (x *GitPullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitPullRequest.ProtoReflect.Descriptor instead.
 func (*GitPullRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{100}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *GitPullRequest) GetProject() string {
@@ -6354,7 +6548,7 @@ type GitPullResponse struct {
 
 func (x *GitPullResponse) Reset() {
 	*x = GitPullResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[101]
+	mi := &file_devyard_v1_control_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6366,7 +6560,7 @@ func (x *GitPullResponse) String() string {
 func (*GitPullResponse) ProtoMessage() {}
 
 func (x *GitPullResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[101]
+	mi := &file_devyard_v1_control_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6379,7 +6573,7 @@ func (x *GitPullResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitPullResponse.ProtoReflect.Descriptor instead.
 func (*GitPullResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{101}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *GitPullResponse) GetOutput() string {
@@ -6398,7 +6592,7 @@ type GitFetchRequest struct {
 
 func (x *GitFetchRequest) Reset() {
 	*x = GitFetchRequest{}
-	mi := &file_devyard_v1_control_proto_msgTypes[102]
+	mi := &file_devyard_v1_control_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6410,7 +6604,7 @@ func (x *GitFetchRequest) String() string {
 func (*GitFetchRequest) ProtoMessage() {}
 
 func (x *GitFetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[102]
+	mi := &file_devyard_v1_control_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6423,7 +6617,7 @@ func (x *GitFetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitFetchRequest.ProtoReflect.Descriptor instead.
 func (*GitFetchRequest) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{102}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *GitFetchRequest) GetProject() string {
@@ -6442,7 +6636,7 @@ type GitFetchResponse struct {
 
 func (x *GitFetchResponse) Reset() {
 	*x = GitFetchResponse{}
-	mi := &file_devyard_v1_control_proto_msgTypes[103]
+	mi := &file_devyard_v1_control_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6454,7 +6648,7 @@ func (x *GitFetchResponse) String() string {
 func (*GitFetchResponse) ProtoMessage() {}
 
 func (x *GitFetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_devyard_v1_control_proto_msgTypes[103]
+	mi := &file_devyard_v1_control_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6467,7 +6661,7 @@ func (x *GitFetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitFetchResponse.ProtoReflect.Descriptor instead.
 func (*GitFetchResponse) Descriptor() ([]byte, []int) {
-	return file_devyard_v1_control_proto_rawDescGZIP(), []int{103}
+	return file_devyard_v1_control_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *GitFetchResponse) GetOutput() string {
@@ -6509,7 +6703,7 @@ var file_devyard_v1_control_proto_rawDesc = string([]byte{
 	0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x64, 0x72, 0x61, 0x69, 0x6e, 0x69, 0x6e, 0x67, 0x12, 0x21,
 	0x0a, 0x0c, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x5f, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x0d,
 	0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x45, 0x72, 0x72, 0x6f,
-	0x72, 0x22, 0x9b, 0x03, 0x0a, 0x07, 0x50, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x0e, 0x0a,
+	0x72, 0x22, 0xef, 0x03, 0x0a, 0x07, 0x50, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x0e, 0x0a,
 	0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x12, 0x1f, 0x0a,
 	0x0b, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x5f, 0x70, 0x61, 0x74, 0x68, 0x18, 0x02, 0x20, 0x01,
 	0x28, 0x09, 0x52, 0x0a, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x50, 0x61, 0x74, 0x68, 0x12, 0x1b,
@@ -6534,247 +6728,272 @@ var file_devyard_v1_control_proto_rawDesc = string([]byte{
 	0x69, 0x6e, 0x6b, 0x73, 0x12, 0x1d, 0x0a, 0x0a, 0x68, 0x61, 0x73, 0x5f, 0x63, 0x6f, 0x6e, 0x66,
 	0x69, 0x67, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x68, 0x61, 0x73, 0x43, 0x6f, 0x6e,
 	0x66, 0x69, 0x67, 0x12, 0x1a, 0x0a, 0x08, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x18,
-	0x0d, 0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x22,
-	0x2c, 0x0a, 0x04, 0x4c, 0x69, 0x6e, 0x6b, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x10, 0x0a, 0x03, 0x75,
-	0x72, 0x6c, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x75, 0x72, 0x6c, 0x22, 0xb5, 0x01,
-	0x0a, 0x05, 0x52, 0x65, 0x61, 0x64, 0x79, 0x12, 0x12, 0x0a, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x74,
-	0x61, 0x72, 0x67, 0x65, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x74, 0x61, 0x72,
-	0x67, 0x65, 0x74, 0x12, 0x1f, 0x0a, 0x0b, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x5f,
-	0x6d, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0a, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76,
-	0x61, 0x6c, 0x4d, 0x73, 0x12, 0x1d, 0x0a, 0x0a, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x5f,
-	0x6d, 0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x03, 0x52, 0x09, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75,
-	0x74, 0x4d, 0x73, 0x12, 0x18, 0x0a, 0x07, 0x72, 0x65, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x05,
-	0x20, 0x01, 0x28, 0x05, 0x52, 0x07, 0x72, 0x65, 0x74, 0x72, 0x69, 0x65, 0x73, 0x12, 0x26, 0x0a,
-	0x0f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x70, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x5f, 0x6d, 0x73,
-	0x18, 0x06, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0d, 0x73, 0x74, 0x61, 0x72, 0x74, 0x50, 0x65, 0x72,
-	0x69, 0x6f, 0x64, 0x4d, 0x73, 0x22, 0x42, 0x0a, 0x04, 0x50, 0x6f, 0x72, 0x74, 0x12, 0x12, 0x0a,
-	0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d,
-	0x65, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52,
-	0x04, 0x70, 0x6f, 0x72, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x61, 0x75, 0x74, 0x6f, 0x18, 0x03, 0x20,
-	0x01, 0x28, 0x08, 0x52, 0x04, 0x61, 0x75, 0x74, 0x6f, 0x22, 0xd4, 0x02, 0x0a, 0x0b, 0x53, 0x65,
-	0x72, 0x76, 0x69, 0x63, 0x65, 0x53, 0x70, 0x65, 0x63, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x6f, 0x6d,
-	0x6d, 0x61, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x6f, 0x6d, 0x6d,
-	0x61, 0x6e, 0x64, 0x12, 0x10, 0x0a, 0x03, 0x64, 0x69, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
-	0x52, 0x03, 0x64, 0x69, 0x72, 0x12, 0x18, 0x0a, 0x07, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74,
-	0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x12,
-	0x1d, 0x0a, 0x0a, 0x64, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x73, 0x5f, 0x6f, 0x6e, 0x18, 0x04, 0x20,
-	0x03, 0x28, 0x09, 0x52, 0x09, 0x64, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x73, 0x4f, 0x6e, 0x12, 0x27,
-	0x0a, 0x05, 0x72, 0x65, 0x61, 0x64, 0x79, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e,
-	0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x61, 0x64, 0x79,
-	0x52, 0x05, 0x72, 0x65, 0x61, 0x64, 0x79, 0x12, 0x26, 0x0a, 0x05, 0x70, 0x6f, 0x72, 0x74, 0x73,
-	0x18, 0x06, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x10, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64,
-	0x2e, 0x76, 0x31, 0x2e, 0x50, 0x6f, 0x72, 0x74, 0x52, 0x05, 0x70, 0x6f, 0x72, 0x74, 0x73, 0x12,
-	0x10, 0x0a, 0x03, 0x74, 0x74, 0x79, 0x18, 0x07, 0x20, 0x01, 0x28, 0x08, 0x52, 0x03, 0x74, 0x74,
-	0x79, 0x12, 0x19, 0x0a, 0x08, 0x65, 0x6e, 0x76, 0x5f, 0x6b, 0x65, 0x79, 0x73, 0x18, 0x08, 0x20,
-	0x03, 0x28, 0x09, 0x52, 0x07, 0x65, 0x6e, 0x76, 0x4b, 0x65, 0x79, 0x73, 0x12, 0x23, 0x0a, 0x0d,
-	0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x18, 0x09, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x0c, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x43, 0x6f, 0x6d, 0x6d, 0x61, 0x6e,
-	0x64, 0x12, 0x1c, 0x0a, 0x09, 0x61, 0x75, 0x74, 0x6f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x18, 0x0a,
-	0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x61, 0x75, 0x74, 0x6f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x12,
-	0x1f, 0x0a, 0x0b, 0x73, 0x74, 0x6f, 0x70, 0x5f, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x6c, 0x18, 0x0b,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x73, 0x74, 0x6f, 0x70, 0x53, 0x69, 0x67, 0x6e, 0x61, 0x6c,
-	0x22, 0xec, 0x03, 0x0a, 0x07, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x18, 0x0a, 0x07,
-	0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x70,
-	0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x74,
-	0x61, 0x74, 0x75, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x74, 0x61, 0x74,
-	0x75, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x68, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x18, 0x04, 0x20, 0x01,
-	0x28, 0x09, 0x52, 0x06, 0x68, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x12, 0x23, 0x0a, 0x0d, 0x68, 0x65,
-	0x61, 0x6c, 0x74, 0x68, 0x5f, 0x64, 0x65, 0x74, 0x61, 0x69, 0x6c, 0x18, 0x05, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x0c, 0x68, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x44, 0x65, 0x74, 0x61, 0x69, 0x6c, 0x12,
-	0x10, 0x0a, 0x03, 0x70, 0x69, 0x64, 0x18, 0x06, 0x20, 0x01, 0x28, 0x05, 0x52, 0x03, 0x70, 0x69,
-	0x64, 0x12, 0x1b, 0x0a, 0x09, 0x65, 0x78, 0x69, 0x74, 0x5f, 0x63, 0x6f, 0x64, 0x65, 0x18, 0x07,
-	0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x65, 0x78, 0x69, 0x74, 0x43, 0x6f, 0x64, 0x65, 0x12, 0x1a,
-	0x0a, 0x08, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x73, 0x18, 0x08, 0x20, 0x01, 0x28, 0x05,
-	0x52, 0x08, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x72, 0x75,
-	0x6e, 0x18, 0x09, 0x20, 0x01, 0x28, 0x03, 0x52, 0x03, 0x72, 0x75, 0x6e, 0x12, 0x2b, 0x0a, 0x12,
-	0x73, 0x74, 0x61, 0x72, 0x74, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f,
-	0x6d, 0x73, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x65,
-	0x64, 0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d, 0x73, 0x12, 0x2d, 0x0a, 0x13, 0x66, 0x69, 0x6e,
-	0x69, 0x73, 0x68, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73,
-	0x18, 0x0b, 0x20, 0x01, 0x28, 0x03, 0x52, 0x10, 0x66, 0x69, 0x6e, 0x69, 0x73, 0x68, 0x65, 0x64,
-	0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d, 0x73, 0x12, 0x18, 0x0a, 0x07, 0x6d, 0x65, 0x73, 0x73,
-	0x61, 0x67, 0x65, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61,
-	0x67, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x75, 0x72, 0x6c, 0x73, 0x18, 0x0d, 0x20, 0x03, 0x28, 0x09,
-	0x52, 0x04, 0x75, 0x72, 0x6c, 0x73, 0x12, 0x2b, 0x0a, 0x04, 0x73, 0x70, 0x65, 0x63, 0x18, 0x0e,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76,
-	0x31, 0x2e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x53, 0x70, 0x65, 0x63, 0x52, 0x04, 0x73,
-	0x70, 0x65, 0x63, 0x12, 0x34, 0x0a, 0x17, 0x6e, 0x65, 0x78, 0x74, 0x5f, 0x72, 0x65, 0x73, 0x74,
-	0x61, 0x72, 0x74, 0x5f, 0x61, 0x74, 0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73, 0x18, 0x0f,
-	0x20, 0x01, 0x28, 0x03, 0x52, 0x13, 0x6e, 0x65, 0x78, 0x74, 0x52, 0x65, 0x73, 0x74, 0x61, 0x72,
-	0x74, 0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d, 0x73, 0x12, 0x14, 0x0a, 0x05, 0x6f, 0x72, 0x64,
-	0x65, 0x72, 0x18, 0x10, 0x20, 0x01, 0x28, 0x05, 0x52, 0x05, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x22,
-	0x82, 0x01, 0x0a, 0x08, 0x54, 0x61, 0x73, 0x6b, 0x53, 0x70, 0x65, 0x63, 0x12, 0x18, 0x0a, 0x07,
-	0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63,
-	0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x12, 0x10, 0x0a, 0x03, 0x64, 0x69, 0x72, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x03, 0x64, 0x69, 0x72, 0x12, 0x10, 0x0a, 0x03, 0x74, 0x74, 0x79, 0x18,
-	0x03, 0x20, 0x01, 0x28, 0x08, 0x52, 0x03, 0x74, 0x74, 0x79, 0x12, 0x1d, 0x0a, 0x0a, 0x64, 0x65,
-	0x70, 0x65, 0x6e, 0x64, 0x73, 0x5f, 0x6f, 0x6e, 0x18, 0x04, 0x20, 0x03, 0x28, 0x09, 0x52, 0x09,
-	0x64, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x73, 0x4f, 0x6e, 0x12, 0x19, 0x0a, 0x08, 0x65, 0x6e, 0x76,
-	0x5f, 0x6b, 0x65, 0x79, 0x73, 0x18, 0x05, 0x20, 0x03, 0x28, 0x09, 0x52, 0x07, 0x65, 0x6e, 0x76,
-	0x4b, 0x65, 0x79, 0x73, 0x22, 0xc1, 0x02, 0x0a, 0x04, 0x54, 0x61, 0x73, 0x6b, 0x12, 0x18, 0x0a,
-	0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07,
-	0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x73,
-	0x74, 0x61, 0x74, 0x75, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x74, 0x61,
-	0x74, 0x75, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x70, 0x69, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05,
-	0x52, 0x03, 0x70, 0x69, 0x64, 0x12, 0x1b, 0x0a, 0x09, 0x65, 0x78, 0x69, 0x74, 0x5f, 0x63, 0x6f,
-	0x64, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x65, 0x78, 0x69, 0x74, 0x43, 0x6f,
-	0x64, 0x65, 0x12, 0x10, 0x0a, 0x03, 0x72, 0x75, 0x6e, 0x18, 0x06, 0x20, 0x01, 0x28, 0x03, 0x52,
+	0x0d, 0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x12,
+	0x2d, 0x0a, 0x05, 0x64, 0x72, 0x69, 0x66, 0x74, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x17,
+	0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66,
+	0x69, 0x67, 0x44, 0x72, 0x69, 0x66, 0x74, 0x52, 0x05, 0x64, 0x72, 0x69, 0x66, 0x74, 0x12, 0x23,
+	0x0a, 0x0d, 0x72, 0x65, 0x6c, 0x6f, 0x61, 0x64, 0x5f, 0x70, 0x6f, 0x6c, 0x69, 0x63, 0x79, 0x18,
+	0x0f, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x72, 0x65, 0x6c, 0x6f, 0x61, 0x64, 0x50, 0x6f, 0x6c,
+	0x69, 0x63, 0x79, 0x22, 0x7a, 0x0a, 0x0c, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x43, 0x68, 0x61,
+	0x6e, 0x67, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x0e, 0x0a, 0x02, 0x6f,
+	0x70, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x6f, 0x70, 0x12, 0x18, 0x0a, 0x07, 0x64,
+	0x65, 0x74, 0x61, 0x69, 0x6c, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x09, 0x52, 0x07, 0x64, 0x65,
+	0x74, 0x61, 0x69, 0x6c, 0x73, 0x12, 0x18, 0x0a, 0x07, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74,
+	0x18, 0x05, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x22,
+	0xa5, 0x01, 0x0a, 0x0b, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x44, 0x72, 0x69, 0x66, 0x74, 0x12,
+	0x14, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05,
+	0x73, 0x74, 0x61, 0x74, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x12, 0x32, 0x0a, 0x07, 0x63,
+	0x68, 0x61, 0x6e, 0x67, 0x65, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x64,
+	0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
+	0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x52, 0x07, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x73, 0x12,
+	0x12, 0x0a, 0x04, 0x64, 0x69, 0x66, 0x66, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x64,
+	0x69, 0x66, 0x66, 0x12, 0x22, 0x0a, 0x0d, 0x73, 0x69, 0x6e, 0x63, 0x65, 0x5f, 0x75, 0x6e, 0x69,
+	0x78, 0x5f, 0x6d, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x73, 0x69, 0x6e, 0x63,
+	0x65, 0x55, 0x6e, 0x69, 0x78, 0x4d, 0x73, 0x22, 0x2c, 0x0a, 0x04, 0x4c, 0x69, 0x6e, 0x6b, 0x12,
+	0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e,
+	0x61, 0x6d, 0x65, 0x12, 0x10, 0x0a, 0x03, 0x75, 0x72, 0x6c, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x03, 0x75, 0x72, 0x6c, 0x22, 0xb5, 0x01, 0x0a, 0x05, 0x52, 0x65, 0x61, 0x64, 0x79, 0x12,
+	0x12, 0x0a, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6b,
+	0x69, 0x6e, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x06, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74, 0x12, 0x1f, 0x0a, 0x0b, 0x69,
+	0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x5f, 0x6d, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03,
+	0x52, 0x0a, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x4d, 0x73, 0x12, 0x1d, 0x0a, 0x0a,
+	0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x5f, 0x6d, 0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x03,
+	0x52, 0x09, 0x74, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74, 0x4d, 0x73, 0x12, 0x18, 0x0a, 0x07, 0x72,
+	0x65, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x05, 0x52, 0x07, 0x72, 0x65,
+	0x74, 0x72, 0x69, 0x65, 0x73, 0x12, 0x26, 0x0a, 0x0f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x70,
+	0x65, 0x72, 0x69, 0x6f, 0x64, 0x5f, 0x6d, 0x73, 0x18, 0x06, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0d,
+	0x73, 0x74, 0x61, 0x72, 0x74, 0x50, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x4d, 0x73, 0x22, 0x42, 0x0a,
+	0x04, 0x50, 0x6f, 0x72, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x6f, 0x72,
+	0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x12, 0x12, 0x0a,
+	0x04, 0x61, 0x75, 0x74, 0x6f, 0x18, 0x03, 0x20, 0x01, 0x28, 0x08, 0x52, 0x04, 0x61, 0x75, 0x74,
+	0x6f, 0x22, 0xd4, 0x02, 0x0a, 0x0b, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x53, 0x70, 0x65,
+	0x63, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x07, 0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x12, 0x10, 0x0a, 0x03, 0x64,
+	0x69, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x64, 0x69, 0x72, 0x12, 0x18, 0x0a,
+	0x07, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07,
+	0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x12, 0x1d, 0x0a, 0x0a, 0x64, 0x65, 0x70, 0x65, 0x6e,
+	0x64, 0x73, 0x5f, 0x6f, 0x6e, 0x18, 0x04, 0x20, 0x03, 0x28, 0x09, 0x52, 0x09, 0x64, 0x65, 0x70,
+	0x65, 0x6e, 0x64, 0x73, 0x4f, 0x6e, 0x12, 0x27, 0x0a, 0x05, 0x72, 0x65, 0x61, 0x64, 0x79, 0x18,
+	0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e,
+	0x76, 0x31, 0x2e, 0x52, 0x65, 0x61, 0x64, 0x79, 0x52, 0x05, 0x72, 0x65, 0x61, 0x64, 0x79, 0x12,
+	0x26, 0x0a, 0x05, 0x70, 0x6f, 0x72, 0x74, 0x73, 0x18, 0x06, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x10,
+	0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x6f, 0x72, 0x74,
+	0x52, 0x05, 0x70, 0x6f, 0x72, 0x74, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x74, 0x74, 0x79, 0x18, 0x07,
+	0x20, 0x01, 0x28, 0x08, 0x52, 0x03, 0x74, 0x74, 0x79, 0x12, 0x19, 0x0a, 0x08, 0x65, 0x6e, 0x76,
+	0x5f, 0x6b, 0x65, 0x79, 0x73, 0x18, 0x08, 0x20, 0x03, 0x28, 0x09, 0x52, 0x07, 0x65, 0x6e, 0x76,
+	0x4b, 0x65, 0x79, 0x73, 0x12, 0x23, 0x0a, 0x0d, 0x62, 0x75, 0x69, 0x6c, 0x64, 0x5f, 0x63, 0x6f,
+	0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x18, 0x09, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x62, 0x75, 0x69,
+	0x6c, 0x64, 0x43, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x12, 0x1c, 0x0a, 0x09, 0x61, 0x75, 0x74,
+	0x6f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x08, 0x52, 0x09, 0x61, 0x75,
+	0x74, 0x6f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x12, 0x1f, 0x0a, 0x0b, 0x73, 0x74, 0x6f, 0x70, 0x5f,
+	0x73, 0x69, 0x67, 0x6e, 0x61, 0x6c, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x73, 0x74,
+	0x6f, 0x70, 0x53, 0x69, 0x67, 0x6e, 0x61, 0x6c, 0x22, 0xec, 0x03, 0x0a, 0x07, 0x53, 0x65, 0x72,
+	0x76, 0x69, 0x63, 0x65, 0x12, 0x18, 0x0a, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x12,
+	0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61,
+	0x6d, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x18, 0x03, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x68, 0x65,
+	0x61, 0x6c, 0x74, 0x68, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x68, 0x65, 0x61, 0x6c,
+	0x74, 0x68, 0x12, 0x23, 0x0a, 0x0d, 0x68, 0x65, 0x61, 0x6c, 0x74, 0x68, 0x5f, 0x64, 0x65, 0x74,
+	0x61, 0x69, 0x6c, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x68, 0x65, 0x61, 0x6c, 0x74,
+	0x68, 0x44, 0x65, 0x74, 0x61, 0x69, 0x6c, 0x12, 0x10, 0x0a, 0x03, 0x70, 0x69, 0x64, 0x18, 0x06,
+	0x20, 0x01, 0x28, 0x05, 0x52, 0x03, 0x70, 0x69, 0x64, 0x12, 0x1b, 0x0a, 0x09, 0x65, 0x78, 0x69,
+	0x74, 0x5f, 0x63, 0x6f, 0x64, 0x65, 0x18, 0x07, 0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x65, 0x78,
+	0x69, 0x74, 0x43, 0x6f, 0x64, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72,
+	0x74, 0x73, 0x18, 0x08, 0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72,
+	0x74, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x72, 0x75, 0x6e, 0x18, 0x09, 0x20, 0x01, 0x28, 0x03, 0x52,
 	0x03, 0x72, 0x75, 0x6e, 0x12, 0x2b, 0x0a, 0x12, 0x73, 0x74, 0x61, 0x72, 0x74, 0x65, 0x64, 0x5f,
-	0x61, 0x74, 0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73, 0x18, 0x07, 0x20, 0x01, 0x28, 0x03,
+	0x61, 0x74, 0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x03,
 	0x52, 0x0f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x65, 0x64, 0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d,
 	0x73, 0x12, 0x2d, 0x0a, 0x13, 0x66, 0x69, 0x6e, 0x69, 0x73, 0x68, 0x65, 0x64, 0x5f, 0x61, 0x74,
-	0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73, 0x18, 0x08, 0x20, 0x01, 0x28, 0x03, 0x52, 0x10,
+	0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x03, 0x52, 0x10,
 	0x66, 0x69, 0x6e, 0x69, 0x73, 0x68, 0x65, 0x64, 0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d, 0x73,
-	0x12, 0x18, 0x0a, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x09, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x61, 0x72,
-	0x67, 0x73, 0x18, 0x0a, 0x20, 0x03, 0x28, 0x09, 0x52, 0x04, 0x61, 0x72, 0x67, 0x73, 0x12, 0x28,
-	0x0a, 0x04, 0x73, 0x70, 0x65, 0x63, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x64,
-	0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x61, 0x73, 0x6b, 0x53, 0x70,
-	0x65, 0x63, 0x52, 0x04, 0x73, 0x70, 0x65, 0x63, 0x22, 0x88, 0x03, 0x0a, 0x09, 0x47, 0x69, 0x74,
-	0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x18, 0x0a, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63,
-	0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74,
-	0x12, 0x17, 0x0a, 0x07, 0x69, 0x73, 0x5f, 0x72, 0x65, 0x70, 0x6f, 0x18, 0x02, 0x20, 0x01, 0x28,
-	0x08, 0x52, 0x06, 0x69, 0x73, 0x52, 0x65, 0x70, 0x6f, 0x12, 0x16, 0x0a, 0x06, 0x62, 0x72, 0x61,
-	0x6e, 0x63, 0x68, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x62, 0x72, 0x61, 0x6e, 0x63,
-	0x68, 0x12, 0x1a, 0x0a, 0x08, 0x75, 0x70, 0x73, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x18, 0x04, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x08, 0x75, 0x70, 0x73, 0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x14, 0x0a,
-	0x05, 0x61, 0x68, 0x65, 0x61, 0x64, 0x18, 0x05, 0x20, 0x01, 0x28, 0x05, 0x52, 0x05, 0x61, 0x68,
-	0x65, 0x61, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x62, 0x65, 0x68, 0x69, 0x6e, 0x64, 0x18, 0x06, 0x20,
-	0x01, 0x28, 0x05, 0x52, 0x06, 0x62, 0x65, 0x68, 0x69, 0x6e, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x73,
-	0x74, 0x61, 0x67, 0x65, 0x64, 0x18, 0x07, 0x20, 0x01, 0x28, 0x05, 0x52, 0x06, 0x73, 0x74, 0x61,
-	0x67, 0x65, 0x64, 0x12, 0x14, 0x0a, 0x05, 0x64, 0x69, 0x72, 0x74, 0x79, 0x18, 0x08, 0x20, 0x01,
-	0x28, 0x05, 0x52, 0x05, 0x64, 0x69, 0x72, 0x74, 0x79, 0x12, 0x1c, 0x0a, 0x09, 0x75, 0x6e, 0x74,
-	0x72, 0x61, 0x63, 0x6b, 0x65, 0x64, 0x18, 0x09, 0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x75, 0x6e,
-	0x74, 0x72, 0x61, 0x63, 0x6b, 0x65, 0x64, 0x12, 0x1c, 0x0a, 0x09, 0x63, 0x6f, 0x6e, 0x66, 0x6c,
-	0x69, 0x63, 0x74, 0x73, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x63, 0x6f, 0x6e, 0x66,
-	0x6c, 0x69, 0x63, 0x74, 0x73, 0x12, 0x19, 0x0a, 0x08, 0x69, 0x73, 0x5f, 0x63, 0x6c, 0x65, 0x61,
-	0x6e, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x69, 0x73, 0x43, 0x6c, 0x65, 0x61, 0x6e,
-	0x12, 0x1b, 0x0a, 0x09, 0x68, 0x65, 0x61, 0x64, 0x5f, 0x68, 0x61, 0x73, 0x68, 0x18, 0x0c, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x08, 0x68, 0x65, 0x61, 0x64, 0x48, 0x61, 0x73, 0x68, 0x12, 0x25, 0x0a,
-	0x0e, 0x73, 0x79, 0x6e, 0x63, 0x5f, 0x6f, 0x70, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18,
-	0x0d, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0d, 0x73, 0x79, 0x6e, 0x63, 0x4f, 0x70, 0x65, 0x72, 0x61,
-	0x74, 0x69, 0x6f, 0x6e, 0x12, 0x1d, 0x0a, 0x0a, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x5f, 0x73,
-	0x65, 0x71, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x03, 0x52, 0x09, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65,
-	0x53, 0x65, 0x71, 0x22, 0x4d, 0x0a, 0x09, 0x45, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x52, 0x65, 0x66,
-	0x12, 0x12, 0x0a, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04,
-	0x6b, 0x69, 0x6e, 0x64, 0x12, 0x18, 0x0a, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x12,
-	0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61,
-	0x6d, 0x65, 0x22, 0xed, 0x01, 0x0a, 0x08, 0x53, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x12,
-	0x2e, 0x0a, 0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
-	0x16, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x61, 0x65,
-	0x6d, 0x6f, 0x6e, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x12,
-	0x2f, 0x0a, 0x08, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28,
-	0x0b, 0x32, 0x13, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50,
-	0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x52, 0x08, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73,
-	0x12, 0x2f, 0x0a, 0x08, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73, 0x18, 0x03, 0x20, 0x03,
-	0x28, 0x0b, 0x32, 0x13, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e,
-	0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x52, 0x08, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65,
-	0x73, 0x12, 0x26, 0x0a, 0x05, 0x74, 0x61, 0x73, 0x6b, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b,
-	0x32, 0x10, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x61,
-	0x73, 0x6b, 0x52, 0x05, 0x74, 0x61, 0x73, 0x6b, 0x73, 0x12, 0x27, 0x0a, 0x03, 0x67, 0x69, 0x74,
-	0x18, 0x05, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64,
-	0x2e, 0x76, 0x31, 0x2e, 0x47, 0x69, 0x74, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x52, 0x03, 0x67,
-	0x69, 0x74, 0x22, 0xac, 0x02, 0x0a, 0x06, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x12, 0x2f, 0x0a,
-	0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13,
-	0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x6f, 0x6a,
-	0x65, 0x63, 0x74, 0x48, 0x00, 0x52, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x2f,
-	0x0a, 0x07, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32,
-	0x13, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x72,
-	0x76, 0x69, 0x63, 0x65, 0x48, 0x00, 0x52, 0x07, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12,
-	0x26, 0x0a, 0x04, 0x74, 0x61, 0x73, 0x6b, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x10, 0x2e,
-	0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x61, 0x73, 0x6b, 0x48,
-	0x00, 0x52, 0x04, 0x74, 0x61, 0x73, 0x6b, 0x12, 0x29, 0x0a, 0x03, 0x67, 0x69, 0x74, 0x18, 0x04,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76,
-	0x31, 0x2e, 0x47, 0x69, 0x74, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x48, 0x00, 0x52, 0x03, 0x67,
-	0x69, 0x74, 0x12, 0x31, 0x0a, 0x07, 0x72, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x64, 0x18, 0x05, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31,
-	0x2e, 0x45, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x52, 0x65, 0x66, 0x48, 0x00, 0x52, 0x07, 0x72, 0x65,
-	0x6d, 0x6f, 0x76, 0x65, 0x64, 0x12, 0x30, 0x0a, 0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x18,
-	0x06, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e,
-	0x76, 0x31, 0x2e, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x49, 0x6e, 0x66, 0x6f, 0x48, 0x00, 0x52,
-	0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x42, 0x08, 0x0a, 0x06, 0x63, 0x68, 0x61, 0x6e, 0x67,
-	0x65, 0x22, 0x0e, 0x0a, 0x0c, 0x57, 0x61, 0x74, 0x63, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x22, 0xcd, 0x01, 0x0a, 0x0d, 0x57, 0x61, 0x74, 0x63, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f,
-	0x6e, 0x73, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x72, 0x65, 0x76, 0x69, 0x73, 0x69, 0x6f, 0x6e, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x08, 0x72, 0x65, 0x76, 0x69, 0x73, 0x69, 0x6f, 0x6e, 0x12,
-	0x32, 0x0a, 0x08, 0x73, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28,
-	0x0b, 0x32, 0x14, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x53,
-	0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x48, 0x00, 0x52, 0x08, 0x73, 0x6e, 0x61, 0x70, 0x73,
-	0x68, 0x6f, 0x74, 0x12, 0x2c, 0x0a, 0x06, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x18, 0x03, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x12, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31,
-	0x2e, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x48, 0x00, 0x52, 0x06, 0x63, 0x68, 0x61, 0x6e, 0x67,
-	0x65, 0x12, 0x35, 0x0a, 0x09, 0x68, 0x65, 0x61, 0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x18, 0x04,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76,
-	0x31, 0x2e, 0x48, 0x65, 0x61, 0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x48, 0x00, 0x52, 0x09, 0x68,
-	0x65, 0x61, 0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x42, 0x07, 0x0a, 0x05, 0x65, 0x76, 0x65, 0x6e,
-	0x74, 0x22, 0x0b, 0x0a, 0x09, 0x48, 0x65, 0x61, 0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x22, 0x11,
-	0x0a, 0x0f, 0x47, 0x65, 0x74, 0x53, 0x74, 0x61, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x22, 0x60, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x53, 0x74, 0x61, 0x74, 0x65, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x72, 0x65, 0x76, 0x69, 0x73, 0x69, 0x6f,
-	0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x08, 0x72, 0x65, 0x76, 0x69, 0x73, 0x69, 0x6f,
-	0x6e, 0x12, 0x30, 0x0a, 0x08, 0x73, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31,
-	0x2e, 0x53, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x52, 0x08, 0x73, 0x6e, 0x61, 0x70, 0x73,
-	0x68, 0x6f, 0x74, 0x22, 0x12, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x3f, 0x0a, 0x11, 0x47, 0x65, 0x74, 0x44, 0x61,
-	0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2a, 0x0a, 0x04,
-	0x69, 0x6e, 0x66, 0x6f, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x64, 0x65, 0x76,
-	0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x49, 0x6e,
-	0x66, 0x6f, 0x52, 0x04, 0x69, 0x6e, 0x66, 0x6f, 0x22, 0x13, 0x0a, 0x11, 0x53, 0x74, 0x6f, 0x70,
-	0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x14, 0x0a,
-	0x12, 0x53, 0x74, 0x6f, 0x70, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f,
-	0x6e, 0x73, 0x65, 0x22, 0x41, 0x0a, 0x14, 0x52, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x44, 0x61,
-	0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x10, 0x72,
-	0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0f, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x53, 0x65,
-	0x72, 0x76, 0x69, 0x63, 0x65, 0x73, 0x22, 0x17, 0x0a, 0x15, 0x52, 0x65, 0x73, 0x74, 0x61, 0x72,
-	0x74, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22,
-	0x81, 0x01, 0x0a, 0x0f, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x57, 0x65, 0x62, 0x43, 0x6f, 0x6e,
-	0x66, 0x69, 0x67, 0x12, 0x12, 0x0a, 0x04, 0x68, 0x6f, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x04, 0x68, 0x6f, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x12, 0x23, 0x0a, 0x0d, 0x61,
-	0x6c, 0x6c, 0x6f, 0x77, 0x65, 0x64, 0x5f, 0x68, 0x6f, 0x73, 0x74, 0x73, 0x18, 0x03, 0x20, 0x03,
-	0x28, 0x09, 0x52, 0x0c, 0x61, 0x6c, 0x6c, 0x6f, 0x77, 0x65, 0x64, 0x48, 0x6f, 0x73, 0x74, 0x73,
-	0x12, 0x21, 0x0a, 0x0c, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x5f, 0x73, 0x65, 0x74,
-	0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0b, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64,
-	0x53, 0x65, 0x74, 0x22, 0xa1, 0x01, 0x0a, 0x14, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x50, 0x72,
-	0x6f, 0x78, 0x79, 0x54, 0x4c, 0x53, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x18, 0x0a, 0x07,
-	0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x65,
-	0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x18, 0x02,
-	0x20, 0x01, 0x28, 0x05, 0x52, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x12, 0x1b, 0x0a, 0x09, 0x63, 0x65,
-	0x72, 0x74, 0x5f, 0x66, 0x69, 0x6c, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63,
-	0x65, 0x72, 0x74, 0x46, 0x69, 0x6c, 0x65, 0x12, 0x19, 0x0a, 0x08, 0x6b, 0x65, 0x79, 0x5f, 0x66,
-	0x69, 0x6c, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x6b, 0x65, 0x79, 0x46, 0x69,
-	0x6c, 0x65, 0x12, 0x23, 0x0a, 0x0d, 0x68, 0x74, 0x74, 0x70, 0x5f, 0x72, 0x65, 0x64, 0x69, 0x72,
-	0x65, 0x63, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0c, 0x68, 0x74, 0x74, 0x70, 0x52,
-	0x65, 0x64, 0x69, 0x72, 0x65, 0x63, 0x74, 0x22, 0x94, 0x01, 0x0a, 0x11, 0x47, 0x6c, 0x6f, 0x62,
-	0x61, 0x6c, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x12, 0x0a,
-	0x04, 0x68, 0x6f, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x68, 0x6f, 0x73,
-	0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52,
-	0x04, 0x70, 0x6f, 0x72, 0x74, 0x12, 0x23, 0x0a, 0x0d, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x5f,
-	0x73, 0x75, 0x66, 0x66, 0x69, 0x78, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x64, 0x6f,
-	0x6d, 0x61, 0x69, 0x6e, 0x53, 0x75, 0x66, 0x66, 0x69, 0x78, 0x12, 0x32, 0x0a, 0x03, 0x74, 0x6c,
-	0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72,
-	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x50, 0x72, 0x6f, 0x78, 0x79,
-	0x54, 0x4c, 0x53, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x03, 0x74, 0x6c, 0x73, 0x22, 0xc0,
-	0x01, 0x0a, 0x0c, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12,
-	0x2d, 0x0a, 0x03, 0x77, 0x65, 0x62, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1b, 0x2e, 0x64,
-	0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c,
-	0x57, 0x65, 0x62, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x03, 0x77, 0x65, 0x62, 0x12, 0x33,
-	0x0a, 0x05, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e,
-	0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x6c, 0x6f, 0x62, 0x61,
-	0x6c, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x05, 0x70, 0x72,
-	0x6f, 0x78, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x18,
-	0x03, 0x20, 0x03, 0x28, 0x09, 0x52, 0x08, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x12,
-	0x30, 0x0a, 0x06, 0x67, 0x72, 0x6f, 0x75, 0x70, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32,
-	0x18, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x6f,
-	0x6a, 0x65, 0x63, 0x74, 0x47, 0x72, 0x6f, 0x75, 0x70, 0x52, 0x06, 0x67, 0x72, 0x6f, 0x75, 0x70,
-	0x73, 0x22, 0x3c, 0x0a, 0x0c, 0x50, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x47, 0x72, 0x6f, 0x75,
+	0x12, 0x18, 0x0a, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x0c, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x75, 0x72,
+	0x6c, 0x73, 0x18, 0x0d, 0x20, 0x03, 0x28, 0x09, 0x52, 0x04, 0x75, 0x72, 0x6c, 0x73, 0x12, 0x2b,
+	0x0a, 0x04, 0x73, 0x70, 0x65, 0x63, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x64,
+	0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63,
+	0x65, 0x53, 0x70, 0x65, 0x63, 0x52, 0x04, 0x73, 0x70, 0x65, 0x63, 0x12, 0x34, 0x0a, 0x17, 0x6e,
+	0x65, 0x78, 0x74, 0x5f, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x61, 0x74, 0x5f, 0x75,
+	0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73, 0x18, 0x0f, 0x20, 0x01, 0x28, 0x03, 0x52, 0x13, 0x6e, 0x65,
+	0x78, 0x74, 0x52, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d,
+	0x73, 0x12, 0x14, 0x0a, 0x05, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x18, 0x10, 0x20, 0x01, 0x28, 0x05,
+	0x52, 0x05, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x22, 0x82, 0x01, 0x0a, 0x08, 0x54, 0x61, 0x73, 0x6b,
+	0x53, 0x70, 0x65, 0x63, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x12, 0x10,
+	0x0a, 0x03, 0x64, 0x69, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x64, 0x69, 0x72,
+	0x12, 0x10, 0x0a, 0x03, 0x74, 0x74, 0x79, 0x18, 0x03, 0x20, 0x01, 0x28, 0x08, 0x52, 0x03, 0x74,
+	0x74, 0x79, 0x12, 0x1d, 0x0a, 0x0a, 0x64, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x73, 0x5f, 0x6f, 0x6e,
+	0x18, 0x04, 0x20, 0x03, 0x28, 0x09, 0x52, 0x09, 0x64, 0x65, 0x70, 0x65, 0x6e, 0x64, 0x73, 0x4f,
+	0x6e, 0x12, 0x19, 0x0a, 0x08, 0x65, 0x6e, 0x76, 0x5f, 0x6b, 0x65, 0x79, 0x73, 0x18, 0x05, 0x20,
+	0x03, 0x28, 0x09, 0x52, 0x07, 0x65, 0x6e, 0x76, 0x4b, 0x65, 0x79, 0x73, 0x22, 0xc1, 0x02, 0x0a,
+	0x04, 0x54, 0x61, 0x73, 0x6b, 0x12, 0x18, 0x0a, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12,
+	0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e,
+	0x61, 0x6d, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x18, 0x03, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x10, 0x0a, 0x03, 0x70,
+	0x69, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x52, 0x03, 0x70, 0x69, 0x64, 0x12, 0x1b, 0x0a,
+	0x09, 0x65, 0x78, 0x69, 0x74, 0x5f, 0x63, 0x6f, 0x64, 0x65, 0x18, 0x05, 0x20, 0x01, 0x28, 0x05,
+	0x52, 0x08, 0x65, 0x78, 0x69, 0x74, 0x43, 0x6f, 0x64, 0x65, 0x12, 0x10, 0x0a, 0x03, 0x72, 0x75,
+	0x6e, 0x18, 0x06, 0x20, 0x01, 0x28, 0x03, 0x52, 0x03, 0x72, 0x75, 0x6e, 0x12, 0x2b, 0x0a, 0x12,
+	0x73, 0x74, 0x61, 0x72, 0x74, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f,
+	0x6d, 0x73, 0x18, 0x07, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x65,
+	0x64, 0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d, 0x73, 0x12, 0x2d, 0x0a, 0x13, 0x66, 0x69, 0x6e,
+	0x69, 0x73, 0x68, 0x65, 0x64, 0x5f, 0x61, 0x74, 0x5f, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x73,
+	0x18, 0x08, 0x20, 0x01, 0x28, 0x03, 0x52, 0x10, 0x66, 0x69, 0x6e, 0x69, 0x73, 0x68, 0x65, 0x64,
+	0x41, 0x74, 0x55, 0x6e, 0x69, 0x78, 0x4d, 0x73, 0x12, 0x18, 0x0a, 0x07, 0x6d, 0x65, 0x73, 0x73,
+	0x61, 0x67, 0x65, 0x18, 0x09, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x6d, 0x65, 0x73, 0x73, 0x61,
+	0x67, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x61, 0x72, 0x67, 0x73, 0x18, 0x0a, 0x20, 0x03, 0x28, 0x09,
+	0x52, 0x04, 0x61, 0x72, 0x67, 0x73, 0x12, 0x28, 0x0a, 0x04, 0x73, 0x70, 0x65, 0x63, 0x18, 0x0b,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76,
+	0x31, 0x2e, 0x54, 0x61, 0x73, 0x6b, 0x53, 0x70, 0x65, 0x63, 0x52, 0x04, 0x73, 0x70, 0x65, 0x63,
+	0x22, 0x88, 0x03, 0x0a, 0x09, 0x47, 0x69, 0x74, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x18,
+	0x0a, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x17, 0x0a, 0x07, 0x69, 0x73, 0x5f, 0x72,
+	0x65, 0x70, 0x6f, 0x18, 0x02, 0x20, 0x01, 0x28, 0x08, 0x52, 0x06, 0x69, 0x73, 0x52, 0x65, 0x70,
+	0x6f, 0x12, 0x16, 0x0a, 0x06, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x18, 0x03, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x06, 0x62, 0x72, 0x61, 0x6e, 0x63, 0x68, 0x12, 0x1a, 0x0a, 0x08, 0x75, 0x70, 0x73,
+	0x74, 0x72, 0x65, 0x61, 0x6d, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x75, 0x70, 0x73,
+	0x74, 0x72, 0x65, 0x61, 0x6d, 0x12, 0x14, 0x0a, 0x05, 0x61, 0x68, 0x65, 0x61, 0x64, 0x18, 0x05,
+	0x20, 0x01, 0x28, 0x05, 0x52, 0x05, 0x61, 0x68, 0x65, 0x61, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x62,
+	0x65, 0x68, 0x69, 0x6e, 0x64, 0x18, 0x06, 0x20, 0x01, 0x28, 0x05, 0x52, 0x06, 0x62, 0x65, 0x68,
+	0x69, 0x6e, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x74, 0x61, 0x67, 0x65, 0x64, 0x18, 0x07, 0x20,
+	0x01, 0x28, 0x05, 0x52, 0x06, 0x73, 0x74, 0x61, 0x67, 0x65, 0x64, 0x12, 0x14, 0x0a, 0x05, 0x64,
+	0x69, 0x72, 0x74, 0x79, 0x18, 0x08, 0x20, 0x01, 0x28, 0x05, 0x52, 0x05, 0x64, 0x69, 0x72, 0x74,
+	0x79, 0x12, 0x1c, 0x0a, 0x09, 0x75, 0x6e, 0x74, 0x72, 0x61, 0x63, 0x6b, 0x65, 0x64, 0x18, 0x09,
+	0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x75, 0x6e, 0x74, 0x72, 0x61, 0x63, 0x6b, 0x65, 0x64, 0x12,
+	0x1c, 0x0a, 0x09, 0x63, 0x6f, 0x6e, 0x66, 0x6c, 0x69, 0x63, 0x74, 0x73, 0x18, 0x0a, 0x20, 0x01,
+	0x28, 0x05, 0x52, 0x09, 0x63, 0x6f, 0x6e, 0x66, 0x6c, 0x69, 0x63, 0x74, 0x73, 0x12, 0x19, 0x0a,
+	0x08, 0x69, 0x73, 0x5f, 0x63, 0x6c, 0x65, 0x61, 0x6e, 0x18, 0x0b, 0x20, 0x01, 0x28, 0x08, 0x52,
+	0x07, 0x69, 0x73, 0x43, 0x6c, 0x65, 0x61, 0x6e, 0x12, 0x1b, 0x0a, 0x09, 0x68, 0x65, 0x61, 0x64,
+	0x5f, 0x68, 0x61, 0x73, 0x68, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x68, 0x65, 0x61,
+	0x64, 0x48, 0x61, 0x73, 0x68, 0x12, 0x25, 0x0a, 0x0e, 0x73, 0x79, 0x6e, 0x63, 0x5f, 0x6f, 0x70,
+	0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x0d, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0d, 0x73,
+	0x79, 0x6e, 0x63, 0x4f, 0x70, 0x65, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x1d, 0x0a, 0x0a,
+	0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x5f, 0x73, 0x65, 0x71, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x03,
+	0x52, 0x09, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x53, 0x65, 0x71, 0x22, 0x4d, 0x0a, 0x09, 0x45,
+	0x6e, 0x74, 0x69, 0x74, 0x79, 0x52, 0x65, 0x66, 0x12, 0x12, 0x0a, 0x04, 0x6b, 0x69, 0x6e, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6b, 0x69, 0x6e, 0x64, 0x12, 0x18, 0x0a, 0x07,
+	0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x70,
+	0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x03,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0xed, 0x01, 0x0a, 0x08, 0x53,
+	0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x12, 0x2e, 0x0a, 0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f,
+	0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72,
+	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x49, 0x6e, 0x66, 0x6f, 0x52,
+	0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x12, 0x2f, 0x0a, 0x08, 0x70, 0x72, 0x6f, 0x6a, 0x65,
+	0x63, 0x74, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x64, 0x65, 0x76, 0x79,
+	0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x52, 0x08,
+	0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x12, 0x2f, 0x0a, 0x08, 0x73, 0x65, 0x72, 0x76,
+	0x69, 0x63, 0x65, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x64, 0x65, 0x76,
+	0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x52,
+	0x08, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73, 0x12, 0x26, 0x0a, 0x05, 0x74, 0x61, 0x73,
+	0x6b, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x10, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61,
+	0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x61, 0x73, 0x6b, 0x52, 0x05, 0x74, 0x61, 0x73, 0x6b,
+	0x73, 0x12, 0x27, 0x0a, 0x03, 0x67, 0x69, 0x74, 0x18, 0x05, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x15,
+	0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x69, 0x74, 0x53,
+	0x74, 0x61, 0x74, 0x75, 0x73, 0x52, 0x03, 0x67, 0x69, 0x74, 0x22, 0xac, 0x02, 0x0a, 0x06, 0x43,
+	0x68, 0x61, 0x6e, 0x67, 0x65, 0x12, 0x2f, 0x0a, 0x07, 0x70, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64,
+	0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x48, 0x00, 0x52, 0x07, 0x70,
+	0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x12, 0x2f, 0x0a, 0x07, 0x73, 0x65, 0x72, 0x76, 0x69, 0x63,
+	0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x13, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72,
+	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x48, 0x00, 0x52, 0x07,
+	0x73, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x26, 0x0a, 0x04, 0x74, 0x61, 0x73, 0x6b, 0x18,
+	0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x10, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e,
+	0x76, 0x31, 0x2e, 0x54, 0x61, 0x73, 0x6b, 0x48, 0x00, 0x52, 0x04, 0x74, 0x61, 0x73, 0x6b, 0x12,
+	0x29, 0x0a, 0x03, 0x67, 0x69, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x64,
+	0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x69, 0x74, 0x53, 0x74, 0x61,
+	0x74, 0x75, 0x73, 0x48, 0x00, 0x52, 0x03, 0x67, 0x69, 0x74, 0x12, 0x31, 0x0a, 0x07, 0x72, 0x65,
+	0x6d, 0x6f, 0x76, 0x65, 0x64, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x64, 0x65,
+	0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x52,
+	0x65, 0x66, 0x48, 0x00, 0x52, 0x07, 0x72, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x64, 0x12, 0x30, 0x0a,
+	0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e,
+	0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x61, 0x65, 0x6d, 0x6f,
+	0x6e, 0x49, 0x6e, 0x66, 0x6f, 0x48, 0x00, 0x52, 0x06, 0x64, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x42,
+	0x08, 0x0a, 0x06, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x22, 0x0e, 0x0a, 0x0c, 0x57, 0x61, 0x74,
+	0x63, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0xcd, 0x01, 0x0a, 0x0d, 0x57, 0x61,
+	0x74, 0x63, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1a, 0x0a, 0x08, 0x72,
+	0x65, 0x76, 0x69, 0x73, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x08, 0x72,
+	0x65, 0x76, 0x69, 0x73, 0x69, 0x6f, 0x6e, 0x12, 0x32, 0x0a, 0x08, 0x73, 0x6e, 0x61, 0x70, 0x73,
+	0x68, 0x6f, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x64, 0x65, 0x76, 0x79,
+	0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x48,
+	0x00, 0x52, 0x08, 0x73, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x12, 0x2c, 0x0a, 0x06, 0x63,
+	0x68, 0x61, 0x6e, 0x67, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x12, 0x2e, 0x64, 0x65,
+	0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x48,
+	0x00, 0x52, 0x06, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x12, 0x35, 0x0a, 0x09, 0x68, 0x65, 0x61,
+	0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x64,
+	0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x48, 0x65, 0x61, 0x72, 0x74, 0x62,
+	0x65, 0x61, 0x74, 0x48, 0x00, 0x52, 0x09, 0x68, 0x65, 0x61, 0x72, 0x74, 0x62, 0x65, 0x61, 0x74,
+	0x42, 0x07, 0x0a, 0x05, 0x65, 0x76, 0x65, 0x6e, 0x74, 0x22, 0x0b, 0x0a, 0x09, 0x48, 0x65, 0x61,
+	0x72, 0x74, 0x62, 0x65, 0x61, 0x74, 0x22, 0x11, 0x0a, 0x0f, 0x47, 0x65, 0x74, 0x53, 0x74, 0x61,
+	0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x60, 0x0a, 0x10, 0x47, 0x65, 0x74,
+	0x53, 0x74, 0x61, 0x74, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1a, 0x0a,
+	0x08, 0x72, 0x65, 0x76, 0x69, 0x73, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52,
+	0x08, 0x72, 0x65, 0x76, 0x69, 0x73, 0x69, 0x6f, 0x6e, 0x12, 0x30, 0x0a, 0x08, 0x73, 0x6e, 0x61,
+	0x70, 0x73, 0x68, 0x6f, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x14, 0x2e, 0x64, 0x65,
+	0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f,
+	0x74, 0x52, 0x08, 0x73, 0x6e, 0x61, 0x70, 0x73, 0x68, 0x6f, 0x74, 0x22, 0x12, 0x0a, 0x10, 0x47,
+	0x65, 0x74, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22,
+	0x3f, 0x0a, 0x11, 0x47, 0x65, 0x74, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2a, 0x0a, 0x04, 0x69, 0x6e, 0x66, 0x6f, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x16, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e,
+	0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x04, 0x69, 0x6e, 0x66, 0x6f,
+	0x22, 0x13, 0x0a, 0x11, 0x53, 0x74, 0x6f, 0x70, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x14, 0x0a, 0x12, 0x53, 0x74, 0x6f, 0x70, 0x44, 0x61, 0x65,
+	0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x41, 0x0a, 0x14, 0x52,
+	0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x12, 0x29, 0x0a, 0x10, 0x72, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x73,
+	0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0f, 0x72,
+	0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x73, 0x22, 0x17,
+	0x0a, 0x15, 0x52, 0x65, 0x73, 0x74, 0x61, 0x72, 0x74, 0x44, 0x61, 0x65, 0x6d, 0x6f, 0x6e, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x81, 0x01, 0x0a, 0x0f, 0x47, 0x6c, 0x6f, 0x62,
+	0x61, 0x6c, 0x57, 0x65, 0x62, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x12, 0x0a, 0x04, 0x68,
+	0x6f, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x68, 0x6f, 0x73, 0x74, 0x12,
+	0x12, 0x0a, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x04, 0x70,
+	0x6f, 0x72, 0x74, 0x12, 0x23, 0x0a, 0x0d, 0x61, 0x6c, 0x6c, 0x6f, 0x77, 0x65, 0x64, 0x5f, 0x68,
+	0x6f, 0x73, 0x74, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x09, 0x52, 0x0c, 0x61, 0x6c, 0x6c, 0x6f,
+	0x77, 0x65, 0x64, 0x48, 0x6f, 0x73, 0x74, 0x73, 0x12, 0x21, 0x0a, 0x0c, 0x70, 0x61, 0x73, 0x73,
+	0x77, 0x6f, 0x72, 0x64, 0x5f, 0x73, 0x65, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x08, 0x52, 0x0b,
+	0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x53, 0x65, 0x74, 0x22, 0xa1, 0x01, 0x0a, 0x14,
+	0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x54, 0x4c, 0x53, 0x43, 0x6f,
+	0x6e, 0x66, 0x69, 0x67, 0x12, 0x18, 0x0a, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x12, 0x12,
+	0x0a, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x04, 0x70, 0x6f,
+	0x72, 0x74, 0x12, 0x1b, 0x0a, 0x09, 0x63, 0x65, 0x72, 0x74, 0x5f, 0x66, 0x69, 0x6c, 0x65, 0x18,
+	0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x63, 0x65, 0x72, 0x74, 0x46, 0x69, 0x6c, 0x65, 0x12,
+	0x19, 0x0a, 0x08, 0x6b, 0x65, 0x79, 0x5f, 0x66, 0x69, 0x6c, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x07, 0x6b, 0x65, 0x79, 0x46, 0x69, 0x6c, 0x65, 0x12, 0x23, 0x0a, 0x0d, 0x68, 0x74,
+	0x74, 0x70, 0x5f, 0x72, 0x65, 0x64, 0x69, 0x72, 0x65, 0x63, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28,
+	0x08, 0x52, 0x0c, 0x68, 0x74, 0x74, 0x70, 0x52, 0x65, 0x64, 0x69, 0x72, 0x65, 0x63, 0x74, 0x22,
+	0x94, 0x01, 0x0a, 0x11, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x43,
+	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x12, 0x0a, 0x04, 0x68, 0x6f, 0x73, 0x74, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x04, 0x68, 0x6f, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x70, 0x6f, 0x72,
+	0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x04, 0x70, 0x6f, 0x72, 0x74, 0x12, 0x23, 0x0a,
+	0x0d, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x5f, 0x73, 0x75, 0x66, 0x66, 0x69, 0x78, 0x18, 0x03,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x0c, 0x64, 0x6f, 0x6d, 0x61, 0x69, 0x6e, 0x53, 0x75, 0x66, 0x66,
+	0x69, 0x78, 0x12, 0x32, 0x0a, 0x03, 0x74, 0x6c, 0x73, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x20, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x6c, 0x6f,
+	0x62, 0x61, 0x6c, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x54, 0x4c, 0x53, 0x43, 0x6f, 0x6e, 0x66, 0x69,
+	0x67, 0x52, 0x03, 0x74, 0x6c, 0x73, 0x22, 0xd8, 0x01, 0x0a, 0x0c, 0x47, 0x6c, 0x6f, 0x62, 0x61,
+	0x6c, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x2d, 0x0a, 0x03, 0x77, 0x65, 0x62, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x1b, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e, 0x76,
+	0x31, 0x2e, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x57, 0x65, 0x62, 0x43, 0x6f, 0x6e, 0x66, 0x69,
+	0x67, 0x52, 0x03, 0x77, 0x65, 0x62, 0x12, 0x33, 0x0a, 0x05, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72, 0x64, 0x2e,
+	0x76, 0x31, 0x2e, 0x47, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x50, 0x72, 0x6f, 0x78, 0x79, 0x43, 0x6f,
+	0x6e, 0x66, 0x69, 0x67, 0x52, 0x05, 0x70, 0x72, 0x6f, 0x78, 0x79, 0x12, 0x1a, 0x0a, 0x08, 0x70,
+	0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x09, 0x52, 0x08, 0x70,
+	0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x12, 0x30, 0x0a, 0x06, 0x67, 0x72, 0x6f, 0x75, 0x70,
+	0x73, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x64, 0x65, 0x76, 0x79, 0x61, 0x72,
+	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x50, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x47, 0x72, 0x6f, 0x75,
+	0x70, 0x52, 0x06, 0x67, 0x72, 0x6f, 0x75, 0x70, 0x73, 0x12, 0x16, 0x0a, 0x06, 0x72, 0x65, 0x6c,
+	0x6f, 0x61, 0x64, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x72, 0x65, 0x6c, 0x6f, 0x61,
+	0x64, 0x22, 0x3c, 0x0a, 0x0c, 0x50, 0x72, 0x6f, 0x6a, 0x65, 0x63, 0x74, 0x47, 0x72, 0x6f, 0x75,
 	0x70, 0x12, 0x12, 0x0a, 0x04, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
 	0x04, 0x6e, 0x61, 0x6d, 0x65, 0x12, 0x18, 0x0a, 0x07, 0x6d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x73,
 	0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x07, 0x6d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x73, 0x22,
@@ -7352,236 +7571,240 @@ func file_devyard_v1_control_proto_rawDescGZIP() []byte {
 	return file_devyard_v1_control_proto_rawDescData
 }
 
-var file_devyard_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 104)
+var file_devyard_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 106)
 var file_devyard_v1_control_proto_goTypes = []any{
 	(*DaemonInfo)(nil),                  // 0: devyard.v1.DaemonInfo
 	(*Project)(nil),                     // 1: devyard.v1.Project
-	(*Link)(nil),                        // 2: devyard.v1.Link
-	(*Ready)(nil),                       // 3: devyard.v1.Ready
-	(*Port)(nil),                        // 4: devyard.v1.Port
-	(*ServiceSpec)(nil),                 // 5: devyard.v1.ServiceSpec
-	(*Service)(nil),                     // 6: devyard.v1.Service
-	(*TaskSpec)(nil),                    // 7: devyard.v1.TaskSpec
-	(*Task)(nil),                        // 8: devyard.v1.Task
-	(*GitStatus)(nil),                   // 9: devyard.v1.GitStatus
-	(*EntityRef)(nil),                   // 10: devyard.v1.EntityRef
-	(*Snapshot)(nil),                    // 11: devyard.v1.Snapshot
-	(*Change)(nil),                      // 12: devyard.v1.Change
-	(*WatchRequest)(nil),                // 13: devyard.v1.WatchRequest
-	(*WatchResponse)(nil),               // 14: devyard.v1.WatchResponse
-	(*Heartbeat)(nil),                   // 15: devyard.v1.Heartbeat
-	(*GetStateRequest)(nil),             // 16: devyard.v1.GetStateRequest
-	(*GetStateResponse)(nil),            // 17: devyard.v1.GetStateResponse
-	(*GetDaemonRequest)(nil),            // 18: devyard.v1.GetDaemonRequest
-	(*GetDaemonResponse)(nil),           // 19: devyard.v1.GetDaemonResponse
-	(*StopDaemonRequest)(nil),           // 20: devyard.v1.StopDaemonRequest
-	(*StopDaemonResponse)(nil),          // 21: devyard.v1.StopDaemonResponse
-	(*RestartDaemonRequest)(nil),        // 22: devyard.v1.RestartDaemonRequest
-	(*RestartDaemonResponse)(nil),       // 23: devyard.v1.RestartDaemonResponse
-	(*GlobalWebConfig)(nil),             // 24: devyard.v1.GlobalWebConfig
-	(*GlobalProxyTLSConfig)(nil),        // 25: devyard.v1.GlobalProxyTLSConfig
-	(*GlobalProxyConfig)(nil),           // 26: devyard.v1.GlobalProxyConfig
-	(*GlobalConfig)(nil),                // 27: devyard.v1.GlobalConfig
-	(*ProjectGroup)(nil),                // 28: devyard.v1.ProjectGroup
-	(*GetGlobalConfigRequest)(nil),      // 29: devyard.v1.GetGlobalConfigRequest
-	(*GetGlobalConfigResponse)(nil),     // 30: devyard.v1.GetGlobalConfigResponse
-	(*UpdateGlobalConfigRequest)(nil),   // 31: devyard.v1.UpdateGlobalConfigRequest
-	(*UpdateGlobalConfigResponse)(nil),  // 32: devyard.v1.UpdateGlobalConfigResponse
-	(*SetWebPasswordRequest)(nil),       // 33: devyard.v1.SetWebPasswordRequest
-	(*SetWebPasswordResponse)(nil),      // 34: devyard.v1.SetWebPasswordResponse
-	(*AddProjectRequest)(nil),           // 35: devyard.v1.AddProjectRequest
-	(*AddProjectResponse)(nil),          // 36: devyard.v1.AddProjectResponse
-	(*StartProjectRequest)(nil),         // 37: devyard.v1.StartProjectRequest
-	(*StartProjectResponse)(nil),        // 38: devyard.v1.StartProjectResponse
-	(*StopProjectRequest)(nil),          // 39: devyard.v1.StopProjectRequest
-	(*StopProjectResponse)(nil),         // 40: devyard.v1.StopProjectResponse
-	(*RestartProjectRequest)(nil),       // 41: devyard.v1.RestartProjectRequest
-	(*RestartProjectResponse)(nil),      // 42: devyard.v1.RestartProjectResponse
-	(*ReloadProjectRequest)(nil),        // 43: devyard.v1.ReloadProjectRequest
-	(*ReloadProjectResponse)(nil),       // 44: devyard.v1.ReloadProjectResponse
-	(*RemoveProjectRequest)(nil),        // 45: devyard.v1.RemoveProjectRequest
-	(*RemoveProjectResponse)(nil),       // 46: devyard.v1.RemoveProjectResponse
-	(*MoveProjectRequest)(nil),          // 47: devyard.v1.MoveProjectRequest
-	(*MoveProjectResponse)(nil),         // 48: devyard.v1.MoveProjectResponse
-	(*SuggestProjectPathsRequest)(nil),  // 49: devyard.v1.SuggestProjectPathsRequest
-	(*PathSuggestion)(nil),              // 50: devyard.v1.PathSuggestion
-	(*SuggestProjectPathsResponse)(nil), // 51: devyard.v1.SuggestProjectPathsResponse
-	(*StartServiceRequest)(nil),         // 52: devyard.v1.StartServiceRequest
-	(*StartServiceResponse)(nil),        // 53: devyard.v1.StartServiceResponse
-	(*StopServiceRequest)(nil),          // 54: devyard.v1.StopServiceRequest
-	(*StopServiceResponse)(nil),         // 55: devyard.v1.StopServiceResponse
-	(*RestartServiceRequest)(nil),       // 56: devyard.v1.RestartServiceRequest
-	(*RestartServiceResponse)(nil),      // 57: devyard.v1.RestartServiceResponse
-	(*KillServiceRequest)(nil),          // 58: devyard.v1.KillServiceRequest
-	(*KillServiceResponse)(nil),         // 59: devyard.v1.KillServiceResponse
-	(*RunTaskRequest)(nil),              // 60: devyard.v1.RunTaskRequest
-	(*RunTaskResponse)(nil),             // 61: devyard.v1.RunTaskResponse
-	(*StopTaskRequest)(nil),             // 62: devyard.v1.StopTaskRequest
-	(*StopTaskResponse)(nil),            // 63: devyard.v1.StopTaskResponse
-	(*KillTaskRequest)(nil),             // 64: devyard.v1.KillTaskRequest
-	(*KillTaskResponse)(nil),            // 65: devyard.v1.KillTaskResponse
-	(*LogSource)(nil),                   // 66: devyard.v1.LogSource
-	(*LogsRequest)(nil),                 // 67: devyard.v1.LogsRequest
-	(*LogLine)(nil),                     // 68: devyard.v1.LogLine
-	(*LogsResponse)(nil),                // 69: devyard.v1.LogsResponse
-	(*AttachTarget)(nil),                // 70: devyard.v1.AttachTarget
-	(*AttachRequest)(nil),               // 71: devyard.v1.AttachRequest
-	(*AttachOpen)(nil),                  // 72: devyard.v1.AttachOpen
-	(*AttachResize)(nil),                // 73: devyard.v1.AttachResize
-	(*AttachResponse)(nil),              // 74: devyard.v1.AttachResponse
-	(*AttachReady)(nil),                 // 75: devyard.v1.AttachReady
-	(*AttachExit)(nil),                  // 76: devyard.v1.AttachExit
-	(*StatsRequest)(nil),                // 77: devyard.v1.StatsRequest
-	(*ProcessStat)(nil),                 // 78: devyard.v1.ProcessStat
-	(*StatsResponse)(nil),               // 79: devyard.v1.StatsResponse
-	(*PortBinding)(nil),                 // 80: devyard.v1.PortBinding
-	(*ListPortsRequest)(nil),            // 81: devyard.v1.ListPortsRequest
-	(*ListPortsResponse)(nil),           // 82: devyard.v1.ListPortsResponse
-	(*GitRef)(nil),                      // 83: devyard.v1.GitRef
-	(*GitBranch)(nil),                   // 84: devyard.v1.GitBranch
-	(*GitTag)(nil),                      // 85: devyard.v1.GitTag
-	(*GitStash)(nil),                    // 86: devyard.v1.GitStash
-	(*GitCommit)(nil),                   // 87: devyard.v1.GitCommit
-	(*GitFileChange)(nil),               // 88: devyard.v1.GitFileChange
-	(*GitDiffResult)(nil),               // 89: devyard.v1.GitDiffResult
-	(*GitLogRequest)(nil),               // 90: devyard.v1.GitLogRequest
-	(*GitLogResponse)(nil),              // 91: devyard.v1.GitLogResponse
-	(*GitDiffRequest)(nil),              // 92: devyard.v1.GitDiffRequest
-	(*GitDiffResponse)(nil),             // 93: devyard.v1.GitDiffResponse
-	(*GitStageRequest)(nil),             // 94: devyard.v1.GitStageRequest
-	(*GitStageResponse)(nil),            // 95: devyard.v1.GitStageResponse
-	(*GitCommitRequest)(nil),            // 96: devyard.v1.GitCommitRequest
-	(*GitCommitResponse)(nil),           // 97: devyard.v1.GitCommitResponse
-	(*GitPushRequest)(nil),              // 98: devyard.v1.GitPushRequest
-	(*GitPushResponse)(nil),             // 99: devyard.v1.GitPushResponse
-	(*GitPullRequest)(nil),              // 100: devyard.v1.GitPullRequest
-	(*GitPullResponse)(nil),             // 101: devyard.v1.GitPullResponse
-	(*GitFetchRequest)(nil),             // 102: devyard.v1.GitFetchRequest
-	(*GitFetchResponse)(nil),            // 103: devyard.v1.GitFetchResponse
+	(*ConfigChange)(nil),                // 2: devyard.v1.ConfigChange
+	(*ConfigDrift)(nil),                 // 3: devyard.v1.ConfigDrift
+	(*Link)(nil),                        // 4: devyard.v1.Link
+	(*Ready)(nil),                       // 5: devyard.v1.Ready
+	(*Port)(nil),                        // 6: devyard.v1.Port
+	(*ServiceSpec)(nil),                 // 7: devyard.v1.ServiceSpec
+	(*Service)(nil),                     // 8: devyard.v1.Service
+	(*TaskSpec)(nil),                    // 9: devyard.v1.TaskSpec
+	(*Task)(nil),                        // 10: devyard.v1.Task
+	(*GitStatus)(nil),                   // 11: devyard.v1.GitStatus
+	(*EntityRef)(nil),                   // 12: devyard.v1.EntityRef
+	(*Snapshot)(nil),                    // 13: devyard.v1.Snapshot
+	(*Change)(nil),                      // 14: devyard.v1.Change
+	(*WatchRequest)(nil),                // 15: devyard.v1.WatchRequest
+	(*WatchResponse)(nil),               // 16: devyard.v1.WatchResponse
+	(*Heartbeat)(nil),                   // 17: devyard.v1.Heartbeat
+	(*GetStateRequest)(nil),             // 18: devyard.v1.GetStateRequest
+	(*GetStateResponse)(nil),            // 19: devyard.v1.GetStateResponse
+	(*GetDaemonRequest)(nil),            // 20: devyard.v1.GetDaemonRequest
+	(*GetDaemonResponse)(nil),           // 21: devyard.v1.GetDaemonResponse
+	(*StopDaemonRequest)(nil),           // 22: devyard.v1.StopDaemonRequest
+	(*StopDaemonResponse)(nil),          // 23: devyard.v1.StopDaemonResponse
+	(*RestartDaemonRequest)(nil),        // 24: devyard.v1.RestartDaemonRequest
+	(*RestartDaemonResponse)(nil),       // 25: devyard.v1.RestartDaemonResponse
+	(*GlobalWebConfig)(nil),             // 26: devyard.v1.GlobalWebConfig
+	(*GlobalProxyTLSConfig)(nil),        // 27: devyard.v1.GlobalProxyTLSConfig
+	(*GlobalProxyConfig)(nil),           // 28: devyard.v1.GlobalProxyConfig
+	(*GlobalConfig)(nil),                // 29: devyard.v1.GlobalConfig
+	(*ProjectGroup)(nil),                // 30: devyard.v1.ProjectGroup
+	(*GetGlobalConfigRequest)(nil),      // 31: devyard.v1.GetGlobalConfigRequest
+	(*GetGlobalConfigResponse)(nil),     // 32: devyard.v1.GetGlobalConfigResponse
+	(*UpdateGlobalConfigRequest)(nil),   // 33: devyard.v1.UpdateGlobalConfigRequest
+	(*UpdateGlobalConfigResponse)(nil),  // 34: devyard.v1.UpdateGlobalConfigResponse
+	(*SetWebPasswordRequest)(nil),       // 35: devyard.v1.SetWebPasswordRequest
+	(*SetWebPasswordResponse)(nil),      // 36: devyard.v1.SetWebPasswordResponse
+	(*AddProjectRequest)(nil),           // 37: devyard.v1.AddProjectRequest
+	(*AddProjectResponse)(nil),          // 38: devyard.v1.AddProjectResponse
+	(*StartProjectRequest)(nil),         // 39: devyard.v1.StartProjectRequest
+	(*StartProjectResponse)(nil),        // 40: devyard.v1.StartProjectResponse
+	(*StopProjectRequest)(nil),          // 41: devyard.v1.StopProjectRequest
+	(*StopProjectResponse)(nil),         // 42: devyard.v1.StopProjectResponse
+	(*RestartProjectRequest)(nil),       // 43: devyard.v1.RestartProjectRequest
+	(*RestartProjectResponse)(nil),      // 44: devyard.v1.RestartProjectResponse
+	(*ReloadProjectRequest)(nil),        // 45: devyard.v1.ReloadProjectRequest
+	(*ReloadProjectResponse)(nil),       // 46: devyard.v1.ReloadProjectResponse
+	(*RemoveProjectRequest)(nil),        // 47: devyard.v1.RemoveProjectRequest
+	(*RemoveProjectResponse)(nil),       // 48: devyard.v1.RemoveProjectResponse
+	(*MoveProjectRequest)(nil),          // 49: devyard.v1.MoveProjectRequest
+	(*MoveProjectResponse)(nil),         // 50: devyard.v1.MoveProjectResponse
+	(*SuggestProjectPathsRequest)(nil),  // 51: devyard.v1.SuggestProjectPathsRequest
+	(*PathSuggestion)(nil),              // 52: devyard.v1.PathSuggestion
+	(*SuggestProjectPathsResponse)(nil), // 53: devyard.v1.SuggestProjectPathsResponse
+	(*StartServiceRequest)(nil),         // 54: devyard.v1.StartServiceRequest
+	(*StartServiceResponse)(nil),        // 55: devyard.v1.StartServiceResponse
+	(*StopServiceRequest)(nil),          // 56: devyard.v1.StopServiceRequest
+	(*StopServiceResponse)(nil),         // 57: devyard.v1.StopServiceResponse
+	(*RestartServiceRequest)(nil),       // 58: devyard.v1.RestartServiceRequest
+	(*RestartServiceResponse)(nil),      // 59: devyard.v1.RestartServiceResponse
+	(*KillServiceRequest)(nil),          // 60: devyard.v1.KillServiceRequest
+	(*KillServiceResponse)(nil),         // 61: devyard.v1.KillServiceResponse
+	(*RunTaskRequest)(nil),              // 62: devyard.v1.RunTaskRequest
+	(*RunTaskResponse)(nil),             // 63: devyard.v1.RunTaskResponse
+	(*StopTaskRequest)(nil),             // 64: devyard.v1.StopTaskRequest
+	(*StopTaskResponse)(nil),            // 65: devyard.v1.StopTaskResponse
+	(*KillTaskRequest)(nil),             // 66: devyard.v1.KillTaskRequest
+	(*KillTaskResponse)(nil),            // 67: devyard.v1.KillTaskResponse
+	(*LogSource)(nil),                   // 68: devyard.v1.LogSource
+	(*LogsRequest)(nil),                 // 69: devyard.v1.LogsRequest
+	(*LogLine)(nil),                     // 70: devyard.v1.LogLine
+	(*LogsResponse)(nil),                // 71: devyard.v1.LogsResponse
+	(*AttachTarget)(nil),                // 72: devyard.v1.AttachTarget
+	(*AttachRequest)(nil),               // 73: devyard.v1.AttachRequest
+	(*AttachOpen)(nil),                  // 74: devyard.v1.AttachOpen
+	(*AttachResize)(nil),                // 75: devyard.v1.AttachResize
+	(*AttachResponse)(nil),              // 76: devyard.v1.AttachResponse
+	(*AttachReady)(nil),                 // 77: devyard.v1.AttachReady
+	(*AttachExit)(nil),                  // 78: devyard.v1.AttachExit
+	(*StatsRequest)(nil),                // 79: devyard.v1.StatsRequest
+	(*ProcessStat)(nil),                 // 80: devyard.v1.ProcessStat
+	(*StatsResponse)(nil),               // 81: devyard.v1.StatsResponse
+	(*PortBinding)(nil),                 // 82: devyard.v1.PortBinding
+	(*ListPortsRequest)(nil),            // 83: devyard.v1.ListPortsRequest
+	(*ListPortsResponse)(nil),           // 84: devyard.v1.ListPortsResponse
+	(*GitRef)(nil),                      // 85: devyard.v1.GitRef
+	(*GitBranch)(nil),                   // 86: devyard.v1.GitBranch
+	(*GitTag)(nil),                      // 87: devyard.v1.GitTag
+	(*GitStash)(nil),                    // 88: devyard.v1.GitStash
+	(*GitCommit)(nil),                   // 89: devyard.v1.GitCommit
+	(*GitFileChange)(nil),               // 90: devyard.v1.GitFileChange
+	(*GitDiffResult)(nil),               // 91: devyard.v1.GitDiffResult
+	(*GitLogRequest)(nil),               // 92: devyard.v1.GitLogRequest
+	(*GitLogResponse)(nil),              // 93: devyard.v1.GitLogResponse
+	(*GitDiffRequest)(nil),              // 94: devyard.v1.GitDiffRequest
+	(*GitDiffResponse)(nil),             // 95: devyard.v1.GitDiffResponse
+	(*GitStageRequest)(nil),             // 96: devyard.v1.GitStageRequest
+	(*GitStageResponse)(nil),            // 97: devyard.v1.GitStageResponse
+	(*GitCommitRequest)(nil),            // 98: devyard.v1.GitCommitRequest
+	(*GitCommitResponse)(nil),           // 99: devyard.v1.GitCommitResponse
+	(*GitPushRequest)(nil),              // 100: devyard.v1.GitPushRequest
+	(*GitPushResponse)(nil),             // 101: devyard.v1.GitPushResponse
+	(*GitPullRequest)(nil),              // 102: devyard.v1.GitPullRequest
+	(*GitPullResponse)(nil),             // 103: devyard.v1.GitPullResponse
+	(*GitFetchRequest)(nil),             // 104: devyard.v1.GitFetchRequest
+	(*GitFetchResponse)(nil),            // 105: devyard.v1.GitFetchResponse
 }
 var file_devyard_v1_control_proto_depIdxs = []int32{
-	2,   // 0: devyard.v1.Project.links:type_name -> devyard.v1.Link
-	3,   // 1: devyard.v1.ServiceSpec.ready:type_name -> devyard.v1.Ready
-	4,   // 2: devyard.v1.ServiceSpec.ports:type_name -> devyard.v1.Port
-	5,   // 3: devyard.v1.Service.spec:type_name -> devyard.v1.ServiceSpec
-	7,   // 4: devyard.v1.Task.spec:type_name -> devyard.v1.TaskSpec
-	0,   // 5: devyard.v1.Snapshot.daemon:type_name -> devyard.v1.DaemonInfo
-	1,   // 6: devyard.v1.Snapshot.projects:type_name -> devyard.v1.Project
-	6,   // 7: devyard.v1.Snapshot.services:type_name -> devyard.v1.Service
-	8,   // 8: devyard.v1.Snapshot.tasks:type_name -> devyard.v1.Task
-	9,   // 9: devyard.v1.Snapshot.git:type_name -> devyard.v1.GitStatus
-	1,   // 10: devyard.v1.Change.project:type_name -> devyard.v1.Project
-	6,   // 11: devyard.v1.Change.service:type_name -> devyard.v1.Service
-	8,   // 12: devyard.v1.Change.task:type_name -> devyard.v1.Task
-	9,   // 13: devyard.v1.Change.git:type_name -> devyard.v1.GitStatus
-	10,  // 14: devyard.v1.Change.removed:type_name -> devyard.v1.EntityRef
-	0,   // 15: devyard.v1.Change.daemon:type_name -> devyard.v1.DaemonInfo
-	11,  // 16: devyard.v1.WatchResponse.snapshot:type_name -> devyard.v1.Snapshot
-	12,  // 17: devyard.v1.WatchResponse.change:type_name -> devyard.v1.Change
-	15,  // 18: devyard.v1.WatchResponse.heartbeat:type_name -> devyard.v1.Heartbeat
-	11,  // 19: devyard.v1.GetStateResponse.snapshot:type_name -> devyard.v1.Snapshot
-	0,   // 20: devyard.v1.GetDaemonResponse.info:type_name -> devyard.v1.DaemonInfo
-	25,  // 21: devyard.v1.GlobalProxyConfig.tls:type_name -> devyard.v1.GlobalProxyTLSConfig
-	24,  // 22: devyard.v1.GlobalConfig.web:type_name -> devyard.v1.GlobalWebConfig
-	26,  // 23: devyard.v1.GlobalConfig.proxy:type_name -> devyard.v1.GlobalProxyConfig
-	28,  // 24: devyard.v1.GlobalConfig.groups:type_name -> devyard.v1.ProjectGroup
-	27,  // 25: devyard.v1.GetGlobalConfigResponse.config:type_name -> devyard.v1.GlobalConfig
-	27,  // 26: devyard.v1.UpdateGlobalConfigRequest.config:type_name -> devyard.v1.GlobalConfig
-	1,   // 27: devyard.v1.AddProjectResponse.project:type_name -> devyard.v1.Project
-	50,  // 28: devyard.v1.SuggestProjectPathsResponse.recent:type_name -> devyard.v1.PathSuggestion
-	50,  // 29: devyard.v1.SuggestProjectPathsResponse.completions:type_name -> devyard.v1.PathSuggestion
-	66,  // 30: devyard.v1.LogsRequest.sources:type_name -> devyard.v1.LogSource
-	66,  // 31: devyard.v1.LogLine.source:type_name -> devyard.v1.LogSource
-	68,  // 32: devyard.v1.LogsResponse.lines:type_name -> devyard.v1.LogLine
-	66,  // 33: devyard.v1.LogsResponse.new_run:type_name -> devyard.v1.LogSource
-	72,  // 34: devyard.v1.AttachRequest.open:type_name -> devyard.v1.AttachOpen
-	73,  // 35: devyard.v1.AttachRequest.resize:type_name -> devyard.v1.AttachResize
-	70,  // 36: devyard.v1.AttachOpen.target:type_name -> devyard.v1.AttachTarget
-	75,  // 37: devyard.v1.AttachResponse.ready:type_name -> devyard.v1.AttachReady
-	76,  // 38: devyard.v1.AttachResponse.exit:type_name -> devyard.v1.AttachExit
-	78,  // 39: devyard.v1.StatsResponse.stats:type_name -> devyard.v1.ProcessStat
-	80,  // 40: devyard.v1.ListPortsResponse.ports:type_name -> devyard.v1.PortBinding
-	83,  // 41: devyard.v1.GitCommit.refs:type_name -> devyard.v1.GitRef
-	87,  // 42: devyard.v1.GitDiffResult.commit:type_name -> devyard.v1.GitCommit
-	88,  // 43: devyard.v1.GitDiffResult.files:type_name -> devyard.v1.GitFileChange
-	87,  // 44: devyard.v1.GitLogResponse.commits:type_name -> devyard.v1.GitCommit
-	84,  // 45: devyard.v1.GitLogResponse.branches:type_name -> devyard.v1.GitBranch
-	85,  // 46: devyard.v1.GitLogResponse.tags:type_name -> devyard.v1.GitTag
-	86,  // 47: devyard.v1.GitLogResponse.stashes:type_name -> devyard.v1.GitStash
-	89,  // 48: devyard.v1.GitDiffResponse.result:type_name -> devyard.v1.GitDiffResult
-	18,  // 49: devyard.v1.DaemonService.GetDaemon:input_type -> devyard.v1.GetDaemonRequest
-	20,  // 50: devyard.v1.DaemonService.StopDaemon:input_type -> devyard.v1.StopDaemonRequest
-	22,  // 51: devyard.v1.DaemonService.RestartDaemon:input_type -> devyard.v1.RestartDaemonRequest
-	29,  // 52: devyard.v1.DaemonService.GetGlobalConfig:input_type -> devyard.v1.GetGlobalConfigRequest
-	31,  // 53: devyard.v1.DaemonService.UpdateGlobalConfig:input_type -> devyard.v1.UpdateGlobalConfigRequest
-	33,  // 54: devyard.v1.DaemonService.SetWebPassword:input_type -> devyard.v1.SetWebPasswordRequest
-	13,  // 55: devyard.v1.DaemonService.Watch:input_type -> devyard.v1.WatchRequest
-	16,  // 56: devyard.v1.DaemonService.GetState:input_type -> devyard.v1.GetStateRequest
-	35,  // 57: devyard.v1.DaemonService.AddProject:input_type -> devyard.v1.AddProjectRequest
-	37,  // 58: devyard.v1.DaemonService.StartProject:input_type -> devyard.v1.StartProjectRequest
-	39,  // 59: devyard.v1.DaemonService.StopProject:input_type -> devyard.v1.StopProjectRequest
-	41,  // 60: devyard.v1.DaemonService.RestartProject:input_type -> devyard.v1.RestartProjectRequest
-	43,  // 61: devyard.v1.DaemonService.ReloadProject:input_type -> devyard.v1.ReloadProjectRequest
-	45,  // 62: devyard.v1.DaemonService.RemoveProject:input_type -> devyard.v1.RemoveProjectRequest
-	47,  // 63: devyard.v1.DaemonService.MoveProject:input_type -> devyard.v1.MoveProjectRequest
-	49,  // 64: devyard.v1.DaemonService.SuggestProjectPaths:input_type -> devyard.v1.SuggestProjectPathsRequest
-	52,  // 65: devyard.v1.DaemonService.StartService:input_type -> devyard.v1.StartServiceRequest
-	54,  // 66: devyard.v1.DaemonService.StopService:input_type -> devyard.v1.StopServiceRequest
-	56,  // 67: devyard.v1.DaemonService.RestartService:input_type -> devyard.v1.RestartServiceRequest
-	58,  // 68: devyard.v1.DaemonService.KillService:input_type -> devyard.v1.KillServiceRequest
-	60,  // 69: devyard.v1.DaemonService.RunTask:input_type -> devyard.v1.RunTaskRequest
-	62,  // 70: devyard.v1.DaemonService.StopTask:input_type -> devyard.v1.StopTaskRequest
-	64,  // 71: devyard.v1.DaemonService.KillTask:input_type -> devyard.v1.KillTaskRequest
-	67,  // 72: devyard.v1.DaemonService.Logs:input_type -> devyard.v1.LogsRequest
-	71,  // 73: devyard.v1.DaemonService.Attach:input_type -> devyard.v1.AttachRequest
-	77,  // 74: devyard.v1.DaemonService.Stats:input_type -> devyard.v1.StatsRequest
-	81,  // 75: devyard.v1.DaemonService.ListPorts:input_type -> devyard.v1.ListPortsRequest
-	90,  // 76: devyard.v1.DaemonService.GitLog:input_type -> devyard.v1.GitLogRequest
-	92,  // 77: devyard.v1.DaemonService.GitDiff:input_type -> devyard.v1.GitDiffRequest
-	94,  // 78: devyard.v1.DaemonService.GitStage:input_type -> devyard.v1.GitStageRequest
-	96,  // 79: devyard.v1.DaemonService.GitCommit:input_type -> devyard.v1.GitCommitRequest
-	98,  // 80: devyard.v1.DaemonService.GitPush:input_type -> devyard.v1.GitPushRequest
-	100, // 81: devyard.v1.DaemonService.GitPull:input_type -> devyard.v1.GitPullRequest
-	102, // 82: devyard.v1.DaemonService.GitFetch:input_type -> devyard.v1.GitFetchRequest
-	19,  // 83: devyard.v1.DaemonService.GetDaemon:output_type -> devyard.v1.GetDaemonResponse
-	21,  // 84: devyard.v1.DaemonService.StopDaemon:output_type -> devyard.v1.StopDaemonResponse
-	23,  // 85: devyard.v1.DaemonService.RestartDaemon:output_type -> devyard.v1.RestartDaemonResponse
-	30,  // 86: devyard.v1.DaemonService.GetGlobalConfig:output_type -> devyard.v1.GetGlobalConfigResponse
-	32,  // 87: devyard.v1.DaemonService.UpdateGlobalConfig:output_type -> devyard.v1.UpdateGlobalConfigResponse
-	34,  // 88: devyard.v1.DaemonService.SetWebPassword:output_type -> devyard.v1.SetWebPasswordResponse
-	14,  // 89: devyard.v1.DaemonService.Watch:output_type -> devyard.v1.WatchResponse
-	17,  // 90: devyard.v1.DaemonService.GetState:output_type -> devyard.v1.GetStateResponse
-	36,  // 91: devyard.v1.DaemonService.AddProject:output_type -> devyard.v1.AddProjectResponse
-	38,  // 92: devyard.v1.DaemonService.StartProject:output_type -> devyard.v1.StartProjectResponse
-	40,  // 93: devyard.v1.DaemonService.StopProject:output_type -> devyard.v1.StopProjectResponse
-	42,  // 94: devyard.v1.DaemonService.RestartProject:output_type -> devyard.v1.RestartProjectResponse
-	44,  // 95: devyard.v1.DaemonService.ReloadProject:output_type -> devyard.v1.ReloadProjectResponse
-	46,  // 96: devyard.v1.DaemonService.RemoveProject:output_type -> devyard.v1.RemoveProjectResponse
-	48,  // 97: devyard.v1.DaemonService.MoveProject:output_type -> devyard.v1.MoveProjectResponse
-	51,  // 98: devyard.v1.DaemonService.SuggestProjectPaths:output_type -> devyard.v1.SuggestProjectPathsResponse
-	53,  // 99: devyard.v1.DaemonService.StartService:output_type -> devyard.v1.StartServiceResponse
-	55,  // 100: devyard.v1.DaemonService.StopService:output_type -> devyard.v1.StopServiceResponse
-	57,  // 101: devyard.v1.DaemonService.RestartService:output_type -> devyard.v1.RestartServiceResponse
-	59,  // 102: devyard.v1.DaemonService.KillService:output_type -> devyard.v1.KillServiceResponse
-	61,  // 103: devyard.v1.DaemonService.RunTask:output_type -> devyard.v1.RunTaskResponse
-	63,  // 104: devyard.v1.DaemonService.StopTask:output_type -> devyard.v1.StopTaskResponse
-	65,  // 105: devyard.v1.DaemonService.KillTask:output_type -> devyard.v1.KillTaskResponse
-	69,  // 106: devyard.v1.DaemonService.Logs:output_type -> devyard.v1.LogsResponse
-	74,  // 107: devyard.v1.DaemonService.Attach:output_type -> devyard.v1.AttachResponse
-	79,  // 108: devyard.v1.DaemonService.Stats:output_type -> devyard.v1.StatsResponse
-	82,  // 109: devyard.v1.DaemonService.ListPorts:output_type -> devyard.v1.ListPortsResponse
-	91,  // 110: devyard.v1.DaemonService.GitLog:output_type -> devyard.v1.GitLogResponse
-	93,  // 111: devyard.v1.DaemonService.GitDiff:output_type -> devyard.v1.GitDiffResponse
-	95,  // 112: devyard.v1.DaemonService.GitStage:output_type -> devyard.v1.GitStageResponse
-	97,  // 113: devyard.v1.DaemonService.GitCommit:output_type -> devyard.v1.GitCommitResponse
-	99,  // 114: devyard.v1.DaemonService.GitPush:output_type -> devyard.v1.GitPushResponse
-	101, // 115: devyard.v1.DaemonService.GitPull:output_type -> devyard.v1.GitPullResponse
-	103, // 116: devyard.v1.DaemonService.GitFetch:output_type -> devyard.v1.GitFetchResponse
-	83,  // [83:117] is the sub-list for method output_type
-	49,  // [49:83] is the sub-list for method input_type
-	49,  // [49:49] is the sub-list for extension type_name
-	49,  // [49:49] is the sub-list for extension extendee
-	0,   // [0:49] is the sub-list for field type_name
+	4,   // 0: devyard.v1.Project.links:type_name -> devyard.v1.Link
+	3,   // 1: devyard.v1.Project.drift:type_name -> devyard.v1.ConfigDrift
+	2,   // 2: devyard.v1.ConfigDrift.changes:type_name -> devyard.v1.ConfigChange
+	5,   // 3: devyard.v1.ServiceSpec.ready:type_name -> devyard.v1.Ready
+	6,   // 4: devyard.v1.ServiceSpec.ports:type_name -> devyard.v1.Port
+	7,   // 5: devyard.v1.Service.spec:type_name -> devyard.v1.ServiceSpec
+	9,   // 6: devyard.v1.Task.spec:type_name -> devyard.v1.TaskSpec
+	0,   // 7: devyard.v1.Snapshot.daemon:type_name -> devyard.v1.DaemonInfo
+	1,   // 8: devyard.v1.Snapshot.projects:type_name -> devyard.v1.Project
+	8,   // 9: devyard.v1.Snapshot.services:type_name -> devyard.v1.Service
+	10,  // 10: devyard.v1.Snapshot.tasks:type_name -> devyard.v1.Task
+	11,  // 11: devyard.v1.Snapshot.git:type_name -> devyard.v1.GitStatus
+	1,   // 12: devyard.v1.Change.project:type_name -> devyard.v1.Project
+	8,   // 13: devyard.v1.Change.service:type_name -> devyard.v1.Service
+	10,  // 14: devyard.v1.Change.task:type_name -> devyard.v1.Task
+	11,  // 15: devyard.v1.Change.git:type_name -> devyard.v1.GitStatus
+	12,  // 16: devyard.v1.Change.removed:type_name -> devyard.v1.EntityRef
+	0,   // 17: devyard.v1.Change.daemon:type_name -> devyard.v1.DaemonInfo
+	13,  // 18: devyard.v1.WatchResponse.snapshot:type_name -> devyard.v1.Snapshot
+	14,  // 19: devyard.v1.WatchResponse.change:type_name -> devyard.v1.Change
+	17,  // 20: devyard.v1.WatchResponse.heartbeat:type_name -> devyard.v1.Heartbeat
+	13,  // 21: devyard.v1.GetStateResponse.snapshot:type_name -> devyard.v1.Snapshot
+	0,   // 22: devyard.v1.GetDaemonResponse.info:type_name -> devyard.v1.DaemonInfo
+	27,  // 23: devyard.v1.GlobalProxyConfig.tls:type_name -> devyard.v1.GlobalProxyTLSConfig
+	26,  // 24: devyard.v1.GlobalConfig.web:type_name -> devyard.v1.GlobalWebConfig
+	28,  // 25: devyard.v1.GlobalConfig.proxy:type_name -> devyard.v1.GlobalProxyConfig
+	30,  // 26: devyard.v1.GlobalConfig.groups:type_name -> devyard.v1.ProjectGroup
+	29,  // 27: devyard.v1.GetGlobalConfigResponse.config:type_name -> devyard.v1.GlobalConfig
+	29,  // 28: devyard.v1.UpdateGlobalConfigRequest.config:type_name -> devyard.v1.GlobalConfig
+	1,   // 29: devyard.v1.AddProjectResponse.project:type_name -> devyard.v1.Project
+	52,  // 30: devyard.v1.SuggestProjectPathsResponse.recent:type_name -> devyard.v1.PathSuggestion
+	52,  // 31: devyard.v1.SuggestProjectPathsResponse.completions:type_name -> devyard.v1.PathSuggestion
+	68,  // 32: devyard.v1.LogsRequest.sources:type_name -> devyard.v1.LogSource
+	68,  // 33: devyard.v1.LogLine.source:type_name -> devyard.v1.LogSource
+	70,  // 34: devyard.v1.LogsResponse.lines:type_name -> devyard.v1.LogLine
+	68,  // 35: devyard.v1.LogsResponse.new_run:type_name -> devyard.v1.LogSource
+	74,  // 36: devyard.v1.AttachRequest.open:type_name -> devyard.v1.AttachOpen
+	75,  // 37: devyard.v1.AttachRequest.resize:type_name -> devyard.v1.AttachResize
+	72,  // 38: devyard.v1.AttachOpen.target:type_name -> devyard.v1.AttachTarget
+	77,  // 39: devyard.v1.AttachResponse.ready:type_name -> devyard.v1.AttachReady
+	78,  // 40: devyard.v1.AttachResponse.exit:type_name -> devyard.v1.AttachExit
+	80,  // 41: devyard.v1.StatsResponse.stats:type_name -> devyard.v1.ProcessStat
+	82,  // 42: devyard.v1.ListPortsResponse.ports:type_name -> devyard.v1.PortBinding
+	85,  // 43: devyard.v1.GitCommit.refs:type_name -> devyard.v1.GitRef
+	89,  // 44: devyard.v1.GitDiffResult.commit:type_name -> devyard.v1.GitCommit
+	90,  // 45: devyard.v1.GitDiffResult.files:type_name -> devyard.v1.GitFileChange
+	89,  // 46: devyard.v1.GitLogResponse.commits:type_name -> devyard.v1.GitCommit
+	86,  // 47: devyard.v1.GitLogResponse.branches:type_name -> devyard.v1.GitBranch
+	87,  // 48: devyard.v1.GitLogResponse.tags:type_name -> devyard.v1.GitTag
+	88,  // 49: devyard.v1.GitLogResponse.stashes:type_name -> devyard.v1.GitStash
+	91,  // 50: devyard.v1.GitDiffResponse.result:type_name -> devyard.v1.GitDiffResult
+	20,  // 51: devyard.v1.DaemonService.GetDaemon:input_type -> devyard.v1.GetDaemonRequest
+	22,  // 52: devyard.v1.DaemonService.StopDaemon:input_type -> devyard.v1.StopDaemonRequest
+	24,  // 53: devyard.v1.DaemonService.RestartDaemon:input_type -> devyard.v1.RestartDaemonRequest
+	31,  // 54: devyard.v1.DaemonService.GetGlobalConfig:input_type -> devyard.v1.GetGlobalConfigRequest
+	33,  // 55: devyard.v1.DaemonService.UpdateGlobalConfig:input_type -> devyard.v1.UpdateGlobalConfigRequest
+	35,  // 56: devyard.v1.DaemonService.SetWebPassword:input_type -> devyard.v1.SetWebPasswordRequest
+	15,  // 57: devyard.v1.DaemonService.Watch:input_type -> devyard.v1.WatchRequest
+	18,  // 58: devyard.v1.DaemonService.GetState:input_type -> devyard.v1.GetStateRequest
+	37,  // 59: devyard.v1.DaemonService.AddProject:input_type -> devyard.v1.AddProjectRequest
+	39,  // 60: devyard.v1.DaemonService.StartProject:input_type -> devyard.v1.StartProjectRequest
+	41,  // 61: devyard.v1.DaemonService.StopProject:input_type -> devyard.v1.StopProjectRequest
+	43,  // 62: devyard.v1.DaemonService.RestartProject:input_type -> devyard.v1.RestartProjectRequest
+	45,  // 63: devyard.v1.DaemonService.ReloadProject:input_type -> devyard.v1.ReloadProjectRequest
+	47,  // 64: devyard.v1.DaemonService.RemoveProject:input_type -> devyard.v1.RemoveProjectRequest
+	49,  // 65: devyard.v1.DaemonService.MoveProject:input_type -> devyard.v1.MoveProjectRequest
+	51,  // 66: devyard.v1.DaemonService.SuggestProjectPaths:input_type -> devyard.v1.SuggestProjectPathsRequest
+	54,  // 67: devyard.v1.DaemonService.StartService:input_type -> devyard.v1.StartServiceRequest
+	56,  // 68: devyard.v1.DaemonService.StopService:input_type -> devyard.v1.StopServiceRequest
+	58,  // 69: devyard.v1.DaemonService.RestartService:input_type -> devyard.v1.RestartServiceRequest
+	60,  // 70: devyard.v1.DaemonService.KillService:input_type -> devyard.v1.KillServiceRequest
+	62,  // 71: devyard.v1.DaemonService.RunTask:input_type -> devyard.v1.RunTaskRequest
+	64,  // 72: devyard.v1.DaemonService.StopTask:input_type -> devyard.v1.StopTaskRequest
+	66,  // 73: devyard.v1.DaemonService.KillTask:input_type -> devyard.v1.KillTaskRequest
+	69,  // 74: devyard.v1.DaemonService.Logs:input_type -> devyard.v1.LogsRequest
+	73,  // 75: devyard.v1.DaemonService.Attach:input_type -> devyard.v1.AttachRequest
+	79,  // 76: devyard.v1.DaemonService.Stats:input_type -> devyard.v1.StatsRequest
+	83,  // 77: devyard.v1.DaemonService.ListPorts:input_type -> devyard.v1.ListPortsRequest
+	92,  // 78: devyard.v1.DaemonService.GitLog:input_type -> devyard.v1.GitLogRequest
+	94,  // 79: devyard.v1.DaemonService.GitDiff:input_type -> devyard.v1.GitDiffRequest
+	96,  // 80: devyard.v1.DaemonService.GitStage:input_type -> devyard.v1.GitStageRequest
+	98,  // 81: devyard.v1.DaemonService.GitCommit:input_type -> devyard.v1.GitCommitRequest
+	100, // 82: devyard.v1.DaemonService.GitPush:input_type -> devyard.v1.GitPushRequest
+	102, // 83: devyard.v1.DaemonService.GitPull:input_type -> devyard.v1.GitPullRequest
+	104, // 84: devyard.v1.DaemonService.GitFetch:input_type -> devyard.v1.GitFetchRequest
+	21,  // 85: devyard.v1.DaemonService.GetDaemon:output_type -> devyard.v1.GetDaemonResponse
+	23,  // 86: devyard.v1.DaemonService.StopDaemon:output_type -> devyard.v1.StopDaemonResponse
+	25,  // 87: devyard.v1.DaemonService.RestartDaemon:output_type -> devyard.v1.RestartDaemonResponse
+	32,  // 88: devyard.v1.DaemonService.GetGlobalConfig:output_type -> devyard.v1.GetGlobalConfigResponse
+	34,  // 89: devyard.v1.DaemonService.UpdateGlobalConfig:output_type -> devyard.v1.UpdateGlobalConfigResponse
+	36,  // 90: devyard.v1.DaemonService.SetWebPassword:output_type -> devyard.v1.SetWebPasswordResponse
+	16,  // 91: devyard.v1.DaemonService.Watch:output_type -> devyard.v1.WatchResponse
+	19,  // 92: devyard.v1.DaemonService.GetState:output_type -> devyard.v1.GetStateResponse
+	38,  // 93: devyard.v1.DaemonService.AddProject:output_type -> devyard.v1.AddProjectResponse
+	40,  // 94: devyard.v1.DaemonService.StartProject:output_type -> devyard.v1.StartProjectResponse
+	42,  // 95: devyard.v1.DaemonService.StopProject:output_type -> devyard.v1.StopProjectResponse
+	44,  // 96: devyard.v1.DaemonService.RestartProject:output_type -> devyard.v1.RestartProjectResponse
+	46,  // 97: devyard.v1.DaemonService.ReloadProject:output_type -> devyard.v1.ReloadProjectResponse
+	48,  // 98: devyard.v1.DaemonService.RemoveProject:output_type -> devyard.v1.RemoveProjectResponse
+	50,  // 99: devyard.v1.DaemonService.MoveProject:output_type -> devyard.v1.MoveProjectResponse
+	53,  // 100: devyard.v1.DaemonService.SuggestProjectPaths:output_type -> devyard.v1.SuggestProjectPathsResponse
+	55,  // 101: devyard.v1.DaemonService.StartService:output_type -> devyard.v1.StartServiceResponse
+	57,  // 102: devyard.v1.DaemonService.StopService:output_type -> devyard.v1.StopServiceResponse
+	59,  // 103: devyard.v1.DaemonService.RestartService:output_type -> devyard.v1.RestartServiceResponse
+	61,  // 104: devyard.v1.DaemonService.KillService:output_type -> devyard.v1.KillServiceResponse
+	63,  // 105: devyard.v1.DaemonService.RunTask:output_type -> devyard.v1.RunTaskResponse
+	65,  // 106: devyard.v1.DaemonService.StopTask:output_type -> devyard.v1.StopTaskResponse
+	67,  // 107: devyard.v1.DaemonService.KillTask:output_type -> devyard.v1.KillTaskResponse
+	71,  // 108: devyard.v1.DaemonService.Logs:output_type -> devyard.v1.LogsResponse
+	76,  // 109: devyard.v1.DaemonService.Attach:output_type -> devyard.v1.AttachResponse
+	81,  // 110: devyard.v1.DaemonService.Stats:output_type -> devyard.v1.StatsResponse
+	84,  // 111: devyard.v1.DaemonService.ListPorts:output_type -> devyard.v1.ListPortsResponse
+	93,  // 112: devyard.v1.DaemonService.GitLog:output_type -> devyard.v1.GitLogResponse
+	95,  // 113: devyard.v1.DaemonService.GitDiff:output_type -> devyard.v1.GitDiffResponse
+	97,  // 114: devyard.v1.DaemonService.GitStage:output_type -> devyard.v1.GitStageResponse
+	99,  // 115: devyard.v1.DaemonService.GitCommit:output_type -> devyard.v1.GitCommitResponse
+	101, // 116: devyard.v1.DaemonService.GitPush:output_type -> devyard.v1.GitPushResponse
+	103, // 117: devyard.v1.DaemonService.GitPull:output_type -> devyard.v1.GitPullResponse
+	105, // 118: devyard.v1.DaemonService.GitFetch:output_type -> devyard.v1.GitFetchResponse
+	85,  // [85:119] is the sub-list for method output_type
+	51,  // [51:85] is the sub-list for method input_type
+	51,  // [51:51] is the sub-list for extension type_name
+	51,  // [51:51] is the sub-list for extension extendee
+	0,   // [0:51] is the sub-list for field type_name
 }
 
 func init() { file_devyard_v1_control_proto_init() }
@@ -7589,7 +7812,7 @@ func file_devyard_v1_control_proto_init() {
 	if File_devyard_v1_control_proto != nil {
 		return
 	}
-	file_devyard_v1_control_proto_msgTypes[12].OneofWrappers = []any{
+	file_devyard_v1_control_proto_msgTypes[14].OneofWrappers = []any{
 		(*Change_Project)(nil),
 		(*Change_Service)(nil),
 		(*Change_Task)(nil),
@@ -7597,19 +7820,19 @@ func file_devyard_v1_control_proto_init() {
 		(*Change_Removed)(nil),
 		(*Change_Daemon)(nil),
 	}
-	file_devyard_v1_control_proto_msgTypes[14].OneofWrappers = []any{
+	file_devyard_v1_control_proto_msgTypes[16].OneofWrappers = []any{
 		(*WatchResponse_Snapshot)(nil),
 		(*WatchResponse_Change)(nil),
 		(*WatchResponse_Heartbeat)(nil),
 	}
-	file_devyard_v1_control_proto_msgTypes[71].OneofWrappers = []any{
+	file_devyard_v1_control_proto_msgTypes[73].OneofWrappers = []any{
 		(*AttachRequest_Open)(nil),
 		(*AttachRequest_Input)(nil),
 		(*AttachRequest_Resize)(nil),
 		(*AttachRequest_CloseStdin)(nil),
 		(*AttachRequest_Close)(nil),
 	}
-	file_devyard_v1_control_proto_msgTypes[74].OneofWrappers = []any{
+	file_devyard_v1_control_proto_msgTypes[76].OneofWrappers = []any{
 		(*AttachResponse_Ready)(nil),
 		(*AttachResponse_Output)(nil),
 		(*AttachResponse_Exit)(nil),
@@ -7620,7 +7843,7 @@ func file_devyard_v1_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_devyard_v1_control_proto_rawDesc), len(file_devyard_v1_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   104,
+			NumMessages:   106,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

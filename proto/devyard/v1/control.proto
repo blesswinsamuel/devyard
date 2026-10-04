@@ -112,6 +112,40 @@ message Project {
   // position is the project's index in the global config's project list;
   // clients show projects in this order.
   int32 position = 13;
+  // drift describes how the config files on disk differ from what the
+  // project runs; empty state when they are the same.
+  ConfigDrift drift = 14;
+  // reload_policy is what happens when the config files change: "prompt"
+  // (show the change, apply it on ReloadProject), "auto" or "off".
+  string reload_policy = 15;
+}
+
+// ConfigChange is one difference between a project's running config and its
+// files.
+message ConfigChange {
+  // kind: "project" | "service" | "task"
+  string kind = 1;
+  string name = 2;
+  // op: "added" | "removed" | "changed"
+  string op = 3;
+  // details say what changed, e.g. "run changed" or "env DATABASE_URL
+  // changed". Environment values are never included.
+  repeated string details = 4;
+  // restart is true when applying the change restarts the service.
+  bool restart = 5;
+}
+
+message ConfigDrift {
+  // state: "" (in sync) | "pending" (valid changes wait to be applied) |
+  // "invalid" (the files do not load; the running config is unchanged)
+  string state = 1;
+  // error says why the files are invalid.
+  string error = 2;
+  repeated ConfigChange changes = 3;
+  // diff is a unified diff of the YAML files (env files are left out: they
+  // hold secrets).
+  string diff = 4;
+  int64 since_unix_ms = 5;
 }
 
 message Link {
@@ -333,6 +367,9 @@ message GlobalConfig {
   // MoveProject; groups are edited in the config file).
   repeated string projects = 3;
   repeated ProjectGroup groups = 4;
+  // reload is the default policy for config changes of a project: "prompt",
+  // "auto" or "off". Per-project overrides are set in the config file.
+  string reload = 5;
 }
 
 message ProjectGroup {

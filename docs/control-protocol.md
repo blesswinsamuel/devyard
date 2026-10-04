@@ -42,7 +42,11 @@ drops it from the list and deletes its state, and `MoveProject` places a
 project at an index of the list. `Project.position` is the index clients sort
 by; `Project.has_config` is false for a directory without a devyard.yml.
 `DaemonInfo.config_error` carries what the daemon could not apply of the
-global config file, which it re-reads on every change. `SuggestProjectPaths` completes a directory prefix and lists recently removed
+global config file, which it re-reads on every change. `Project.drift` says how the config files differ from what the project runs
+(`state` `pending` or `invalid`, the `changes` with the services that restart,
+and a YAML `diff`; empty when in sync) and `Project.reload_policy` what happens
+on a change; `ReloadProject` applies the files. Environment values never appear
+in a drift. `SuggestProjectPaths` completes a directory prefix and lists recently removed
 projects for the add dialog. `GlobalConfig.projects` and `groups` are
 read-only in `UpdateGlobalConfig`.
 

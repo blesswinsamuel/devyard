@@ -21,6 +21,7 @@ const (
 	DefaultProxyPort         = 8080
 	DefaultProxyTLSPort      = 8443
 	DefaultProxyDomainSuffix = "localhost"
+	DefaultReload            = "prompt"
 )
 
 // WebConfig configures the daemon's web dashboard listener.
@@ -77,6 +78,12 @@ type Config struct {
 	// entry is a directory (with a devyard.yml, or without one for a
 	// git-only project) or the path of a config file; `~` is expanded.
 	Projects []string `yaml:"projects,omitempty"`
+	// ProjectReload holds the per-project reload policies given in the
+	// object form of an entry, by the project's config path.
+	ProjectReload map[string]string `yaml:"-"`
+	// Reload is the default policy for config changes of a project:
+	// prompt (show the change, apply on request), auto or off.
+	Reload string `yaml:"reload,omitempty"`
 	// ProjectsSet reports whether the file has a `projects` key at all: an
 	// absent key leaves the registered projects alone, an empty list
 	// removes them.
@@ -91,15 +98,17 @@ type Config struct {
 // Defaults returns the default config.
 func Defaults() Config {
 	return Config{
-		Web:   WebConfig{Host: DefaultHost, Port: DefaultPort},
-		Proxy: ProxyConfig{Host: DefaultProxyHost, Port: DefaultProxyPort, DomainSuffix: DefaultProxyDomainSuffix},
+		Reload: DefaultReload,
+		Web:    WebConfig{Host: DefaultHost, Port: DefaultPort},
+		Proxy:  ProxyConfig{Host: DefaultProxyHost, Port: DefaultProxyPort, DomainSuffix: DefaultProxyDomainSuffix},
 	}
 }
 
 // raw mirrors Config with pointers so an explicit `port: 0` (ephemeral) can
 // be told apart from an absent port (default).
 type raw struct {
-	Projects *[]string           `yaml:"projects"`
+	Projects *[]projectEntry     `yaml:"projects"`
+	Reload   string              `yaml:"reload"`
 	Groups   map[string][]string `yaml:"groups"`
 	Web      *struct {
 		Host         string   `yaml:"host"`
@@ -115,7 +124,7 @@ type raw struct {
 	} `yaml:"proxy"`
 }
 
-var knownKeys = map[string]bool{"projects": true, "groups": true, "web": true, "proxy": true}
+var knownKeys = map[string]bool{"projects": true, "groups": true, "reload": true, "web": true, "proxy": true}
 
 // Load reads the config at path. A missing file yields Defaults. Unknown
 // top-level fields produce a warning on warn but are not an error.
@@ -147,9 +156,23 @@ func Parse(data []byte, warn io.Writer) (*Config, error) {
 		return nil, fmt.Errorf("globalconfig: parse: %w", err)
 	}
 	cfg := Defaults()
+	if r.Reload != "" {
+		cfg.Reload = r.Reload
+	}
 	if r.Projects != nil {
 		cfg.ProjectsSet = true
-		cfg.Projects = *r.Projects
+		for _, e := range *r.Projects {
+			cfg.Projects = append(cfg.Projects, e.Path)
+			if e.Reload == "" {
+				continue
+			}
+			if p, err := EntryConfigPath(e.Path); err == nil {
+				if cfg.ProjectReload == nil {
+					cfg.ProjectReload = map[string]string{}
+				}
+				cfg.ProjectReload[p] = e.Reload
+			}
+		}
 	}
 	cfg.Groups = r.Groups
 	if r.Web != nil {
@@ -188,6 +211,14 @@ func (c *Config) Validate() error {
 	if err := c.validateProjects(); err != nil {
 		return err
 	}
+	if err := validateReload("reload", c.Reload); err != nil {
+		return err
+	}
+	for path, policy := range c.ProjectReload {
+		if err := validateReload("projects: "+path+": reload", policy); err != nil {
+			return err
+		}
+	}
 	for name, port := range map[string]int{"web.port": c.Web.Port, "proxy.port": c.Proxy.Port, "proxy.tls.port": c.Proxy.TLS.Port} {
 		if port < 0 || port > 65535 {
 			return fmt.Errorf("globalconfig: %s must be between 0 and 65535, got %d", name, port)
@@ -204,6 +235,7 @@ func Save(path string, cfg *Config) error {
 		return err
 	}
 	return edit(path, func(root *yaml.Node) error {
+		setScalar(root, "reload", cfg.Reload, DefaultReload)
 		for _, section := range []struct {
 			key string
 			v   any

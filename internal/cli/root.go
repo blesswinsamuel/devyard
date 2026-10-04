@@ -71,7 +71,7 @@ func NewRootCommand(c *Context) *cobra.Command {
 	root.AddGroup(daily, resources)
 
 	for _, cmd := range []*cobra.Command{
-		newAddCmd(c), newStartCmd(c), newStopCmd(c), newRestartCmd(c), newReloadCmd(c), newStatusCmd(c),
+		newAddCmd(c), newStartCmd(c), newStopCmd(c), newRestartCmd(c), newReloadCmd(c), newDiffCmd(c), newStatusCmd(c),
 		newLogsCmd(c), newTopCmd(c), newKillCmd(c), newRunCmd(c), newAttachCmd(c), newBuildCmd(c), newWebCmd(c),
 	} {
 		cmd.GroupID = daily.ID

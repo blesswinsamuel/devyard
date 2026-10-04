@@ -14,6 +14,7 @@ import { useProjectStats } from "~/data/stats";
 import { paths } from "~/lib/paths";
 import { isServiceFailing, projectTone } from "~/lib/status";
 import { LogViewer } from "~/features/logs/log-viewer";
+import { ConfigDriftBanner } from "./config-drift";
 import { DependencyGraph } from "./dep-graph";
 import { ServicesTable } from "./services-table";
 import { TasksList } from "./tasks-list";
@@ -127,6 +128,7 @@ export function ProjectPage() {
                   </AlertDescription>
                 </Alert>
               </Show>
+              <ConfigDriftBanner project={p()} />
             </PageHeader>
 
             <Section title="Services" count={services().length || undefined} id="services-heading">

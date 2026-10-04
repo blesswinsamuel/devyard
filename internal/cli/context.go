@@ -181,11 +181,41 @@ func (c *Context) projectID(ctx context.Context, cl *client.Client) (string, err
 		}
 		return c.Project, nil
 	}
+	// A registered project is found by its config path, without parsing the
+	// file: the config may be broken, which is when status and diff matter.
+	if cl != nil {
+		if path, ok := c.localConfigPath(); ok {
+			if snap, err := state(ctx, cl); err == nil {
+				for _, p := range snap.Projects {
+					if p.ConfigPath == path {
+						return p.Id, nil
+					}
+				}
+			}
+		}
+	}
 	lc, err := c.loadLocalConfig()
 	if err != nil {
 		return "", err
 	}
 	return lc.Project.ID, nil
+}
+
+// localConfigPath is the absolute path of the config named by --file or found
+// from the working directory.
+func (c *Context) localConfigPath() (string, bool) {
+	path := c.ConfigPath
+	if path == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", false
+		}
+		if path, err = config.FindConfig(wd); err != nil {
+			return "", false
+		}
+	}
+	abs, err := filepath.Abs(path)
+	return abs, err == nil
 }
 
 func state(ctx context.Context, cl *client.Client) (*pb.Snapshot, error) {

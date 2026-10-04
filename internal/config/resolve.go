@@ -87,6 +87,8 @@ type Resolved struct {
 	Tasks    map[string]*Process
 	// Ports are the auto-port assignments in use (stale entries dropped).
 	Ports PortAssignments
+	// Sums are the content hashes of the service and task env files read.
+	Sums Sums
 }
 
 // Resolve decides ports and builds every process of the project. assigned
@@ -101,6 +103,7 @@ func (p *Project) Resolve(launch []string, assigned PortAssignments, alloc func(
 		Services: make(map[string]*ResolvedService, len(f.Services)),
 		Tasks:    make(map[string]*Process, len(f.Tasks)),
 		Ports:    PortAssignments{},
+		Sums:     Sums{},
 	}
 	used := map[int]bool{}
 	for _, n := range assigned {
@@ -158,7 +161,7 @@ func (p *Project) Resolve(launch []string, assigned PortAssignments, alloc func(
 	}
 
 	for name, svc := range f.Services {
-		files, _, err := loadEnvFiles(p.Dir, svc.EnvFiles)
+		files, _, err := loadEnvFiles(p.Dir, svc.EnvFiles, r.Sums)
 		if err != nil {
 			return nil, fmt.Errorf("service %q: %w", name, err)
 		}
@@ -234,7 +237,7 @@ func (p *Project) Resolve(launch []string, assigned PortAssignments, alloc func(
 		r.Services[name] = rs
 	}
 	for name, task := range f.Tasks {
-		files, _, err := loadEnvFiles(p.Dir, task.EnvFiles)
+		files, _, err := loadEnvFiles(p.Dir, task.EnvFiles, r.Sums)
 		if err != nil {
 			return nil, fmt.Errorf("task %q: %w", name, err)
 		}

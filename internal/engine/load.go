@@ -25,12 +25,18 @@ type loaded struct {
 	autostart map[string]bool
 	services  map[string]*ProcessDef
 	tasks     map[string]*ProcessDef
+	// sums holds the content hash of every file the config was built from,
+	// as read; texts the raw text of the YAML ones. They are the baseline
+	// config drift is measured against.
+	sums  config.Sums
+	texts map[string]string
 }
 
 // loadProject reads and resolves the project's config. It allocates and
 // persists ports for `auto` ports, so it must only run on the project's
-// actor.
-func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
+// actor. With preview the ports are not persisted and reg is left alone: the
+// result only describes what loading the config now would do.
+func loadProject(dirs paths.Dirs, reg *Registration, preview bool) (*loaded, error) {
 	loadConfig := config.Load
 	if !reg.Configured {
 		loadConfig = config.LoadAllowMissing
@@ -39,7 +45,7 @@ func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !proj.Missing {
+	if !proj.Missing && !preview {
 		reg.Configured = true
 	}
 	if proj.ID != reg.ID {
@@ -61,7 +67,7 @@ func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !maps.Equal(assigned, res.Ports) {
+	if !preview && !maps.Equal(assigned, res.Ports) {
 		if err := res.Ports.Save(pd.Ports()); err != nil {
 			return nil, err
 		}
@@ -74,6 +80,8 @@ func loadProject(dirs paths.Dirs, reg *Registration) (*loaded, error) {
 		autostart: map[string]bool{},
 		services:  make(map[string]*ProcessDef, len(file.Services)),
 		tasks:     make(map[string]*ProcessDef, len(file.Tasks)),
+		sums:      config.Merge(proj.Sums, res.Sums),
+		texts:     proj.Texts,
 	}
 	position := make(map[string]int, len(order))
 	for i, name := range order {

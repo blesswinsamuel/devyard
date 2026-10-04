@@ -25,7 +25,12 @@ type Manager struct {
 	mu       sync.Mutex
 	projects map[string]*Project
 	// order lists project config paths in display order (SetOrder).
-	order    []string
+	order []string
+	// policyFn gives the reload policy of a project (SetReloadPolicy). It has
+	// its own lock: projects ask for it while mu is held (they publish
+	// their state when created).
+	policyMu sync.RWMutex
+	policyFn func(configPath string) string
 	draining bool
 }
 
@@ -52,7 +57,7 @@ func (m *Manager) Load() error {
 			continue
 		}
 		m.mu.Lock()
-		p := newProject(m.dirs, *reg, m.launcher, m.obs, m.positionLocked(reg.ConfigPath))
+		p := newProject(m.dirs, *reg, m.launcher, m.obs, m.positionLocked(reg.ConfigPath), m.reloadPolicy)
 		m.projects[id] = p
 		m.mu.Unlock()
 		if v := p.View(); v.LoadErr != "" {
@@ -124,7 +129,7 @@ func (m *Manager) Add(ctx context.Context, opts AddOptions) (*Project, error) {
 			m.mu.Unlock()
 			return nil, err
 		}
-		p = newProject(m.dirs, reg, m.launcher, m.obs, m.positionLocked(abs))
+		p = newProject(m.dirs, reg, m.launcher, m.obs, m.positionLocked(abs), m.reloadPolicy)
 		m.projects[id] = p
 	}
 	m.mu.Unlock()
@@ -154,6 +159,39 @@ func (m *Manager) Get(id string) (*Project, error) {
 		return nil, fmt.Errorf("project %q: %w", id, ErrNotFound)
 	}
 	return p, nil
+}
+
+// SetReloadPolicy sets how projects react to changes of their config files:
+// fn returns "prompt", "auto" or "off" for the project with the config path.
+// Projects republish their state, so clients see the new policy.
+func (m *Manager) SetReloadPolicy(fn func(configPath string) string) {
+	m.policyMu.Lock()
+	m.policyFn = fn
+	m.policyMu.Unlock()
+	m.mu.Lock()
+	projects := make([]*Project, 0, len(m.projects))
+	for _, p := range m.projects {
+		projects = append(projects, p)
+	}
+	m.mu.Unlock()
+	for _, p := range projects {
+		p.recompute()
+	}
+}
+
+// reloadPolicy is the policy function handed to projects.
+func (m *Manager) reloadPolicy(configPath string) string {
+	m.policyMu.RLock()
+	fn := m.policyFn
+	m.policyMu.RUnlock()
+	if fn == nil {
+		return ReloadPrompt
+	}
+	switch p := fn(configPath); p {
+	case ReloadAuto, ReloadOff:
+		return p
+	}
+	return ReloadPrompt
 }
 
 // ByConfigPath returns the project registered from the config file path.

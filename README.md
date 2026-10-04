@@ -116,7 +116,8 @@ devyard stop             # stop the project (it stays stopped across daemon rest
 | `start [svc...\|@group] [-f] [--build]` | Add the project (capturing your shell's environment) and start its services (except `autostart: false` ones), or the named ones plus their `depends_on` chain. `-f` follows logs and stops on Ctrl-C. `@group` starts every project of a [group](docs/config-schema.md#projects-and-groups). |
 | `stop [svc...\|@group]` | Stop the project (it won't autostart), the named services, or every project of a group. |
 | `restart [svc...\|@group] [--build]` | Restart the project's services, the named ones, or every project of a group. |
-| `reload` | Re-read `devyard.yml`: added services start, removed ones stop, changed ones restart, the rest keep running. Also refreshes the captured environment. |
+| `reload` | Apply the config files: added services start, removed ones stop, changed ones restart, the rest keep running. Also refreshes the captured environment. |
+| `diff` | Show what `reload` would change: services added, removed or changed (and which restart) and a diff of the YAML. The dashboard shows the same with an Apply button; with `reload: auto` (global or per project) changes are applied as you save. |
 | `status [-a]` (`ps`) | Service status (`-a`: all projects; `-o json` for scripts). |
 | `logs [svc...] [-f] [--tail N] [--previous]` | Logs; merged with name prefixes when several services. |
 | `top [name...]` | CPU and memory of running services and tasks. |

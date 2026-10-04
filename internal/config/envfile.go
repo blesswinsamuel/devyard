@@ -44,8 +44,16 @@ func ParseDotEnv(data []byte) (map[string]string, error) {
 // LoadDotEnv reads and parses an env file. It returns an error if the file
 // cannot be read (including when it does not exist).
 func LoadDotEnv(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
+	return loadDotEnv(path, nil)
+}
+
+// loadDotEnv is LoadDotEnv recording what it read in sums.
+func loadDotEnv(path string, sums Sums) (map[string]string, error) {
+	data, err := sums.read(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("read env file: %w", err)
 	}
 	vars, err := ParseDotEnv(data)
@@ -58,12 +66,12 @@ func LoadDotEnv(path string) (map[string]string, error) {
 // loadEnvFiles loads env files (relative to base) in order; later files
 // win. Missing files are skipped. It returns the merged variables and the
 // paths that exist.
-func loadEnvFiles(base string, files []string) (map[string]string, []string, error) {
+func loadEnvFiles(base string, files []string, sums Sums) (map[string]string, []string, error) {
 	vars := map[string]string{}
 	var found []string
 	for _, f := range files {
 		path := resolvePath(base, f)
-		m, err := LoadDotEnv(path)
+		m, err := loadDotEnv(path, sums)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}

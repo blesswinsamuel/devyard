@@ -98,6 +98,84 @@ func (c *Config) ProjectPaths() []string {
 	return out
 }
 
+// ReloadPolicy returns what the project with the config path does when its
+// config files change: its own policy when the project's entry sets one,
+// the default otherwise.
+func (c *Config) ReloadPolicy(configPath string) string {
+	if p, ok := c.ProjectReload[configPath]; ok {
+		return p
+	}
+	if c.Reload == "" {
+		return DefaultReload
+	}
+	return c.Reload
+}
+
+func validateReload(where, policy string) error {
+	switch policy {
+	case "prompt", "auto", "off":
+		return nil
+	}
+	return fmt.Errorf("globalconfig: %s must be prompt, auto or off, got %q", where, policy)
+}
+
+// projectEntry is an element of `projects`: a path, or a map with a path and
+// options.
+type projectEntry struct {
+	Path   string
+	Reload string
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler.
+func (e *projectEntry) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		e.Path = value.Value
+		return nil
+	case yaml.MappingNode:
+		var raw struct {
+			Path   string `yaml:"path"`
+			Reload string `yaml:"reload"`
+		}
+		if err := value.Decode(&raw); err != nil {
+			return err
+		}
+		if strings.TrimSpace(raw.Path) == "" {
+			return fmt.Errorf("line %d: a project entry needs a path", value.Line)
+		}
+		e.Path, e.Reload = raw.Path, raw.Reload
+		return nil
+	}
+	return fmt.Errorf("line %d: a project is a path or a map with a path", value.Line)
+}
+
+// entryPath is the path an entry node names.
+func entryPath(n *yaml.Node) string {
+	if n.Kind == yaml.MappingNode {
+		if v := mapValue(n, "path"); v != nil {
+			return v.Value
+		}
+		return ""
+	}
+	return n.Value
+}
+
+// setScalar sets key to value, dropping it when value is the default and the
+// key is not there yet.
+func setScalar(root *yaml.Node, key, value, def string) {
+	if cur := mapValue(root, key); cur != nil {
+		if value == "" {
+			value = def
+		}
+		cur.Kind, cur.Tag, cur.Value, cur.Style = yaml.ScalarNode, "!!str", value, 0
+		return
+	}
+	if value == "" || value == def {
+		return
+	}
+	root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
+}
+
 // validateProjects checks the projects and groups sections.
 func (c *Config) validateProjects() error {
 	seen := map[string]string{}
@@ -203,7 +281,7 @@ func projectsSeq(root *yaml.Node, create bool) (*yaml.Node, error) {
 // indexOfEntry finds the entry that resolves to configPath.
 func indexOfEntry(seq *yaml.Node, configPath string) int {
 	for i, n := range seq.Content {
-		if p, err := EntryConfigPath(n.Value); err == nil && p == configPath {
+		if p, err := EntryConfigPath(entryPath(n)); err == nil && p == configPath {
 			return i
 		}
 	}

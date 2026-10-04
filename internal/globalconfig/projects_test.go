@@ -234,3 +234,90 @@ func TestSaveKeepsProjectsAndComments(t *testing.T) {
 		t.Fatalf("cleared allowed_hosts survived:\n%s", data)
 	}
 }
+
+func TestReloadPolicyDefaultsAndOverrides(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg, warn := parse(t, "reload: auto\nprojects:\n  - ~/a\n  - path: ~/b\n    reload: off\n  - path: ~/c\n")
+	if warn != "" {
+		t.Fatalf("warnings: %s", warn)
+	}
+	if !reflect.DeepEqual(cfg.Projects, []string{"~/a", "~/b", "~/c"}) {
+		t.Fatalf("projects = %v", cfg.Projects)
+	}
+	at := func(n string) string { return filepath.Join(home, n, "devyard.yml") }
+	for name, want := range map[string]string{"a": "auto", "b": "off", "c": "auto"} {
+		if got := cfg.ReloadPolicy(at(name)); got != want {
+			t.Errorf("policy of %s = %q, want %q", name, got, want)
+		}
+	}
+	if def, _ := parse(t, "web: {}\n"); def.Reload != "prompt" || def.ReloadPolicy(at("x")) != "prompt" {
+		t.Fatalf("default policy = %q", def.Reload)
+	}
+}
+
+func TestReloadPolicyValidation(t *testing.T) {
+	for name, content := range map[string]string{
+		"global":       "reload: sometimes\n",
+		"per project":  "projects:\n  - path: ~/a\n    reload: yes\n",
+		"missing path": "projects:\n  - reload: auto\n",
+		"bad entry":    "projects:\n  - [a, b]\n",
+	} {
+		if _, err := globalconfig.Parse([]byte(content), nil); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestEditsKeepObjectFormEntries(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, "config.yml")
+	if err := os.WriteFile(path, []byte("projects:\n  - ~/a\n  - path: ~/b # tuned\n    reload: auto\n  - ~/c\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := func(n string) string { return filepath.Join(home, n, "devyard.yml") }
+	if _, err := globalconfig.MoveProject(path, p("b"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := globalconfig.RemoveProject(path, p("a")); err != nil {
+		t.Fatal(err)
+	}
+	if changed, _ := globalconfig.AddProject(path, p("b")); changed {
+		t.Fatal("an object-form entry was not recognised as listed")
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "reload: auto") || !strings.Contains(string(data), "# tuned") {
+		t.Fatalf("object entry damaged:\n%s", data)
+	}
+	cfg, err := globalconfig.Load(path, nil)
+	if err != nil || !reflect.DeepEqual(cfg.Projects, []string{"~/b", "~/c"}) || cfg.ReloadPolicy(p("b")) != "auto" {
+		t.Fatalf("after edits: %+v %v", cfg, err)
+	}
+}
+
+func TestSaveWritesReload(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "config.yml")
+	cfg := globalconfig.Defaults()
+	if err := globalconfig.Save(path, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "reload:") {
+		t.Fatalf("the default policy should not be written:\n%s", data)
+	}
+	cfg.Reload = "auto"
+	if err := globalconfig.Save(path, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := globalconfig.Load(path, nil); err != nil || out.Reload != "auto" {
+		t.Fatalf("reload after save: %+v %v", out, err)
+	}
+	cfg.Reload = "prompt"
+	if err := globalconfig.Save(path, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := globalconfig.Load(path, nil); out.Reload != "prompt" {
+		t.Fatalf("reload not reset: %q", out.Reload)
+	}
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createEntityStore, entityKey, type EntityEvent } from "./entities";
+import { ConfigChange, ConfigDrift } from "~/gen/devyard/v1/control_pb";
+import { createEntityStore, entityKey, toProject, type EntityEvent } from "./entities";
 import { change, git, heartbeat, project, removed, service, snapshot, task } from "~/test/fixtures";
 
 describe("entity store", () => {
@@ -110,5 +111,33 @@ describe("entity store", () => {
     store.apply(snapshot(1, { git: [git()] }));
     store.apply(change(2, { case: "git", value: git({ ahead: 2, changeSeq: 5n }) }));
     expect(store.state.git.web).toMatchObject({ ahead: 2, changeSeq: 5 });
+  });
+
+  it("maps config drift and the reload policy of a project", () => {
+    const clean = toProject(project());
+    expect(clean.drift).toBeNull();
+    expect(clean.reloadPolicy).toBe("prompt");
+
+    const drifted = toProject(
+      project({
+        reloadPolicy: "auto",
+        drift: new ConfigDrift({
+          state: "pending",
+          diff: "--- a\n+++ a\n",
+          sinceUnixMs: 5n,
+          changes: [new ConfigChange({ kind: "service", name: "api", op: "changed", details: ["env TOKEN changed"], restart: true })],
+        }),
+      }),
+    );
+    expect(drifted.reloadPolicy).toBe("auto");
+    expect(drifted.drift).toEqual({
+      state: "pending",
+      error: "",
+      diff: "--- a\n+++ a\n",
+      since: 5,
+      changes: [{ kind: "service", name: "api", op: "changed", details: ["env TOKEN changed"], restart: true }],
+    });
+    // An empty drift message (the proto default) means in sync.
+    expect(toProject(project({ drift: new ConfigDrift() })).drift).toBeNull();
   });
 });

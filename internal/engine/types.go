@@ -147,7 +147,12 @@ type ProjectState struct {
 	// HasConfig is false for a project without a devyard.yml.
 	HasConfig bool
 	// Position is the project's index in the global config's project list.
-	Position       int
+	Position int
+	// ReloadPolicy is what happens when the config files change: prompt,
+	// auto or off.
+	ReloadPolicy string
+	// Drift is how the config files differ from what runs.
+	Drift          Drift
 	EnvFiles       []string
 	Status         string
 	Desired        string

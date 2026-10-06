@@ -240,6 +240,49 @@ func TestLogPathFilter(t *testing.T) {
 	}
 }
 
+func TestDiffRange(t *testing.T) {
+	dir := initRepo(t) // "first commit" (a.txt), "second commit" (b.txt)
+	commits, _, _, _, _, err := Log(dir, 0, "")
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	head, parent := commits[0].Hash, commits[0].Parents[0]
+
+	res, err := DiffRange(dir, parent, head, "", "", 3)
+	if err != nil {
+		t.Fatalf("DiffRange: %v", err)
+	}
+	paths := map[string]bool{}
+	for _, f := range res.Files {
+		paths[f.Path] = true
+	}
+	if !paths["b.txt"] || paths["a.txt"] {
+		t.Fatalf("range files: %+v", res.Files)
+	}
+	if !strings.Contains(res.Diff, "+two") {
+		t.Fatalf("range patch: %q", res.Diff)
+	}
+	if res.Commit.Hash != head {
+		t.Fatalf("range commit = %s, want %s", res.Commit.Hash, head)
+	}
+
+	// A path filter narrows the range, and a range into itself is empty.
+	res, err = DiffRange(dir, parent, head, "a.txt", "", 3)
+	if err != nil {
+		t.Fatalf("DiffRange path: %v", err)
+	}
+	if len(res.Files) != 0 {
+		t.Fatalf("range for an unchanged path: %+v", res.Files)
+	}
+	res, err = DiffRange(dir, head, head, "", "", 3)
+	if err != nil {
+		t.Fatalf("DiffRange self: %v", err)
+	}
+	if len(res.Files) != 0 {
+		t.Fatalf("self range files: %+v", res.Files)
+	}
+}
+
 func TestDiff(t *testing.T) {
 	dir := initRepo(t)
 	commits, _, _, _, _, err := Log(dir, 0, "")

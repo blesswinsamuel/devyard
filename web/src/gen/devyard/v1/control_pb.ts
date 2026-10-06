@@ -4990,6 +4990,14 @@ export class GitDiffRequest extends Message<GitDiffRequest> {
    */
   contextLines = 0;
 
+  /**
+   * Compare this ref (a branch, tag or hash) to `hash` (base..hash) instead
+   * of showing `hash` against its parent.
+   *
+   * @generated from field: string base = 5;
+   */
+  base = "";
+
   constructor(data?: PartialMessage<GitDiffRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5002,6 +5010,7 @@ export class GitDiffRequest extends Message<GitDiffRequest> {
     { no: 2, name: "hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "context_lines", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 5, name: "base", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitDiffRequest {

@@ -99,8 +99,10 @@ client pages through history by asking again with a larger `skip` (the
 `WORKDIR` pseudo-commit is only on the first page). `path` narrows the
 listing to the commits that touched one file — its history — and suppresses
 `WORKDIR`. `GitDiff` returns a commit's diff (`WORKDIR` = the uncommitted
-changes) and resolves the full commit message: `subject` is the first line
-and `body` the rest (`GitLog` leaves `body` empty). `GitStage` stages or
+changes); with `base` it instead shows the difference from that ref to
+`hash` (base..hash), for comparing two branches, tags or commits. It also
+resolves the full commit message: `subject` is the first line and `body`
+the rest (`GitLog` leaves `body` empty). `GitStage` stages or
 unstages paths, and `GitCommit` commits the staged changes or — with
 `amend` — folds them into HEAD. `amend` with a `message` replaces HEAD's
 message; with an empty one it keeps it. Every local mutation bumps

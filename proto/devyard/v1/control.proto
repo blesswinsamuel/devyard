@@ -800,6 +800,9 @@ message GitDiffRequest {
   string hash = 2;
   string path = 3;
   int32 context_lines = 4;
+  // Compare this ref (a branch, tag or hash) to `hash` (base..hash) instead
+  // of showing `hash` against its parent.
+  string base = 5;
 }
 
 message GitDiffResponse {

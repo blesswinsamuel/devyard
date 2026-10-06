@@ -1,5 +1,21 @@
 const enc = encodeURIComponent;
 
+/** Query string for the git route's view options (file history, diff base). */
+export interface GitQuery {
+  /** File-history filter (repository-relative path). */
+  path?: string;
+  /** Diff base: compare this ref to the selected commit (base..commit). */
+  base?: string;
+}
+
+function gitQuery(q: GitQuery): string {
+  const params = new URLSearchParams();
+  if (q.path) params.set("path", q.path);
+  if (q.base) params.set("base", q.base);
+  const s = params.toString();
+  return s ? `?${s}` : "";
+}
+
 export const paths = {
   home: () => "/",
   settings: () => "/settings",
@@ -7,10 +23,10 @@ export const paths = {
   service: (project: string, service: string, tab?: string) =>
     `/projects/${enc(project)}/services/${enc(service)}${tab ? `?tab=${enc(tab)}` : ""}`,
   task: (project: string, task: string) => `/projects/${enc(project)}/tasks/${enc(task)}`,
-  git: (project: string) => `/projects/${enc(project)}/git`,
-  gitHistory: (project: string, path: string) => `/projects/${enc(project)}/git?path=${enc(path)}`,
-  gitCommit: (project: string, hash: string, path?: string) =>
-    `/projects/${enc(project)}/git/commits/${enc(hash)}${path ? `?path=${enc(path)}` : ""}`,
+  git: (project: string, query: GitQuery = {}) => `/projects/${enc(project)}/git${gitQuery(query)}`,
+  gitHistory: (project: string, path: string) => paths.git(project, { path }),
+  gitCommit: (project: string, hash: string, query: GitQuery = {}) =>
+    `/projects/${enc(project)}/git/commits/${enc(hash)}${gitQuery(query)}`,
 };
 
 export type RouteTarget =

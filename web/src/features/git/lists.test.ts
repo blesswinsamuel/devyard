@@ -81,7 +81,7 @@ describe("proto mapping", () => {
   });
 
   it("tolerates an empty diff result", () => {
-    expect(toDiff("WORKDIR", 3, undefined)).toEqual({ hash: "WORKDIR", contextLines: 3, commit: null, files: [], diff: "" });
+    expect(toDiff("WORKDIR", 3, undefined)).toEqual({ hash: "WORKDIR", base: "", contextLines: 3, commit: null, files: [], diff: "" });
     const d = toDiff("h", 10, new GitDiffResult({ files: [new GitFileChange({ path: "x", untracked: true })], diff: "d" }));
     expect(d.files[0]).toMatchObject({ path: "x", untracked: true });
   });

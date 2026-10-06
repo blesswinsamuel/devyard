@@ -22,6 +22,9 @@ export const queryKeys = {
   /** Commits are immutable, so their diffs live outside the invalidated prefix. */
   gitCommitDiff: (project: string, hash: string, contextLines: number, path = "") =>
     ["git-commit", project, hash, contextLines, path] as const,
+  /** A comparison between two refs (never cached; a ref can move). */
+  gitCompareDiff: (project: string, base: string, hash: string, contextLines: number, path = "") =>
+    ["git-compare", project, base, hash, contextLines, path] as const,
 };
 
 export function useDaemonInfo(opts: { refetchIntervalMs?: number } = {}) {

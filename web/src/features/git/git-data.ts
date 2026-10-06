@@ -98,6 +98,8 @@ export function combineLog(pages: GitLogPage[] | undefined): GitLogView & { hasM
 
 export interface GitDiffView {
   hash: string;
+  /** The comparison base ("base..hash"); empty for a normal commit diff. */
+  base: string;
   contextLines: number;
   commit: GitCommitView | null;
   files: GitFileView[];
@@ -154,9 +156,10 @@ export function toLog(res: GitLogResponse): GitLogPage {
   };
 }
 
-export function toDiff(hash: string, contextLines: number, r: GitDiffResult | undefined): GitDiffView {
+export function toDiff(hash: string, contextLines: number, r: GitDiffResult | undefined, base = ""): GitDiffView {
   return {
     hash,
+    base,
     contextLines,
     commit: r?.commit ? toCommit(r.commit) : null,
     files: (r?.files ?? []).map(toFile),
@@ -187,29 +190,41 @@ export function useGitLog(project: () => string, path: () => string | undefined 
 /**
  * The diff of one commit, or of the working tree for WORKDIR. While context
  * lines change, the previous diff of the same commit stays on screen. A
- * `path` narrows a commit's diff to one file (its history view).
+ * `path` narrows a commit's diff to one file (its history view), and a
+ * `base` compares that ref to the commit instead of its parent.
  */
 export function useGitDiff(
   project: () => string,
   hash: () => string | undefined,
   contextLines: () => number,
   path: () => string = () => "",
+  base: () => string | undefined = () => undefined,
 ) {
   return useQuery(() => {
     const h = hash() ?? "";
     const ctx = contextLines();
     const p = path();
+    const b = base();
     const workdir = h === WORKDIR;
     return {
-      queryKey: workdir ? queryKeys.gitWorkdirDiff(project(), ctx) : queryKeys.gitCommitDiff(project(), h, ctx, p),
+      queryKey: workdir
+        ? queryKeys.gitWorkdirDiff(project(), ctx)
+        : b
+          ? queryKeys.gitCompareDiff(project(), b, h, ctx, p)
+          : queryKeys.gitCommitDiff(project(), h, ctx, p),
       queryFn: async ({ signal }: { signal: AbortSignal }) =>
-        toDiff(h, ctx, (await api.gitDiff({ project: project(), hash: h, contextLines: ctx, path: p }, { signal })).result),
+        toDiff(
+          h,
+          ctx,
+          (await api.gitDiff({ project: project(), hash: h, contextLines: ctx, path: p, base: b ?? "" }, { signal })).result,
+          b ?? "",
+        ),
       enabled: !!h,
       // Commits are immutable (cache forever); the working tree is refetched
       // on change_seq bumps, so a short staleness window only saves tab
       // switches from respawning git.
       staleTime: workdir ? 2_000 : Infinity,
-      placeholderData: (prev: GitDiffView | undefined) => (prev?.hash === h ? prev : undefined),
+      placeholderData: (prev: GitDiffView | undefined) => (prev?.hash === h && prev.base === (b ?? "") ? prev : undefined),
     };
   });
 }

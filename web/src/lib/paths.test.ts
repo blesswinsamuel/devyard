@@ -15,5 +15,11 @@ describe("targetFromPath", () => {
   it("builds git deep links", () => {
     expect(paths.git("my app")).toBe("/projects/my%20app/git");
     expect(paths.gitCommit("web", "WORKDIR")).toBe("/projects/web/git/commits/WORKDIR");
+    expect(paths.gitHistory("web", "src/a.ts")).toBe("/projects/web/git?path=src%2Fa.ts");
+    expect(paths.gitCommit("web", "abc", { path: "src/a.ts" })).toBe("/projects/web/git/commits/abc?path=src%2Fa.ts");
+    expect(paths.gitCommit("web", "abc123", { base: "main" })).toBe("/projects/web/git/commits/abc123?base=main");
+    expect(paths.gitCommit("web", "abc123", { path: "a", base: "main" })).toBe(
+      "/projects/web/git/commits/abc123?path=a&base=main",
+    );
   });
 });

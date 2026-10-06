@@ -520,6 +520,69 @@ func Diff(dir, hash, pathFilter, headHash string, ctxLines int) (*pb.GitDiffResu
 		machine, patch = rest[:start], rest[start:]
 	}
 
+	files := parseFileChanges(machine, pathFilter)
+	commitTotals(commit, files)
+	return &pb.GitDiffResult{
+		Commit: commit,
+		Files:  files,
+		Diff:   patch,
+	}, nil
+}
+
+// DiffRange returns the diff from base to ref (both resolved by git): the
+// ref's metadata, the files that differ, and the unified patch. It powers
+// comparing two refs, where Diff shows one commit against its parent.
+func DiffRange(dir, base, ref, pathFilter, headHash string, ctxLines int) (*pb.GitDiffResult, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("git: no working directory")
+	}
+	if ctxLines <= 0 {
+		ctxLines = 3
+	}
+	if ref == "" {
+		ref = resolveHead(dir)
+		if ref == "" {
+			return nil, fmt.Errorf("git: repository has no HEAD commit")
+		}
+	}
+	commit, err := showCommitMeta(dir, ref, headHash)
+	if err != nil {
+		return nil, err
+	}
+
+	args := []string{"diff", "--raw", "--numstat", "--patch", fmt.Sprintf("-U%d", ctxLines), base, ref}
+	if pathFilter != "" {
+		args = append(args, "--", pathSpec(pathFilter))
+	}
+	cmd := gitCmd(dir, args...)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("git: %s: %w", msg, err)
+	}
+	text := out.String()
+	machine, patch := text, ""
+	if start := patchStart(text); start >= 0 {
+		machine, patch = text[:start], text[start:]
+	}
+
+	files := parseFileChanges(machine, pathFilter)
+	commitTotals(commit, files)
+	return &pb.GitDiffResult{
+		Commit: commit,
+		Files:  files,
+		Diff:   patch,
+	}, nil
+}
+
+// parseFileChanges builds the file list from the --raw/--numstat machine
+// section, in the order numstat lists the files.
+func parseFileChanges(machine, pathFilter string) []*pb.GitFileChange {
 	raws := map[string]rawEntry{}
 	nums := map[string]fileStats{}
 	var order []string
@@ -559,21 +622,19 @@ func Diff(dir, hash, pathFilter, headHash string, ctxLines int) (*pb.GitDiffResu
 			Deletions: s.del,
 		})
 	}
+	return files
+}
 
+// commitTotals fills a commit's aggregate stats from its changed files.
+func commitTotals(c *pb.GitCommit, files []*pb.GitFileChange) {
 	var totalAdd, totalDel int32
 	for _, f := range files {
 		totalAdd += f.Additions
 		totalDel += f.Deletions
 	}
-	commit.Additions = totalAdd
-	commit.Deletions = totalDel
-	commit.FilesChanged = int32(len(files))
-
-	return &pb.GitDiffResult{
-		Commit: commit,
-		Files:  files,
-		Diff:   patch,
-	}, nil
+	c.Additions = totalAdd
+	c.Deletions = totalDel
+	c.FilesChanged = int32(len(files))
 }
 
 // rawEntry is a --raw file entry: the status letter with its rename/copy

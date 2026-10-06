@@ -519,6 +519,15 @@ func (s *Server) GitDiff(ctx context.Context, req *connect.Request[pb.GitDiffReq
 		}
 		return connect.NewResponse(&pb.GitDiffResponse{Result: res}), nil
 	}
+	// A comparison between two refs is not tied to one commit (and a ref can
+	// move), so it is never cached.
+	if req.Msg.Base != "" {
+		res, err := gitlog.DiffRange(dir, req.Msg.Base, req.Msg.Hash, req.Msg.Path, headHash, ctxLines)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
+		return connect.NewResponse(&pb.GitDiffResponse{Result: res}), nil
+	}
 	key := gitDiffKey{dir: dir, hash: req.Msg.Hash, pathFilter: req.Msg.Path, headHash: headHash, ctxLines: ctxLines}
 	res, err := s.gitDiffs.getOrCompute(key, func() (*pb.GitDiffResult, error) {
 		return gitlog.Diff(dir, req.Msg.Hash, req.Msg.Path, headHash, ctxLines)

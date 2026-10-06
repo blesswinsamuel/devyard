@@ -472,6 +472,40 @@ func TestGit_LogPathHistory(t *testing.T) {
 	}
 }
 
+func TestGit_DiffRange(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "grange") // "initial" touches README.md
+	p.Start()
+	d := sb.Daemon()
+	c := d.Client()
+
+	p.WriteFile("x.txt", "x\n")
+	sb.Git(p.Dir, "add", "-A")
+	sb.Git(p.Dir, "commit", "-q", "-m", "add x")
+	head := sb.Git(p.Dir, "rev-parse", "HEAD")
+	initial := sb.Git(p.Dir, "rev-parse", "HEAD~1")
+
+	res, err := c.GitDiff(d.Ctx(), connect.NewRequest(&v1.GitDiffRequest{Project: "grange", Hash: head, Base: initial}))
+	harness.NoError(t, err, "GitDiff range")
+	if got := res.Msg.GetResult().GetCommit().GetHash(); got != head {
+		t.Fatalf("range commit = %s, want %s", got, head)
+	}
+	found := false
+	for _, f := range res.Msg.GetResult().GetFiles() {
+		if f.GetPath() == "x.txt" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("range files: %v", res.Msg.GetResult().GetFiles())
+	}
+	if !strings.Contains(res.Msg.GetResult().GetDiff(), "+x") {
+		t.Fatalf("range diff: %q", res.Msg.GetResult().GetDiff())
+	}
+}
+
 func TestGit_PushFetchPullLocalRemote(t *testing.T) {
 	t.Parallel()
 	requireGit(t)

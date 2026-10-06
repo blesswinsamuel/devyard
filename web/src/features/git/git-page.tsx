@@ -6,6 +6,7 @@ import {
   FileCode,
   GitBranch,
   GitCommitHorizontal,
+  GitCompare,
   History,
   PanelLeft,
   PanelRight,
@@ -25,7 +26,7 @@ import { entities, getGit, getProject, type GitEntity } from "~/data/entities";
 import { errorInfo } from "~/data/errors";
 import { isTypingTarget } from "~/lib/keyboard";
 import { isWide } from "~/lib/media";
-import { paths } from "~/lib/paths";
+import { paths, type GitQuery } from "~/lib/paths";
 import { createPersistedSignal } from "~/lib/persistence";
 import { cn } from "~/lib/utils";
 import { actionBlocked, actionPending, runAction } from "~/app/runtime";
@@ -143,11 +144,15 @@ function TabCount(props: { children: JSX.Element }) {
 
 function GitWorkspace(props: { project: string; git: GitEntity }) {
   const params = useParams<{ hash?: string }>();
-  const [searchParams] = useSearchParams<{ path?: string }>();
+  const [searchParams] = useSearchParams<{ path?: string; base?: string }>();
   const navigate = useNavigate();
+  // Replaces the entry so selection/paging does not stack back-steps.
+  const navigateGit = (hash: string | undefined, query: GitQuery) =>
+    navigate(hash ? paths.gitCommit(props.project, hash, query) : paths.git(props.project, query), { replace: true });
   // A `?path=` on the git route switches the log to that file's history
-  // (and narrows each commit's diff to it).
+  // (and narrows each commit's diff to it); `?base=` pins a comparison base.
   const historyPath = () => searchParams.path || undefined;
+  const base = () => searchParams.base || undefined;
   const log = useGitLog(() => props.project, historyPath);
   const view = createMemo(() => combineLog(log.data?.pages));
   const commits = () => view().commits;
@@ -163,7 +168,13 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   const [context, setContext] = createSignal<number>(DEFAULT_CONTEXT);
   createEffect(on(selected, () => (setFile(null), setContext(DEFAULT_CONTEXT)), { defer: true }));
 
-  const diff = useGitDiff(() => props.project, selected, context, () => historyPath() ?? "");
+  // A comparison needs two distinct commits; a base equal to the selection
+  // would be an empty diff, so it is ignored.
+  const compareBase = () => {
+    const b = base();
+    return b && b !== selected() ? b : undefined;
+  };
+  const diff = useGitDiff(() => props.project, selected, context, () => historyPath() ?? "", compareBase);
   const files = () => diff.data?.files ?? [];
   const selectedFile = () => {
     const f = file();
@@ -180,13 +191,12 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   // The working tree became clean (e.g. after a commit): show HEAD instead.
   createEffect(() => {
     if (params.hash === WORKDIR && log.data && !log.isFetching && !commits().some((c) => c.hash === WORKDIR)) {
-      const p = historyPath();
-      navigate(p ? paths.gitHistory(props.project, p) : paths.git(props.project), { replace: true });
+      navigateGit(undefined, { path: historyPath(), base: base() });
     }
   });
 
   const select = (hash: string, how: "click" | "key" | "ref") => {
-    if (hash !== params.hash) navigate(paths.gitCommit(props.project, hash, historyPath()), { replace: how === "key" });
+    if (hash !== params.hash) navigate(paths.gitCommit(props.project, hash, { path: historyPath(), base: base() }), { replace: how === "key" });
     if (!isWide()) {
       if (how === "click") setTab("diff");
       if (how === "ref") setTab("commits");
@@ -204,7 +214,10 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
     navigate(paths.gitHistory(props.project, path));
     if (!isWide()) setTab("commits");
   };
-  const clearHistory = () => navigate(paths.git(props.project));
+  const clearHistory = () => navigateGit(selected(), { base: base() });
+  // Pin the selected (or a row's) commit as the base of a comparison.
+  const setCompareBase = (hash: string) => navigateGit(selected() ?? hash, { path: historyPath(), base: hash });
+  const clearCompareBase = () => navigateGit(selected(), { path: historyPath() });
 
   // j/k anywhere on the page steps through commits; "/" searches them.
   const onWindowKey = (e: KeyboardEvent) => {
@@ -264,6 +277,9 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
       hasMore={view().hasMore}
       loadingMore={log.isFetchingNextPage}
       onLoadMore={() => void log.fetchNextPage()}
+      base={base()}
+      onCompare={setCompareBase}
+      onClearCompare={clearCompareBase}
       banner={
         <Show when={historyPath()}>
           {(p) => (
@@ -368,14 +384,56 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
               loading={diff.isFetching}
               isMerge={(commit()?.parents.length ?? 0) > 1}
               scrollRef={(el) => (diffScrollEl = el)}
-              toolbarEnd={filesButton()}
+              toolbarEnd={
+                <>
+                  <Show when={!workdir() && selected() && base() !== selected()}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      class="h-6"
+                      title="Pin this commit as the comparison base, then pick another commit"
+                      onClick={() => setCompareBase(selected()!)}
+                    >
+                      <GitCompare />
+                      Compare
+                    </Button>
+                  </Show>
+                  {filesButton()}
+                </>
+              }
               header={
-                <Show
-                  when={!workdir()}
-                  fallback={<CommitBox project={props.project} staged={stagedCount()} unstaged={unstagedCount()} />}
-                >
-                  <Show when={commit()}>{(c) => <CommitMeta commit={c()} onSelectCommit={(h) => select(h, "ref")} />}</Show>
-                </Show>
+                <div class="flex flex-col gap-2">
+                  <Show when={base()}>
+                    {(b) => (
+                      <div class="flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-2xs text-primary">
+                        <GitCompare class="size-3.5 shrink-0" />
+                        <span class="min-w-0 truncate">
+                          Comparing from <span class="font-mono">{b().slice(0, 7)}</span>
+                          <Show when={selected() && b() !== selected()}>
+                            {" to "}
+                            <span class="font-mono">{selected()!.slice(0, 7)}</span>
+                          </Show>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          class="ml-auto shrink-0 text-primary"
+                          aria-label="Clear comparison"
+                          title="Clear comparison"
+                          onClick={clearCompareBase}
+                        >
+                          <X />
+                        </Button>
+                      </div>
+                    )}
+                  </Show>
+                  <Show
+                    when={!workdir()}
+                    fallback={<CommitBox project={props.project} staged={stagedCount()} unstaged={unstagedCount()} />}
+                  >
+                    <Show when={commit()}>{(c) => <CommitMeta commit={c()} onSelectCommit={(h) => select(h, "ref")} />}</Show>
+                  </Show>
+                </div>
               }
             />
           )}

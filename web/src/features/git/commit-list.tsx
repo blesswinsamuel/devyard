@@ -1,6 +1,6 @@
 import { createEffect, For, on, Show, type JSX } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { ChevronsDown, Copy, GitBranchPlus, GitCommitHorizontal, Search, Tag, X } from "lucide-solid";
+import { ChevronsDown, Copy, GitBranchPlus, GitCommitHorizontal, GitCompare, Search, Tag, X } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
 import { Spinner } from "~/components/ui/spinner";
@@ -36,20 +36,32 @@ function CommitRow(props: {
   columns: number;
   showGraph: boolean;
   selected: boolean;
+  base: string | undefined;
   onClick: () => void;
+  onCompare: (hash: string) => void;
+  onClearCompare: () => void;
 }) {
   const workdir = () => props.commit.hash === WORKDIR;
   const detached = () => !props.commit.refs.some((r) => r.type === "branch" && r.isActive);
-  const menu = (): GitMenuItem[] => [
-    { label: "Copy hash", icon: Copy, onSelect: () => void copyText(props.commit.hash) },
-    {
-      label: `New branch at ${props.commit.short}…`,
-      icon: GitBranchPlus,
-      separated: true,
-      onSelect: () => void promptGitBranch(props.project, props.commit.hash),
-    },
-    { label: `Tag ${props.commit.short}…`, icon: Tag, onSelect: () => void promptGitTag(props.project, props.commit.hash) },
-  ];
+  const menu = (): GitMenuItem[] => {
+    const isBase = props.base === props.commit.hash;
+    return [
+      { label: "Copy hash", icon: Copy, onSelect: () => void copyText(props.commit.hash) },
+      {
+        label: `New branch at ${props.commit.short}…`,
+        icon: GitBranchPlus,
+        separated: true,
+        onSelect: () => void promptGitBranch(props.project, props.commit.hash),
+      },
+      { label: `Tag ${props.commit.short}…`, icon: Tag, onSelect: () => void promptGitTag(props.project, props.commit.hash) },
+      {
+        label: isBase ? "Clear comparison" : "Compare from here",
+        icon: GitCompare,
+        separated: true,
+        onSelect: () => (isBase ? props.onClearCompare() : props.onCompare(props.commit.hash)),
+      },
+    ];
+  };
   const row = () => (
     <div
       id={rowId(props.commit.hash)}
@@ -128,6 +140,10 @@ export function CommitList(props: {
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  /** The pinned comparison base (a commit hash), if any. */
+  base?: string;
+  onCompare?: (hash: string) => void;
+  onClearCompare?: () => void;
   /** Extra content above the search box (e.g. the file-history chip). */
   banner?: JSX.Element;
   /** Pane title row (off inside mobile tabs, which already name the pane). */
@@ -242,7 +258,10 @@ export function CommitList(props: {
                           columns={props.columns}
                           showGraph={!filtering()}
                           selected={commit().hash === props.selected}
+                          base={props.base}
                           onClick={() => props.onSelect(commit().hash, "click")}
+                          onCompare={(h) => props.onCompare?.(h)}
+                          onClearCompare={() => props.onClearCompare?.()}
                         />
                       </div>
                     )}

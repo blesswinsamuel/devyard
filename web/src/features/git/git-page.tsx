@@ -33,7 +33,7 @@ import { CommitBox } from "./commit-box";
 import { CommitList, filterCommits } from "./commit-list";
 import { CommitMeta, DiffView } from "./diff-view";
 import { FileList } from "./file-list";
-import { DEFAULT_CONTEXT, useGitDiff, useGitLog, WORKDIR } from "./git-data";
+import { DEFAULT_CONTEXT, combineLog, useGitDiff, useGitLog, WORKDIR } from "./git-data";
 import { computeGitGraph, graphWidth } from "./graph";
 import { listKey } from "./nav";
 import { RefsPanel } from "./refs-panel";
@@ -143,7 +143,8 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   const params = useParams<{ hash?: string }>();
   const navigate = useNavigate();
   const log = useGitLog(() => props.project);
-  const commits = () => log.data?.commits ?? [];
+  const view = createMemo(() => combineLog(log.data?.pages));
+  const commits = () => view().commits;
   const [query, setQuery] = createSignal("");
   const filtered = createMemo(() => filterCommits(commits(), query()));
   const graph = createMemo(() => computeGitGraph(commits()));
@@ -247,6 +248,9 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
       onSelect={select}
       onOpen={openDiff}
       searchRef={(el) => (searchEl = el)}
+      hasMore={view().hasMore}
+      loadingMore={log.isFetchingNextPage}
+      onLoadMore={() => void log.fetchNextPage()}
       status={
         <p class="px-3 py-8 text-center text-ui text-muted-foreground">
           {commits().length ? `No commits match “${query()}”.` : "No commits yet."}
@@ -257,9 +261,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
 
   const refsPanel = (header = true) => (
     <Show when={log.data}>
-      {(data) => (
-        <RefsPanel project={props.project} log={data()} selected={selected()} onSelect={(h) => select(h, "ref")} header={header} />
-      )}
+      <RefsPanel project={props.project} log={view()} selected={selected()} onSelect={(h) => select(h, "ref")} header={header} />
     </Show>
   );
 
@@ -451,7 +453,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
                 <TabsTrigger value="refs" class="flex-none gap-1.5">
                   <GitBranch class="max-sm:hidden" />
                   Refs
-                  <TabCount>{log.data?.branches.filter((b) => !b.isRemote).length ?? 0}</TabCount>
+                  <TabCount>{view().branches.filter((b) => !b.isRemote).length}</TabCount>
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="commits" class="min-h-0 flex-1">

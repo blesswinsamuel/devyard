@@ -78,13 +78,18 @@ func remoteCmd(ctx context.Context, dir, op, remote string) (string, error) {
 }
 
 // Log runs `git log` in dir and returns up to CommitLimit commits, newest
-// first, along with branches, tags, and stashes.
-func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitStash, error) {
+// first, along with branches, tags, and stashes. skip drops that many newest
+// commits (paging), and hasMore reports whether older commits exist beyond
+// the page. The WORKDIR pseudo-commit only appears on the first page.
+func Log(dir string, skip int) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitStash, bool, error) {
 	if dir == "" {
-		return nil, nil, nil, nil, fmt.Errorf("git: no working directory")
+		return nil, nil, nil, nil, false, fmt.Errorf("git: no working directory")
 	}
 	if !IsRepo(dir) {
-		return nil, nil, nil, nil, fmt.Errorf("git: %s is not a git repository", dir)
+		return nil, nil, nil, nil, false, fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if skip < 0 {
+		skip = 0
 	}
 
 	head := resolveHead(dir)
@@ -98,7 +103,7 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 	// An empty repository (unborn branch) has no commits, so `git log` would
 	// fail with exit 128. Surface that as an empty log (or uncommitted changes) rather than an error.
 	if head == "" {
-		if uncommitted > 0 {
+		if uncommitted > 0 && skip == 0 {
 			return []*pb.GitCommit{{
 				Hash:       "WORKDIR",
 				Short:      "WORKDIR",
@@ -108,9 +113,9 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 				// Staged, unstaged and untracked entries alike, counted by
 				// the status call above.
 				FilesChanged: int32(uncommitted),
-			}}, branches, tags, stashes, nil
+			}}, branches, tags, stashes, false, nil
 		}
-		return nil, branches, tags, stashes, nil
+		return nil, branches, tags, stashes, false, nil
 	}
 
 	format := "\x1e%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%D"
@@ -118,7 +123,12 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 	// tie; --decorate=full lets refs be classified by their full name.
 	// No --shortstat: it tree-diffs every listed commit (the dominant cost
 	// of the whole log call); the selected commit's stats come from Diff.
-	cmd := gitCmd(dir, "log", "--all", "--date-order", "--decorate=full", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
+	// One extra commit reveals whether an older page exists.
+	args := []string{"log", "--all", "--date-order", "--decorate=full", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit+1)}
+	if skip > 0 {
+		args = append(args, "--skip", fmt.Sprintf("%d", skip))
+	}
+	cmd := gitCmd(dir, args...)
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -127,7 +137,7 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, nil, nil, nil, fmt.Errorf("git: %s: %w", msg, err)
+		return nil, nil, nil, nil, false, fmt.Errorf("git: %s: %w", msg, err)
 	}
 
 	raw := out.String()
@@ -167,7 +177,13 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 		}
 	}
 
-	if uncommitted > 0 {
+	// Trim the probe commit and note whether an older page exists.
+	hasMore := len(commits) > CommitLimit
+	if hasMore {
+		commits = commits[:CommitLimit]
+	}
+
+	if uncommitted > 0 && skip == 0 {
 		workdirCommit := &pb.GitCommit{
 			Hash:       "WORKDIR",
 			Short:      "WORKDIR",
@@ -184,7 +200,7 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 		commits = append([]*pb.GitCommit{workdirCommit}, commits...)
 	}
 
-	return commits, branches, tags, stashes, nil
+	return commits, branches, tags, stashes, hasMore, nil
 }
 
 // parseDecorations turns a --decorate=full %D list into refs.

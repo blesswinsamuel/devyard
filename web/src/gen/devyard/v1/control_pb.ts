@@ -4857,6 +4857,13 @@ export class GitLogRequest extends Message<GitLogRequest> {
    */
   project = "";
 
+  /**
+   * Newest commits to skip (paging); 0 is the first page.
+   *
+   * @generated from field: int32 skip = 2;
+   */
+  skip = 0;
+
   constructor(data?: PartialMessage<GitLogRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -4866,6 +4873,7 @@ export class GitLogRequest extends Message<GitLogRequest> {
   static readonly typeName = "devyard.v1.GitLogRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "skip", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitLogRequest {
@@ -4909,6 +4917,13 @@ export class GitLogResponse extends Message<GitLogResponse> {
    */
   stashes: GitStash[] = [];
 
+  /**
+   * Whether commits older than this page exist.
+   *
+   * @generated from field: bool has_more = 5;
+   */
+  hasMore = false;
+
   constructor(data?: PartialMessage<GitLogResponse>) {
     super();
     proto3.util.initPartial(data, this);
@@ -4921,6 +4936,7 @@ export class GitLogResponse extends Message<GitLogResponse> {
     { no: 2, name: "branches", kind: "message", T: GitBranch, repeated: true },
     { no: 3, name: "tags", kind: "message", T: GitTag, repeated: true },
     { no: 4, name: "stashes", kind: "message", T: GitStash, repeated: true },
+    { no: 5, name: "has_more", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitLogResponse {

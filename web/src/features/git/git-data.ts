@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/solid-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/solid-query";
 import { toast } from "solid-sonner";
 import type { GitBranch, GitCommit, GitDiffResult, GitFileChange, GitLogResponse, GitStash } from "~/gen/devyard/v1/control_pb";
 import { api } from "~/data/client";
@@ -78,6 +78,24 @@ export interface GitLogView {
   stashes: GitStashView[];
 }
 
+/** One page of the log; the client fetches older pages on demand. */
+export interface GitLogPage extends GitLogView {
+  hasMore: boolean;
+}
+
+/** Flattens an infinite query's pages into one view for the panes. */
+export function combineLog(pages: GitLogPage[] | undefined): GitLogView & { hasMore: boolean } {
+  const list = pages ?? [];
+  return {
+    commits: list.flatMap((p) => p.commits),
+    // Branches, tags and stashes are repository-level: the first page has them.
+    branches: list[0]?.branches ?? [],
+    tags: list[0]?.tags ?? [],
+    stashes: list[0]?.stashes ?? [],
+    hasMore: list.length > 0 && !!list[list.length - 1]?.hasMore,
+  };
+}
+
 export interface GitDiffView {
   hash: string;
   contextLines: number;
@@ -126,12 +144,13 @@ const toFile = (f: GitFileChange): GitFileView => ({
   untracked: f.untracked,
 });
 
-export function toLog(res: GitLogResponse): GitLogView {
+export function toLog(res: GitLogResponse): GitLogPage {
   return {
     commits: res.commits.map(toCommit),
     branches: res.branches.map(toBranch),
     tags: res.tags.map((t) => ({ name: t.name, hash: t.hash })),
     stashes: res.stashes.map(toStash),
+    hasMore: res.hasMore,
   };
 }
 
@@ -147,9 +166,14 @@ export function toDiff(hash: string, contextLines: number, r: GitDiffResult | un
 
 /** Commits, branches, tags and stashes; refetched whenever change_seq moves. */
 export function useGitLog(project: () => string) {
-  return useQuery(() => ({
+  return useInfiniteQuery(() => ({
     queryKey: queryKeys.gitLog(project()),
-    queryFn: async ({ signal }) => toLog(await api.gitLog({ project: project() }, { signal })),
+    queryFn: async ({ pageParam, signal }: { pageParam: number; signal: AbortSignal }) =>
+      toLog(await api.gitLog({ project: project(), skip: pageParam }, { signal })),
+    initialPageParam: 0,
+    // Skip past every real commit already loaded; WORKDIR is page-local.
+    getNextPageParam: (last: GitLogPage, pages: GitLogPage[]) =>
+      last.hasMore ? pages.reduce((n, p) => n + p.commits.filter((c) => c.hash !== WORKDIR).length, 0) : undefined,
   }));
 }
 

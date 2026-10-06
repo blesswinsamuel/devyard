@@ -1,7 +1,9 @@
 import { createEffect, For, on, Show, type JSX } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { Copy, GitBranchPlus, GitCommitHorizontal, Search, X } from "lucide-solid";
+import { ChevronsDown, Copy, GitBranchPlus, GitCommitHorizontal, Search, X } from "lucide-solid";
+import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
+import { Spinner } from "~/components/ui/spinner";
 import { copyText } from "~/components/copy-button";
 import { promptGitBranch } from "~/app/ui-state";
 import { formatRelative, now } from "~/lib/format";
@@ -121,6 +123,10 @@ export function CommitList(props: {
   onSelect: (hash: string, how: "click" | "key") => void;
   onOpen: () => void;
   searchRef?: (el: HTMLInputElement) => void;
+  /** Paging: whether older commits exist beyond the loaded pages. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   /** Pane title row (off inside mobile tabs, which already name the pane). */
   header?: boolean;
   status?: JSX.Element;
@@ -239,6 +245,23 @@ export function CommitList(props: {
                   </Show>
                 )}
               </For>
+            </div>
+          </Show>
+          <Show when={props.hasMore && !filtering()}>
+            <div class="p-3">
+              <Button
+                variant="outline"
+                size="sm"
+                class="w-full"
+                disabled={props.loadingMore}
+                aria-busy={props.loadingMore || undefined}
+                onClick={() => props.onLoadMore?.()}
+              >
+                <Show when={props.loadingMore} fallback={<ChevronsDown />}>
+                  <Spinner />
+                </Show>
+                Load older commits
+              </Button>
             </div>
           </Show>
         </div>

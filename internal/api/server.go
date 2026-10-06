@@ -485,11 +485,11 @@ func (s *Server) GitLog(ctx context.Context, req *connect.Request[pb.GitLogReque
 	if err != nil {
 		return nil, err
 	}
-	commits, branches, tags, stashes, err := gitlog.Log(dir)
+	commits, branches, tags, stashes, hasMore, err := gitlog.Log(dir, int(req.Msg.Skip))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
-	return connect.NewResponse(&pb.GitLogResponse{Commits: commits, Branches: branches, Tags: tags, Stashes: stashes}), nil
+	return connect.NewResponse(&pb.GitLogResponse{Commits: commits, Branches: branches, Tags: tags, Stashes: stashes, HasMore: hasMore}), nil
 }
 
 func (s *Server) GitDiff(ctx context.Context, req *connect.Request[pb.GitDiffRequest]) (*connect.Response[pb.GitDiffResponse], error) {

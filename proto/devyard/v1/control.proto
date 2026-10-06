@@ -776,6 +776,8 @@ message GitDiffResult {
 
 message GitLogRequest {
   string project = 1;
+  // Newest commits to skip (paging); 0 is the first page.
+  int32 skip = 2;
 }
 
 message GitLogResponse {
@@ -783,6 +785,8 @@ message GitLogResponse {
   repeated GitBranch branches = 2;
   repeated GitTag tags = 3;
   repeated GitStash stashes = 4;
+  // Whether commits older than this page exist.
+  bool has_more = 5;
 }
 
 message GitDiffRequest {

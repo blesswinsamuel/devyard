@@ -144,7 +144,7 @@ func TestRepoWatcherWithGitLogAndDiff(t *testing.T) {
 	}
 
 	// Read-only operations like git log and git diff should not trigger watcher events
-	_, _, _, _, err = gitlog.Log(tmpDir)
+	_, _, _, _, _, err = gitlog.Log(tmpDir, 0)
 	if err != nil {
 		t.Fatalf("gitlog.Log failed: %v", err)
 	}

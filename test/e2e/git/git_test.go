@@ -5,6 +5,7 @@ package git_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -326,6 +327,40 @@ func TestGit_AmendAndMessageBody(t *testing.T) {
 	harness.NoError(t, err, "GitDiff")
 	if got := res.Msg.GetResult().GetCommit().GetBody(); got != "body line 1\nbody line 2" {
 		t.Fatalf("GitDiff body = %q, want \"body line 1\\nbody line 2\"", got)
+	}
+}
+
+func TestGit_LogPaging(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "gpaging") // one commit
+	for i := 0; i < 105; i++ {
+		sb.Git(p.Dir, "commit", "--allow-empty", "-q", "-m", fmt.Sprintf("c%d", i))
+	}
+	p.Start()
+	d := sb.Daemon()
+	c := d.Client()
+
+	first, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "gpaging"}))
+	harness.NoError(t, err, "GitLog page 0")
+	if got := len(first.Msg.GetCommits()); got != 100 || !first.Msg.GetHasMore() {
+		t.Fatalf("page 0: %d commits, hasMore=%v; want 100, true", got, first.Msg.GetHasMore())
+	}
+	second, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "gpaging", Skip: 100}))
+	harness.NoError(t, err, "GitLog page 1")
+	if got := len(second.Msg.GetCommits()); got != 6 || second.Msg.GetHasMore() {
+		t.Fatalf("page 1: %d commits, hasMore=%v; want 6, false", got, second.Msg.GetHasMore())
+	}
+	seen := map[string]bool{}
+	for _, cm := range append(first.Msg.GetCommits(), second.Msg.GetCommits()...) {
+		if seen[cm.GetHash()] {
+			t.Fatalf("commit %s appears on both pages", cm.GetShort())
+		}
+		seen[cm.GetHash()] = true
+	}
+	if len(seen) != 106 {
+		t.Fatalf("pages cover %d commits, want 106", len(seen))
 	}
 }
 

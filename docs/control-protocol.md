@@ -93,13 +93,17 @@ Errors carry Connect codes, and clients switch on the code:
 ## Git
 
 `GitLog` lists commits, branches, tags and stashes of a project's
-repository; `GitDiff` returns a commit's diff (`WORKDIR` = the uncommitted
-changes) and resolves the full commit message: `subject` is the first line
-and `body` the rest (`GitLog` leaves `body` empty). `GitStage` stages or
-unstages paths, and `GitCommit` commits the staged changes or — with
-`amend` — folds them into HEAD. `amend` with a `message` replaces HEAD's
-message; with an empty one it keeps it. Every local mutation bumps
-`GitStatus.change_seq`, so clients reload their cached logs and diffs.
+repository. Commits come newest first, up to 100 per page: `skip` drops that
+many newest commits and `has_more` reports whether older ones exist, so a
+client pages through history by asking again with a larger `skip` (the
+`WORKDIR` pseudo-commit is only on the first page). `GitDiff` returns a
+commit's diff (`WORKDIR` = the uncommitted changes) and resolves the full
+commit message: `subject` is the first line and `body` the rest (`GitLog`
+leaves `body` empty). `GitStage` stages or unstages paths, and `GitCommit`
+commits the staged changes or — with `amend` — folds them into HEAD. `amend`
+with a `message` replaces HEAD's message; with an empty one it keeps it.
+Every local mutation bumps `GitStatus.change_seq`, so clients reload their
+cached logs and diffs.
 
 `GitCheckout` checks out a branch: a local name switches to it, while a
 remote one (`origin/feature`) creates the local counterpart (`feature`)

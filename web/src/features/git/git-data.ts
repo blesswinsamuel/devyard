@@ -164,7 +164,10 @@ export function useGitDiff(project: () => string, hash: () => string | undefined
       queryFn: async ({ signal }: { signal: AbortSignal }) =>
         toDiff(h, ctx, (await api.gitDiff({ project: project(), hash: h, contextLines: ctx }, { signal })).result),
       enabled: !!h,
-      staleTime: workdir ? 0 : Infinity,
+      // Commits are immutable (cache forever); the working tree is refetched
+      // on change_seq bumps, so a short staleness window only saves tab
+      // switches from respawning git.
+      staleTime: workdir ? 2_000 : Infinity,
       placeholderData: (prev: GitDiffView | undefined) => (prev?.hash === h ? prev : undefined),
     };
   });

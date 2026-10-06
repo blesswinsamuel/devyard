@@ -177,7 +177,14 @@ function FileDiff(props: {
 }) {
   const meta = createMemo(() => parseGitMeta(props.chunk.metaLines));
   return (
-    <section class="overflow-clip rounded-md border bg-card" aria-label={props.chunk.filePath}>
+    // content-visibility lets the browser skip rendering whole files that
+    // are scrolled out of the diff pane (large diffs stay smooth) without
+    // restructuring the table or losing the sticky headers.
+    <section
+      class="overflow-clip rounded-md border bg-card"
+      aria-label={props.chunk.filePath}
+      style={{ "content-visibility": "auto", "contain-intrinsic-size": "auto 600px" }}
+    >
       <button
         type="button"
         class="focus-ring sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-muted px-2 py-1.5 text-left"

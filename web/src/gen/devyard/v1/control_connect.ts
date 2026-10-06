@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { AddProjectRequest, AddProjectResponse, AttachRequest, AttachResponse, GetDaemonRequest, GetDaemonResponse, GetGlobalConfigRequest, GetGlobalConfigResponse, GetStateRequest, GetStateResponse, GitBranchCreateRequest, GitBranchCreateResponse, GitBranchDeleteRequest, GitBranchDeleteResponse, GitCheckoutRequest, GitCheckoutResponse, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitRestoreRequest, GitRestoreResponse, GitStageRequest, GitStageResponse, GitStashRequest, GitStashResponse, GitTagCreateRequest, GitTagCreateResponse, GitTagDeleteRequest, GitTagDeleteResponse, KillServiceRequest, KillServiceResponse, KillTaskRequest, KillTaskResponse, ListPortsRequest, ListPortsResponse, LogsRequest, LogsResponse, MoveProjectRequest, MoveProjectResponse, ReloadProjectRequest, ReloadProjectResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartProjectRequest, RestartProjectResponse, RestartServiceRequest, RestartServiceResponse, RunTaskRequest, RunTaskResponse, SetWebPasswordRequest, SetWebPasswordResponse, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StatsRequest, StatsResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SuggestProjectPathsRequest, SuggestProjectPathsResponse, UpdateGlobalConfigRequest, UpdateGlobalConfigResponse, WatchRequest, WatchResponse } from "./control_pb.js";
+import { AddProjectRequest, AddProjectResponse, AttachRequest, AttachResponse, GetDaemonRequest, GetDaemonResponse, GetGlobalConfigRequest, GetGlobalConfigResponse, GetStateRequest, GetStateResponse, GitApplyRequest, GitApplyResponse, GitBranchCreateRequest, GitBranchCreateResponse, GitBranchDeleteRequest, GitBranchDeleteResponse, GitCheckoutRequest, GitCheckoutResponse, GitCommitRequest, GitCommitResponse, GitDiffRequest, GitDiffResponse, GitFetchRequest, GitFetchResponse, GitLogRequest, GitLogResponse, GitPullRequest, GitPullResponse, GitPushRequest, GitPushResponse, GitRestoreRequest, GitRestoreResponse, GitStageRequest, GitStageResponse, GitStashRequest, GitStashResponse, GitTagCreateRequest, GitTagCreateResponse, GitTagDeleteRequest, GitTagDeleteResponse, KillServiceRequest, KillServiceResponse, KillTaskRequest, KillTaskResponse, ListPortsRequest, ListPortsResponse, LogsRequest, LogsResponse, MoveProjectRequest, MoveProjectResponse, ReloadProjectRequest, ReloadProjectResponse, RemoveProjectRequest, RemoveProjectResponse, RestartDaemonRequest, RestartDaemonResponse, RestartProjectRequest, RestartProjectResponse, RestartServiceRequest, RestartServiceResponse, RunTaskRequest, RunTaskResponse, SetWebPasswordRequest, SetWebPasswordResponse, StartProjectRequest, StartProjectResponse, StartServiceRequest, StartServiceResponse, StatsRequest, StatsResponse, StopDaemonRequest, StopDaemonResponse, StopProjectRequest, StopProjectResponse, StopServiceRequest, StopServiceResponse, StopTaskRequest, StopTaskResponse, SuggestProjectPathsRequest, SuggestProjectPathsResponse, UpdateGlobalConfigRequest, UpdateGlobalConfigResponse, WatchRequest, WatchResponse } from "./control_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -401,6 +401,15 @@ export const DaemonService = {
       name: "GitRestore",
       I: GitRestoreRequest,
       O: GitRestoreResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc devyard.v1.DaemonService.GitApply
+     */
+    gitApply: {
+      name: "GitApply",
+      I: GitApplyRequest,
+      O: GitApplyResponse,
       kind: MethodKind.Unary,
     },
   }

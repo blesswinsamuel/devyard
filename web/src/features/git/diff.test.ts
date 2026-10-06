@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDiff, parseGitMeta } from "./diff";
+import { chunkHunks, hunkPatch, parseDiff, parseGitMeta } from "./diff";
 
 const RAW = [
   "diff --git a/src/app.go b/src/app.go",
@@ -88,6 +88,54 @@ describe("parseDiff", () => {
     const [chunk] = parseDiff("diff --git a/old.txt b/new.txt\nsimilarity index 100%\nrename from old.txt\nrename to new.txt\n");
     expect(chunk!.filePath).toBe("new.txt");
     expect(chunk!.metaLines).toContain("rename from old.txt");
+  });
+
+  it("keeps the raw prelude (meta and ---/+++) for patch rebuilding", () => {
+    expect(chunks[0]!.prelude).toEqual(["index 4a49a2d..e785d2a 100644", "--- a/src/app.go", "+++ b/src/app.go"]);
+  });
+});
+
+describe("hunk patches", () => {
+  const [chunk] = parseDiff(RAW);
+
+  it("groups lines into hunks", () => {
+    const hunks = chunkHunks(chunk!);
+    expect(hunks).toHaveLength(2);
+    expect(hunks[0]!.header.text).toBe("@@ -3,4 +3,5 @@ package main");
+    expect(hunks[1]!.body.map((l) => l.type)).toEqual(["delete", "add", "note"]);
+  });
+
+  it("rebuilds a single-hunk patch that git can apply", () => {
+    // Context lines in real diffs start with a space (the fixture above uses
+    // an empty line for a blank context), so use a realistic hunk here.
+    const [c] = parseDiff(
+      [
+        "diff --git a/a.txt b/a.txt",
+        "index 1234567..89abcde 100644",
+        "--- a/a.txt",
+        "+++ b/a.txt",
+        "@@ -1,2 +1,3 @@",
+        " one",
+        "+two",
+        " three",
+        "@@ -10,2 +11,2 @@",
+        "-old",
+        "+new",
+        "",
+      ].join("\n"),
+    );
+    expect(hunkPatch(c!, chunkHunks(c!)[0]!)).toBe(
+      [
+        "diff --git a/a.txt b/a.txt",
+        "index 1234567..89abcde 100644",
+        "--- a/a.txt",
+        "+++ b/a.txt",
+        "@@ -1,2 +1,3 @@",
+        " one",
+        "+two",
+        " three",
+      ].join("\n") + "\n",
+    );
   });
 });
 

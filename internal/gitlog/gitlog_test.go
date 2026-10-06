@@ -756,6 +756,59 @@ func TestRestore(t *testing.T) {
 	}
 }
 
+func TestApply(t *testing.T) {
+	dir := initRepo(t) // a.txt is "one\n"
+	patch := "diff --git a/a.txt b/a.txt\n" +
+		"--- a/a.txt\n" +
+		"+++ b/a.txt\n" +
+		"@@ -1 +1 @@\n" +
+		"-one\n" +
+		"+ONE\n"
+	read := func() string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(dir, "a.txt"))
+		if err != nil {
+			t.Fatalf("ReadFile: %v", err)
+		}
+		return string(b)
+	}
+
+	// Apply to the working tree, then reverse it.
+	if err := Apply(dir, patch, false, false); err != nil {
+		t.Fatalf("Apply worktree: %v", err)
+	}
+	if got := read(); got != "ONE\n" {
+		t.Fatalf("a.txt after apply = %q", got)
+	}
+	if err := Apply(dir, patch, false, true); err != nil {
+		t.Fatalf("Apply reverse: %v", err)
+	}
+	if got := read(); got != "one\n" {
+		t.Fatalf("a.txt after reverse = %q", got)
+	}
+
+	// Cached apply stages the change without touching the working tree.
+	if err := Apply(dir, patch, true, false); err != nil {
+		t.Fatalf("Apply cached: %v", err)
+	}
+	if got := read(); got != "one\n" {
+		t.Fatalf("worktree changed by --cached: %q", got)
+	}
+	if staged := gitRun(t, dir, "diff", "--cached", "--name-only"); staged != "a.txt" {
+		t.Fatalf("staged files = %q, want a.txt", staged)
+	}
+	if err := Apply(dir, patch, true, true); err != nil {
+		t.Fatalf("Apply cached reverse: %v", err)
+	}
+	if staged := gitRun(t, dir, "diff", "--cached", "--name-only"); staged != "" {
+		t.Fatalf("still staged after unstage: %q", staged)
+	}
+
+	if err := Apply(dir, "   ", false, false); err == nil {
+		t.Fatal("empty patch: expected error, got nil")
+	}
+}
+
 func TestAmend(t *testing.T) {
 	dir := initRepo(t)
 

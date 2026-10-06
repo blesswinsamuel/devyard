@@ -11,6 +11,8 @@ export interface ParsedFileChunk {
   header: string;
   filePath: string;
   metaLines: string[];
+  /** Raw lines before the first hunk (meta lines plus `---`/`+++`). */
+  prelude: string[];
   lines: ParsedDiffLine[];
 }
 
@@ -70,6 +72,7 @@ export function parseDiff(raw: string): ParsedFileChunk[] {
     const filePath = paths ? paths[2]! : (headerLine.match(/b\/(.+)$/)?.[1] ?? headerLine);
 
     const metaLines: string[] = [];
+    const prelude: string[] = [];
     const lines: ParsedDiffLine[] = [];
     let oldLine = 1;
     let newLine = 1;
@@ -90,6 +93,7 @@ export function parseDiff(raw: string): ParsedFileChunk[] {
       } else if (!inHunk) {
         // File header: "--- a/x" / "+++ b/x" are implied by the chunk; binary
         // markers are shown in the body so the file doesn't look empty.
+        prelude.push(line);
         if (line.startsWith("Binary files ")) lines.push({ type: "note", text: line });
         else if (!line.startsWith("--- ") && !line.startsWith("+++ ")) metaLines.push(line);
       } else if (line.startsWith("+")) {
@@ -104,7 +108,30 @@ export function parseDiff(raw: string): ParsedFileChunk[] {
       }
     }
 
-    chunks.push({ header: `diff --git ${headerLine}`, filePath, metaLines, lines });
+    chunks.push({ header: `diff --git ${headerLine}`, filePath, metaLines, prelude, lines });
   }
   return chunks;
+}
+
+export interface DiffHunk {
+  header: ParsedDiffLine;
+  body: ParsedDiffLine[];
+}
+
+/** Groups a chunk's lines into hunks: each `@@` header plus its body. */
+export function chunkHunks(chunk: ParsedFileChunk): DiffHunk[] {
+  const hunks: DiffHunk[] = [];
+  for (const line of chunk.lines) {
+    if (line.type === "hunk") hunks.push({ header: line, body: [] });
+    else if (hunks.length) hunks[hunks.length - 1]!.body.push(line);
+  }
+  return hunks;
+}
+
+/**
+ * Builds a unified patch containing one hunk of a chunk, suitable for
+ * `git apply` (staging, unstaging or discarding that hunk).
+ */
+export function hunkPatch(chunk: ParsedFileChunk, hunk: DiffHunk): string {
+  return [chunk.header, ...chunk.prelude, hunk.header.text, ...hunk.body.map((l) => l.text)].join("\n") + "\n";
 }

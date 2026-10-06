@@ -506,6 +506,46 @@ func TestGit_DiffRange(t *testing.T) {
 	}
 }
 
+func TestGit_ApplyHunk(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "ghunk") // README.md is "hello\n"
+	p.Start()
+	d := sb.Daemon()
+	w := d.Watch(context.Background())
+	c := d.Client()
+
+	// Stage, unstage and discard one hunk, using git's own diff as the patch.
+	p.WriteFile("README.md", "changed\n")
+	patch := sb.Git(p.Dir, "diff", "--", "README.md") + "\n"
+	if !strings.Contains(patch, "+changed") {
+		t.Fatalf("patch to apply: %q", patch)
+	}
+	_, err := c.GitApply(d.Ctx(), connect.NewRequest(&v1.GitApplyRequest{Project: "ghunk", Patch: patch, Cached: true}))
+	harness.NoError(t, err, "GitApply stage")
+	w.WaitFor(t, "staged", func(s harness.State) bool { return s.Git["ghunk"].GetStaged() >= 1 })
+	if b, _ := os.ReadFile(p.Path("README.md")); string(b) != "changed\n" {
+		t.Fatalf("--cached touched the working tree: %q", b)
+	}
+
+	_, err = c.GitApply(d.Ctx(), connect.NewRequest(&v1.GitApplyRequest{Project: "ghunk", Patch: patch, Cached: true, Reverse: true}))
+	harness.NoError(t, err, "GitApply unstage")
+	w.WaitFor(t, "unstaged", func(s harness.State) bool { return s.Git["ghunk"].GetStaged() == 0 })
+
+	_, err = c.GitApply(d.Ctx(), connect.NewRequest(&v1.GitApplyRequest{Project: "ghunk", Patch: patch, Reverse: true}))
+	harness.NoError(t, err, "GitApply discard")
+	w.WaitFor(t, "clean", func(s harness.State) bool { return s.Git["ghunk"].GetIsClean() })
+	if b, _ := os.ReadFile(p.Path("README.md")); string(b) != "hello\n" {
+		t.Fatalf("README.md after discard = %q", b)
+	}
+
+	_, err = c.GitApply(d.Ctx(), connect.NewRequest(&v1.GitApplyRequest{Project: "ghunk"}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("empty patch: expected InvalidArgument, got %v", err)
+	}
+}
+
 func TestGit_PushFetchPullLocalRemote(t *testing.T) {
 	t.Parallel()
 	requireGit(t)

@@ -138,6 +138,8 @@ const (
 	// DaemonServiceGitRestoreProcedure is the fully-qualified name of the DaemonService's GitRestore
 	// RPC.
 	DaemonServiceGitRestoreProcedure = "/devyard.v1.DaemonService/GitRestore"
+	// DaemonServiceGitApplyProcedure is the fully-qualified name of the DaemonService's GitApply RPC.
+	DaemonServiceGitApplyProcedure = "/devyard.v1.DaemonService/GitApply"
 )
 
 // DaemonServiceClient is a client for the devyard.v1.DaemonService service.
@@ -190,6 +192,7 @@ type DaemonServiceClient interface {
 	GitTagCreate(context.Context, *connect.Request[v1.GitTagCreateRequest]) (*connect.Response[v1.GitTagCreateResponse], error)
 	GitTagDelete(context.Context, *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error)
 	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
+	GitApply(context.Context, *connect.Request[v1.GitApplyRequest]) (*connect.Response[v1.GitApplyResponse], error)
 }
 
 // NewDaemonServiceClient constructs a client for the devyard.v1.DaemonService service. By default,
@@ -449,6 +452,12 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitRestore")),
 			connect.WithClientOptions(opts...),
 		),
+		gitApply: connect.NewClient[v1.GitApplyRequest, v1.GitApplyResponse](
+			httpClient,
+			baseURL+DaemonServiceGitApplyProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitApply")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -495,6 +504,7 @@ type daemonServiceClient struct {
 	gitTagCreate        *connect.Client[v1.GitTagCreateRequest, v1.GitTagCreateResponse]
 	gitTagDelete        *connect.Client[v1.GitTagDeleteRequest, v1.GitTagDeleteResponse]
 	gitRestore          *connect.Client[v1.GitRestoreRequest, v1.GitRestoreResponse]
+	gitApply            *connect.Client[v1.GitApplyRequest, v1.GitApplyResponse]
 }
 
 // GetDaemon calls devyard.v1.DaemonService.GetDaemon.
@@ -702,6 +712,11 @@ func (c *daemonServiceClient) GitRestore(ctx context.Context, req *connect.Reque
 	return c.gitRestore.CallUnary(ctx, req)
 }
 
+// GitApply calls devyard.v1.DaemonService.GitApply.
+func (c *daemonServiceClient) GitApply(ctx context.Context, req *connect.Request[v1.GitApplyRequest]) (*connect.Response[v1.GitApplyResponse], error) {
+	return c.gitApply.CallUnary(ctx, req)
+}
+
 // DaemonServiceHandler is an implementation of the devyard.v1.DaemonService service.
 type DaemonServiceHandler interface {
 	// Daemon
@@ -752,6 +767,7 @@ type DaemonServiceHandler interface {
 	GitTagCreate(context.Context, *connect.Request[v1.GitTagCreateRequest]) (*connect.Response[v1.GitTagCreateResponse], error)
 	GitTagDelete(context.Context, *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error)
 	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
+	GitApply(context.Context, *connect.Request[v1.GitApplyRequest]) (*connect.Response[v1.GitApplyResponse], error)
 }
 
 // NewDaemonServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1007,6 +1023,12 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitRestore")),
 		connect.WithHandlerOptions(opts...),
 	)
+	daemonServiceGitApplyHandler := connect.NewUnaryHandler(
+		DaemonServiceGitApplyProcedure,
+		svc.GitApply,
+		connect.WithSchema(daemonServiceMethods.ByName("GitApply")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/devyard.v1.DaemonService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DaemonServiceGetDaemonProcedure:
@@ -1091,6 +1113,8 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGitTagDeleteHandler.ServeHTTP(w, r)
 		case DaemonServiceGitRestoreProcedure:
 			daemonServiceGitRestoreHandler.ServeHTTP(w, r)
+		case DaemonServiceGitApplyProcedure:
+			daemonServiceGitApplyHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1262,4 +1286,8 @@ func (UnimplementedDaemonServiceHandler) GitTagDelete(context.Context, *connect.
 
 func (UnimplementedDaemonServiceHandler) GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitRestore is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitApply(context.Context, *connect.Request[v1.GitApplyRequest]) (*connect.Response[v1.GitApplyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitApply is not implemented"))
 }

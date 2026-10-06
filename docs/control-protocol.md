@@ -119,7 +119,10 @@ a local branch — refused when it is unmerged, unless `force` — and
 annotated, and `target` picks the commit). `GitRestore` discards
 local changes: with `path` just that path, with `all` every path. Tracked
 paths go back to HEAD (staged and unstaged changes alike) and untracked
-paths are deleted; ignored files are never touched.
+paths are deleted; ignored files are never touched. `GitApply` applies a
+unified diff — typically one hunk of one file, as the dashboard sends — to
+the index (`cached`) or the working tree, in reverse when asked: staging,
+unstaging and discarding individual hunks.
 
 `GitStash` moves working tree changes in and out of the stash list:
 

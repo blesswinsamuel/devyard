@@ -718,3 +718,18 @@ func (s *Server) GitRestore(ctx context.Context, req *connect.Request[pb.GitRest
 	s.Git.Changed(req.Msg.Project)
 	return connect.NewResponse(&pb.GitRestoreResponse{}), nil
 }
+
+func (s *Server) GitApply(ctx context.Context, req *connect.Request[pb.GitApplyRequest]) (*connect.Response[pb.GitApplyResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Patch == "" {
+		return nil, invalid("patch is required")
+	}
+	if err := gitlog.Apply(dir, req.Msg.Patch, req.Msg.Cached, req.Msg.Reverse); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitApplyResponse{}), nil
+}

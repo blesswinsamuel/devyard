@@ -6068,3 +6068,93 @@ export class GitRestoreResponse extends Message<GitRestoreResponse> {
   }
 }
 
+/**
+ * GitApply applies a unified diff — typically one hunk of one file — to the
+ * index (cached) or the working tree, optionally in reverse. It is how the
+ * dashboard stages, unstages or discards individual hunks.
+ *
+ * @generated from message devyard.v1.GitApplyRequest
+ */
+export class GitApplyRequest extends Message<GitApplyRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * @generated from field: string patch = 2;
+   */
+  patch = "";
+
+  /**
+   * @generated from field: bool cached = 3;
+   */
+  cached = false;
+
+  /**
+   * @generated from field: bool reverse = 4;
+   */
+  reverse = false;
+
+  constructor(data?: PartialMessage<GitApplyRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitApplyRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "patch", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "cached", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "reverse", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitApplyRequest {
+    return new GitApplyRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitApplyRequest {
+    return new GitApplyRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitApplyRequest {
+    return new GitApplyRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitApplyRequest | PlainMessage<GitApplyRequest> | undefined, b: GitApplyRequest | PlainMessage<GitApplyRequest> | undefined): boolean {
+    return proto3.util.equals(GitApplyRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitApplyResponse
+ */
+export class GitApplyResponse extends Message<GitApplyResponse> {
+  constructor(data?: PartialMessage<GitApplyResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitApplyResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitApplyResponse {
+    return new GitApplyResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitApplyResponse {
+    return new GitApplyResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitApplyResponse {
+    return new GitApplyResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitApplyResponse | PlainMessage<GitApplyResponse> | undefined, b: GitApplyResponse | PlainMessage<GitApplyResponse> | undefined): boolean {
+    return proto3.util.equals(GitApplyResponse, a, b);
+  }
+}
+

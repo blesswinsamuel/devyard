@@ -399,3 +399,27 @@ export async function fetchCommitMessage(project: string, hash: string): Promise
   if (!r) return "";
   return r.subject + (r.body ? `\n\n${r.body}` : "");
 }
+
+export type HunkAction = "stage" | "unstage" | "discard";
+
+const hunkKey = (project: string, path: string, action: HunkAction) => `git.hunk|${project}|${action}|${path}`;
+
+export const hunkPending = (project: string, path: string, action: HunkAction) => isPending(hunkKey(project, path, action));
+
+const HUNK_VERB: Record<HunkAction, string> = { stage: "Stage", unstage: "Unstage", discard: "Discard" };
+
+/**
+ * Stages, unstages or discards one hunk (a patch of a single file): stage
+ * applies it to the index, unstage reverse-applies it from the index, and
+ * discard reverse-applies it to the working tree.
+ */
+export function applyHunk(project: string, path: string, patch: string, action: HunkAction): Promise<void> {
+  return withPending(hunkKey(project, path, action), async () => {
+    try {
+      await api.gitApply({ project, patch, cached: action !== "discard", reverse: action !== "stage" });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+    } catch (err) {
+      toastFailure(`${HUNK_VERB[action]} hunk in ${path} failed`, err);
+    }
+  }).then(() => undefined);
+}

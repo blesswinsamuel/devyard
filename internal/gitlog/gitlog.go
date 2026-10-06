@@ -1410,6 +1410,42 @@ func Restore(dir, path string, all bool) error {
 	return runGit(dir, "clean", "-fd", "--", pathSpec(path))
 }
 
+// Apply applies a unified diff — typically one hunk of one file — to the
+// index (cached) or the working tree, in reverse when asked: how the
+// dashboard stages, unstages or discards individual hunks. Patches carry
+// repository-relative paths, so they are applied from the repository root.
+func Apply(dir, patch string, cached, reverse bool) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if strings.TrimSpace(patch) == "" {
+		return fmt.Errorf("git: no patch to apply")
+	}
+	args := []string{"apply"}
+	if cached {
+		args = append(args, "--cached")
+	}
+	if reverse {
+		args = append(args, "--reverse")
+	}
+	cmd := exec.Command("git", append([]string{"-C", RepoRoot(dir)}, args...)...)
+	setProcessGroup(cmd)
+	cmd.Stdin = strings.NewReader(patch)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git apply: %s: %w", msg, err)
+	}
+	return nil
+}
+
 // Push pushes the current branch to its upstream remote.
 func Push(ctx context.Context, dir string, remote string) (string, error) {
 	return remoteCmd(ctx, dir, "push", remote)

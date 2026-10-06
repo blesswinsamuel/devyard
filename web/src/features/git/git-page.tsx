@@ -383,6 +383,8 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
               onContextLines={setContext}
               loading={diff.isFetching}
               isMerge={(commit()?.parents.length ?? 0) > 1}
+              project={props.project}
+              workdir={workdir()}
               scrollRef={(el) => (diffScrollEl = el)}
               toolbarEnd={
                 <>

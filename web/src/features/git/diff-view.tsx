@@ -10,16 +10,18 @@ import {
   History,
   Minus,
   Plus,
+  Undo2,
   UnfoldVertical,
 } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { copyText } from "~/components/copy-button";
+import { confirm } from "~/app/ui-state";
 import { formatDateTime, formatRelative, now } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { displayPath, FileStatus, LineStats } from "./badges";
-import { parseDiff, parseGitMeta, type ParsedDiffLine, type ParsedFileChunk } from "./diff";
-import { CONTEXT_STEPS, FULL_CONTEXT, type GitCommitView, type GitFileView } from "./git-data";
+import { chunkHunks, hunkPatch, parseDiff, parseGitMeta, type ParsedDiffLine, type ParsedFileChunk } from "./diff";
+import { applyHunk, CONTEXT_STEPS, FULL_CONTEXT, hunkPending, type GitCommitView, type GitFileView, type HunkAction } from "./git-data";
 
 function CopyHash(props: { hash: string; short: string }) {
   const [done, setDone] = createSignal(false);
@@ -95,6 +97,77 @@ function contextLabel(n: number) {
   return n >= FULL_CONTEXT ? "Full file" : `${n} lines`;
 }
 
+/** One hunk's stage/unstage/discard controls, on its header row. */
+interface HunkActions {
+  project: string;
+  filePath: string;
+  patch: string;
+  action: "stage" | "unstage";
+}
+
+function HunkButtons(props: { hunk: HunkActions }) {
+  const h = () => props.hunk;
+  const pending = (a: HunkAction) => hunkPending(h().project, h().filePath, a);
+  const run = (a: HunkAction) => void applyHunk(h().project, h().filePath, h().patch, a);
+  const discard = async () => {
+    if (
+      await confirm({
+        title: `Discard this hunk of ${h().filePath}?`,
+        description: "The change is reverted and cannot be brought back.",
+        confirmLabel: "Discard hunk",
+      })
+    )
+      run("discard");
+  };
+  return (
+    <span class="ml-2 inline-flex items-center gap-0.5 align-middle">
+      <Show when={h().action === "stage"}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="size-5 text-success"
+          aria-label="Stage hunk"
+          title="Stage this hunk"
+          disabled={pending("stage")}
+          onClick={() => run("stage")}
+        >
+          <Show when={pending("stage")} fallback={<Plus />}>
+            <Spinner class="size-3" />
+          </Show>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="size-5 text-destructive"
+          aria-label="Discard hunk"
+          title="Discard this hunk (cannot be undone)"
+          disabled={pending("discard")}
+          onClick={() => void discard()}
+        >
+          <Show when={pending("discard")} fallback={<Undo2 />}>
+            <Spinner class="size-3" />
+          </Show>
+        </Button>
+      </Show>
+      <Show when={h().action === "unstage"}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="size-5 text-warning"
+          aria-label="Unstage hunk"
+          title="Unstage this hunk"
+          disabled={pending("unstage")}
+          onClick={() => run("unstage")}
+        >
+          <Show when={pending("unstage")} fallback={<Minus />}>
+            <Spinner class="size-3" />
+          </Show>
+        </Button>
+      </Show>
+    </span>
+  );
+}
+
 /** Context-lines stepper: fewer / more / full file. */
 function ContextControl(props: { value: number; onChange: (n: number) => void; disabled: boolean }) {
   const idx = () => {
@@ -130,7 +203,7 @@ function ContextControl(props: { value: number; onChange: (n: number) => void; d
   );
 }
 
-function DiffLineRow(props: { line: ParsedDiffLine; onExpand?: () => void; expanding: boolean }) {
+function DiffLineRow(props: { line: ParsedDiffLine; onExpand?: () => void; expanding: boolean; hunk?: HunkActions }) {
   const l = () => props.line;
   if (l().type === "hunk" || l().type === "note") {
     return (
@@ -153,6 +226,7 @@ function DiffLineRow(props: { line: ParsedDiffLine; onExpand?: () => void; expan
             </Show>
             {l().text}
           </span>
+          <Show when={props.hunk}>{(h) => <HunkButtons hunk={h()} />}</Show>
         </td>
       </tr>
     );
@@ -182,8 +256,36 @@ function FileDiff(props: {
   onToggle: () => void;
   onExpand?: () => void;
   expanding: boolean;
+  /** The project and whether this is the working-tree diff (hunk actions). */
+  project?: string;
+  workdir?: boolean;
 }) {
   const meta = createMemo(() => parseGitMeta(props.chunk.metaLines));
+
+  // Hunk actionability: only for a tracked, plainly-modified file whose
+  // changes are entirely staged or entirely unstaged (a partially staged
+  // file's combined diff would make a hunk ambiguous).
+  const hunkAction = (): "stage" | "unstage" | null => {
+    const f = props.file;
+    if (!props.workdir || !props.project || !f) return null;
+    if (f.untracked || meta().isNew || meta().isDeleted) return null;
+    if (props.chunk.metaLines.some((l) => l.startsWith("rename from "))) return null;
+    if (f.staged && f.unstaged) return null;
+    return f.staged ? "unstage" : "stage";
+  };
+  const hunks = createMemo(() => chunkHunks(props.chunk));
+  const hunkFor = (line: ParsedDiffLine): HunkActions | undefined => {
+    const action = hunkAction();
+    const h = hunks().find((x) => x.header === line);
+    if (!action || !h || !props.project) return undefined;
+    return {
+      project: props.project,
+      filePath: props.chunk.filePath,
+      patch: hunkPatch(props.chunk, h),
+      action,
+    };
+  };
+
   return (
     // content-visibility lets the browser skip rendering whole files that
     // are scrolled out of the diff pane (large diffs stay smooth) without
@@ -244,7 +346,14 @@ function FileDiff(props: {
             <table class="min-w-full border-collapse font-mono text-xs">
               <tbody>
                 <For each={props.chunk.lines}>
-                  {(line) => <DiffLineRow line={line} onExpand={props.onExpand} expanding={props.expanding} />}
+                  {(line) => (
+                    <DiffLineRow
+                      line={line}
+                      onExpand={props.onExpand}
+                      expanding={props.expanding}
+                      hunk={line.type === "hunk" ? hunkFor(line) : undefined}
+                    />
+                  )}
                 </For>
               </tbody>
             </table>
@@ -269,6 +378,9 @@ export interface DiffViewProps {
   header: JSX.Element;
   /** Merge commits have no diff against their first parent here. */
   isMerge: boolean;
+  /** Enables per-hunk stage/unstage/discard on the working-tree diff. */
+  project?: string;
+  workdir?: boolean;
   /** Extra toolbar controls (files pane toggle, mobile files tab). */
   toolbarEnd?: JSX.Element;
   /** Opens the selected file's history (commits that touched it). */
@@ -375,6 +487,8 @@ export function DiffView(props: DiffViewProps) {
                   onToggle={() => setCollapsed((m) => ({ ...m, [chunk.filePath]: !m[chunk.filePath] }))}
                   onExpand={nextContext() ? () => props.onContextLines(nextContext()!) : undefined}
                   expanding={props.loading}
+                  project={props.project}
+                  workdir={props.workdir}
                 />
               )}
             </For>

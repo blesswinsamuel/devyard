@@ -66,6 +66,7 @@ service DaemonService {
   rpc GitTagCreate(GitTagCreateRequest) returns (GitTagCreateResponse);
   rpc GitTagDelete(GitTagDeleteRequest) returns (GitTagDeleteResponse);
   rpc GitRestore(GitRestoreRequest) returns (GitRestoreResponse);
+  rpc GitApply(GitApplyRequest) returns (GitApplyResponse);
 }
 
 // -----------------------------------------------------------------------------
@@ -929,3 +930,15 @@ message GitRestoreRequest {
 }
 
 message GitRestoreResponse {}
+
+// GitApply applies a unified diff — typically one hunk of one file — to the
+// index (cached) or the working tree, optionally in reverse. It is how the
+// dashboard stages, unstages or discards individual hunks.
+message GitApplyRequest {
+  string project = 1;
+  string patch = 2;
+  bool cached = 3;
+  bool reverse = 4;
+}
+
+message GitApplyResponse {}

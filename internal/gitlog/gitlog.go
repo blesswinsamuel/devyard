@@ -6,6 +6,7 @@ package gitlog
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -420,40 +421,8 @@ func checkUncommitted(dir string) bool {
 	return len(bytes.TrimSpace(out.Bytes())) > 0
 }
 
-// fileStats are per-file +/- counters computed from a patch body.
+// fileStats are per-file +/− counters from --numstat.
 type fileStats struct{ add, del int32 }
-
-// parseStatsFromPatch computes +/− stats per file from a unified patch,
-// avoiding a separate `git show --numstat` spawn. The current file is the
-// `diff --git a/x b/y` header; lines starting with + / - count as
-// additions / deletions, with `--- ` and `+++ ` headers excluded — the same
-// rules as the frontend parser.
-func parseStatsFromPatch(patch string) map[string]fileStats {
-	stats := make(map[string]fileStats)
-	current := ""
-	for _, line := range strings.Split(patch, "\n") {
-		if strings.HasPrefix(line, "diff --git ") {
-			idx := strings.LastIndex(line, " b/")
-			if idx < 0 {
-				current = ""
-				continue
-			}
-			current = unquoteGitPath(line[idx+len(" b/"):])
-			continue
-		}
-		if current == "" {
-			continue
-		}
-		s := stats[current]
-		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
-			s.add++
-		} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
-			s.del++
-		}
-		stats[current] = s
-	}
-	return stats
-}
 
 // unquoteGitPath decodes the C-style quoting git applies to pathnames in
 // --porcelain/--name-status/-z-less output when they contain special
@@ -497,110 +466,115 @@ func RepoRoot(dir string) string {
 	return strings.TrimSpace(out.String())
 }
 
-// Diff returns the commit metadata, list of changed files, and unified patch diff for hash (or HEAD if hash is empty).
-func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pb.GitDiffResult, error) {
+// Diff returns the commit metadata, changed-file list and unified patch of
+// hash (or HEAD when hash is empty) in a single git invocation: --raw gives
+// the file list with statuses and rename sources, --numstat the per-file
+// +/− counts and --patch the body. headHash is the repository's current HEAD
+// hash ("" when unknown); it marks Head and the WORKDIR entry's parent
+// without another git process.
+func Diff(dir, hash, pathFilter, headHash string, ctxLines int) (*pb.GitDiffResult, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("git: no working directory")
 	}
-	if !IsRepo(dir) {
-		return nil, fmt.Errorf("git: %s is not a git repository", dir)
+	if ctxLines <= 0 {
+		ctxLines = 3
 	}
-
-	ctxLines := 3
-	if len(contextLines) > 0 && contextLines[0] > 0 {
-		ctxLines = contextLines[0]
-	}
-
 	if hash == "WORKDIR" {
-		return diffWorkdir(dir, pathFilter, ctxLines)
+		return diffWorkdir(dir, pathFilter, headHash, ctxLines)
 	}
 
 	if hash == "" {
 		hash = resolveHead(dir)
-	}
-	if hash == "" {
-		return nil, fmt.Errorf("git: repository has no HEAD commit")
+		if hash == "" {
+			return nil, fmt.Errorf("git: repository has no HEAD commit")
+		}
 	}
 
 	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s"
-	cmdMeta := gitCmd(dir, "show", "-s", fmt.Sprintf("--pretty=format:%s", format), hash)
-	var outMeta, errMeta bytes.Buffer
-	cmdMeta.Stdout = &outMeta
-	cmdMeta.Stderr = &errMeta
-	if err := cmdMeta.Run(); err != nil {
-		msg := strings.TrimSpace(errMeta.String())
+	args := []string{"show", "--raw", "--numstat", "--patch", fmt.Sprintf("-U%d", ctxLines), fmt.Sprintf("--pretty=format:%s", format)}
+	if pathFilter != "" {
+		args = append(args, "--", pathFilter)
+	}
+	args = append(args, hash)
+	cmd := gitCmd(dir, args...)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
 		if msg == "" {
 			msg = err.Error()
 		}
 		return nil, fmt.Errorf("git: %s: %w", msg, err)
 	}
-
-	fields := strings.Split(strings.TrimSpace(outMeta.String()), "\x1f")
-	if len(fields) < 7 {
-		return nil, fmt.Errorf("git: invalid commit metadata output")
+	text := out.String()
+	if strings.TrimSpace(text) == "" && pathFilter != "" {
+		// A pathspec that matches nothing suppresses even the metadata;
+		// resolve the commit header alone so the caller still gets it.
+		commit, err := showCommitMeta(dir, hash, headHash)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.GitDiffResult{Commit: commit}, nil
 	}
 
-	head := resolveHead(dir)
-	t, _ := time.Parse(time.RFC3339, fields[4])
-	commit := &pb.GitCommit{
-		Hash:       fields[0],
-		Short:      fields[1],
-		Author:     fields[2],
-		Email:      fields[3],
-		TimeUnixMs: t.UnixMilli(),
-		Subject:    fields[6],
-		Head:       fields[0] == head,
+	// The metadata line comes first, then the machine-readable --raw and
+	// --numstat lines; the patch starts at its first header line.
+	newline := strings.IndexByte(text, '\n')
+	if newline < 0 {
+		newline = len(text)
 	}
-	if parents := fields[5]; parents != "" {
-		commit.Parents = strings.Fields(parents)
+	commit, err := commitFromMeta(strings.Split(text[:newline], "\x1f"), headHash)
+	if err != nil {
+		return nil, err
+	}
+	rest := ""
+	if newline < len(text) {
+		rest = text[newline+1:]
+	}
+	machine, patch := rest, ""
+	if start := patchStart(rest); start >= 0 {
+		machine, patch = rest[:start], rest[start:]
 	}
 
-	diffArgs := []string{"show", fmt.Sprintf("-U%d", ctxLines), "--patch", "--format=", hash}
-	if pathFilter != "" {
-		diffArgs = append(diffArgs, "--", pathFilter)
+	raws := map[string]rawEntry{}
+	nums := map[string]fileStats{}
+	var order []string
+	for _, line := range strings.Split(machine, "\n") {
+		switch {
+		case line == "":
+		case strings.HasPrefix(line, ":"):
+			if status, oldPath, newPath, ok := parseRawLine(line); ok {
+				raws[newPath] = rawEntry{status: status, oldPath: oldPath}
+			}
+		default:
+			if path, stats, ok := parseNumstatLine(line); ok {
+				if _, seen := nums[path]; !seen {
+					order = append(order, path)
+				}
+				nums[path] = stats
+			}
+		}
 	}
-	cmdDiff := gitCmd(dir, diffArgs...)
-	var outDiff bytes.Buffer
-	cmdDiff.Stdout = &outDiff
-	_ = cmdDiff.Run()
-	statsFromPatch := parseStatsFromPatch(outDiff.String())
-
-	cmdStatus := gitCmd(dir, "show", "--name-status", "--format=", hash)
-	var outStatus bytes.Buffer
-	cmdStatus.Stdout = &outStatus
-	_ = cmdStatus.Run()
 
 	var files []*pb.GitFileChange
-	for _, line := range strings.Split(outStatus.String(), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, path := range order {
+		if pathFilter != "" && path != pathFilter {
 			continue
 		}
-		parts := strings.Split(line, "\t")
-		if len(parts) >= 2 {
-			st := parts[0]
-			path := unquoteGitPath(parts[1])
-			oldPath := ""
-			if len(parts) >= 3 {
-				oldPath = unquoteGitPath(parts[1])
-				path = unquoteGitPath(parts[2])
-			}
-			if pathFilter != "" && path != pathFilter {
-				continue
-			}
-			s := statsFromPatch[path]
-			statusLetter := st
-			if len(st) > 0 {
-				statusLetter = string(st[0])
-			}
-			files = append(files, &pb.GitFileChange{
-				Path:      path,
-				OldPath:   oldPath,
-				Status:    statusLetter,
-				Additions: s.add,
-				Deletions: s.del,
-			})
+		r := raws[path]
+		status := ""
+		if len(r.status) > 0 {
+			status = r.status[:1]
 		}
+		s := nums[path]
+		files = append(files, &pb.GitFileChange{
+			Path:      path,
+			OldPath:   r.oldPath,
+			Status:    status,
+			Additions: s.add,
+			Deletions: s.del,
+		})
 	}
 
 	var totalAdd, totalDel int32
@@ -615,12 +589,166 @@ func Diff(dir string, hash string, pathFilter string, contextLines ...int) (*pb.
 	return &pb.GitDiffResult{
 		Commit: commit,
 		Files:  files,
-		Diff:   outDiff.String(),
+		Diff:   patch,
 	}, nil
 }
 
-func diffWorkdir(dir string, pathFilter string, ctxLines int) (*pb.GitDiffResult, error) {
-	head := resolveHead(dir)
+// rawEntry is a --raw file entry: the status letter with its rename/copy
+// score, and for renames and copies the old path.
+type rawEntry struct {
+	status  string
+	oldPath string
+}
+
+// parseRawLine parses a --raw line
+// ":<oldmode> <newmode> <oldsha> <newsha> <status>\t<path>", where renames
+// and copies carry two tab-separated paths, the old one first.
+func parseRawLine(line string) (status, oldPath, newPath string, ok bool) {
+	head, paths, found := strings.Cut(strings.TrimPrefix(line, ":"), "\t")
+	if !found {
+		return "", "", "", false
+	}
+	fields := strings.Fields(head)
+	if len(fields) != 5 {
+		return "", "", "", false
+	}
+	if old, next, renamed := strings.Cut(paths, "\t"); renamed {
+		return fields[4], unquoteGitPath(old), unquoteGitPath(next), true
+	}
+	return fields[4], "", unquoteGitPath(paths), true
+}
+
+// parseNumstatLine parses a --numstat line
+// "<add>\t<del>\t<path>", where binary files show "-" counts and renames
+// show "<old> => <new>" in the path column. Renames are keyed by their new
+// path; the old one comes from --raw.
+func parseNumstatLine(line string) (path string, s fileStats, ok bool) {
+	first := strings.IndexByte(line, '\t')
+	if first < 0 {
+		return "", fileStats{}, false
+	}
+	rest := line[first+1:]
+	second := strings.IndexByte(rest, '\t')
+	if second < 0 {
+		return "", fileStats{}, false
+	}
+	addStr, delStr := line[:first], rest[:second]
+	pathPart := rest[second+1:]
+	if !isDiffCount(addStr) || !isDiffCount(delStr) {
+		return "", fileStats{}, false
+	}
+	if _, newPath, renamed := strings.Cut(pathPart, " => "); renamed {
+		pathPart = newPath
+	}
+	var stats fileStats
+	if addStr != "-" {
+		n, err := strconv.ParseInt(addStr, 10, 32)
+		if err != nil {
+			return "", fileStats{}, false
+		}
+		stats.add = int32(n)
+	}
+	if delStr != "-" {
+		n, err := strconv.ParseInt(delStr, 10, 32)
+		if err != nil {
+			return "", fileStats{}, false
+		}
+		stats.del = int32(n)
+	}
+	return unquoteGitPath(pathPart), stats, true
+}
+
+func isDiffCount(s string) bool {
+	if s == "-" {
+		return true
+	}
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// patchStart returns the offset of the first patch header ("diff --git", or
+// the "diff --cc" combined header of merges) in a combined
+// --raw/--numstat/--patch output, or -1 when there is no patch.
+func patchStart(text string) int {
+	for _, prefix := range []string{"diff --git ", "diff --cc "} {
+		if strings.HasPrefix(text, prefix) {
+			return 0
+		}
+		if i := strings.Index(text, "\n"+prefix); i >= 0 {
+			return i + 1
+		}
+	}
+	return -1
+}
+
+// parseNumstat extracts the --numstat entries of a combined
+// --numstat/--patch output: the machine-readable lines that precede the
+// first patch header.
+func parseNumstat(text string) map[string]fileStats {
+	stats := map[string]fileStats{}
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "diff --git ") || strings.HasPrefix(line, "diff --cc ") {
+			break
+		}
+		if path, s, ok := parseNumstatLine(line); ok {
+			stats[path] = s
+		}
+	}
+	return stats
+}
+
+// commitFromMeta builds a commit from the fields of the pretty format
+// "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s".
+func commitFromMeta(fields []string, headHash string) (*pb.GitCommit, error) {
+	if len(fields) < 7 {
+		return nil, fmt.Errorf("git: invalid commit metadata output")
+	}
+	t, _ := time.Parse(time.RFC3339, fields[4])
+	c := &pb.GitCommit{
+		Hash:       fields[0],
+		Short:      fields[1],
+		Author:     fields[2],
+		Email:      fields[3],
+		TimeUnixMs: t.UnixMilli(),
+		Subject:    fields[6],
+		Head:       headHash != "" && fields[0] == headHash,
+	}
+	if parents := fields[5]; parents != "" {
+		c.Parents = strings.Fields(parents)
+	}
+	return c, nil
+}
+
+// showCommitMeta resolves just a commit's metadata (`git show -s`), for
+// outputs whose diff section is suppressed.
+func showCommitMeta(dir, hash, headHash string) (*pb.GitCommit, error) {
+	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s"
+	cmd := gitCmd(dir, "show", "-s", fmt.Sprintf("--pretty=format:%s", format), hash)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("git: %s: %w", msg, err)
+	}
+	return commitFromMeta(strings.Split(strings.TrimSpace(out.String()), "\x1f"), headHash)
+}
+
+// diffWorkdir builds the WORKDIR diff: the file list with staged/unstaged/
+// untracked flags from `git status --porcelain`, and stats plus patches from
+// one `git diff HEAD --numstat --patch` call. Untracked files are absent
+// from `git diff HEAD`; their new-file patches are rendered in-process.
+func diffWorkdir(dir, pathFilter, headHash string, ctxLines int) (*pb.GitDiffResult, error) {
 	commit := &pb.GitCommit{
 		Hash:       "WORKDIR",
 		Short:      "WORKDIR",
@@ -628,8 +756,8 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*pb.GitDiffResult
 		Subject:    "Uncommitted Changes",
 		TimeUnixMs: time.Now().UnixMilli(),
 	}
-	if head != "" {
-		commit.Parents = []string{head}
+	if headHash != "" {
+		commit.Parents = []string{headHash}
 	}
 
 	cmdStatus := gitCmd(dir, "status", "--porcelain")
@@ -691,7 +819,9 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*pb.GitDiffResult
 		}
 	}
 
-	diffArgs := []string{"diff", "HEAD", fmt.Sprintf("-U%d", ctxLines)}
+	// Tracked changes: per-file +/− counts and the patch in one call. Only
+	// the patch section is returned; the numstat lines above it feed stats.
+	diffArgs := []string{"diff", "HEAD", "--numstat", "--patch", fmt.Sprintf("-U%d", ctxLines)}
 	if pathFilter != "" {
 		diffArgs = append(diffArgs, "--", pathFilter)
 	}
@@ -699,35 +829,37 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*pb.GitDiffResult
 	var outDiff bytes.Buffer
 	cmdDiff.Stdout = &outDiff
 	_ = cmdDiff.Run()
-
 	diffText := outDiff.String()
-
-	for _, f := range files {
-		// An added/untracked file only appears in the `git diff HEAD` output
-		// once it carries a `+++ b/<path>` patch header; use that instead of a
-		// raw substring match so unrelated paths can't suppress the fallback.
-		if (f.Untracked || f.Status == "A") && !strings.Contains(diffText, "+++ b/"+f.Path) {
-			cmdUntracked := gitCmd(dir, "diff", "--no-index", "/dev/null", f.Path)
-			var outUntracked bytes.Buffer
-			cmdUntracked.Stdout = &outUntracked
-			_ = cmdUntracked.Run()
-			if outUntracked.Len() > 0 {
-				if diffText != "" && !strings.HasSuffix(diffText, "\n") {
-					diffText += "\n"
-				}
-				diffText += outUntracked.String()
-			}
-		}
+	stats := parseNumstat(diffText)
+	if start := patchStart(diffText); start >= 0 {
+		diffText = diffText[start:]
+	} else {
+		diffText = ""
 	}
-
-	// Fill per-file +/− stats from the patch body (including appended
-	// new-file fallbacks) instead of spawning `git diff --numstat`.
-	statsFromPatch := parseStatsFromPatch(diffText)
 	for _, f := range files {
-		if s, ok := statsFromPatch[f.Path]; ok {
+		if s, ok := stats[f.Path]; ok {
 			f.Additions = s.add
 			f.Deletions = s.del
 		}
+	}
+
+	// Untracked (and, in a repo without commits, staged-new) files carry no
+	// `git diff HEAD` entry: render their new-file patches in-process instead
+	// of spawning `git diff --no-index` per file. A file only counts as
+	// missing while the patch text has no `+++ b/<path>` header for it.
+	for _, f := range files {
+		if !(f.Untracked || f.Status == "A") || strings.Contains(diffText, "+++ b/"+f.Path) {
+			continue
+		}
+		patch, add, _ := newFilePatch(dir, f.Path)
+		if patch == "" {
+			continue
+		}
+		f.Additions, f.Deletions = add, 0
+		if diffText != "" && !strings.HasSuffix(diffText, "\n") {
+			diffText += "\n"
+		}
+		diffText += patch
 	}
 
 	var totalAdd, totalDel int32
@@ -744,6 +876,60 @@ func diffWorkdir(dir string, pathFilter string, ctxLines int) (*pb.GitDiffResult
 		Files:  files,
 		Diff:   diffText,
 	}, nil
+}
+
+// newFilePatch renders the new-file patch of a path in-process, in the same
+// shape `git diff --no-index -- /dev/null <path>` produces, so the
+// working-tree diff needs no per-file git invocation.
+func newFilePatch(dir, path string) (patch string, add, del int32) {
+	full := filepath.Join(dir, filepath.FromSlash(path))
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", 0, 0
+	}
+	mode := "100644"
+	if fi, err := os.Stat(full); err == nil && fi.Mode()&0o111 != 0 {
+		mode = "100755"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "diff --git a/%s b/%s\n", path, path)
+	fmt.Fprintf(&b, "new file mode %s\n", mode)
+	fmt.Fprintf(&b, "index 0000000..%s\n", blobHash(data))
+	if bytes.IndexByte(data, 0) >= 0 {
+		fmt.Fprintf(&b, "Binary files /dev/null and b/%s differ\n", path)
+		return b.String(), 0, 0
+	}
+	// A trailing newline ends the last line rather than starting an empty
+	// one; without it the last line carries the "No newline" marker.
+	lines := strings.Split(string(data), "\n")
+	noNewline := false
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	} else {
+		noNewline = true
+	}
+	if len(lines) > 0 {
+		fmt.Fprintf(&b, "--- /dev/null\n+++ b/%s\n", path)
+		fmt.Fprintf(&b, "@@ -0,0 +1,%d @@\n", len(lines))
+		for _, l := range lines {
+			b.WriteString("+")
+			b.WriteString(l)
+			b.WriteString("\n")
+		}
+		if noNewline {
+			b.WriteString("\\ No newline at end of file\n")
+		}
+	}
+	return b.String(), int32(len(lines)), 0
+}
+
+// blobHash returns the abbreviated git blob hash of data.
+func blobHash(data []byte) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "blob %d", len(data))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))[:7]
 }
 
 // Stage stages or unstages files in the working directory.

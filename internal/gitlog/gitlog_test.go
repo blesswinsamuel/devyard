@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	pb "github.com/blesswinsamuel/devyard/internal/gen/proto/devyard/v1"
 )
 
 // initRepo creates a throwaway git repo in a temp dir with two commits.
@@ -156,12 +158,18 @@ func TestDiff(t *testing.T) {
 	}
 	headHash := commits[0].Hash
 
-	res, err := Diff(dir, headHash, "")
+	res, err := Diff(dir, headHash, "", headHash, 0)
 	if err != nil {
 		t.Fatalf("Diff: %v", err)
 	}
 	if res.Commit.Hash != headHash {
 		t.Fatalf("expected commit hash %s, got %s", headHash, res.Commit.Hash)
+	}
+	if !res.Commit.Head {
+		t.Fatalf("expected Head flag for the HEAD commit, got %+v", res.Commit)
+	}
+	if other, err := Diff(dir, headHash, "", strings.Repeat("0", 40), 0); err != nil || other.Commit.Head {
+		t.Fatalf("expected no Head flag for a non-matching headHash, got %+v (%v)", other.Commit, err)
 	}
 	if len(res.Files) != 1 {
 		t.Fatalf("expected 1 file change, got %d", len(res.Files))
@@ -195,7 +203,7 @@ func TestUncommittedAndCommit(t *testing.T) {
 		t.Fatalf("expected first commit to be WORKDIR, got %+v", commits[0])
 	}
 
-	diffRes, err := Diff(dir, "WORKDIR", "")
+	diffRes, err := Diff(dir, "WORKDIR", "", "", 0)
 	if err != nil {
 		t.Fatalf("Diff WORKDIR: %v", err)
 	}
@@ -233,7 +241,7 @@ func TestStageAndUnstage(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	diffRes, err := Diff(dir, "WORKDIR", "")
+	diffRes, err := Diff(dir, "WORKDIR", "", "", 0)
 	if err != nil {
 		t.Fatalf("Diff WORKDIR: %v", err)
 	}
@@ -246,7 +254,7 @@ func TestStageAndUnstage(t *testing.T) {
 		t.Fatalf("Stage untracked: %v", err)
 	}
 
-	diffStaged, err := Diff(dir, "WORKDIR", "")
+	diffStaged, err := Diff(dir, "WORKDIR", "", "", 0)
 	if err != nil {
 		t.Fatalf("Diff WORKDIR after stage: %v", err)
 	}
@@ -259,7 +267,7 @@ func TestStageAndUnstage(t *testing.T) {
 		t.Fatalf("Unstage file: %v", err)
 	}
 
-	diffUnstaged, err := Diff(dir, "WORKDIR", "")
+	diffUnstaged, err := Diff(dir, "WORKDIR", "", "", 0)
 	if err != nil {
 		t.Fatalf("Diff WORKDIR after unstage: %v", err)
 	}
@@ -510,7 +518,7 @@ func TestLogDoesNotModifyIndex(t *testing.T) {
 	}
 
 	// Run Diff for WORKDIR
-	if _, err := Diff(dir, "WORKDIR", ""); err != nil {
+	if _, err := Diff(dir, "WORKDIR", "", "", 0); err != nil {
 		t.Fatalf("Diff WORKDIR: %v", err)
 	}
 
@@ -521,33 +529,6 @@ func TestLogDoesNotModifyIndex(t *testing.T) {
 
 	if !fiBefore.ModTime().Equal(fiAfter.ModTime()) {
 		t.Errorf("read-only git operations modified .git/index mtime: before %v, after %v", fiBefore.ModTime(), fiAfter.ModTime())
-	}
-}
-
-func TestParseStatsFromPatch(t *testing.T) {
-	patch := "diff --git a/a.txt b/a.txt\n" +
-		"index 111111132..444444 100644\n" +
-		"--- a/a.txt\n" +
-		"+++ b/a.txt\n" +
-		"@@ -1,2 +1,3 @@\n" +
-		"+new line\n" +
-		" ctx\n" +
-		"-old line\n" +
-		"diff --git a/dir/old.txt b/dir/new.txt\n" +
-		"rename from dir/old.txt\n" +
-		"rename to dir/new.txt\n" +
-		"diff --git a/c.bin b/c.bin\n" +
-		"Binary files a/c.bin and b/c.bin differ\n"
-
-	stats := parseStatsFromPatch(patch)
-	if s := stats["a.txt"]; s.add != 1 || s.del != 1 {
-		t.Errorf("a.txt stats = %+v, want 1 add / 1 del", s)
-	}
-	if s := stats["dir/new.txt"]; s.add != 0 || s.del != 0 {
-		t.Errorf("rename stats = %+v, want 0 add / 0 del", s)
-	}
-	if s := stats["c.bin"]; s.add != 0 || s.del != 0 {
-		t.Errorf("binary stats = %+v, want 0 add / 0 del", s)
 	}
 }
 
@@ -590,12 +571,222 @@ func TestDiffRenameStats(t *testing.T) {
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log: %v", err)
 	}
-	res, err := Diff(dir, commits[0].Hash, "")
+	res, err := Diff(dir, commits[0].Hash, "", "", 0)
 	if err != nil {
 		t.Fatalf("Diff: %v", err)
 	}
 	if len(res.Files) != 1 || res.Files[0].Path != "renamed.txt" || res.Files[0].Status != "R" {
 		t.Fatalf("unexpected rename files: %+v", res.Files)
+	}
+	if res.Files[0].OldPath != "b.txt" {
+		t.Fatalf("expected rename old path b.txt, got %+v", res.Files[0])
+	}
+}
+
+// TestDiffContextLines verifies the -U context width reaches the patch.
+func TestDiffContextLines(t *testing.T) {
+	dir := initRepo(t)
+	body := "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n"
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("add", "a.txt")
+	run("commit", "-q", "-m", "ten lines")
+
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte(body+"eleven\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("commit", "-qam", "eleven")
+
+	commits, _, _, _, err := Log(dir)
+	if err != nil || len(commits) == 0 {
+		t.Fatalf("Log: %v", err)
+	}
+	narrow, err := Diff(dir, commits[0].Hash, "", "", 1)
+	if err != nil {
+		t.Fatalf("Diff U1: %v", err)
+	}
+	wide, err := Diff(dir, commits[0].Hash, "", "", 5)
+	if err != nil {
+		t.Fatalf("Diff U5: %v", err)
+	}
+	if !strings.Contains(narrow.Diff, "+eleven") || !strings.Contains(wide.Diff, "+eleven") {
+		t.Fatalf("expected the added line in both patches:\nU1:\n%s\nU5:\n%s", narrow.Diff, wide.Diff)
+	}
+	if len(narrow.Diff) >= len(wide.Diff) {
+		t.Fatalf("expected U5 to be longer than U1, got %d vs %d", len(wide.Diff), len(narrow.Diff))
+	}
+}
+
+// TestDiffPathFilter covers a pathspec that matches and one that matches
+// nothing: the latter still resolves the commit header (a bare git show
+// with a non-matching pathspec prints nothing at all).
+func TestDiffPathFilter(t *testing.T) {
+	dir := initRepo(t)
+	commits, _, _, _, err := Log(dir)
+	if err != nil || len(commits) == 0 {
+		t.Fatalf("Log: %v", err)
+	}
+	headHash := commits[0].Hash
+
+	res, err := Diff(dir, headHash, "b.txt", "", 0)
+	if err != nil {
+		t.Fatalf("Diff filtered: %v", err)
+	}
+	if len(res.Files) != 1 || res.Files[0].Path != "b.txt" {
+		t.Fatalf("expected only b.txt, got %+v", res.Files)
+	}
+	if !strings.Contains(res.Diff, "+two") {
+		t.Fatalf("expected the b.txt patch, got %q", res.Diff)
+	}
+
+	res, err = Diff(dir, headHash, "nope.txt", "", 0)
+	if err != nil {
+		t.Fatalf("Diff non-matching: %v", err)
+	}
+	if res.Commit.Hash != headHash || len(res.Files) != 0 || res.Diff != "" {
+		t.Fatalf("expected meta without files for a non-matching pathspec, got %+v", res)
+	}
+}
+
+// TestDiffMerge covers a merge commit: --raw prints nothing for merges, so
+// the file list comes from --numstat.
+func TestDiffMerge(t *testing.T) {
+	dir := initRepo(t)
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("checkout", "-q", "-b", "side")
+	if err := os.WriteFile(filepath.Join(dir, "s.txt"), []byte("side\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "s.txt")
+	run("commit", "-qm", "side")
+	run("checkout", "-q", "main")
+	if err := os.WriteFile(filepath.Join(dir, "m.txt"), []byte("main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "m.txt")
+	run("commit", "-qm", "mainline")
+	run("merge", "-q", "--no-edit", "side")
+
+	commits, _, _, _, err := Log(dir)
+	if err != nil || len(commits) == 0 {
+		t.Fatalf("Log: %v", err)
+	}
+	merge := commits[0]
+	if len(merge.Parents) != 2 {
+		t.Fatalf("expected a merge commit with two parents, got %+v", merge)
+	}
+	res, err := Diff(dir, merge.Hash, "", "", 0)
+	if err != nil {
+		t.Fatalf("Diff merge: %v", err)
+	}
+	if res.Commit.Hash != merge.Hash {
+		t.Fatalf("expected the merge commit meta, got %+v", res.Commit)
+	}
+	if len(res.Files) == 0 {
+		t.Fatalf("expected --numstat files for a merge, got %+v", res.Files)
+	}
+}
+
+// TestDiffBinary covers a committed binary file: "-" numstat counts and the
+// "Binary files" patch marker.
+func TestDiffBinary(t *testing.T) {
+	dir := initRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "b.bin"), []byte{0, 1, 2, 0}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Stage(dir, "b.bin", false, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := Commit(dir, "binary"); err != nil {
+		t.Fatal(err)
+	}
+	commits, _, _, _, err := Log(dir)
+	if err != nil || len(commits) == 0 {
+		t.Fatalf("Log: %v", err)
+	}
+	res, err := Diff(dir, commits[0].Hash, "", "", 0)
+	if err != nil {
+		t.Fatalf("Diff binary: %v", err)
+	}
+	if len(res.Files) != 1 {
+		t.Fatalf("expected 1 file, got %+v", res.Files)
+	}
+	f := res.Files[0]
+	if f.Path != "b.bin" || f.Status != "A" || f.Additions != 0 || f.Deletions != 0 {
+		t.Fatalf("unexpected binary file row: %+v", f)
+	}
+	if !strings.Contains(res.Diff, "Binary files") {
+		t.Fatalf("expected a binary marker in the patch, got %q", res.Diff)
+	}
+}
+
+// TestDiffWorkdirUntrackedPatch covers the in-process new-file patches of
+// untracked files, including the no-trailing-newline marker and binaries.
+func TestDiffWorkdirUntrackedPatch(t *testing.T) {
+	dir := initRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "u.txt"), []byte("hello\nworld\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "nl.txt"), []byte("no newline"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bin.dat"), []byte{0, 1}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Diff(dir, "WORKDIR", "", "", 0)
+	if err != nil {
+		t.Fatalf("Diff WORKDIR: %v", err)
+	}
+	byPath := map[string]*pb.GitFileChange{}
+	for _, f := range res.Files {
+		byPath[f.Path] = f
+	}
+	if len(res.Files) != 3 {
+		t.Fatalf("expected 3 untracked files, got %+v", res.Files)
+	}
+	u := byPath["u.txt"]
+	if u == nil || !u.Untracked || u.Additions != 2 || u.Deletions != 0 {
+		t.Fatalf("unexpected u.txt row: %+v", u)
+	}
+	for _, want := range []string{
+		"diff --git a/u.txt b/u.txt\n",
+		"new file mode 100644\n",
+		"--- /dev/null\n+++ b/u.txt\n",
+		"@@ -0,0 +1,2 @@\n",
+		"+hello\n",
+	} {
+		if !strings.Contains(res.Diff, want) {
+			t.Fatalf("patch missing %q:\n%s", want, res.Diff)
+		}
+	}
+	if !strings.Contains(res.Diff, "\\ No newline at end of file\n") {
+		t.Fatalf("expected the no-newline marker:\n%s", res.Diff)
+	}
+	if !strings.Contains(res.Diff, "Binary files /dev/null and b/bin.dat differ") {
+		t.Fatalf("expected the binary marker:\n%s", res.Diff)
+	}
+	if nl := byPath["nl.txt"]; nl == nil || nl.Additions != 1 {
+		t.Fatalf("expected nl.txt with 1 addition, got %+v", nl)
+	}
+	if total := res.Commit.Additions; total != 3 {
+		t.Fatalf("expected 3 total additions, got %d", total)
 	}
 }
 

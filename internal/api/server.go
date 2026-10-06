@@ -497,12 +497,13 @@ func (s *Server) GitDiff(ctx context.Context, req *connect.Request[pb.GitDiffReq
 	if req.Msg.Hash == "" {
 		return nil, invalid("hash is required")
 	}
-	var res *pb.GitDiffResult
-	if req.Msg.ContextLines > 0 {
-		res, err = gitlog.Diff(dir, req.Msg.Hash, req.Msg.Path, int(req.Msg.ContextLines))
-	} else {
-		res, err = gitlog.Diff(dir, req.Msg.Hash, req.Msg.Path)
+	// The bus's git status already knows repo state (is-repo, HEAD), so the
+	// diff resolves both without extra git processes.
+	st := s.Bus.Git(req.Msg.Project)
+	if st != nil && !st.GetIsRepo() {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("git: %s is not a git repository", dir))
 	}
+	res, err := gitlog.Diff(dir, req.Msg.Hash, req.Msg.Path, st.GetHeadHash(), int(req.Msg.ContextLines))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}

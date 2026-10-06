@@ -148,7 +148,7 @@ func TestRepoWatcherWithGitLogAndDiff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gitlog.Log failed: %v", err)
 	}
-	_, err = gitlog.Diff(tmpDir, "WORKDIR", "")
+	_, err = gitlog.Diff(tmpDir, "WORKDIR", "", "", 0)
 	if err != nil {
 		t.Fatalf("gitlog.Diff failed: %v", err)
 	}

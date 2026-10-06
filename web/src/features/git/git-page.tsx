@@ -256,7 +256,9 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
 
   const refsPanel = (header = true) => (
     <Show when={log.data}>
-      {(data) => <RefsPanel log={data()} selected={selected()} onSelect={(h) => select(h, "ref")} header={header} />}
+      {(data) => (
+        <RefsPanel project={props.project} log={data()} selected={selected()} onSelect={(h) => select(h, "ref")} header={header} />
+      )}
     </Show>
   );
 

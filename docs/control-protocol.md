@@ -90,6 +90,29 @@ Errors carry Connect codes, and clients switch on the code:
 | `FailedPrecondition` | Already or not running, config error, git failure, or a git operation already in progress. |
 | `Unavailable` | The daemon is shutting down. |
 
+## Git
+
+`GitLog` lists commits, branches, tags and stashes of a project's
+repository; `GitDiff` returns a commit's diff (`WORKDIR` = the uncommitted
+changes). `GitStage` stages or unstages paths and `GitCommit` commits the
+staged changes. Every local mutation bumps `GitStatus.change_seq`, so
+clients reload their cached logs and diffs.
+
+`GitStash` moves working tree changes in and out of the stash list:
+
+- `op = "push"` stashes the changes — staged and unstaged alike, all of them
+  or just `paths`, with untracked files when `include_untracked` is set
+  (ignored files are never stashed) — leaving a clean tree behind.
+- `op = "pop"` restores a stash's changes and removes the entry; on a
+  conflict the stash is kept and the call fails.
+- `op = "drop"` removes a stash entry without restoring anything.
+- `index` picks the stash (`stash@{n}`; empty = the newest). `message`
+  labels a pushed stash.
+
+`GitPush`, `GitPull` and `GitFetch` run at most one at a time per
+repository (`GitStatus.sync_operation` names the running one) and return
+git's output.
+
 ## Logs
 
 `Logs(project, sources[], run_offset, tail, before_seq, follow)` streams

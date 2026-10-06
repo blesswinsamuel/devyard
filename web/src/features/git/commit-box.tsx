@@ -1,17 +1,41 @@
 import { createEffect, Show } from "solid-js";
 import { createStore } from "solid-js/store";
-import { GitCommitHorizontal } from "lucide-solid";
+import { Archive, GitCommitHorizontal } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { Textarea } from "~/components/ui/textarea";
 import { shortcutKeys } from "~/lib/keyboard";
 import { gitCommitFocus, setGitCommitFocus } from "~/app/ui-state";
+import { getAction } from "~/data/actions";
+import { actionBlocked, actionPending, runAction } from "~/app/runtime";
 import { commitPending, commitStaged } from "./git-data";
 
 const commitKeys = shortcutKeys("mod+Enter").join("");
 
 /** Message drafts per project, kept while browsing other commits. */
 const [drafts, setDrafts] = createStore<Record<string, string>>({});
+
+/** Stash all changes through the action registry (shared with ⌘K). */
+function StashButton(props: { project: string }) {
+  const action = getAction("git.stash");
+  const target = () => ({ kind: "project" as const, project: props.project });
+  const pending = () => actionPending(action, target());
+  return (
+    <Button
+      variant="ghost"
+      size="xs"
+      class="ml-auto h-6 text-current hover:bg-background/60"
+      disabled={pending() || actionBlocked(action)}
+      aria-busy={pending() || undefined}
+      onClick={() => void runAction(action, target())}
+    >
+      <Show when={pending()} fallback={<Archive />}>
+        <Spinner />
+      </Show>
+      Stash
+    </Button>
+  );
+}
 
 export function CommitBox(props: { project: string; staged: number; unstaged: number }) {
   let textarea!: HTMLTextAreaElement;
@@ -58,6 +82,7 @@ export function CommitBox(props: { project: string; staged: number; unstaged: nu
         <span class="tabular text-2xs text-muted-foreground">
           {props.staged} staged · {props.unstaged} not staged
         </span>
+        <StashButton project={props.project} />
       </div>
       <div class="flex flex-col gap-2 @lg:flex-row @lg:items-stretch">
         <Textarea

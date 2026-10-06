@@ -209,3 +209,21 @@ export async function commitStaged(project: string, message: string): Promise<bo
   });
   return ok ?? false;
 }
+
+const stashKey = (project: string, op: "pop" | "drop", index: string) => `git.stash|${project}|${op}|${index}`;
+
+export const stashPending = (project: string, op: "pop" | "drop", index: string) =>
+  isPending(stashKey(project, op, index));
+
+/** Pops (restores and removes) or drops a stash entry. */
+export function stashEntry(project: string, op: "pop" | "drop", index: string): Promise<void> {
+  return withPending(stashKey(project, op, index), async () => {
+    try {
+      await api.gitStash({ project, op, index });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+      toast.success(op === "pop" ? `Popped ${index}` : `Dropped ${index}`);
+    } catch (err) {
+      toastFailure(`${op === "pop" ? "Pop" : "Drop"} ${index} failed`, err);
+    }
+  }).then(() => undefined);
+}

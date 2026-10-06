@@ -55,6 +55,7 @@ service DaemonService {
   rpc GitLog(GitLogRequest) returns (GitLogResponse);
   rpc GitDiff(GitDiffRequest) returns (GitDiffResponse);
   rpc GitStage(GitStageRequest) returns (GitStageResponse);
+  rpc GitStash(GitStashRequest) returns (GitStashResponse);
   rpc GitCommit(GitCommitRequest) returns (GitCommitResponse);
   rpc GitPush(GitPushRequest) returns (GitPushResponse);
   rpc GitPull(GitPullRequest) returns (GitPullResponse);
@@ -800,6 +801,23 @@ message GitStageRequest {
 }
 
 message GitStageResponse {}
+
+message GitStashRequest {
+  string project = 1;
+  // op: "push" (stash the working tree), "pop" (restore a stash and remove
+  // it) or "drop" (remove a stash).
+  string op = 2;
+  // push: stash only these paths (empty = all changes).
+  repeated string paths = 3;
+  // push: stash message (default "WIP on <branch>").
+  string message = 4;
+  // push: also stash untracked files. Ignored files are never stashed.
+  bool include_untracked = 5;
+  // pop/drop: which stash to use ("stash@{n}"); empty = the newest.
+  string index = 6;
+}
+
+message GitStashResponse {}
 
 message GitCommitRequest {
   string project = 1;

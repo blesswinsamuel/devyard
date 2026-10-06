@@ -5119,6 +5119,115 @@ export class GitStageResponse extends Message<GitStageResponse> {
 }
 
 /**
+ * @generated from message devyard.v1.GitStashRequest
+ */
+export class GitStashRequest extends Message<GitStashRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * op: "push" (stash the working tree), "pop" (restore a stash and remove
+   * it) or "drop" (remove a stash).
+   *
+   * @generated from field: string op = 2;
+   */
+  op = "";
+
+  /**
+   * push: stash only these paths (empty = all changes).
+   *
+   * @generated from field: repeated string paths = 3;
+   */
+  paths: string[] = [];
+
+  /**
+   * push: stash message (default "WIP on <branch>").
+   *
+   * @generated from field: string message = 4;
+   */
+  message = "";
+
+  /**
+   * push: also stash untracked files. Ignored files are never stashed.
+   *
+   * @generated from field: bool include_untracked = 5;
+   */
+  includeUntracked = false;
+
+  /**
+   * pop/drop: which stash to use ("stash@{n}"); empty = the newest.
+   *
+   * @generated from field: string index = 6;
+   */
+  index = "";
+
+  constructor(data?: PartialMessage<GitStashRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitStashRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "op", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "paths", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 4, name: "message", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "include_untracked", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 6, name: "index", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitStashRequest {
+    return new GitStashRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitStashRequest {
+    return new GitStashRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitStashRequest {
+    return new GitStashRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitStashRequest | PlainMessage<GitStashRequest> | undefined, b: GitStashRequest | PlainMessage<GitStashRequest> | undefined): boolean {
+    return proto3.util.equals(GitStashRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitStashResponse
+ */
+export class GitStashResponse extends Message<GitStashResponse> {
+  constructor(data?: PartialMessage<GitStashResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitStashResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitStashResponse {
+    return new GitStashResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitStashResponse {
+    return new GitStashResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitStashResponse {
+    return new GitStashResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitStashResponse | PlainMessage<GitStashResponse> | undefined, b: GitStashResponse | PlainMessage<GitStashResponse> | undefined): boolean {
+    return proto3.util.equals(GitStashResponse, a, b);
+  }
+}
+
+/**
  * @generated from message devyard.v1.GitCommitRequest
  */
 export class GitCommitRequest extends Message<GitCommitRequest> {

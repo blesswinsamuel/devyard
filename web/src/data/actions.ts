@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import {
+  Archive,
   ArrowDown,
   ArrowUp,
   CloudDownload,
@@ -469,6 +470,19 @@ export const ACTIONS: Action[] = [
     scope: "project",
     when: (c) => !!c.project && !!c.git?.isRepo && c.git.staged > 0,
     run: (c, env) => env.api.gitStage({ project: proj(c).id, stageAll: true, unstage: true }),
+  },
+  {
+    id: "git.stash",
+    label: "Stash changes",
+    title: (c) => `Stash changes in ${proj(c).id}`,
+    icon: Archive,
+    group: "git",
+    scope: "project",
+    when: (c) => !!c.project && !!c.git?.isRepo && c.git.staged + c.git.dirty + c.git.untracked > 0,
+    run: async (c, env) => {
+      await env.api.gitStash({ project: proj(c).id, op: "push", includeUntracked: true });
+      env.notify(`Stashed changes in ${proj(c).id}`, "Pop the stash from the refs panel to restore them.");
+    },
   },
   {
     id: "git.commit",

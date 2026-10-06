@@ -521,6 +521,28 @@ func (s *Server) GitStage(ctx context.Context, req *connect.Request[pb.GitStageR
 	return connect.NewResponse(&pb.GitStageResponse{}), nil
 }
 
+func (s *Server) GitStash(ctx context.Context, req *connect.Request[pb.GitStashRequest]) (*connect.Response[pb.GitStashResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	switch req.Msg.Op {
+	case "push":
+		err = gitlog.StashPush(dir, req.Msg.Paths, req.Msg.Message, req.Msg.IncludeUntracked)
+	case "pop":
+		err = gitlog.StashPop(dir, req.Msg.Index)
+	case "drop":
+		err = gitlog.StashDrop(dir, req.Msg.Index)
+	default:
+		return nil, invalid("op must be one of push, pop, drop")
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitStashResponse{}), nil
+}
+
 func (s *Server) GitCommit(ctx context.Context, req *connect.Request[pb.GitCommitRequest]) (*connect.Response[pb.GitCommitResponse], error) {
 	dir, err := s.gitDir(req.Msg.Project)
 	if err != nil {

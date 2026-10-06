@@ -268,6 +268,100 @@ func TestStageAndUnstage(t *testing.T) {
 	}
 }
 
+func TestStashPushPopDrop(t *testing.T) {
+	dir := initRepo(t)
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+	}
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", name, err)
+		}
+		return string(b)
+	}
+
+	if got := len(GetStashes(dir)); got != 0 {
+		t.Fatalf("expected no stashes in a fresh repo, got %d", got)
+	}
+
+	// Stash a mix of staged, unstaged and untracked changes.
+	write("a.txt", "stashed\n")
+	write("u.txt", "untracked\n")
+	if err := Stage(dir, "a.txt", false, false); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	if err := StashPush(dir, nil, "my work", true); err != nil {
+		t.Fatalf("StashPush: %v", err)
+	}
+	if checkUncommitted(dir) {
+		t.Fatal("expected a clean tree after StashPush with untracked")
+	}
+	stashes := GetStashes(dir)
+	if len(stashes) != 1 || stashes[0].Index != "stash@{0}" {
+		t.Fatalf("expected stash@{0}, got %+v", stashes)
+	}
+	if !strings.Contains(stashes[0].Name, "my work") {
+		t.Fatalf("stash message missing from name: %+v", stashes[0])
+	}
+
+	// Restore: both files are back and the stash entry is gone.
+	if err := StashPop(dir, ""); err != nil {
+		t.Fatalf("StashPop: %v", err)
+	}
+	if got := read("a.txt"); got != "stashed\n" {
+		t.Fatalf("a.txt not restored: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "u.txt")); err != nil {
+		t.Fatalf("untracked u.txt not restored: %v", err)
+	}
+	if stashes = GetStashes(dir); len(stashes) != 0 {
+		t.Fatalf("expected no stashes after pop, got %+v", stashes)
+	}
+
+	// Drop removes the entry without restoring anything.
+	if err := StashPush(dir, nil, "", false); err != nil {
+		t.Fatalf("StashPush: %v", err)
+	}
+	if err := StashDrop(dir, "stash@{0}"); err != nil {
+		t.Fatalf("StashDrop: %v", err)
+	}
+	if stashes = GetStashes(dir); len(stashes) != 0 {
+		t.Fatalf("expected no stashes after drop, got %+v", stashes)
+	}
+
+	// A pathspec stash takes only the named file; the rest stays.
+	write("a.txt", "one-mod\n")
+	write("b.txt", "two-mod\n")
+	if err := StashPush(dir, []string{"a.txt"}, "", false); err != nil {
+		t.Fatalf("StashPush paths: %v", err)
+	}
+	if got := read("a.txt"); got != "one\n" {
+		t.Fatalf("a.txt should be back at HEAD, got %q", got)
+	}
+	if got := read("b.txt"); got != "two-mod\n" {
+		t.Fatalf("b.txt should have stayed modified, got %q", got)
+	}
+	if err := StashDrop(dir, ""); err != nil {
+		t.Fatalf("StashDrop default index: %v", err)
+	}
+}
+
+func TestStashRejectsBadIndex(t *testing.T) {
+	dir := initRepo(t)
+	err := StashPop(dir, "--output=/tmp/x")
+	if err == nil || !strings.Contains(err.Error(), "invalid stash index") {
+		t.Fatalf("expected an invalid stash index error, got %v", err)
+	}
+	if err := StashDrop(dir, ""); err == nil {
+		t.Fatal("expected an error popping without stashes")
+	}
+}
+
 // newBareRemote creates a bare git repo to act as a remote for push/pull/fetch.
 func newBareRemote(t *testing.T) string {
 	t.Helper()

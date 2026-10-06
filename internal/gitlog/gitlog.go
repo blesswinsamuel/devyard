@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -813,6 +814,93 @@ func Commit(dir string, message string) error {
 		return fmt.Errorf("git commit: %s: %w", msg, err)
 	}
 	return nil
+}
+
+// stashIndexRe matches a stash reference as `git stash list` prints it.
+var stashIndexRe = regexp.MustCompile(`^stash@\{\d+\}$`)
+
+// stashTarget returns the stash to act on, defaulting to the newest.
+func stashTarget(index string) (string, error) {
+	if index == "" {
+		return "stash@{0}", nil
+	}
+	if !stashIndexRe.MatchString(index) {
+		return "", fmt.Errorf("git: invalid stash index %q", index)
+	}
+	return index, nil
+}
+
+// runStash runs a `git stash` subcommand in dir. op names the subcommand for
+// error messages.
+func runStash(dir, op string, args ...string) error {
+	cmd := exec.Command("git", append([]string{"-C", dir, "stash"}, args...)...)
+	setProcessGroup(cmd)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git stash %s: %s: %w", op, msg, err)
+	}
+	return nil
+}
+
+// StashPush stashes the working tree changes (staged and unstaged), all of
+// them or just paths. With includeUntracked, untracked files are stashed
+// too (ignored files are never stashed).
+func StashPush(dir string, paths []string, message string, includeUntracked bool) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	args := []string{"push"}
+	if includeUntracked {
+		args = append(args, "--include-untracked")
+	}
+	if strings.TrimSpace(message) != "" {
+		args = append(args, "--message", message)
+	}
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	return runStash(dir, "push", args...)
+}
+
+// StashPop restores a stash's changes into the working tree and removes the
+// stash entry (index empty = the newest, "stash@{n}" otherwise). On a
+// conflict the stash is kept and an error is returned.
+func StashPop(dir, index string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	stash, err := stashTarget(index)
+	if err != nil {
+		return err
+	}
+	return runStash(dir, "pop", "pop", stash)
+}
+
+// StashDrop removes a stash entry (index empty = the newest).
+func StashDrop(dir, index string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	stash, err := stashTarget(index)
+	if err != nil {
+		return err
+	}
+	return runStash(dir, "drop", "drop", stash)
 }
 
 // Push pushes the current branch to its upstream remote.

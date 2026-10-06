@@ -1,10 +1,13 @@
 import { createMemo, For, Show, type JSX } from "solid-js";
-import { Archive, ChevronRight, Cloud, GitBranch, Tag } from "lucide-solid";
+import { Archive, ArchiveRestore, ChevronRight, Cloud, GitBranch, Tag, Trash2 } from "lucide-solid";
+import { Button } from "~/components/ui/button";
+import { Spinner } from "~/components/ui/spinner";
+import { confirm } from "~/app/ui-state";
 import { createPersistedSignal } from "~/lib/persistence";
 import { formatRelative, now } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { AheadBehind, PaneHeader } from "./badges";
-import type { GitBranchView, GitLogView } from "./git-data";
+import { stashEntry, stashPending, type GitBranchView, type GitLogView, type GitStashView } from "./git-data";
 
 type SectionId = "branches" | "remotes" | "tags" | "stashes";
 
@@ -91,8 +94,86 @@ function BranchRow(props: { branch: GitBranchView; selected: boolean; onSelect: 
   );
 }
 
+/** A stash entry: pick it to inspect its commit; pop or drop it from here. */
+function StashRow(props: { project: string; stash: GitStashView; selected: boolean; onSelect: () => void }) {
+  const s = () => props.stash;
+  const pending = (op: "pop" | "drop") => stashPending(props.project, op, s().index);
+  const run = (op: "pop" | "drop") => void stashEntry(props.project, op, s().index);
+  const drop = async () => {
+    if (
+      await confirm({
+        title: `Drop ${s().index}?`,
+        description: "The stash is removed without restoring its changes. This cannot be undone.",
+        confirmLabel: "Drop stash",
+      })
+    )
+      run("drop");
+  };
+  return (
+    <div
+      role="button"
+      tabindex="0"
+      aria-current={props.selected || undefined}
+      title={`${s().index}: ${s().name}`}
+      class={cn(
+        "focus-ring group flex w-full min-w-0 cursor-pointer items-center gap-1.5 py-1 pr-3 pl-8 text-left",
+        props.selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
+      )}
+      onClick={props.onSelect}
+      onKeyDown={(e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          props.onSelect();
+        }
+      }}
+    >
+      <span class="flex min-w-0 flex-1 flex-col">
+        <span class="truncate text-xs">{s().name}</span>
+        <span class="truncate font-mono text-2xs text-muted-foreground">
+          {s().index} · {formatRelative(s().time, now())}
+        </span>
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+        aria-label={`Pop ${s().index}`}
+        title={`Pop ${s().index} (restore its changes and remove the entry)`}
+        disabled={pending("pop")}
+        tabindex="-1"
+        onClick={(e: MouseEvent) => {
+          e.stopPropagation();
+          run("pop");
+        }}
+      >
+        <Show when={pending("pop")} fallback={<ArchiveRestore />}>
+          <Spinner />
+        </Show>
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+        aria-label={`Drop ${s().index}`}
+        title={`Drop ${s().index} (remove the entry without restoring)`}
+        disabled={pending("drop")}
+        tabindex="-1"
+        onClick={(e: MouseEvent) => {
+          e.stopPropagation();
+          void drop();
+        }}
+      >
+        <Show when={pending("drop")} fallback={<Trash2 />}>
+          <Spinner />
+        </Show>
+      </Button>
+    </div>
+  );
+}
+
 /** Local branches, remotes (grouped by remote), tags and stashes; picking one selects its commit. */
 export function RefsPanel(props: {
+  project: string;
   log: GitLogView;
   selected: string | undefined;
   onSelect: (hash: string) => void;
@@ -202,18 +283,12 @@ export function RefsPanel(props: {
         >
           <For each={props.log.stashes}>
             {(s) => (
-              <RefButton
+              <StashRow
+                project={props.project}
+                stash={s}
                 selected={props.selected === s.hash}
-                title={`${s.index}: ${s.name}`}
-                onClick={() => props.onSelect(s.hash)}
-              >
-                <span class="flex min-w-0 flex-col">
-                  <span class="truncate text-xs">{s.name}</span>
-                  <span class="truncate font-mono text-2xs text-muted-foreground">
-                    {s.index} · {formatRelative(s.time, now())}
-                  </span>
-                </span>
-              </RefButton>
+                onSelect={() => props.onSelect(s.hash)}
+              />
             )}
           </For>
         </Section>

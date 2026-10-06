@@ -113,6 +113,67 @@ func TestGit_LogDiffStageCommit(t *testing.T) {
 	}
 }
 
+func TestGit_StashPushPopDrop(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "gstash")
+	p.Start()
+	d := sb.Daemon()
+	w := d.Watch(context.Background())
+	c := d.Client()
+	w.WaitFor(t, "clean repo", func(s harness.State) bool { return s.Git["gstash"].GetIsClean() })
+
+	p.WriteFile("README.md", "stashed\n")
+	p.WriteFile("untracked.txt", "u\n")
+	w.WaitFor(t, "dirty", func(s harness.State) bool { return !s.Git["gstash"].GetIsClean() })
+
+	_, err := c.GitStash(d.Ctx(), connect.NewRequest(&v1.GitStashRequest{
+		Project: "gstash", Op: "push", Message: "wip", IncludeUntracked: true,
+	}))
+	harness.NoError(t, err, "GitStash push")
+	w.WaitFor(t, "clean after stash", func(s harness.State) bool { return s.Git["gstash"].GetIsClean() })
+	log, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "gstash"}))
+	harness.NoError(t, err, "GitLog")
+	if stashes := log.Msg.GetStashes(); len(stashes) != 1 || !strings.Contains(stashes[0].GetName(), "wip") {
+		t.Fatalf("stash list after push: %v", stashes)
+	}
+
+	// Pop restores the changes and removes the entry.
+	_, err = c.GitStash(d.Ctx(), connect.NewRequest(&v1.GitStashRequest{Project: "gstash", Op: "pop", Index: "stash@{0}"}))
+	harness.NoError(t, err, "GitStash pop")
+	w.WaitFor(t, "dirty after pop", func(s harness.State) bool { return !s.Git["gstash"].GetIsClean() })
+	if b, err := os.ReadFile(p.Path("README.md")); err != nil || string(b) != "stashed\n" {
+		t.Fatalf("README.md after pop: %q %v", b, err)
+	}
+	if _, err := os.Stat(p.Path("untracked.txt")); err != nil {
+		t.Fatalf("untracked.txt not restored by pop: %v", err)
+	}
+	log, err = c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "gstash"}))
+	harness.NoError(t, err, "GitLog")
+	if stashes := log.Msg.GetStashes(); len(stashes) != 0 {
+		t.Fatalf("stash list after pop: %v", stashes)
+	}
+
+	// Drop removes a stash without restoring anything.
+	_, err = c.GitStash(d.Ctx(), connect.NewRequest(&v1.GitStashRequest{Project: "gstash", Op: "push", IncludeUntracked: true}))
+	harness.NoError(t, err, "GitStash push again")
+	st := w.WaitFor(t, "clean again", func(s harness.State) bool { return s.Git["gstash"].GetIsClean() })
+	seq := st.Git["gstash"].GetChangeSeq()
+	_, err = c.GitStash(d.Ctx(), connect.NewRequest(&v1.GitStashRequest{Project: "gstash", Op: "drop"}))
+	harness.NoError(t, err, "GitStash drop")
+	w.WaitFor(t, "drop reported", func(s harness.State) bool { return s.Git["gstash"].GetChangeSeq() > seq })
+	if got := sb.Git(p.Dir, "stash", "list"); got != "" {
+		t.Fatalf("expected no stash entries after drop, got %q", got)
+	}
+
+	// Unknown ops are rejected without touching the repository.
+	_, err = c.GitStash(d.Ctx(), connect.NewRequest(&v1.GitStashRequest{Project: "gstash", Op: "rewind"}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("expected InvalidArgument for op=rewind, got %v", err)
+	}
+}
+
 func TestGit_PushFetchPullLocalRemote(t *testing.T) {
 	t.Parallel()
 	requireGit(t)

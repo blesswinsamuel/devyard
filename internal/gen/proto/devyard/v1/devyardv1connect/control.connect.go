@@ -110,6 +110,8 @@ const (
 	DaemonServiceGitDiffProcedure = "/devyard.v1.DaemonService/GitDiff"
 	// DaemonServiceGitStageProcedure is the fully-qualified name of the DaemonService's GitStage RPC.
 	DaemonServiceGitStageProcedure = "/devyard.v1.DaemonService/GitStage"
+	// DaemonServiceGitStashProcedure is the fully-qualified name of the DaemonService's GitStash RPC.
+	DaemonServiceGitStashProcedure = "/devyard.v1.DaemonService/GitStash"
 	// DaemonServiceGitCommitProcedure is the fully-qualified name of the DaemonService's GitCommit RPC.
 	DaemonServiceGitCommitProcedure = "/devyard.v1.DaemonService/GitCommit"
 	// DaemonServiceGitPushProcedure is the fully-qualified name of the DaemonService's GitPush RPC.
@@ -159,6 +161,7 @@ type DaemonServiceClient interface {
 	GitLog(context.Context, *connect.Request[v1.GitLogRequest]) (*connect.Response[v1.GitLogResponse], error)
 	GitDiff(context.Context, *connect.Request[v1.GitDiffRequest]) (*connect.Response[v1.GitDiffResponse], error)
 	GitStage(context.Context, *connect.Request[v1.GitStageRequest]) (*connect.Response[v1.GitStageResponse], error)
+	GitStash(context.Context, *connect.Request[v1.GitStashRequest]) (*connect.Response[v1.GitStashResponse], error)
 	GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error)
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
@@ -356,6 +359,12 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitStage")),
 			connect.WithClientOptions(opts...),
 		),
+		gitStash: connect.NewClient[v1.GitStashRequest, v1.GitStashResponse](
+			httpClient,
+			baseURL+DaemonServiceGitStashProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitStash")),
+			connect.WithClientOptions(opts...),
+		),
 		gitCommit: connect.NewClient[v1.GitCommitRequest, v1.GitCommitResponse](
 			httpClient,
 			baseURL+DaemonServiceGitCommitProcedure,
@@ -415,6 +424,7 @@ type daemonServiceClient struct {
 	gitLog              *connect.Client[v1.GitLogRequest, v1.GitLogResponse]
 	gitDiff             *connect.Client[v1.GitDiffRequest, v1.GitDiffResponse]
 	gitStage            *connect.Client[v1.GitStageRequest, v1.GitStageResponse]
+	gitStash            *connect.Client[v1.GitStashRequest, v1.GitStashResponse]
 	gitCommit           *connect.Client[v1.GitCommitRequest, v1.GitCommitResponse]
 	gitPush             *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
 	gitPull             *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
@@ -571,6 +581,11 @@ func (c *daemonServiceClient) GitStage(ctx context.Context, req *connect.Request
 	return c.gitStage.CallUnary(ctx, req)
 }
 
+// GitStash calls devyard.v1.DaemonService.GitStash.
+func (c *daemonServiceClient) GitStash(ctx context.Context, req *connect.Request[v1.GitStashRequest]) (*connect.Response[v1.GitStashResponse], error) {
+	return c.gitStash.CallUnary(ctx, req)
+}
+
 // GitCommit calls devyard.v1.DaemonService.GitCommit.
 func (c *daemonServiceClient) GitCommit(ctx context.Context, req *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error) {
 	return c.gitCommit.CallUnary(ctx, req)
@@ -630,6 +645,7 @@ type DaemonServiceHandler interface {
 	GitLog(context.Context, *connect.Request[v1.GitLogRequest]) (*connect.Response[v1.GitLogResponse], error)
 	GitDiff(context.Context, *connect.Request[v1.GitDiffRequest]) (*connect.Response[v1.GitDiffResponse], error)
 	GitStage(context.Context, *connect.Request[v1.GitStageRequest]) (*connect.Response[v1.GitStageResponse], error)
+	GitStash(context.Context, *connect.Request[v1.GitStashRequest]) (*connect.Response[v1.GitStashResponse], error)
 	GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error)
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
@@ -823,6 +839,12 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitStage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	daemonServiceGitStashHandler := connect.NewUnaryHandler(
+		DaemonServiceGitStashProcedure,
+		svc.GitStash,
+		connect.WithSchema(daemonServiceMethods.ByName("GitStash")),
+		connect.WithHandlerOptions(opts...),
+	)
 	daemonServiceGitCommitHandler := connect.NewUnaryHandler(
 		DaemonServiceGitCommitProcedure,
 		svc.GitCommit,
@@ -909,6 +931,8 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGitDiffHandler.ServeHTTP(w, r)
 		case DaemonServiceGitStageProcedure:
 			daemonServiceGitStageHandler.ServeHTTP(w, r)
+		case DaemonServiceGitStashProcedure:
+			daemonServiceGitStashHandler.ServeHTTP(w, r)
 		case DaemonServiceGitCommitProcedure:
 			daemonServiceGitCommitHandler.ServeHTTP(w, r)
 		case DaemonServiceGitPushProcedure:
@@ -1044,6 +1068,10 @@ func (UnimplementedDaemonServiceHandler) GitDiff(context.Context, *connect.Reque
 
 func (UnimplementedDaemonServiceHandler) GitStage(context.Context, *connect.Request[v1.GitStageRequest]) (*connect.Response[v1.GitStageResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitStage is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitStash(context.Context, *connect.Request[v1.GitStashRequest]) (*connect.Response[v1.GitStashResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitStash is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) GitCommit(context.Context, *connect.Request[v1.GitCommitRequest]) (*connect.Response[v1.GitCommitResponse], error) {

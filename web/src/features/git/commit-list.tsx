@@ -1,11 +1,11 @@
 import { createEffect, For, on, Show, type JSX } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { ChevronsDown, Copy, GitBranchPlus, GitCommitHorizontal, Search, X } from "lucide-solid";
+import { ChevronsDown, Copy, GitBranchPlus, GitCommitHorizontal, Search, Tag, X } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
 import { Spinner } from "~/components/ui/spinner";
 import { copyText } from "~/components/copy-button";
-import { promptGitBranch } from "~/app/ui-state";
+import { promptGitBranch, promptGitTag } from "~/app/ui-state";
 import { formatRelative, now } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { PaneHeader, LineStats, RefBadge } from "./badges";
@@ -48,6 +48,7 @@ function CommitRow(props: {
       separated: true,
       onSelect: () => void promptGitBranch(props.project, props.commit.hash),
     },
+    { label: `Tag ${props.commit.short}…`, icon: Tag, onSelect: () => void promptGitTag(props.project, props.commit.hash) },
   ];
   const row = () => (
     <div

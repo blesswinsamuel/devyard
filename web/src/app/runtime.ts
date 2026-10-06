@@ -21,6 +21,7 @@ import { cycleTheme } from "~/lib/theme";
 import {
   confirm,
   promptGitBranch,
+  promptGitTag,
   promptTaskArgs,
   setAddProjectOpen,
   setGitCommitFocus,
@@ -50,6 +51,7 @@ const actionEnv: ActionEnv = {
     dockActions.pinLogs(project, service ? [{ kind: "service", name: service }] : [], service ?? `${project} · all`),
   promptTaskArgs,
   promptGitBranch,
+  promptGitTag,
   openAddProject: () => setAddProjectOpen(true),
   openShortcuts: () => setShortcutsOpen(true),
   openPalette: () => setPaletteOpen(true),

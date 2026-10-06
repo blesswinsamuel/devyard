@@ -578,6 +578,69 @@ func TestBranchCreate(t *testing.T) {
 	}
 }
 
+func TestBranchDelete(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "feature")
+
+	// The checked-out branch cannot be deleted.
+	if err := BranchDelete(dir, "main", false); err == nil {
+		t.Fatal("deleting the checked-out branch: expected error, got nil")
+	}
+	// An unmerged branch is refused unless forced.
+	gitRun(t, dir, "checkout", "-q", "-b", "work")
+	gitRun(t, dir, "commit", "-q", "--allow-empty", "-m", "work")
+	gitRun(t, dir, "checkout", "-q", "main")
+	if err := BranchDelete(dir, "work", false); err == nil {
+		t.Fatal("unmerged branch without force: expected error, got nil")
+	}
+	if err := BranchDelete(dir, "work", true); err != nil {
+		t.Fatalf("force delete: %v", err)
+	}
+	if refExists(dir, "refs/heads/work") {
+		t.Fatal("work still exists after force delete")
+	}
+	// A merged branch deletes without force; option-like names never reach git.
+	if err := BranchDelete(dir, "feature", false); err != nil {
+		t.Fatalf("delete merged branch: %v", err)
+	}
+	if err := BranchDelete(dir, "-D", true); err == nil {
+		t.Fatal("option-like branch name: expected error, got nil")
+	}
+}
+
+func TestTagCreateDelete(t *testing.T) {
+	dir := initRepo(t)
+	if err := TagCreate(dir, "v1.0.0", "", ""); err != nil {
+		t.Fatalf("TagCreate lightweight: %v", err)
+	}
+	if err := TagCreate(dir, "v2.0.0", "HEAD~1", "release two"); err != nil {
+		t.Fatalf("TagCreate annotated: %v", err)
+	}
+	if tags := GetTags(dir); len(tags) != 2 {
+		t.Fatalf("tags: %+v", tags)
+	}
+	if got := gitRun(t, dir, "cat-file", "-t", "v2.0.0"); got != "tag" {
+		t.Fatalf("v2.0.0 is a %q object, want an annotated tag", got)
+	}
+	if got, head := gitRun(t, dir, "rev-parse", "v1.0.0"), gitRun(t, dir, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("v1.0.0 points at %s, want HEAD %s", got, head)
+	}
+
+	if err := TagDelete(dir, "v1.0.0"); err != nil {
+		t.Fatalf("TagDelete: %v", err)
+	}
+	if tags := GetTags(dir); len(tags) != 1 {
+		t.Fatalf("tags after delete: %+v", tags)
+	}
+	// Invalid names and option-like targets are rejected.
+	if err := TagCreate(dir, "bad name", "", ""); err == nil {
+		t.Fatal("invalid tag name: expected error, got nil")
+	}
+	if err := TagCreate(dir, "v3", "--option", ""); err == nil {
+		t.Fatal("option-like target: expected error, got nil")
+	}
+}
+
 func TestRestore(t *testing.T) {
 	dir := initRepo(t)
 	write := func(name, content string) {

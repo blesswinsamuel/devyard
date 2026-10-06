@@ -41,9 +41,10 @@ What's done, what's planned, and where each item lives in the code.
   Host allowlist against DNS rebinding, and optionally by a password
   (`devyard auth set-password`, gates the API and terminals behind a login).
   (`internal/web`, `web/`)
-- **Git.** Status, log, diff, stage, commit (and amend), checkout and branch
-  create, stash (push/apply/pop/drop), discard changes, push/pull/fetch.
-  Remote operations are bounded by a timeout, and watchers handle shared
+- **Git.** Status, a paged log with per-file history, diff, stage, commit
+  (and amend), branch and tag management (checkout, create, delete, tags),
+  stash (push/apply/pop/drop), discard changes, push/pull/fetch. Remote
+  operations are bounded by a timeout, and watchers handle shared
   repositories. (`internal/gitlog`, `internal/gitstate`)
 - **Project list and live global config.** An ordered `projects` list (and
   `groups`) in the global config, edited by `add`, `project move|remove` and

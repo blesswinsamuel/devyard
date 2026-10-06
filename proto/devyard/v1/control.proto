@@ -62,6 +62,9 @@ service DaemonService {
   rpc GitFetch(GitFetchRequest) returns (GitFetchResponse);
   rpc GitCheckout(GitCheckoutRequest) returns (GitCheckoutResponse);
   rpc GitBranchCreate(GitBranchCreateRequest) returns (GitBranchCreateResponse);
+  rpc GitBranchDelete(GitBranchDeleteRequest) returns (GitBranchDeleteResponse);
+  rpc GitTagCreate(GitTagCreateRequest) returns (GitTagCreateResponse);
+  rpc GitTagDelete(GitTagDeleteRequest) returns (GitTagDeleteResponse);
   rpc GitRestore(GitRestoreRequest) returns (GitRestoreResponse);
 }
 
@@ -884,6 +887,33 @@ message GitBranchCreateRequest {
 }
 
 message GitBranchCreateResponse {}
+
+message GitBranchDeleteRequest {
+  string project = 1;
+  string name = 2;
+  // Delete even when the branch is not merged (git branch -D).
+  bool force = 3;
+}
+
+message GitBranchDeleteResponse {}
+
+message GitTagCreateRequest {
+  string project = 1;
+  string name = 2;
+  // A commit hash or ref to tag (empty = HEAD).
+  string target = 3;
+  // Annotated tag message (empty = a lightweight tag).
+  string message = 4;
+}
+
+message GitTagCreateResponse {}
+
+message GitTagDeleteRequest {
+  string project = 1;
+  string name = 2;
+}
+
+message GitTagDeleteResponse {}
 
 message GitRestoreRequest {
   string project = 1;

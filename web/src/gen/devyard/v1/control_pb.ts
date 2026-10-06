@@ -5728,6 +5728,252 @@ export class GitBranchCreateResponse extends Message<GitBranchCreateResponse> {
 }
 
 /**
+ * @generated from message devyard.v1.GitBranchDeleteRequest
+ */
+export class GitBranchDeleteRequest extends Message<GitBranchDeleteRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name = "";
+
+  /**
+   * Delete even when the branch is not merged (git branch -D).
+   *
+   * @generated from field: bool force = 3;
+   */
+  force = false;
+
+  constructor(data?: PartialMessage<GitBranchDeleteRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitBranchDeleteRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "force", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitBranchDeleteRequest {
+    return new GitBranchDeleteRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitBranchDeleteRequest {
+    return new GitBranchDeleteRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitBranchDeleteRequest {
+    return new GitBranchDeleteRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitBranchDeleteRequest | PlainMessage<GitBranchDeleteRequest> | undefined, b: GitBranchDeleteRequest | PlainMessage<GitBranchDeleteRequest> | undefined): boolean {
+    return proto3.util.equals(GitBranchDeleteRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitBranchDeleteResponse
+ */
+export class GitBranchDeleteResponse extends Message<GitBranchDeleteResponse> {
+  constructor(data?: PartialMessage<GitBranchDeleteResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitBranchDeleteResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitBranchDeleteResponse {
+    return new GitBranchDeleteResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitBranchDeleteResponse {
+    return new GitBranchDeleteResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitBranchDeleteResponse {
+    return new GitBranchDeleteResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitBranchDeleteResponse | PlainMessage<GitBranchDeleteResponse> | undefined, b: GitBranchDeleteResponse | PlainMessage<GitBranchDeleteResponse> | undefined): boolean {
+    return proto3.util.equals(GitBranchDeleteResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitTagCreateRequest
+ */
+export class GitTagCreateRequest extends Message<GitTagCreateRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name = "";
+
+  /**
+   * A commit hash or ref to tag (empty = HEAD).
+   *
+   * @generated from field: string target = 3;
+   */
+  target = "";
+
+  /**
+   * Annotated tag message (empty = a lightweight tag).
+   *
+   * @generated from field: string message = 4;
+   */
+  message = "";
+
+  constructor(data?: PartialMessage<GitTagCreateRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitTagCreateRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "target", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "message", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitTagCreateRequest {
+    return new GitTagCreateRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitTagCreateRequest {
+    return new GitTagCreateRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitTagCreateRequest {
+    return new GitTagCreateRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitTagCreateRequest | PlainMessage<GitTagCreateRequest> | undefined, b: GitTagCreateRequest | PlainMessage<GitTagCreateRequest> | undefined): boolean {
+    return proto3.util.equals(GitTagCreateRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitTagCreateResponse
+ */
+export class GitTagCreateResponse extends Message<GitTagCreateResponse> {
+  constructor(data?: PartialMessage<GitTagCreateResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitTagCreateResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitTagCreateResponse {
+    return new GitTagCreateResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitTagCreateResponse {
+    return new GitTagCreateResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitTagCreateResponse {
+    return new GitTagCreateResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitTagCreateResponse | PlainMessage<GitTagCreateResponse> | undefined, b: GitTagCreateResponse | PlainMessage<GitTagCreateResponse> | undefined): boolean {
+    return proto3.util.equals(GitTagCreateResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitTagDeleteRequest
+ */
+export class GitTagDeleteRequest extends Message<GitTagDeleteRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name = "";
+
+  constructor(data?: PartialMessage<GitTagDeleteRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitTagDeleteRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitTagDeleteRequest {
+    return new GitTagDeleteRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitTagDeleteRequest {
+    return new GitTagDeleteRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitTagDeleteRequest {
+    return new GitTagDeleteRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitTagDeleteRequest | PlainMessage<GitTagDeleteRequest> | undefined, b: GitTagDeleteRequest | PlainMessage<GitTagDeleteRequest> | undefined): boolean {
+    return proto3.util.equals(GitTagDeleteRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitTagDeleteResponse
+ */
+export class GitTagDeleteResponse extends Message<GitTagDeleteResponse> {
+  constructor(data?: PartialMessage<GitTagDeleteResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitTagDeleteResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitTagDeleteResponse {
+    return new GitTagDeleteResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitTagDeleteResponse {
+    return new GitTagDeleteResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitTagDeleteResponse {
+    return new GitTagDeleteResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitTagDeleteResponse | PlainMessage<GitTagDeleteResponse> | undefined, b: GitTagDeleteResponse | PlainMessage<GitTagDeleteResponse> | undefined): boolean {
+    return proto3.util.equals(GitTagDeleteResponse, a, b);
+  }
+}
+
+/**
  * @generated from message devyard.v1.GitRestoreRequest
  */
 export class GitRestoreRequest extends Message<GitRestoreRequest> {

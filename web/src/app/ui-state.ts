@@ -51,3 +51,18 @@ export function promptGitBranch(project: string, start = ""): Promise<boolean> {
   branchRequest()?.resolve(false);
   return new Promise((resolve) => setBranchRequest({ project, start, resolve }));
 }
+
+export interface TagRequest {
+  project: string;
+  /** Commit hash or ref to tag (empty = HEAD). */
+  target: string;
+  resolve: (created: boolean) => void;
+}
+
+export const [tagRequest, setTagRequest] = createSignal<TagRequest | null>(null);
+
+/** Opens the "New tag" dialog; resolves true once a tag was created. */
+export function promptGitTag(project: string, target = ""): Promise<boolean> {
+  tagRequest()?.resolve(false);
+  return new Promise((resolve) => setTagRequest({ project, target, resolve }));
+}

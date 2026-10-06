@@ -1,14 +1,25 @@
-import { createMemo, For, Show, type JSX } from "solid-js";
-import { Archive, ArchiveRestore, ChevronRight, Cloud, Copy, GitBranch, GitBranchPlus, Tag, Trash2 } from "lucide-solid";
+import { createMemo, createSignal, For, Show, type JSX } from "solid-js";
+import { Archive, ArchiveRestore, ChevronRight, Cloud, Copy, GitBranch, GitBranchPlus, Search, Tag, Trash2, X } from "lucide-solid";
 import { Button } from "~/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
 import { Spinner } from "~/components/ui/spinner";
 import { copyText } from "~/components/copy-button";
-import { confirm, promptGitBranch } from "~/app/ui-state";
+import { confirm, promptGitBranch, promptGitTag } from "~/app/ui-state";
 import { createPersistedSignal } from "~/lib/persistence";
 import { formatRelative, now } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { AheadBehind, PaneHeader } from "./badges";
-import { checkoutBranch, stashEntry, stashPending, type GitBranchView, type GitLogView, type GitStashView } from "./git-data";
+import {
+  checkoutBranch,
+  deleteBranch,
+  deleteTag,
+  stashEntry,
+  stashPending,
+  type GitBranchView,
+  type GitLogView,
+  type GitStashView,
+  type GitTagView,
+} from "./git-data";
 import { GitContextMenu, type GitMenuItem } from "./menu";
 
 type SectionId = "branches" | "remotes" | "tags" | "stashes";
@@ -75,10 +86,30 @@ function RefButton(props: { selected: boolean; title: string; onClick: () => voi
 
 function BranchRow(props: { project: string; branch: GitBranchView; selected: boolean; onSelect: () => void }) {
   const b = () => props.branch;
+  const remove = async (force: boolean) => {
+    const ok = await confirm({
+      title: `${force ? "Force delete" : "Delete"} branch ${b().name}?`,
+      description: force
+        ? `Deletes ${b().name} even when it holds unmerged commits; those commits are lost.`
+        : `Deletes the local branch ${b().name}. A branch with unmerged commits is refused — use Force delete then.`,
+      confirmLabel: force ? "Force delete" : "Delete branch",
+    });
+    if (ok) void deleteBranch(props.project, b().name, force);
+  };
   const items = (): GitMenuItem[] => [
-    // The active branch has nothing to check out.
-    ...(b().isActive ? [] : [{ label: "Checkout", icon: GitBranch, onSelect: () => void checkoutBranch(props.project, b().name) }]),
+    // The active branch has nothing to check out (or delete).
+    ...(b().isActive
+      ? []
+      : [
+          { label: "Checkout", icon: GitBranch, onSelect: () => void checkoutBranch(props.project, b().name) },
+        ]),
     { label: `New branch from ${b().name}…`, icon: GitBranchPlus, onSelect: () => void promptGitBranch(props.project, b().name) },
+    ...(b().isActive
+      ? []
+      : [
+          { label: "Delete branch…", icon: Trash2, destructive: true, separated: true, onSelect: () => void remove(false) },
+          { label: "Force delete…", icon: Trash2, destructive: true, onSelect: () => void remove(true) },
+        ]),
     { label: "Copy name", icon: Copy, separated: true, onSelect: () => void copyText(b().name) },
   ];
   return (
@@ -127,6 +158,32 @@ function RemoteBranchRow(props: {
         onClick={props.onSelect}
       >
         <span class="truncate font-mono text-xs">{props.short}</span>
+      </RefButton>
+    </GitContextMenu>
+  );
+}
+
+/** A tag: pick it to inspect its commit; delete it or copy its name. */
+function TagRow(props: { project: string; tag: GitTagView; hash: string; selected: boolean; onSelect: () => void }) {
+  const remove = async () => {
+    if (
+      await confirm({
+        title: `Delete tag ${props.tag.name}?`,
+        description: "The tag is removed; the commits it points at are kept. This cannot be undone.",
+        confirmLabel: "Delete tag",
+      })
+    )
+      void deleteTag(props.project, props.tag.name);
+  };
+  return (
+    <GitContextMenu
+      items={[
+        { label: "Delete tag…", icon: Trash2, destructive: true, onSelect: () => void remove() },
+        { label: "Copy name", icon: Copy, separated: true, onSelect: () => void copyText(props.tag.name) },
+      ]}
+    >
+      <RefButton selected={props.selected} title={`${props.tag.name} (${props.hash.slice(0, 7)})`} onClick={props.onSelect}>
+        <span class="truncate font-mono text-xs">{props.tag.name}</span>
       </RefButton>
     </GitContextMenu>
   );
@@ -224,11 +281,15 @@ export function RefsPanel(props: {
   onSelect: (hash: string) => void;
   header?: boolean;
 }) {
-  const local = createMemo(() => props.log.branches.filter((b) => !b.isRemote));
+  const [refQuery, setRefQuery] = createSignal("");
+  const q = () => refQuery().trim().toLowerCase();
+  const matches = (name: string) => !q() || name.toLowerCase().includes(q());
+
+  const local = createMemo(() => props.log.branches.filter((b) => !b.isRemote && matches(b.name)));
   const remotes = createMemo(() => {
     const groups = new Map<string, { name: string; short: string; hash: string }[]>();
     for (const b of props.log.branches) {
-      if (!b.isRemote) continue;
+      if (!b.isRemote || !matches(b.name)) continue;
       const slash = b.name.indexOf("/");
       const remote = slash > 0 ? b.name.slice(0, slash) : b.name;
       const list = groups.get(remote) ?? [];
@@ -237,7 +298,9 @@ export function RefsPanel(props: {
     }
     return [...groups].sort(([a], [b]) => a.localeCompare(b));
   });
-  const remoteCount = () => props.log.branches.filter((b) => b.isRemote).length;
+  const remoteCount = () => remotes().reduce((n, [, list]) => n + list.length, 0);
+  const tags = createMemo(() => props.log.tags.filter((t) => matches(t.name)));
+  const stashes = createMemo(() => props.log.stashes.filter((s) => matches(s.name)));
   // Annotated tags list the tag object's hash; the commit refs name the commit.
   const tagCommit = createMemo(() => {
     const map = new Map<string, string>();
@@ -252,6 +315,15 @@ export function RefsPanel(props: {
           <Button
             variant="ghost"
             size="icon-xs"
+            aria-label="New tag"
+            title="New tag…"
+            onClick={() => void promptGitTag(props.project)}
+          >
+            <Tag />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             aria-label="New branch"
             title="New branch…"
             onClick={() => void promptGitBranch(props.project)}
@@ -260,6 +332,29 @@ export function RefsPanel(props: {
           </Button>
         </PaneHeader>
       </Show>
+      <div class="shrink-0 border-b p-2">
+        <InputGroup class="h-7">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
+            placeholder="Filter refs"
+            aria-label="Filter refs"
+            value={refQuery()}
+            onInput={(e) => setRefQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setRefQuery("");
+            }}
+          />
+          <Show when={refQuery()}>
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton size="icon-xs" aria-label="Clear filter" onClick={() => setRefQuery("")}>
+                <X />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </Show>
+        </InputGroup>
+      </div>
       <div class="min-h-0 flex-1 overflow-y-auto py-1">
         <Section
           id="branches"
@@ -314,24 +409,18 @@ export function RefsPanel(props: {
             }}
           </For>
         </Section>
-        <Section
-          id="tags"
-          icon={<Tag class="size-3.5 text-warning" />}
-          title="Tags"
-          count={props.log.tags.length}
-          empty="No tags"
-        >
-          <For each={props.log.tags}>
+        <Section id="tags" icon={<Tag class="size-3.5 text-warning" />} title="Tags" count={tags().length} empty="No tags">
+          <For each={tags()}>
             {(t) => {
               const hash = () => tagCommit().get(t.name) ?? t.hash;
               return (
-                <RefButton
+                <TagRow
+                  project={props.project}
+                  tag={t}
+                  hash={hash()}
                   selected={props.selected === hash()}
-                  title={`${t.name} (${hash().slice(0, 7)})`}
-                  onClick={() => props.onSelect(hash())}
-                >
-                  <span class="truncate font-mono text-xs">{t.name}</span>
-                </RefButton>
+                  onSelect={() => props.onSelect(hash())}
+                />
               );
             }}
           </For>
@@ -340,10 +429,10 @@ export function RefsPanel(props: {
           id="stashes"
           icon={<Archive class="size-3.5" />}
           title="Stashes"
-          count={props.log.stashes.length}
+          count={stashes().length}
           empty="No stashes"
         >
-          <For each={props.log.stashes}>
+          <For each={stashes()}>
             {(s) => (
               <StashRow
                 project={props.project}

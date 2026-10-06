@@ -31,6 +31,7 @@ import {
   Square,
   SquareTerminal,
   SunMoon,
+  Tag,
   TextCursorInput,
   Trash2,
   Undo2,
@@ -88,6 +89,8 @@ export interface ActionEnv {
   openGitCommit(project: string): void;
   /** Opens the "New branch" dialog (start = branch name or hash, empty = HEAD). */
   promptGitBranch(project: string, start?: string): Promise<boolean>;
+  /** Opens the "New tag" dialog (target = commit hash or ref, empty = HEAD). */
+  promptGitTag(project: string, target?: string): Promise<boolean>;
   toggleSidebar(): void;
   toggleDock(): void;
   cycleTheme(): void;
@@ -465,6 +468,17 @@ export const ACTIONS: Action[] = [
     local: true,
     when: (c) => !!c.project && !!c.git?.isRepo,
     run: (c, env) => env.promptGitBranch(proj(c).id),
+  },
+  {
+    id: "git.tag-create",
+    label: "New tag…",
+    title: (c) => `Create a tag in ${proj(c).id}…`,
+    icon: Tag,
+    group: "git",
+    scope: "project",
+    local: true,
+    when: (c) => !!c.project && !!c.git?.isRepo,
+    run: (c, env) => env.promptGitTag(proj(c).id),
   },
   {
     id: "git.stage-all",

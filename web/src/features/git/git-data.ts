@@ -316,6 +316,51 @@ export function createBranch(project: string, name: string, start: string, check
   }).then((ok) => ok ?? false);
 }
 
+/** Deletes a local branch (force = discard its unmerged commits). */
+export function deleteBranch(project: string, name: string, force: boolean): Promise<void> {
+  return withPending(branchKey(project), async () => {
+    try {
+      await api.gitBranchDelete({ project, name, force });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+      toast.success(`Deleted branch ${name}`);
+    } catch (err) {
+      toastFailure(`Delete branch ${name} failed`, err);
+    }
+  }).then(() => undefined);
+}
+
+const tagKey = (project: string) => `git.tag|${project}`;
+
+export const tagPending = (project: string) => isPending(tagKey(project));
+
+/** Creates a tag at `target` (empty = HEAD); a message makes it annotated. */
+export function createTag(project: string, name: string, target: string, message: string): Promise<boolean> {
+  return withPending(tagKey(project), async () => {
+    try {
+      await api.gitTagCreate({ project, name, target, message });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+      toast.success(`Created tag ${name}`, { description: target || undefined });
+      return true;
+    } catch (err) {
+      toastFailure(`Create tag ${name} failed`, err);
+      return false;
+    }
+  }).then((ok) => ok ?? false);
+}
+
+/** Deletes a tag. */
+export function deleteTag(project: string, name: string): Promise<void> {
+  return withPending(tagKey(project), async () => {
+    try {
+      await api.gitTagDelete({ project, name });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+      toast.success(`Deleted tag ${name}`);
+    } catch (err) {
+      toastFailure(`Delete tag ${name} failed`, err);
+    }
+  }).then(() => undefined);
+}
+
 const restoreKey = (project: string, path: string) => `git.restore|${project}|${path}`;
 
 export const restorePending = (project: string, path: string) => isPending(restoreKey(project, path));

@@ -111,7 +111,10 @@ remote one (`origin/feature`) creates the local counterpart (`feature`)
 tracking the remote branch. Git refuses to switch when uncommitted changes
 would be overwritten, and when the local branch already exists.
 `GitBranchCreate` creates a branch at `start` (a branch name or commit
-hash; empty = HEAD), optionally checking it out. `GitRestore` discards
+hash; empty = HEAD), optionally checking it out. `GitBranchDelete` deletes
+a local branch — refused when it is unmerged, unless `force` — and
+`GitTagCreate` / `GitTagDelete` manage tags (a `message` makes the tag
+annotated, and `target` picks the commit). `GitRestore` discards
 local changes: with `path` just that path, with `all` every path. Tracked
 paths go back to HEAD (staged and unstaged changes alike) and untracked
 paths are deleted; ignored files are never touched.

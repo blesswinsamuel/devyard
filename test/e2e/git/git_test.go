@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -327,6 +328,75 @@ func TestGit_AmendAndMessageBody(t *testing.T) {
 	harness.NoError(t, err, "GitDiff")
 	if got := res.Msg.GetResult().GetCommit().GetBody(); got != "body line 1\nbody line 2" {
 		t.Fatalf("GitDiff body = %q, want \"body line 1\\nbody line 2\"", got)
+	}
+}
+
+func TestGit_BranchDeleteAndTags(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "grefs")
+	p.Start()
+	d := sb.Daemon()
+	c := d.Client()
+
+	branches := func() []string {
+		log, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "grefs"}))
+		harness.NoError(t, err, "GitLog")
+		var names []string
+		for _, b := range log.Msg.GetBranches() {
+			names = append(names, b.GetName())
+		}
+		return names
+	}
+	tags := func() []string {
+		log, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "grefs"}))
+		harness.NoError(t, err, "GitLog")
+		var names []string
+		for _, tg := range log.Msg.GetTags() {
+			names = append(names, tg.GetName())
+		}
+		return names
+	}
+
+	// A created branch can be deleted again; the checked-out one cannot.
+	_, err := c.GitBranchCreate(d.Ctx(), connect.NewRequest(&v1.GitBranchCreateRequest{Project: "grefs", Name: "feature"}))
+	harness.NoError(t, err, "GitBranchCreate")
+	if got := branches(); !slices.Contains(got, "feature") {
+		t.Fatalf("branches after create: %v", got)
+	}
+	_, err = c.GitBranchDelete(d.Ctx(), connect.NewRequest(&v1.GitBranchDeleteRequest{Project: "grefs", Name: "feature"}))
+	harness.NoError(t, err, "GitBranchDelete")
+	if got := branches(); slices.Contains(got, "feature") {
+		t.Fatalf("branch not deleted: %v", got)
+	}
+	_, err = c.GitBranchDelete(d.Ctx(), connect.NewRequest(&v1.GitBranchDeleteRequest{Project: "grefs", Name: "main"}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("deleting the checked-out branch: expected FailedPrecondition, got %v", err)
+	}
+
+	// Lightweight and annotated tags, then delete one.
+	_, err = c.GitTagCreate(d.Ctx(), connect.NewRequest(&v1.GitTagCreateRequest{Project: "grefs", Name: "v1.0.0"}))
+	harness.NoError(t, err, "GitTagCreate lightweight")
+	_, err = c.GitTagCreate(d.Ctx(), connect.NewRequest(&v1.GitTagCreateRequest{Project: "grefs", Name: "v2.0.0", Message: "release two"}))
+	harness.NoError(t, err, "GitTagCreate annotated")
+	if got := tags(); len(got) != 2 {
+		t.Fatalf("tags after create: %v", got)
+	}
+	_, err = c.GitTagDelete(d.Ctx(), connect.NewRequest(&v1.GitTagDeleteRequest{Project: "grefs", Name: "v1.0.0"}))
+	harness.NoError(t, err, "GitTagDelete")
+	if got := tags(); len(got) != 1 || got[0] != "v2.0.0" {
+		t.Fatalf("tags after delete: %v", got)
+	}
+
+	// Malformed names and empty input are rejected.
+	_, err = c.GitTagCreate(d.Ctx(), connect.NewRequest(&v1.GitTagCreateRequest{Project: "grefs", Name: "bad name"}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("invalid tag name: expected FailedPrecondition, got %v", err)
+	}
+	_, err = c.GitBranchDelete(d.Ctx(), connect.NewRequest(&v1.GitBranchDeleteRequest{Project: "grefs"}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("empty branch name: expected InvalidArgument, got %v", err)
 	}
 }
 

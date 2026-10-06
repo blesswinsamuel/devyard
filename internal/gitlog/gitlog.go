@@ -1228,6 +1228,84 @@ func BranchCreate(dir, name, start string, checkout bool) error {
 	return runGit(dir, args...)
 }
 
+// BranchDelete deletes a local branch. Without force git refuses to delete a
+// branch whose commits are not merged; force deletes anyway.
+func BranchDelete(dir, name string, force bool) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if err := validBranchName(dir, name); err != nil {
+		return err
+	}
+	flag := "-d"
+	if force {
+		flag = "-D"
+	}
+	return runGit(dir, "branch", flag, name)
+}
+
+// validTagName reports whether name is acceptable as a tag name (a valid ref
+// under refs/tags); option-like names are rejected outright.
+func validTagName(dir, name string) error {
+	if name == "" || strings.HasPrefix(name, "-") || strings.ContainsAny(name, "\x00\n\r\t") {
+		return fmt.Errorf("git: invalid tag name %q", name)
+	}
+	cmd := gitCmd(dir, "check-ref-format", "refs/tags/"+name)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git: %s", strings.TrimPrefix(msg, "fatal: "))
+	}
+	return nil
+}
+
+// TagCreate creates a tag at target (a commit hash or ref; empty = HEAD): an
+// annotated tag when message is set, a lightweight one otherwise.
+func TagCreate(dir, name, target, message string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if err := validTagName(dir, name); err != nil {
+		return err
+	}
+	if err := validRev(target); err != nil {
+		return err
+	}
+	args := []string{"tag"}
+	if strings.TrimSpace(message) != "" {
+		args = append(args, "-a", "-m", message)
+	}
+	args = append(args, name)
+	if target != "" {
+		args = append(args, target)
+	}
+	return runGit(dir, args...)
+}
+
+// TagDelete removes a tag.
+func TagDelete(dir, name string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if err := validTagName(dir, name); err != nil {
+		return err
+	}
+	return runGit(dir, "tag", "-d", name)
+}
+
 // pathSpec matches path wherever it sits in the repository: paths as the
 // porcelain formats report them (and so the dashboard's file lists) are
 // repository-relative, while plain pathspecs resolve against the working

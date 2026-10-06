@@ -126,12 +126,13 @@ describe("action registry", () => {
       ids(actionsFor(resolveContext({ kind: "project", project: "web" }, stateWith({ projects: [project()], git: [git(g)] })))).filter((id) =>
         id.startsWith("git."),
       );
-    expect(gitIds({})).toEqual(["git.fetch", "git.pull", "git.push", "git.branch-create"]);
+    expect(gitIds({})).toEqual(["git.fetch", "git.pull", "git.push", "git.branch-create", "git.tag-create"]);
     expect(gitIds({ dirty: 2, staged: 1 })).toEqual([
       "git.fetch",
       "git.pull",
       "git.push",
       "git.branch-create",
+      "git.tag-create",
       "git.stage-all",
       "git.unstage-all",
       "git.discard-all",
@@ -140,6 +141,7 @@ describe("action registry", () => {
     ]);
     expect(gitIds({ untracked: 1, syncOperation: "pull" })).toEqual([
       "git.branch-create",
+      "git.tag-create",
       "git.stage-all",
       "git.discard-all",
       "git.stash",
@@ -166,6 +168,7 @@ describe("action registry", () => {
       notify: vi.fn(),
       openGitCommit: vi.fn(),
       promptGitBranch: vi.fn().mockResolvedValue(true),
+      promptGitTag: vi.fn().mockResolvedValue(true),
     } as unknown as ActionEnv;
     const ctx = resolveContext({ kind: "project", project: "web" }, stateWith({ projects: [project()], git: [git({ staged: 1, dirty: 1 })] }));
     await getAction("git.fetch").run(ctx, env);
@@ -182,6 +185,8 @@ describe("action registry", () => {
     expect(env.notify).toHaveBeenLastCalledWith("Stashed changes in web", "Pop the stash from the refs panel to restore them.");
     await getAction("git.branch-create").run(ctx, env);
     expect(env.promptGitBranch).toHaveBeenCalledWith("web");
+    await getAction("git.tag-create").run(ctx, env);
+    expect(env.promptGitTag).toHaveBeenCalledWith("web");
     await getAction("git.commit").run(ctx, env);
     expect(env.openGitCommit).toHaveBeenCalledWith("web");
   });

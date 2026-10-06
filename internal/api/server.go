@@ -650,6 +650,51 @@ func (s *Server) GitBranchCreate(ctx context.Context, req *connect.Request[pb.Gi
 	return connect.NewResponse(&pb.GitBranchCreateResponse{}), nil
 }
 
+func (s *Server) GitBranchDelete(ctx context.Context, req *connect.Request[pb.GitBranchDeleteRequest]) (*connect.Response[pb.GitBranchDeleteResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Name == "" {
+		return nil, invalid("name is required")
+	}
+	if err := gitlog.BranchDelete(dir, req.Msg.Name, req.Msg.Force); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitBranchDeleteResponse{}), nil
+}
+
+func (s *Server) GitTagCreate(ctx context.Context, req *connect.Request[pb.GitTagCreateRequest]) (*connect.Response[pb.GitTagCreateResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Name == "" {
+		return nil, invalid("name is required")
+	}
+	if err := gitlog.TagCreate(dir, req.Msg.Name, req.Msg.Target, req.Msg.Message); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitTagCreateResponse{}), nil
+}
+
+func (s *Server) GitTagDelete(ctx context.Context, req *connect.Request[pb.GitTagDeleteRequest]) (*connect.Response[pb.GitTagDeleteResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Name == "" {
+		return nil, invalid("name is required")
+	}
+	if err := gitlog.TagDelete(dir, req.Msg.Name); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitTagDeleteResponse{}), nil
+}
+
 func (s *Server) GitRestore(ctx context.Context, req *connect.Request[pb.GitRestoreRequest]) (*connect.Response[pb.GitRestoreResponse], error) {
 	dir, err := s.gitDir(req.Msg.Project)
 	if err != nil {

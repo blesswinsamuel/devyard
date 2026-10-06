@@ -126,6 +126,15 @@ const (
 	// DaemonServiceGitBranchCreateProcedure is the fully-qualified name of the DaemonService's
 	// GitBranchCreate RPC.
 	DaemonServiceGitBranchCreateProcedure = "/devyard.v1.DaemonService/GitBranchCreate"
+	// DaemonServiceGitBranchDeleteProcedure is the fully-qualified name of the DaemonService's
+	// GitBranchDelete RPC.
+	DaemonServiceGitBranchDeleteProcedure = "/devyard.v1.DaemonService/GitBranchDelete"
+	// DaemonServiceGitTagCreateProcedure is the fully-qualified name of the DaemonService's
+	// GitTagCreate RPC.
+	DaemonServiceGitTagCreateProcedure = "/devyard.v1.DaemonService/GitTagCreate"
+	// DaemonServiceGitTagDeleteProcedure is the fully-qualified name of the DaemonService's
+	// GitTagDelete RPC.
+	DaemonServiceGitTagDeleteProcedure = "/devyard.v1.DaemonService/GitTagDelete"
 	// DaemonServiceGitRestoreProcedure is the fully-qualified name of the DaemonService's GitRestore
 	// RPC.
 	DaemonServiceGitRestoreProcedure = "/devyard.v1.DaemonService/GitRestore"
@@ -177,6 +186,9 @@ type DaemonServiceClient interface {
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
 	GitCheckout(context.Context, *connect.Request[v1.GitCheckoutRequest]) (*connect.Response[v1.GitCheckoutResponse], error)
 	GitBranchCreate(context.Context, *connect.Request[v1.GitBranchCreateRequest]) (*connect.Response[v1.GitBranchCreateResponse], error)
+	GitBranchDelete(context.Context, *connect.Request[v1.GitBranchDeleteRequest]) (*connect.Response[v1.GitBranchDeleteResponse], error)
+	GitTagCreate(context.Context, *connect.Request[v1.GitTagCreateRequest]) (*connect.Response[v1.GitTagCreateResponse], error)
+	GitTagDelete(context.Context, *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error)
 	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
 }
 
@@ -413,6 +425,24 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitBranchCreate")),
 			connect.WithClientOptions(opts...),
 		),
+		gitBranchDelete: connect.NewClient[v1.GitBranchDeleteRequest, v1.GitBranchDeleteResponse](
+			httpClient,
+			baseURL+DaemonServiceGitBranchDeleteProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitBranchDelete")),
+			connect.WithClientOptions(opts...),
+		),
+		gitTagCreate: connect.NewClient[v1.GitTagCreateRequest, v1.GitTagCreateResponse](
+			httpClient,
+			baseURL+DaemonServiceGitTagCreateProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitTagCreate")),
+			connect.WithClientOptions(opts...),
+		),
+		gitTagDelete: connect.NewClient[v1.GitTagDeleteRequest, v1.GitTagDeleteResponse](
+			httpClient,
+			baseURL+DaemonServiceGitTagDeleteProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitTagDelete")),
+			connect.WithClientOptions(opts...),
+		),
 		gitRestore: connect.NewClient[v1.GitRestoreRequest, v1.GitRestoreResponse](
 			httpClient,
 			baseURL+DaemonServiceGitRestoreProcedure,
@@ -461,6 +491,9 @@ type daemonServiceClient struct {
 	gitFetch            *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
 	gitCheckout         *connect.Client[v1.GitCheckoutRequest, v1.GitCheckoutResponse]
 	gitBranchCreate     *connect.Client[v1.GitBranchCreateRequest, v1.GitBranchCreateResponse]
+	gitBranchDelete     *connect.Client[v1.GitBranchDeleteRequest, v1.GitBranchDeleteResponse]
+	gitTagCreate        *connect.Client[v1.GitTagCreateRequest, v1.GitTagCreateResponse]
+	gitTagDelete        *connect.Client[v1.GitTagDeleteRequest, v1.GitTagDeleteResponse]
 	gitRestore          *connect.Client[v1.GitRestoreRequest, v1.GitRestoreResponse]
 }
 
@@ -649,6 +682,21 @@ func (c *daemonServiceClient) GitBranchCreate(ctx context.Context, req *connect.
 	return c.gitBranchCreate.CallUnary(ctx, req)
 }
 
+// GitBranchDelete calls devyard.v1.DaemonService.GitBranchDelete.
+func (c *daemonServiceClient) GitBranchDelete(ctx context.Context, req *connect.Request[v1.GitBranchDeleteRequest]) (*connect.Response[v1.GitBranchDeleteResponse], error) {
+	return c.gitBranchDelete.CallUnary(ctx, req)
+}
+
+// GitTagCreate calls devyard.v1.DaemonService.GitTagCreate.
+func (c *daemonServiceClient) GitTagCreate(ctx context.Context, req *connect.Request[v1.GitTagCreateRequest]) (*connect.Response[v1.GitTagCreateResponse], error) {
+	return c.gitTagCreate.CallUnary(ctx, req)
+}
+
+// GitTagDelete calls devyard.v1.DaemonService.GitTagDelete.
+func (c *daemonServiceClient) GitTagDelete(ctx context.Context, req *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error) {
+	return c.gitTagDelete.CallUnary(ctx, req)
+}
+
 // GitRestore calls devyard.v1.DaemonService.GitRestore.
 func (c *daemonServiceClient) GitRestore(ctx context.Context, req *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error) {
 	return c.gitRestore.CallUnary(ctx, req)
@@ -700,6 +748,9 @@ type DaemonServiceHandler interface {
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
 	GitCheckout(context.Context, *connect.Request[v1.GitCheckoutRequest]) (*connect.Response[v1.GitCheckoutResponse], error)
 	GitBranchCreate(context.Context, *connect.Request[v1.GitBranchCreateRequest]) (*connect.Response[v1.GitBranchCreateResponse], error)
+	GitBranchDelete(context.Context, *connect.Request[v1.GitBranchDeleteRequest]) (*connect.Response[v1.GitBranchDeleteResponse], error)
+	GitTagCreate(context.Context, *connect.Request[v1.GitTagCreateRequest]) (*connect.Response[v1.GitTagCreateResponse], error)
+	GitTagDelete(context.Context, *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error)
 	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
 }
 
@@ -932,6 +983,24 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitBranchCreate")),
 		connect.WithHandlerOptions(opts...),
 	)
+	daemonServiceGitBranchDeleteHandler := connect.NewUnaryHandler(
+		DaemonServiceGitBranchDeleteProcedure,
+		svc.GitBranchDelete,
+		connect.WithSchema(daemonServiceMethods.ByName("GitBranchDelete")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitTagCreateHandler := connect.NewUnaryHandler(
+		DaemonServiceGitTagCreateProcedure,
+		svc.GitTagCreate,
+		connect.WithSchema(daemonServiceMethods.ByName("GitTagCreate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitTagDeleteHandler := connect.NewUnaryHandler(
+		DaemonServiceGitTagDeleteProcedure,
+		svc.GitTagDelete,
+		connect.WithSchema(daemonServiceMethods.ByName("GitTagDelete")),
+		connect.WithHandlerOptions(opts...),
+	)
 	daemonServiceGitRestoreHandler := connect.NewUnaryHandler(
 		DaemonServiceGitRestoreProcedure,
 		svc.GitRestore,
@@ -1014,6 +1083,12 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGitCheckoutHandler.ServeHTTP(w, r)
 		case DaemonServiceGitBranchCreateProcedure:
 			daemonServiceGitBranchCreateHandler.ServeHTTP(w, r)
+		case DaemonServiceGitBranchDeleteProcedure:
+			daemonServiceGitBranchDeleteHandler.ServeHTTP(w, r)
+		case DaemonServiceGitTagCreateProcedure:
+			daemonServiceGitTagCreateHandler.ServeHTTP(w, r)
+		case DaemonServiceGitTagDeleteProcedure:
+			daemonServiceGitTagDeleteHandler.ServeHTTP(w, r)
 		case DaemonServiceGitRestoreProcedure:
 			daemonServiceGitRestoreHandler.ServeHTTP(w, r)
 		default:
@@ -1171,6 +1246,18 @@ func (UnimplementedDaemonServiceHandler) GitCheckout(context.Context, *connect.R
 
 func (UnimplementedDaemonServiceHandler) GitBranchCreate(context.Context, *connect.Request[v1.GitBranchCreateRequest]) (*connect.Response[v1.GitBranchCreateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitBranchCreate is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitBranchDelete(context.Context, *connect.Request[v1.GitBranchDeleteRequest]) (*connect.Response[v1.GitBranchDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitBranchDelete is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitTagCreate(context.Context, *connect.Request[v1.GitTagCreateRequest]) (*connect.Response[v1.GitTagCreateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitTagCreate is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitTagDelete(context.Context, *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitTagDelete is not implemented"))
 }
 
 func (UnimplementedDaemonServiceHandler) GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error) {

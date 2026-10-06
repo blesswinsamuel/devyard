@@ -47,6 +47,9 @@ type Server struct {
 	Sessions *sessions.Manager
 	Daemon   Daemon
 	Log      *slog.Logger
+
+	// gitDiffs memoizes immutable commit diffs; the zero value is ready.
+	gitDiffs gitDiffCache
 }
 
 var _ devyardv1connect.DaemonServiceHandler = (*Server)(nil)
@@ -503,7 +506,23 @@ func (s *Server) GitDiff(ctx context.Context, req *connect.Request[pb.GitDiffReq
 	if st != nil && !st.GetIsRepo() {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("git: %s is not a git repository", dir))
 	}
-	res, err := gitlog.Diff(dir, req.Msg.Hash, req.Msg.Path, st.GetHeadHash(), int(req.Msg.ContextLines))
+	ctxLines := int(req.Msg.ContextLines)
+	if ctxLines <= 0 {
+		ctxLines = 3
+	}
+	headHash := st.GetHeadHash()
+	// Working-tree diffs are mutable: never cached.
+	if req.Msg.Hash == "WORKDIR" {
+		res, err := gitlog.Diff(dir, req.Msg.Hash, req.Msg.Path, headHash, ctxLines)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+		}
+		return connect.NewResponse(&pb.GitDiffResponse{Result: res}), nil
+	}
+	key := gitDiffKey{dir: dir, hash: req.Msg.Hash, pathFilter: req.Msg.Path, headHash: headHash, ctxLines: ctxLines}
+	res, err := s.gitDiffs.getOrCompute(key, func() (*pb.GitDiffResult, error) {
+		return gitlog.Diff(dir, req.Msg.Hash, req.Msg.Path, headHash, ctxLines)
+	})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}

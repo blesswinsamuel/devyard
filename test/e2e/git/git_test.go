@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -55,7 +56,9 @@ func TestGit_StatusInWatchAndChangeSeq(t *testing.T) {
 	seq := st.Git["gstat"].GetChangeSeq()
 	p.WriteFile("README.md", "changed\n")
 	p.WriteFile("new.txt", "x\n")
-	w.WaitFor(t, "dirty + untracked reported", func(s harness.State) bool {
+	// Working-tree edits are only noticed by the tracker's poll: allow a
+	// full poll interval plus slack.
+	w.WaitForWithin(t, 20*time.Second, "dirty + untracked reported", func(s harness.State) bool {
 		g := s.Git["gstat"]
 		return g.GetDirty() >= 1 && g.GetUntracked() >= 1 && !g.GetIsClean() && g.GetChangeSeq() > seq
 	})
@@ -126,7 +129,7 @@ func TestGit_StashPushPopDrop(t *testing.T) {
 
 	p.WriteFile("README.md", "stashed\n")
 	p.WriteFile("untracked.txt", "u\n")
-	w.WaitFor(t, "dirty", func(s harness.State) bool { return !s.Git["gstash"].GetIsClean() })
+	w.WaitForWithin(t, 20*time.Second, "dirty", func(s harness.State) bool { return !s.Git["gstash"].GetIsClean() })
 
 	_, err := c.GitStash(d.Ctx(), connect.NewRequest(&v1.GitStashRequest{
 		Project: "gstash", Op: "push", Message: "wip", IncludeUntracked: true,
@@ -235,7 +238,8 @@ func TestLedger_O18_StoppedProjectStillWatched(t *testing.T) {
 	})
 	seq := st.Git["gstopped"].GetChangeSeq()
 	p.WriteFile("edit.txt", "x\n")
-	w.WaitFor(t, "change seen while stopped", func(s harness.State) bool {
+	// Only the poll notices edits to a stopped project's working tree.
+	w.WaitForWithin(t, 20*time.Second, "change seen while stopped", func(s harness.State) bool {
 		return s.Git["gstopped"].GetChangeSeq() > seq && s.Git["gstopped"].GetUntracked() >= 1
 	})
 }
@@ -267,7 +271,8 @@ func TestLedger_O18_SharedRepoBothProjectsNotified(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "shared.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	w.WaitFor(t, "both notified", func(s harness.State) bool {
+	// Only the poll notices working-tree edits shared by both projects.
+	w.WaitForWithin(t, 20*time.Second, "both notified", func(s harness.State) bool {
 		return s.Git["mono-a"].GetChangeSeq() > a && s.Git["mono-b"].GetChangeSeq() > b
 	})
 	// A new branch (new ref directory) is noticed.

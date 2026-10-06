@@ -28,6 +28,7 @@ type Tracker struct {
 
 	mu       sync.Mutex
 	dirs     map[string]string // project -> repo dir
+	roots    map[string]string // project -> repository root (cached for fingerprints)
 	seq      map[string]int64
 	syncOp   map[string]string
 	refresh  map[string]chan struct{}
@@ -42,6 +43,7 @@ func New(bus *events.Bus, log *slog.Logger) (*Tracker, error) {
 		bus:      bus,
 		log:      log,
 		dirs:     map[string]string{},
+		roots:    map[string]string{},
 		seq:      map[string]int64{},
 		syncOp:   map[string]string{},
 		refresh:  map[string]chan struct{}{},
@@ -65,6 +67,7 @@ func (t *Tracker) Track(project, configPath string) {
 		return
 	}
 	t.dirs[project] = dir
+	delete(t.roots, project) // re-resolved lazily for the new dir
 	ch := t.refresh[project]
 	if ch == nil {
 		ch = make(chan struct{}, 1)
@@ -84,6 +87,7 @@ func (t *Tracker) Untrack(project string) {
 	t.watcher.RemoveProject(project)
 	t.mu.Lock()
 	delete(t.dirs, project)
+	delete(t.roots, project)
 	if ch := t.refresh[project]; ch != nil {
 		close(ch)
 		delete(t.refresh, project)
@@ -113,9 +117,11 @@ func (t *Tracker) Changed(project string) {
 }
 
 // pollInterval is how often the working tree is fingerprinted. Watching
-// .git catches commits, branch switches and staging; plain file edits only
-// show up here.
-const pollInterval = 3 * time.Second
+// .git catches commits, branch switches and staging — and every interactive
+// git RPC (stage, commit, stash, push…) refreshes immediately — so the poll
+// only exists to notice plain working-tree edits. It costs one git process
+// per project per tick, hence the relaxed cadence.
+const pollInterval = 10 * time.Second
 
 func (t *Tracker) worker(project string, ch chan struct{}) {
 	defer t.wg.Done()
@@ -142,11 +148,23 @@ func (t *Tracker) worker(project string, ch chan struct{}) {
 }
 
 func (t *Tracker) fingerprint(project string) string {
-	dir, ok := t.Dir(project)
+	t.mu.Lock()
+	dir, ok := t.dirs[project]
+	root := t.roots[project]
+	t.mu.Unlock()
 	if !ok {
 		return ""
 	}
-	return gitlog.Fingerprint(dir)
+	if root == "" {
+		// Resolve the repository root once per project; fingerprints stat
+		// changed paths against it, and resolving on every poll would cost
+		// a second git process per tick.
+		root = gitlog.RepoRoot(dir)
+		t.mu.Lock()
+		t.roots[project] = root
+		t.mu.Unlock()
+	}
+	return gitlog.Fingerprint(dir, root)
 }
 
 func (t *Tracker) publish(project string, changed bool) {

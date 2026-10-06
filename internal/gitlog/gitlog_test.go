@@ -844,9 +844,31 @@ func TestParseShortstat(t *testing.T) {
 	}
 }
 
+// TestFingerprint covers the cached-root variant of Fingerprint: an
+// explicit root matches the resolved one, and edits move the fingerprint.
+func TestFingerprint(t *testing.T) {
+	dir := initRepo(t)
+	root := RepoRoot(dir)
+	if root == "" {
+		t.Fatalf("RepoRoot(%s) = empty", dir)
+	}
+	fp := Fingerprint(dir, root)
+	if fp == "" {
+		t.Fatal("expected a fingerprint")
+	}
+	if got := Fingerprint(dir, ""); got != fp {
+		t.Fatalf("explicit root %q and resolved root disagree: %s vs %s", root, fp, got)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "c.txt"), []byte("three\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Fingerprint(dir, root); got == fp {
+		t.Fatal("expected a working-tree edit to change the fingerprint")
+	}
+}
+
 func TestStatus(t *testing.T) {
 	dir := initRepo(t)
-
 	// Clean status
 	st, err := Status(dir)
 	if err != nil {

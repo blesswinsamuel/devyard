@@ -1179,8 +1179,10 @@ func Status(dir string) (*pb.GitStatus, error) {
 
 // Fingerprint summarizes the working tree: the porcelain status plus the
 // size and modification time of every changed path, so edits to files that
-// were already modified are noticed too. It returns "" for non-repos.
-func Fingerprint(dir string) string {
+// were already modified are noticed too. root is the repository root the
+// caller caches ("" to resolve it here); resolving it per call would cost a
+// git process on every poll. It returns "" for non-repos.
+func Fingerprint(dir, root string) string {
 	cmd := gitCmd(dir, "status", "--porcelain=v1", "-z", "--branch", "--untracked-files=normal")
 	out, err := cmd.Output()
 	if err != nil {
@@ -1189,7 +1191,9 @@ func Fingerprint(dir string) string {
 	h := sha256.New()
 	_, _ = h.Write(out)
 	// Porcelain paths are relative to the repository root.
-	root := RepoRoot(dir)
+	if root == "" {
+		root = RepoRoot(dir)
+	}
 	if root == "" {
 		root = dir
 	}

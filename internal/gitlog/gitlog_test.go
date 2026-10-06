@@ -116,11 +116,9 @@ func TestLog(t *testing.T) {
 	if len(commits[1].Parents) != 0 {
 		t.Fatalf("expected root commit to have no parents, got %+v", commits[1])
 	}
-	if commits[0].Additions != 1 || commits[0].Deletions != 0 || commits[0].FilesChanged != 1 {
-		t.Fatalf("expected commit[0] 1 add, 0 del, 1 file; got %+v", commits[0])
-	}
-	if commits[1].Additions != 1 || commits[1].Deletions != 0 || commits[1].FilesChanged != 1 {
-		t.Fatalf("expected commit[1] 1 add, 0 del, 1 file; got %+v", commits[1])
+	// Stats come from Diff, not from the log listing (no --shortstat).
+	if commits[0].Additions != 0 || commits[0].Deletions != 0 || commits[0].FilesChanged != 0 {
+		t.Fatalf("expected no per-commit stats in the log, got %+v", commits[0])
 	}
 }
 
@@ -201,6 +199,9 @@ func TestUncommittedAndCommit(t *testing.T) {
 	}
 	if commits[0].Hash != "WORKDIR" {
 		t.Fatalf("expected first commit to be WORKDIR, got %+v", commits[0])
+	}
+	if commits[0].FilesChanged != 1 {
+		t.Fatalf("expected the WORKDIR entry to count 1 changed file, got %+v", commits[0])
 	}
 
 	diffRes, err := Diff(dir, "WORKDIR", "", "", 0)
@@ -306,7 +307,7 @@ func TestStashPushPopDrop(t *testing.T) {
 	if err := StashPush(dir, nil, "my work", true); err != nil {
 		t.Fatalf("StashPush: %v", err)
 	}
-	if checkUncommitted(dir) {
+	if uncommittedCount(dir) > 0 {
 		t.Fatal("expected a clean tree after StashPush with untracked")
 	}
 	stashes := GetStashes(dir)
@@ -787,60 +788,6 @@ func TestDiffWorkdirUntrackedPatch(t *testing.T) {
 	}
 	if total := res.Commit.Additions; total != 3 {
 		t.Fatalf("expected 3 total additions, got %d", total)
-	}
-}
-
-func TestParseShortstat(t *testing.T) {
-	tests := []struct {
-		input     string
-		wantFiles int32
-		wantAdd   int32
-		wantDel   int32
-	}{
-		{
-			input:     " 8 files changed, 135 insertions(+), 32 deletions(-)",
-			wantFiles: 8,
-			wantAdd:   135,
-			wantDel:   32,
-		},
-		{
-			input:     " 1 file changed, 7 insertions(+), 12 deletions(-)",
-			wantFiles: 1,
-			wantAdd:   7,
-			wantDel:   12,
-		},
-		{
-			input:     " 1 file changed, 89 insertions(+)",
-			wantFiles: 1,
-			wantAdd:   89,
-			wantDel:   0,
-		},
-		{
-			input:     " 2 files changed, 19 deletions(-)",
-			wantFiles: 2,
-			wantAdd:   0,
-			wantDel:   19,
-		},
-		{
-			input:     " 3 files changed",
-			wantFiles: 3,
-			wantAdd:   0,
-			wantDel:   0,
-		},
-		{
-			input:     "",
-			wantFiles: 0,
-			wantAdd:   0,
-			wantDel:   0,
-		},
-	}
-
-	for _, tt := range tests {
-		fc, add, del := parseShortstat(tt.input)
-		if fc != tt.wantFiles || add != tt.wantAdd || del != tt.wantDel {
-			t.Errorf("parseShortstat(%q) = (%d, %d, %d); want (%d, %d, %d)",
-				tt.input, fc, add, del, tt.wantFiles, tt.wantAdd, tt.wantDel)
-		}
 	}
 }
 

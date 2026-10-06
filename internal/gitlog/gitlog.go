@@ -89,7 +89,7 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 
 	head := resolveHead(dir)
 	activeBranch := resolveActiveBranch(dir)
-	hasUncommitted := checkUncommitted(dir)
+	uncommitted := uncommittedCount(dir)
 
 	branches := GetBranches(dir, activeBranch)
 	tags := GetTags(dir)
@@ -98,13 +98,16 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 	// An empty repository (unborn branch) has no commits, so `git log` would
 	// fail with exit 128. Surface that as an empty log (or uncommitted changes) rather than an error.
 	if head == "" {
-		if hasUncommitted {
+		if uncommitted > 0 {
 			return []*pb.GitCommit{{
 				Hash:       "WORKDIR",
 				Short:      "WORKDIR",
 				Subject:    "Uncommitted Changes",
 				Author:     "Working Directory",
 				TimeUnixMs: time.Now().UnixMilli(),
+				// Staged, unstaged and untracked entries alike, counted by
+				// the status call above.
+				FilesChanged: int32(uncommitted),
 			}}, branches, tags, stashes, nil
 		}
 		return nil, branches, tags, stashes, nil
@@ -113,7 +116,9 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 	format := "\x1e%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%D"
 	// --date-order keeps children before parents even when timestamps
 	// tie; --decorate=full lets refs be classified by their full name.
-	cmd := gitCmd(dir, "log", "--all", "--date-order", "--decorate=full", "--shortstat", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
+	// No --shortstat: it tree-diffs every listed commit (the dominant cost
+	// of the whole log call); the selected commit's stats come from Diff.
+	cmd := gitCmd(dir, "log", "--all", "--date-order", "--decorate=full", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit))
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -154,17 +159,6 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 			}
 			c.Head = c.Hash == head
 
-			for _, l := range lines[1:] {
-				l = strings.TrimSpace(l)
-				if strings.Contains(l, "changed") {
-					fc, add, del := parseShortstat(l)
-					c.FilesChanged = fc
-					c.Additions = add
-					c.Deletions = del
-					break
-				}
-			}
-
 			if len(fields) >= 8 && fields[7] != "" {
 				c.Refs = parseDecorations(fields[7], activeBranch)
 			}
@@ -173,34 +167,19 @@ func Log(dir string) ([]*pb.GitCommit, []*pb.GitBranch, []*pb.GitTag, []*pb.GitS
 		}
 	}
 
-	if hasUncommitted {
+	if uncommitted > 0 {
 		workdirCommit := &pb.GitCommit{
 			Hash:       "WORKDIR",
 			Short:      "WORKDIR",
 			Subject:    "Uncommitted Changes",
 			Author:     "Working Directory",
 			TimeUnixMs: time.Now().UnixMilli(),
+			// Staged, unstaged and untracked entries alike, counted by the
+			// status call above; no extra git process per log view.
+			FilesChanged: int32(uncommitted),
 		}
 		if head != "" {
 			workdirCommit.Parents = []string{head}
-		}
-		cmdWorkdirStat := gitCmd(dir, "diff", "HEAD", "--shortstat")
-		var outWorkdirStat bytes.Buffer
-		cmdWorkdirStat.Stdout = &outWorkdirStat
-		if cmdWorkdirStat.Run() == nil {
-			fc, add, del := parseShortstat(outWorkdirStat.String())
-			workdirCommit.FilesChanged = fc
-			workdirCommit.Additions = add
-			workdirCommit.Deletions = del
-		}
-		// diff --shortstat ignores untracked files; count them too.
-		untracked := gitCmd(dir, "ls-files", "--others", "--exclude-standard", "-z")
-		if out, err := untracked.Output(); err == nil {
-			for _, f := range bytes.Split(out, []byte{0}) {
-				if len(f) > 0 {
-					workdirCommit.FilesChanged++
-				}
-			}
 		}
 		commits = append([]*pb.GitCommit{workdirCommit}, commits...)
 	}
@@ -244,29 +223,6 @@ func parseDecorations(decorations, activeBranch string) []*pb.GitRef {
 		}
 	}
 	return refs
-}
-
-func parseShortstat(s string) (filesChanged, additions, deletions int32) {
-	for _, part := range strings.Split(s, ",") {
-		part = strings.TrimSpace(part)
-		if strings.Contains(part, "file changed") || strings.Contains(part, "files changed") {
-			var n int32
-			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
-				filesChanged = n
-			}
-		} else if strings.Contains(part, "insertion") {
-			var n int32
-			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
-				additions = n
-			}
-		} else if strings.Contains(part, "deletion") {
-			var n int32
-			if _, err := fmt.Sscanf(part, "%d", &n); err == nil {
-				deletions = n
-			}
-		}
-	}
-	return filesChanged, additions, deletions
 }
 
 func resolveActiveBranch(dir string) string {
@@ -411,14 +367,23 @@ func GetStashes(dir string) []*pb.GitStash {
 	return stashes
 }
 
-func checkUncommitted(dir string) bool {
+// uncommittedCount counts the entries `git status --porcelain` reports:
+// staged, unstaged and untracked alike. It is the cheap source for the
+// WORKDIR pseudo-commit's file count.
+func uncommittedCount(dir string) int {
 	cmd := gitCmd(dir, "status", "--porcelain")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
-		return false
+		return 0
 	}
-	return len(bytes.TrimSpace(out.Bytes())) > 0
+	n := 0
+	for _, line := range strings.Split(out.String(), "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // fileStats are per-file +/− counters from --numstat.

@@ -778,6 +778,8 @@ message GitLogRequest {
   string project = 1;
   // Newest commits to skip (paging); 0 is the first page.
   int32 skip = 2;
+  // Only commits that touched this path (repository-relative); empty = all.
+  string path = 3;
 }
 
 message GitLogResponse {

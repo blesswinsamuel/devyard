@@ -1,5 +1,5 @@
 import { createMemo, For, Show, type JSX } from "solid-js";
-import { Copy, FileCode, Files, Minus, PanelRightClose, Plus, Search, Undo2, X } from "lucide-solid";
+import { Copy, FileCode, Files, History, Minus, PanelRightClose, Plus, Search, Undo2, X } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
 import { Spinner } from "~/components/ui/spinner";
@@ -46,6 +46,7 @@ function FileRow(props: {
   id?: string;
   onSelect: () => void;
   stage?: { unstage: boolean; project: string };
+  onHistory?: (path: string) => void;
 }) {
   const pending = () => !!props.stage && stagePending(props.stage.project, props.file.path, props.stage.unstage);
   const discard = async () => {
@@ -65,7 +66,14 @@ function FileRow(props: {
   };
   const items = (): GitMenuItem[] => {
     const stage = props.stage;
-    if (!stage) return [{ label: "Copy path", icon: Copy, onSelect: () => void copyText(props.file.path) }];
+    const history: GitMenuItem[] = props.onHistory
+      ? [{ label: "File history", icon: History, onSelect: () => props.onHistory!(props.file.path) }]
+      : [];
+    if (!stage)
+      return [
+        ...history,
+        { label: "Copy path", icon: Copy, separated: history.length > 0, onSelect: () => void copyText(props.file.path) },
+      ];
     return [
       {
         label: stage.unstage ? "Unstage" : "Stage",
@@ -74,6 +82,7 @@ function FileRow(props: {
         disabled: pending(),
       },
       { label: "Discard changes", icon: Undo2, destructive: true, onSelect: () => void discard(), disabled: pending() },
+      ...history.map((h) => ({ ...h, separated: true })),
       { label: "Copy path", icon: Copy, separated: true, onSelect: () => void copyText(props.file.path) },
     ];
   };
@@ -176,6 +185,7 @@ export function FileList(props: {
   onQuery: (q: string) => void;
   onSelect: (path: string | null, how: "click" | "key") => void;
   onOpen: () => void;
+  onHistory?: (path: string) => void;
   onHide?: () => void;
   header?: boolean;
 }) {
@@ -215,6 +225,7 @@ export function FileList(props: {
       selected={props.selected === file.path}
       onSelect={() => props.onSelect(file.path, "click")}
       stage={stage ? { ...stage, project: props.project } : undefined}
+      onHistory={props.onHistory}
     />
   );
 

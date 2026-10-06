@@ -7,6 +7,7 @@ import {
   Copy,
   FileCode,
   Files,
+  History,
   Minus,
   Plus,
   UnfoldVertical,
@@ -270,6 +271,8 @@ export interface DiffViewProps {
   isMerge: boolean;
   /** Extra toolbar controls (files pane toggle, mobile files tab). */
   toolbarEnd?: JSX.Element;
+  /** Opens the selected file's history (commits that touched it). */
+  onHistory?: (path: string) => void;
   scrollRef?: (el: HTMLDivElement) => void;
 }
 
@@ -313,6 +316,18 @@ export function DiffView(props: DiffViewProps) {
             <span class="flex min-w-0 items-center gap-1.5 px-1 text-2xs">
               <FileCode class="size-3.5 shrink-0 text-primary" />
               <span class="min-w-0 truncate font-mono">{path()}</span>
+              <Show when={props.onHistory}>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  class="h-6"
+                  title="History of this file"
+                  onClick={() => props.onHistory?.(path())}
+                >
+                  <History />
+                  History
+                </Button>
+              </Show>
               <Button variant="ghost" size="xs" class="h-6" onClick={() => props.onShowAll()}>
                 Show all
               </Button>

@@ -1,16 +1,18 @@
 import { createEffect, createMemo, createSignal, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
-import { useNavigate, useParams } from "@solidjs/router";
+import { useNavigate, useParams, useSearchParams } from "@solidjs/router";
 import {
   CloudDownload,
   Download,
   FileCode,
   GitBranch,
   GitCommitHorizontal,
+  History,
   PanelLeft,
   PanelRight,
   RefreshCw,
   TriangleAlert,
   Upload,
+  X,
 } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
@@ -141,8 +143,12 @@ function TabCount(props: { children: JSX.Element }) {
 
 function GitWorkspace(props: { project: string; git: GitEntity }) {
   const params = useParams<{ hash?: string }>();
+  const [searchParams] = useSearchParams<{ path?: string }>();
   const navigate = useNavigate();
-  const log = useGitLog(() => props.project);
+  // A `?path=` on the git route switches the log to that file's history
+  // (and narrows each commit's diff to it).
+  const historyPath = () => searchParams.path || undefined;
+  const log = useGitLog(() => props.project, historyPath);
   const view = createMemo(() => combineLog(log.data?.pages));
   const commits = () => view().commits;
   const [query, setQuery] = createSignal("");
@@ -157,7 +163,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   const [context, setContext] = createSignal<number>(DEFAULT_CONTEXT);
   createEffect(on(selected, () => (setFile(null), setContext(DEFAULT_CONTEXT)), { defer: true }));
 
-  const diff = useGitDiff(() => props.project, selected, context);
+  const diff = useGitDiff(() => props.project, selected, context, () => historyPath() ?? "");
   const files = () => diff.data?.files ?? [];
   const selectedFile = () => {
     const f = file();
@@ -173,12 +179,14 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
 
   // The working tree became clean (e.g. after a commit): show HEAD instead.
   createEffect(() => {
-    if (params.hash === WORKDIR && log.data && !log.isFetching && !commits().some((c) => c.hash === WORKDIR))
-      navigate(paths.git(props.project), { replace: true });
+    if (params.hash === WORKDIR && log.data && !log.isFetching && !commits().some((c) => c.hash === WORKDIR)) {
+      const p = historyPath();
+      navigate(p ? paths.gitHistory(props.project, p) : paths.git(props.project), { replace: true });
+    }
   });
 
   const select = (hash: string, how: "click" | "key" | "ref") => {
-    if (hash !== params.hash) navigate(paths.gitCommit(props.project, hash), { replace: how === "key" });
+    if (hash !== params.hash) navigate(paths.gitCommit(props.project, hash, historyPath()), { replace: how === "key" });
     if (!isWide()) {
       if (how === "click") setTab("diff");
       if (how === "ref") setTab("commits");
@@ -192,6 +200,11 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
     setFile(path);
     if (how === "click" && !isWide()) setTab("diff");
   };
+  const openHistory = (path: string) => {
+    navigate(paths.gitHistory(props.project, path));
+    if (!isWide()) setTab("commits");
+  };
+  const clearHistory = () => navigate(paths.git(props.project));
 
   // j/k anywhere on the page steps through commits; "/" searches them.
   const onWindowKey = (e: KeyboardEvent) => {
@@ -251,9 +264,35 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
       hasMore={view().hasMore}
       loadingMore={log.isFetchingNextPage}
       onLoadMore={() => void log.fetchNextPage()}
+      banner={
+        <Show when={historyPath()}>
+          {(p) => (
+            <div class="flex items-center gap-1.5 border-b bg-primary/5 px-3 py-1.5 text-2xs">
+              <History class="size-3.5 shrink-0 text-primary" />
+              <span class="min-w-0 truncate font-mono" title={p()}>
+                History of {p()}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                class="ml-auto shrink-0 text-muted-foreground"
+                aria-label="Clear file history"
+                title="Clear file history"
+                onClick={clearHistory}
+              >
+                <X />
+              </Button>
+            </div>
+          )}
+        </Show>
+      }
       status={
         <p class="px-3 py-8 text-center text-ui text-muted-foreground">
-          {commits().length ? `No commits match “${query()}”.` : "No commits yet."}
+          {commits().length
+            ? `No commits match “${query()}”.`
+            : historyPath()
+              ? "No commits touch this file."
+              : "No commits yet."}
         </p>
       }
     />
@@ -276,6 +315,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
       onQuery={setFileQuery}
       onSelect={selectFile}
       onOpen={openDiff}
+      onHistory={openHistory}
       onHide={isWide() ? () => setPanes({ ...panes(), files: false }) : undefined}
     />
   );
@@ -322,6 +362,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
               files={data().files}
               selectedFile={selectedFile()}
               onShowAll={() => setFile(null)}
+              onHistory={openHistory}
               contextLines={context()}
               onContextLines={setContext}
               loading={diff.isFetching}

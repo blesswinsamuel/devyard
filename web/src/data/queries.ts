@@ -17,10 +17,11 @@ export const queryKeys = {
   /** Prefix for every git query of a project; invalidated on change_seq. */
   git: (project: string) => ["git", project] as const,
   gitLog: (project: string) => ["git", project, "log"] as const,
+  gitLogPath: (project: string, path: string) => ["git", project, "log", path] as const,
   gitWorkdirDiff: (project: string, contextLines: number) => ["git", project, "workdir", contextLines] as const,
   /** Commits are immutable, so their diffs live outside the invalidated prefix. */
-  gitCommitDiff: (project: string, hash: string, contextLines: number) =>
-    ["git-commit", project, hash, contextLines] as const,
+  gitCommitDiff: (project: string, hash: string, contextLines: number, path = "") =>
+    ["git-commit", project, hash, contextLines, path] as const,
 };
 
 export function useDaemonInfo(opts: { refetchIntervalMs?: number } = {}) {

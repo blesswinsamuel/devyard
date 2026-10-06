@@ -485,7 +485,7 @@ func (s *Server) GitLog(ctx context.Context, req *connect.Request[pb.GitLogReque
 	if err != nil {
 		return nil, err
 	}
-	commits, branches, tags, stashes, hasMore, err := gitlog.Log(dir, int(req.Msg.Skip))
+	commits, branches, tags, stashes, hasMore, err := gitlog.Log(dir, int(req.Msg.Skip), req.Msg.Path)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}

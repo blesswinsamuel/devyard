@@ -8,7 +8,9 @@ export const paths = {
     `/projects/${enc(project)}/services/${enc(service)}${tab ? `?tab=${enc(tab)}` : ""}`,
   task: (project: string, task: string) => `/projects/${enc(project)}/tasks/${enc(task)}`,
   git: (project: string) => `/projects/${enc(project)}/git`,
-  gitCommit: (project: string, hash: string) => `/projects/${enc(project)}/git/commits/${enc(hash)}`,
+  gitHistory: (project: string, path: string) => `/projects/${enc(project)}/git?path=${enc(path)}`,
+  gitCommit: (project: string, hash: string, path?: string) =>
+    `/projects/${enc(project)}/git/commits/${enc(hash)}${path ? `?path=${enc(path)}` : ""}`,
 };
 
 export type RouteTarget =

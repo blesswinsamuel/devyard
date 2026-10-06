@@ -164,32 +164,46 @@ export function toDiff(hash: string, contextLines: number, r: GitDiffResult | un
   };
 }
 
-/** Commits, branches, tags and stashes; refetched whenever change_seq moves. */
-export function useGitLog(project: () => string) {
-  return useInfiniteQuery(() => ({
-    queryKey: queryKeys.gitLog(project()),
-    queryFn: async ({ pageParam, signal }: { pageParam: number; signal: AbortSignal }) =>
-      toLog(await api.gitLog({ project: project(), skip: pageParam }, { signal })),
-    initialPageParam: 0,
-    // Skip past every real commit already loaded; WORKDIR is page-local.
-    getNextPageParam: (last: GitLogPage, pages: GitLogPage[]) =>
-      last.hasMore ? pages.reduce((n, p) => n + p.commits.filter((c) => c.hash !== WORKDIR).length, 0) : undefined,
-  }));
+/**
+ * Commits, branches, tags and stashes; refetched whenever change_seq moves.
+ * With `path`, only the commits that touched that file are listed (its
+ * history), and the WORKDIR pseudo-commit is absent.
+ */
+export function useGitLog(project: () => string, path: () => string | undefined = () => undefined) {
+  return useInfiniteQuery(() => {
+    const p = path();
+    return {
+      queryKey: p ? queryKeys.gitLogPath(project(), p) : queryKeys.gitLog(project()),
+      queryFn: async ({ pageParam, signal }: { pageParam: number; signal: AbortSignal }) =>
+        toLog(await api.gitLog({ project: project(), skip: pageParam, path: p ?? "" }, { signal })),
+      initialPageParam: 0,
+      // Skip past every real commit already loaded; WORKDIR is page-local.
+      getNextPageParam: (last: GitLogPage, pages: GitLogPage[]) =>
+        last.hasMore ? pages.reduce((n, p) => n + p.commits.filter((c) => c.hash !== WORKDIR).length, 0) : undefined,
+    };
+  });
 }
 
 /**
  * The diff of one commit, or of the working tree for WORKDIR. While context
- * lines change, the previous diff of the same commit stays on screen.
+ * lines change, the previous diff of the same commit stays on screen. A
+ * `path` narrows a commit's diff to one file (its history view).
  */
-export function useGitDiff(project: () => string, hash: () => string | undefined, contextLines: () => number) {
+export function useGitDiff(
+  project: () => string,
+  hash: () => string | undefined,
+  contextLines: () => number,
+  path: () => string = () => "",
+) {
   return useQuery(() => {
     const h = hash() ?? "";
     const ctx = contextLines();
+    const p = path();
     const workdir = h === WORKDIR;
     return {
-      queryKey: workdir ? queryKeys.gitWorkdirDiff(project(), ctx) : queryKeys.gitCommitDiff(project(), h, ctx),
+      queryKey: workdir ? queryKeys.gitWorkdirDiff(project(), ctx) : queryKeys.gitCommitDiff(project(), h, ctx, p),
       queryFn: async ({ signal }: { signal: AbortSignal }) =>
-        toDiff(h, ctx, (await api.gitDiff({ project: project(), hash: h, contextLines: ctx }, { signal })).result),
+        toDiff(h, ctx, (await api.gitDiff({ project: project(), hash: h, contextLines: ctx, path: p }, { signal })).result),
       enabled: !!h,
       // Commits are immutable (cache forever); the working tree is refetched
       // on change_seq bumps, so a short staleness window only saves tab

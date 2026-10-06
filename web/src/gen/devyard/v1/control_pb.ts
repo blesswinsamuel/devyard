@@ -4864,6 +4864,13 @@ export class GitLogRequest extends Message<GitLogRequest> {
    */
   skip = 0;
 
+  /**
+   * Only commits that touched this path (repository-relative); empty = all.
+   *
+   * @generated from field: string path = 3;
+   */
+  path = "";
+
   constructor(data?: PartialMessage<GitLogRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -4874,6 +4881,7 @@ export class GitLogRequest extends Message<GitLogRequest> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "skip", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 3, name: "path", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitLogRequest {

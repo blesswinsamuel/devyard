@@ -127,6 +127,8 @@ export function CommitList(props: {
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
+  /** Extra content above the search box (e.g. the file-history chip). */
+  banner?: JSX.Element;
   /** Pane title row (off inside mobile tabs, which already name the pane). */
   header?: boolean;
   status?: JSX.Element;
@@ -179,6 +181,7 @@ export function CommitList(props: {
           </Show>
         </PaneHeader>
       </Show>
+      {props.banner}
       <div class="shrink-0 border-b p-2">
         <InputGroup class="h-7">
           <InputGroupAddon>

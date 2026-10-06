@@ -79,7 +79,7 @@ func TestLog(t *testing.T) {
 	if !IsRepo(dir) {
 		t.Fatalf("IsRepo(%s) = false, want true", dir)
 	}
-	commits, branches, tags, stashes, _, err := Log(dir, 0)
+	commits, branches, tags, stashes, _, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestLogNotARepo(t *testing.T) {
 	if IsRepo(dir) {
 		t.Fatalf("IsRepo(%s) = true for non-repo", dir)
 	}
-	if _, _, _, _, _, err := Log(dir, 0); err == nil {
+	if _, _, _, _, _, err := Log(dir, 0, ""); err == nil {
 		t.Fatalf("Log on non-repo dir: expected error, got nil")
 	}
 }
@@ -140,7 +140,7 @@ func TestLogEmptyRepo(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("git init: %v", err)
 	}
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log on empty repo: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestLogPaging(t *testing.T) {
 		gitRun(t, dir, "commit", "-q", "--allow-empty", "-m", fmt.Sprintf("commit %d", i))
 	}
 
-	first, _, _, _, more, err := Log(dir, 0)
+	first, _, _, _, more, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log page 0: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestLogPaging(t *testing.T) {
 		t.Fatalf("page 0 head = %q", first[0].Subject)
 	}
 
-	second, _, _, _, more, err := Log(dir, CommitLimit)
+	second, _, _, _, more, err := Log(dir, CommitLimit, "")
 	if err != nil {
 		t.Fatalf("Log page 1: %v", err)
 	}
@@ -192,14 +192,14 @@ func TestLogPaging(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "w.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	first, _, _, _, _, err = Log(dir, 0)
+	first, _, _, _, _, err = Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log dirty page 0: %v", err)
 	}
 	if first[0].Hash != "WORKDIR" {
 		t.Fatalf("first page should lead with WORKDIR, got %s", first[0].Hash)
 	}
-	second, _, _, _, _, err = Log(dir, CommitLimit)
+	second, _, _, _, _, err = Log(dir, CommitLimit, "")
 	if err != nil {
 		t.Fatalf("Log dirty page 1: %v", err)
 	}
@@ -210,9 +210,39 @@ func TestLogPaging(t *testing.T) {
 	}
 }
 
+func TestLogPathFilter(t *testing.T) {
+	// initRepo's "first commit" touches a.txt, "second commit" touches b.txt.
+	dir := initRepo(t)
+
+	commits, _, _, _, _, err := Log(dir, 0, "a.txt")
+	if err != nil {
+		t.Fatalf("Log a.txt: %v", err)
+	}
+	if len(commits) != 1 || commits[0].Subject != "first commit" {
+		t.Fatalf("history of a.txt: %+v", commits)
+	}
+
+	// Uncommitted changes never show up in a path-filtered history.
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	commits, _, _, _, _, err = Log(dir, 0, "a.txt")
+	if err != nil {
+		t.Fatalf("Log dirty a.txt: %v", err)
+	}
+	if len(commits) != 1 {
+		t.Fatalf("dirty history of a.txt: %+v", commits)
+	}
+	for _, c := range commits {
+		if c.Hash == "WORKDIR" {
+			t.Fatal("WORKDIR must not appear in a path-filtered log")
+		}
+	}
+}
+
 func TestDiff(t *testing.T) {
 	dir := initRepo(t)
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log failed: %v", err)
 	}
@@ -252,7 +282,7 @@ func TestUncommittedAndCommit(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -285,7 +315,7 @@ func TestUncommittedAndCommit(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	commitsAfter, _, _, _, _, err := Log(dir, 0)
+	commitsAfter, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log after commit: %v", err)
 	}
@@ -627,7 +657,7 @@ func TestAmend(t *testing.T) {
 	if err := Amend(dir, "second commit, amended"); err != nil {
 		t.Fatalf("Amend: %v", err)
 	}
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -645,7 +675,7 @@ func TestAmend(t *testing.T) {
 	if err := Amend(dir, ""); err != nil {
 		t.Fatalf("Amend --no-edit: %v", err)
 	}
-	commits, _, _, _, _, err = Log(dir, 0)
+	commits, _, _, _, _, err = Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -661,7 +691,7 @@ func TestDiffBody(t *testing.T) {
 	dir := initRepo(t)
 	gitRun(t, dir, "commit", "-q", "--allow-empty", "-m", "subject line", "-m", "body line 1", "-m", "body line 2")
 
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -772,7 +802,7 @@ func TestPushPullFetch(t *testing.T) {
 	}
 
 	// Confirmed by the log having three commits now.
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -833,7 +863,7 @@ func TestLogDoesNotModifyIndex(t *testing.T) {
 	}
 
 	// Run Log
-	if _, _, _, _, _, err := Log(dir, 0); err != nil {
+	if _, _, _, _, _, err := Log(dir, 0, ""); err != nil {
 		t.Fatalf("Log: %v", err)
 	}
 
@@ -887,7 +917,7 @@ func TestDiffRenameStats(t *testing.T) {
 	run("-C", dir, "add", "-A")
 	run("commit", "-q", "-m", "rename")
 
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log: %v", err)
 	}
@@ -926,7 +956,7 @@ func TestDiffContextLines(t *testing.T) {
 	}
 	run("commit", "-qam", "eleven")
 
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log: %v", err)
 	}
@@ -951,7 +981,7 @@ func TestDiffContextLines(t *testing.T) {
 // with a non-matching pathspec prints nothing at all).
 func TestDiffPathFilter(t *testing.T) {
 	dir := initRepo(t)
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log: %v", err)
 	}
@@ -1003,7 +1033,7 @@ func TestDiffMerge(t *testing.T) {
 	run("commit", "-qm", "mainline")
 	run("merge", "-q", "--no-edit", "side")
 
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log: %v", err)
 	}
@@ -1036,7 +1066,7 @@ func TestDiffBinary(t *testing.T) {
 	if err := Commit(dir, "binary"); err != nil {
 		t.Fatal(err)
 	}
-	commits, _, _, _, _, err := Log(dir, 0)
+	commits, _, _, _, _, err := Log(dir, 0, "")
 	if err != nil || len(commits) == 0 {
 		t.Fatalf("Log: %v", err)
 	}

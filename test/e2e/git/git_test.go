@@ -364,6 +364,44 @@ func TestGit_LogPaging(t *testing.T) {
 	}
 }
 
+func TestGit_LogPathHistory(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "ghistory") // "initial" touches README.md
+	p.Start()
+	d := sb.Daemon()
+	c := d.Client()
+
+	// An unrelated file, then a README change.
+	p.WriteFile("other.txt", "o\n")
+	sb.Git(p.Dir, "add", "-A")
+	sb.Git(p.Dir, "commit", "-q", "-m", "add other")
+	p.WriteFile("README.md", "hello again\n")
+	sb.Git(p.Dir, "add", "-A")
+	sb.Git(p.Dir, "commit", "-q", "-m", "readme change")
+
+	log, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "ghistory", Path: "README.md"}))
+	harness.NoError(t, err, "GitLog path")
+	var subjects []string
+	for _, cm := range log.Msg.GetCommits() {
+		subjects = append(subjects, cm.GetSubject())
+	}
+	if strings.Join(subjects, ",") != "readme change,initial" {
+		t.Fatalf("history of README.md: %v", subjects)
+	}
+
+	// Uncommitted changes do not appear in a file's history.
+	p.WriteFile("README.md", "dirty\n")
+	log, err = c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "ghistory", Path: "README.md"}))
+	harness.NoError(t, err, "GitLog dirty path")
+	for _, cm := range log.Msg.GetCommits() {
+		if cm.GetHash() == "WORKDIR" {
+			t.Fatal("WORKDIR appeared in a path-filtered log")
+		}
+	}
+}
+
 func TestGit_PushFetchPullLocalRemote(t *testing.T) {
 	t.Parallel()
 	requireGit(t)

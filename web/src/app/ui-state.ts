@@ -36,3 +36,18 @@ export function promptTaskArgs(task: TaskEntity): Promise<string[] | null> {
   argsRequest()?.resolve(null);
   return new Promise((resolve) => setArgsRequest({ task, resolve }));
 }
+
+export interface BranchRequest {
+  project: string;
+  /** Branch name or commit hash to start from (empty = HEAD). */
+  start: string;
+  resolve: (created: boolean) => void;
+}
+
+export const [branchRequest, setBranchRequest] = createSignal<BranchRequest | null>(null);
+
+/** Opens the "New branch" dialog; resolves true once a branch was created. */
+export function promptGitBranch(project: string, start = ""): Promise<boolean> {
+  branchRequest()?.resolve(false);
+  return new Promise((resolve) => setBranchRequest({ project, start, resolve }));
+}

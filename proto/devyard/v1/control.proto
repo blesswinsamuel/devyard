@@ -60,6 +60,9 @@ service DaemonService {
   rpc GitPush(GitPushRequest) returns (GitPushResponse);
   rpc GitPull(GitPullRequest) returns (GitPullResponse);
   rpc GitFetch(GitFetchRequest) returns (GitFetchResponse);
+  rpc GitCheckout(GitCheckoutRequest) returns (GitCheckoutResponse);
+  rpc GitBranchCreate(GitBranchCreateRequest) returns (GitBranchCreateResponse);
+  rpc GitRestore(GitRestoreRequest) returns (GitRestoreResponse);
 }
 
 // -----------------------------------------------------------------------------
@@ -750,6 +753,7 @@ message GitCommit {
   int32 additions = 10;
   int32 deletions = 11;
   int32 files_changed = 12;
+  // The message body below the subject; filled by GitDiff, empty in GitLog.
   string body = 13;
 }
 
@@ -804,8 +808,8 @@ message GitStageResponse {}
 
 message GitStashRequest {
   string project = 1;
-  // op: "push" (stash the working tree), "pop" (restore a stash and remove
-  // it) or "drop" (remove a stash).
+  // op: "push" (stash the working tree), "apply" (restore a stash and keep
+  // it), "pop" (restore a stash and remove it) or "drop" (remove a stash).
   string op = 2;
   // push: stash only these paths (empty = all changes).
   repeated string paths = 3;
@@ -813,7 +817,7 @@ message GitStashRequest {
   string message = 4;
   // push: also stash untracked files. Ignored files are never stashed.
   bool include_untracked = 5;
-  // pop/drop: which stash to use ("stash@{n}"); empty = the newest.
+  // pop/apply/drop: which stash to use ("stash@{n}"); empty = the newest.
   string index = 6;
 }
 
@@ -822,6 +826,10 @@ message GitStashResponse {}
 message GitCommitRequest {
   string project = 1;
   string message = 2;
+  // Amend HEAD instead of creating a commit: staged changes are folded into
+  // HEAD and message replaces its message. An empty message keeps HEAD's
+  // message.
+  bool amend = 3;
 }
 
 message GitCommitResponse {}
@@ -849,3 +857,36 @@ message GitFetchRequest {
 message GitFetchResponse {
   string output = 1;
 }
+
+message GitCheckoutRequest {
+  string project = 1;
+  // A local branch name, or a remote branch ("origin/feature") whose local
+  // counterpart is created tracking it. Uncommitted changes keep git from
+  // switching when they would be overwritten.
+  string branch = 2;
+}
+
+message GitCheckoutResponse {}
+
+message GitBranchCreateRequest {
+  string project = 1;
+  string name = 2;
+  // A branch name or commit hash to start from (empty = HEAD).
+  string start = 3;
+  // Check the new branch out immediately.
+  bool checkout = 4;
+}
+
+message GitBranchCreateResponse {}
+
+message GitRestoreRequest {
+  string project = 1;
+  // Restore this path to its committed state: staged and unstaged changes
+  // are discarded and untracked files deleted (ignored files are kept).
+  // Paths are repository-relative, as in GitDiff.
+  string path = 2;
+  // Restore every path of the project's directory.
+  bool all = 3;
+}
+
+message GitRestoreResponse {}

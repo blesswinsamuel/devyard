@@ -549,12 +549,14 @@ func (s *Server) GitStash(ctx context.Context, req *connect.Request[pb.GitStashR
 	switch req.Msg.Op {
 	case "push":
 		err = gitlog.StashPush(dir, req.Msg.Paths, req.Msg.Message, req.Msg.IncludeUntracked)
+	case "apply":
+		err = gitlog.StashApply(dir, req.Msg.Index)
 	case "pop":
 		err = gitlog.StashPop(dir, req.Msg.Index)
 	case "drop":
 		err = gitlog.StashDrop(dir, req.Msg.Index)
 	default:
-		return nil, invalid("op must be one of push, pop, drop")
+		return nil, invalid("op must be one of push, apply, pop, drop")
 	}
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
@@ -568,7 +570,12 @@ func (s *Server) GitCommit(ctx context.Context, req *connect.Request[pb.GitCommi
 	if err != nil {
 		return nil, err
 	}
-	if err := gitlog.Commit(dir, req.Msg.Message); err != nil {
+	if req.Msg.Amend {
+		err = gitlog.Amend(dir, req.Msg.Message)
+	} else {
+		err = gitlog.Commit(dir, req.Msg.Message)
+	}
+	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	s.Git.Changed(req.Msg.Project)
@@ -611,4 +618,49 @@ func (s *Server) GitFetch(ctx context.Context, req *connect.Request[pb.GitFetchR
 		return nil, err
 	}
 	return connect.NewResponse(&pb.GitFetchResponse{Output: out}), nil
+}
+
+func (s *Server) GitCheckout(ctx context.Context, req *connect.Request[pb.GitCheckoutRequest]) (*connect.Response[pb.GitCheckoutResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Branch == "" {
+		return nil, invalid("branch is required")
+	}
+	if err := gitlog.Checkout(dir, req.Msg.Branch); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitCheckoutResponse{}), nil
+}
+
+func (s *Server) GitBranchCreate(ctx context.Context, req *connect.Request[pb.GitBranchCreateRequest]) (*connect.Response[pb.GitBranchCreateResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Name == "" {
+		return nil, invalid("name is required")
+	}
+	if err := gitlog.BranchCreate(dir, req.Msg.Name, req.Msg.Start, req.Msg.Checkout); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitBranchCreateResponse{}), nil
+}
+
+func (s *Server) GitRestore(ctx context.Context, req *connect.Request[pb.GitRestoreRequest]) (*connect.Response[pb.GitRestoreResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Path == "" && !req.Msg.All {
+		return nil, invalid("path or all is required")
+	}
+	if err := gitlog.Restore(dir, req.Msg.Path, req.Msg.All); err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	s.Git.Changed(req.Msg.Project)
+	return connect.NewResponse(&pb.GitRestoreResponse{}), nil
 }

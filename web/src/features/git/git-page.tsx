@@ -235,6 +235,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   // ------------------------------------------------------------------ panes
   const commitList = () => (
     <CommitList
+      project={props.project}
       header={isWide()}
       commits={filtered()}
       total={commits().length}

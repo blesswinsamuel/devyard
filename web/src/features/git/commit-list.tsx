@@ -1,13 +1,16 @@
 import { createEffect, For, on, Show, type JSX } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { GitCommitHorizontal, Search, X } from "lucide-solid";
+import { Copy, GitBranchPlus, GitCommitHorizontal, Search, X } from "lucide-solid";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
+import { copyText } from "~/components/copy-button";
+import { promptGitBranch } from "~/app/ui-state";
 import { formatRelative, now } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { PaneHeader, LineStats, RefBadge } from "./badges";
 import { WORKDIR, type GitCommitView } from "./git-data";
 import type { CommitGraphInfo } from "./graph";
 import { GraphCell } from "./graph-cell";
+import { GitContextMenu, type GitMenuItem } from "./menu";
 import { listKey } from "./nav";
 
 /** Fixed row height (px): rows are two lines, so the graph segments line up. */
@@ -26,6 +29,7 @@ const rowId = (hash: string) => `git-commit-${hash}`;
 
 function CommitRow(props: {
   commit: GitCommitView;
+  project: string;
   info: CommitGraphInfo | undefined;
   columns: number;
   showGraph: boolean;
@@ -34,7 +38,16 @@ function CommitRow(props: {
 }) {
   const workdir = () => props.commit.hash === WORKDIR;
   const detached = () => !props.commit.refs.some((r) => r.type === "branch" && r.isActive);
-  return (
+  const menu = (): GitMenuItem[] => [
+    { label: "Copy hash", icon: Copy, onSelect: () => void copyText(props.commit.hash) },
+    {
+      label: `New branch at ${props.commit.short}…`,
+      icon: GitBranchPlus,
+      separated: true,
+      onSelect: () => void promptGitBranch(props.project, props.commit.hash),
+    },
+  ];
+  const row = () => (
     <div
       id={rowId(props.commit.hash)}
       role="option"
@@ -86,9 +99,17 @@ function CommitRow(props: {
       </div>
     </div>
   );
+  return (
+    <Show when={!workdir()} fallback={row()}>
+      <GitContextMenu class="h-full" items={menu()}>
+        {row()}
+      </GitContextMenu>
+    </Show>
+  );
 }
 
 export function CommitList(props: {
+  project: string;
   commits: GitCommitView[];
   /** Commits before filtering (for the count). */
   total: number;
@@ -206,6 +227,7 @@ export function CommitList(props: {
                       >
                         <CommitRow
                           commit={commit()}
+                          project={props.project}
                           info={props.graph.get(commit().hash)}
                           columns={props.columns}
                           showGraph={!filtering()}

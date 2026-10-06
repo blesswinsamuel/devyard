@@ -94,15 +94,29 @@ Errors carry Connect codes, and clients switch on the code:
 
 `GitLog` lists commits, branches, tags and stashes of a project's
 repository; `GitDiff` returns a commit's diff (`WORKDIR` = the uncommitted
-changes). `GitStage` stages or unstages paths and `GitCommit` commits the
-staged changes. Every local mutation bumps `GitStatus.change_seq`, so
-clients reload their cached logs and diffs.
+changes) and resolves the full commit message: `subject` is the first line
+and `body` the rest (`GitLog` leaves `body` empty). `GitStage` stages or
+unstages paths, and `GitCommit` commits the staged changes or — with
+`amend` — folds them into HEAD. `amend` with a `message` replaces HEAD's
+message; with an empty one it keeps it. Every local mutation bumps
+`GitStatus.change_seq`, so clients reload their cached logs and diffs.
+
+`GitCheckout` checks out a branch: a local name switches to it, while a
+remote one (`origin/feature`) creates the local counterpart (`feature`)
+tracking the remote branch. Git refuses to switch when uncommitted changes
+would be overwritten, and when the local branch already exists.
+`GitBranchCreate` creates a branch at `start` (a branch name or commit
+hash; empty = HEAD), optionally checking it out. `GitRestore` discards
+local changes: with `path` just that path, with `all` every path. Tracked
+paths go back to HEAD (staged and unstaged changes alike) and untracked
+paths are deleted; ignored files are never touched.
 
 `GitStash` moves working tree changes in and out of the stash list:
 
 - `op = "push"` stashes the changes — staged and unstaged alike, all of them
   or just `paths`, with untracked files when `include_untracked` is set
   (ignored files are never stashed) — leaving a clean tree behind.
+- `op = "apply"` restores a stash's changes and keeps the entry.
 - `op = "pop"` restores a stash's changes and removes the entry; on a
   conflict the stash is kept and the call fails.
 - `op = "drop"` removes a stash entry without restoring anything.

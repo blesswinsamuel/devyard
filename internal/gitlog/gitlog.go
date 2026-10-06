@@ -455,7 +455,7 @@ func Diff(dir, hash, pathFilter, headHash string, ctxLines int) (*pb.GitDiffResu
 		}
 	}
 
-	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s"
+	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%b\x1e"
 	args := []string{"show", "--raw", "--numstat", "--patch", fmt.Sprintf("-U%d", ctxLines), fmt.Sprintf("--pretty=format:%s", format)}
 	if pathFilter != "" {
 		args = append(args, "--", pathFilter)
@@ -483,20 +483,17 @@ func Diff(dir, hash, pathFilter, headHash string, ctxLines int) (*pb.GitDiffResu
 		return &pb.GitDiffResult{Commit: commit}, nil
 	}
 
-	// The metadata line comes first, then the machine-readable --raw and
-	// --numstat lines; the patch starts at its first header line.
-	newline := strings.IndexByte(text, '\n')
-	if newline < 0 {
-		newline = len(text)
+	// The metadata region ends at its \x1e terminator (the message body may
+	// span lines); the machine-readable raw and numstat lines follow it.
+	end := strings.IndexByte(text, '\x1e')
+	if end < 0 {
+		return nil, fmt.Errorf("git: invalid commit metadata output")
 	}
-	commit, err := commitFromMeta(strings.Split(text[:newline], "\x1f"), headHash)
+	commit, err := commitFromMeta(text[:end], headHash)
 	if err != nil {
 		return nil, err
 	}
-	rest := ""
-	if newline < len(text) {
-		rest = text[newline+1:]
-	}
+	rest := strings.TrimPrefix(text[end+1:], "\n")
 	machine, patch := rest, ""
 	if start := patchStart(rest); start >= 0 {
 		machine, patch = rest[:start], rest[start:]
@@ -669,10 +666,12 @@ func parseNumstat(text string) map[string]fileStats {
 	return stats
 }
 
-// commitFromMeta builds a commit from the fields of the pretty format
-// "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s".
-func commitFromMeta(fields []string, headHash string) (*pb.GitCommit, error) {
-	if len(fields) < 7 {
+// commitFromMeta builds a commit from the metadata region of the pretty
+// format "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%b": the fields up to
+// and including the subject, then the message body, which may span lines.
+func commitFromMeta(meta, headHash string) (*pb.GitCommit, error) {
+	fields := strings.Split(meta, "\x1f")
+	if len(fields) < 8 {
 		return nil, fmt.Errorf("git: invalid commit metadata output")
 	}
 	t, _ := time.Parse(time.RFC3339, fields[4])
@@ -688,13 +687,16 @@ func commitFromMeta(fields []string, headHash string) (*pb.GitCommit, error) {
 	if parents := fields[5]; parents != "" {
 		c.Parents = strings.Fields(parents)
 	}
+	if body := strings.TrimSpace(strings.Join(fields[7:], "\x1f")); body != "" {
+		c.Body = body
+	}
 	return c, nil
 }
 
 // showCommitMeta resolves just a commit's metadata (`git show -s`), for
 // outputs whose diff section is suppressed.
 func showCommitMeta(dir, hash, headHash string) (*pb.GitCommit, error) {
-	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s"
+	format := "%H\x1f%h\x1f%an\x1f%ae\x1f%aI\x1f%P\x1f%s\x1f%b"
 	cmd := gitCmd(dir, "show", "-s", fmt.Sprintf("--pretty=format:%s", format), hash)
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
@@ -706,7 +708,7 @@ func showCommitMeta(dir, hash, headHash string) (*pb.GitCommit, error) {
 		}
 		return nil, fmt.Errorf("git: %s: %w", msg, err)
 	}
-	return commitFromMeta(strings.Split(strings.TrimSpace(out.String()), "\x1f"), headHash)
+	return commitFromMeta(strings.TrimSpace(out.String()), headHash)
 }
 
 // diffWorkdir builds the WORKDIR diff: the file list with staged/unstaged/
@@ -967,6 +969,36 @@ func Commit(dir string, message string) error {
 	return nil
 }
 
+// Amend folds the staged changes into HEAD instead of creating a commit:
+// message replaces HEAD's message, or HEAD's message is kept when message
+// is empty. Nothing is committed away without a message.
+func Amend(dir, message string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	args := []string{"commit", "--amend"}
+	if strings.TrimSpace(message) == "" {
+		args = append(args, "--no-edit")
+	} else {
+		args = append(args, "-m", message)
+	}
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	setProcessGroup(cmd)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git commit --amend: %s: %w", msg, err)
+	}
+	return nil
+}
+
 // stashIndexRe matches a stash reference as `git stash list` prints it.
 var stashIndexRe = regexp.MustCompile(`^stash@\{\d+\}$`)
 
@@ -1039,6 +1071,23 @@ func StashPop(dir, index string) error {
 	return runStash(dir, "pop", "pop", stash)
 }
 
+// StashApply restores a stash's changes into the working tree and keeps the
+// stash entry (index empty = the newest). On a conflict nothing is applied
+// and an error is returned.
+func StashApply(dir, index string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	stash, err := stashTarget(index)
+	if err != nil {
+		return err
+	}
+	return runStash(dir, "apply", "apply", stash)
+}
+
 // StashDrop removes a stash entry (index empty = the newest).
 func StashDrop(dir, index string) error {
 	if dir == "" {
@@ -1052,6 +1101,153 @@ func StashDrop(dir, index string) error {
 		return err
 	}
 	return runStash(dir, "drop", "drop", stash)
+}
+
+// runGit runs a git subcommand in dir and wraps its stderr into the error.
+// Unlike gitCmd it is not read-only: callers let it lock and refresh the
+// index (checkout, branch, restore, clean).
+func runGit(dir string, args ...string) error {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	setProcessGroup(cmd)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git %s: %s: %w", args[0], msg, err)
+	}
+	return nil
+}
+
+// validBranchName reports whether name is acceptable as a branch name
+// (`git check-ref-format --branch`); values that git would parse as options
+// are rejected outright.
+func validBranchName(dir, name string) error {
+	if name == "" || strings.HasPrefix(name, "-") || strings.ContainsAny(name, "\x00\n\r\t") {
+		return fmt.Errorf("git: invalid branch name %q", name)
+	}
+	cmd := gitCmd(dir, "check-ref-format", "--branch", name)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git: %s", strings.TrimPrefix(msg, "fatal: "))
+	}
+	return nil
+}
+
+// validRev validates a start point (a branch name or commit hash): git
+// resolves it and rejects what it cannot be, but it must not smuggle in
+// options or whitespace.
+func validRev(rev string) error {
+	if rev == "" {
+		return nil
+	}
+	if strings.HasPrefix(rev, "-") || strings.ContainsAny(rev, " \x00\n\r\t") {
+		return fmt.Errorf("git: invalid start point %q", rev)
+	}
+	return nil
+}
+
+// refExists reports whether the exactly named ref exists.
+func refExists(dir, ref string) bool {
+	return gitCmd(dir, "show-ref", "--verify", "--quiet", ref).Run() == nil
+}
+
+// Checkout checks out a local branch, or the local counterpart of a remote
+// branch ("origin/feature" -> "feature", tracking the remote branch). The
+// remote form fails when the local branch already exists; git refuses to
+// switch when uncommitted changes would be overwritten.
+func Checkout(dir, branch string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if err := validBranchName(dir, branch); err != nil {
+		return err
+	}
+	if refExists(dir, "refs/heads/"+branch) {
+		return runGit(dir, "checkout", branch)
+	}
+	if i := strings.IndexByte(branch, '/'); i > 0 && refExists(dir, "refs/remotes/"+branch) {
+		return runGit(dir, "checkout", "-b", branch[i+1:], branch)
+	}
+	return fmt.Errorf("git: no branch %q", branch)
+}
+
+// BranchCreate creates a branch at start (at HEAD when start is empty) and
+// optionally checks it out.
+func BranchCreate(dir, name, start string, checkout bool) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if err := validBranchName(dir, name); err != nil {
+		return err
+	}
+	if err := validRev(start); err != nil {
+		return err
+	}
+	args := []string{"branch", name}
+	if checkout {
+		args = []string{"checkout", "-b", name}
+	}
+	if start != "" {
+		args = append(args, start)
+	}
+	return runGit(dir, args...)
+}
+
+// pathSpec matches path wherever it sits in the repository: paths as the
+// porcelain formats report them (and so the dashboard's file lists) are
+// repository-relative, while plain pathspecs resolve against the working
+// directory, which need not be the repository root.
+func pathSpec(path string) string {
+	return ":(top,literal)" + path
+}
+
+// isTracked reports whether path is in the index.
+func isTracked(dir, path string) bool {
+	cmd := gitCmd(dir, "ls-files", "--", pathSpec(path))
+	out, err := cmd.Output()
+	return err == nil && len(bytes.TrimSpace(out)) > 0
+}
+
+// Restore discards the local changes of a path — or, with all, of every path
+// under the project's directory: a tracked path goes back to its committed
+// state (staged and unstaged changes alike) and an untracked path is
+// deleted. Ignored files are never touched.
+func Restore(dir, path string, all bool) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	if all {
+		if err := runGit(dir, "restore", "--source=HEAD", "--staged", "--worktree", "--", "."); err != nil {
+			return err
+		}
+		return runGit(dir, "clean", "-fd", "--", ".")
+	}
+	if path == "" {
+		return fmt.Errorf("git: no path specified for restore")
+	}
+	if isTracked(dir, path) {
+		if err := runGit(dir, "restore", "--source=HEAD", "--staged", "--worktree", "--", pathSpec(path)); err != nil {
+			return err
+		}
+	}
+	return runGit(dir, "clean", "-fd", "--", pathSpec(path))
 }
 
 // Push pushes the current branch to its upstream remote.

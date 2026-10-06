@@ -20,6 +20,7 @@ import { paths } from "~/lib/paths";
 import { cycleTheme } from "~/lib/theme";
 import {
   confirm,
+  promptGitBranch,
   promptTaskArgs,
   setAddProjectOpen,
   setGitCommitFocus,
@@ -48,6 +49,7 @@ const actionEnv: ActionEnv = {
   pinLogs: (project, service) =>
     dockActions.pinLogs(project, service ? [{ kind: "service", name: service }] : [], service ?? `${project} · all`),
   promptTaskArgs,
+  promptGitBranch,
   openAddProject: () => setAddProjectOpen(true),
   openShortcuts: () => setShortcutsOpen(true),
   openPalette: () => setPaletteOpen(true),

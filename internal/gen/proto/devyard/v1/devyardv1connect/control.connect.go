@@ -120,6 +120,15 @@ const (
 	DaemonServiceGitPullProcedure = "/devyard.v1.DaemonService/GitPull"
 	// DaemonServiceGitFetchProcedure is the fully-qualified name of the DaemonService's GitFetch RPC.
 	DaemonServiceGitFetchProcedure = "/devyard.v1.DaemonService/GitFetch"
+	// DaemonServiceGitCheckoutProcedure is the fully-qualified name of the DaemonService's GitCheckout
+	// RPC.
+	DaemonServiceGitCheckoutProcedure = "/devyard.v1.DaemonService/GitCheckout"
+	// DaemonServiceGitBranchCreateProcedure is the fully-qualified name of the DaemonService's
+	// GitBranchCreate RPC.
+	DaemonServiceGitBranchCreateProcedure = "/devyard.v1.DaemonService/GitBranchCreate"
+	// DaemonServiceGitRestoreProcedure is the fully-qualified name of the DaemonService's GitRestore
+	// RPC.
+	DaemonServiceGitRestoreProcedure = "/devyard.v1.DaemonService/GitRestore"
 )
 
 // DaemonServiceClient is a client for the devyard.v1.DaemonService service.
@@ -166,6 +175,9 @@ type DaemonServiceClient interface {
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
+	GitCheckout(context.Context, *connect.Request[v1.GitCheckoutRequest]) (*connect.Response[v1.GitCheckoutResponse], error)
+	GitBranchCreate(context.Context, *connect.Request[v1.GitBranchCreateRequest]) (*connect.Response[v1.GitBranchCreateResponse], error)
+	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
 }
 
 // NewDaemonServiceClient constructs a client for the devyard.v1.DaemonService service. By default,
@@ -389,6 +401,24 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitFetch")),
 			connect.WithClientOptions(opts...),
 		),
+		gitCheckout: connect.NewClient[v1.GitCheckoutRequest, v1.GitCheckoutResponse](
+			httpClient,
+			baseURL+DaemonServiceGitCheckoutProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitCheckout")),
+			connect.WithClientOptions(opts...),
+		),
+		gitBranchCreate: connect.NewClient[v1.GitBranchCreateRequest, v1.GitBranchCreateResponse](
+			httpClient,
+			baseURL+DaemonServiceGitBranchCreateProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitBranchCreate")),
+			connect.WithClientOptions(opts...),
+		),
+		gitRestore: connect.NewClient[v1.GitRestoreRequest, v1.GitRestoreResponse](
+			httpClient,
+			baseURL+DaemonServiceGitRestoreProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitRestore")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -429,6 +459,9 @@ type daemonServiceClient struct {
 	gitPush             *connect.Client[v1.GitPushRequest, v1.GitPushResponse]
 	gitPull             *connect.Client[v1.GitPullRequest, v1.GitPullResponse]
 	gitFetch            *connect.Client[v1.GitFetchRequest, v1.GitFetchResponse]
+	gitCheckout         *connect.Client[v1.GitCheckoutRequest, v1.GitCheckoutResponse]
+	gitBranchCreate     *connect.Client[v1.GitBranchCreateRequest, v1.GitBranchCreateResponse]
+	gitRestore          *connect.Client[v1.GitRestoreRequest, v1.GitRestoreResponse]
 }
 
 // GetDaemon calls devyard.v1.DaemonService.GetDaemon.
@@ -606,6 +639,21 @@ func (c *daemonServiceClient) GitFetch(ctx context.Context, req *connect.Request
 	return c.gitFetch.CallUnary(ctx, req)
 }
 
+// GitCheckout calls devyard.v1.DaemonService.GitCheckout.
+func (c *daemonServiceClient) GitCheckout(ctx context.Context, req *connect.Request[v1.GitCheckoutRequest]) (*connect.Response[v1.GitCheckoutResponse], error) {
+	return c.gitCheckout.CallUnary(ctx, req)
+}
+
+// GitBranchCreate calls devyard.v1.DaemonService.GitBranchCreate.
+func (c *daemonServiceClient) GitBranchCreate(ctx context.Context, req *connect.Request[v1.GitBranchCreateRequest]) (*connect.Response[v1.GitBranchCreateResponse], error) {
+	return c.gitBranchCreate.CallUnary(ctx, req)
+}
+
+// GitRestore calls devyard.v1.DaemonService.GitRestore.
+func (c *daemonServiceClient) GitRestore(ctx context.Context, req *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error) {
+	return c.gitRestore.CallUnary(ctx, req)
+}
+
 // DaemonServiceHandler is an implementation of the devyard.v1.DaemonService service.
 type DaemonServiceHandler interface {
 	// Daemon
@@ -650,6 +698,9 @@ type DaemonServiceHandler interface {
 	GitPush(context.Context, *connect.Request[v1.GitPushRequest]) (*connect.Response[v1.GitPushResponse], error)
 	GitPull(context.Context, *connect.Request[v1.GitPullRequest]) (*connect.Response[v1.GitPullResponse], error)
 	GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error)
+	GitCheckout(context.Context, *connect.Request[v1.GitCheckoutRequest]) (*connect.Response[v1.GitCheckoutResponse], error)
+	GitBranchCreate(context.Context, *connect.Request[v1.GitBranchCreateRequest]) (*connect.Response[v1.GitBranchCreateResponse], error)
+	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
 }
 
 // NewDaemonServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -869,6 +920,24 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitFetch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	daemonServiceGitCheckoutHandler := connect.NewUnaryHandler(
+		DaemonServiceGitCheckoutProcedure,
+		svc.GitCheckout,
+		connect.WithSchema(daemonServiceMethods.ByName("GitCheckout")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitBranchCreateHandler := connect.NewUnaryHandler(
+		DaemonServiceGitBranchCreateProcedure,
+		svc.GitBranchCreate,
+		connect.WithSchema(daemonServiceMethods.ByName("GitBranchCreate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitRestoreHandler := connect.NewUnaryHandler(
+		DaemonServiceGitRestoreProcedure,
+		svc.GitRestore,
+		connect.WithSchema(daemonServiceMethods.ByName("GitRestore")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/devyard.v1.DaemonService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DaemonServiceGetDaemonProcedure:
@@ -941,6 +1010,12 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGitPullHandler.ServeHTTP(w, r)
 		case DaemonServiceGitFetchProcedure:
 			daemonServiceGitFetchHandler.ServeHTTP(w, r)
+		case DaemonServiceGitCheckoutProcedure:
+			daemonServiceGitCheckoutHandler.ServeHTTP(w, r)
+		case DaemonServiceGitBranchCreateProcedure:
+			daemonServiceGitBranchCreateHandler.ServeHTTP(w, r)
+		case DaemonServiceGitRestoreProcedure:
+			daemonServiceGitRestoreHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1088,4 +1163,16 @@ func (UnimplementedDaemonServiceHandler) GitPull(context.Context, *connect.Reque
 
 func (UnimplementedDaemonServiceHandler) GitFetch(context.Context, *connect.Request[v1.GitFetchRequest]) (*connect.Response[v1.GitFetchResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitFetch is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitCheckout(context.Context, *connect.Request[v1.GitCheckoutRequest]) (*connect.Response[v1.GitCheckoutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitCheckout is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitBranchCreate(context.Context, *connect.Request[v1.GitBranchCreateRequest]) (*connect.Response[v1.GitBranchCreateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitBranchCreate is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitRestore is not implemented"))
 }

@@ -8,6 +8,7 @@ import {
   Download,
   ExternalLink,
   GitBranch,
+  GitBranchPlus,
   GitCommitHorizontal,
   ListMinus,
   ListPlus,
@@ -32,6 +33,7 @@ import {
   SunMoon,
   TextCursorInput,
   Trash2,
+  Undo2,
   Upload,
 } from "lucide-solid";
 import type { RouteTarget } from "~/lib/paths";
@@ -84,6 +86,8 @@ export interface ActionEnv {
   openPalette(): void;
   /** Git page on the working tree with the commit message focused. */
   openGitCommit(project: string): void;
+  /** Opens the "New branch" dialog (start = branch name or hash, empty = HEAD). */
+  promptGitBranch(project: string, start?: string): Promise<boolean>;
   toggleSidebar(): void;
   toggleDock(): void;
   cycleTheme(): void;
@@ -452,6 +456,17 @@ export const ACTIONS: Action[] = [
     },
   },
   {
+    id: "git.branch-create",
+    label: "New branch…",
+    title: (c) => `Create a branch in ${proj(c).id}…`,
+    icon: GitBranchPlus,
+    group: "git",
+    scope: "project",
+    local: true,
+    when: (c) => !!c.project && !!c.git?.isRepo,
+    run: (c, env) => env.promptGitBranch(proj(c).id),
+  },
+  {
     id: "git.stage-all",
     label: "Stage all",
     title: (c) => `Stage all changes in ${proj(c).id}`,
@@ -470,6 +485,24 @@ export const ACTIONS: Action[] = [
     scope: "project",
     when: (c) => !!c.project && !!c.git?.isRepo && c.git.staged > 0,
     run: (c, env) => env.api.gitStage({ project: proj(c).id, stageAll: true, unstage: true }),
+  },
+  {
+    id: "git.discard-all",
+    label: "Discard changes",
+    title: (c) => `Discard all changes in ${proj(c).id}`,
+    icon: Undo2,
+    group: "git",
+    scope: "project",
+    destructive: true,
+    when: (c) =>
+      !!c.project && !!c.git?.isRepo && c.git.staged + c.git.dirty + c.git.untracked + c.git.conflicts > 0,
+    confirm: (c) => ({
+      title: `Discard all changes in ${proj(c).id}?`,
+      description:
+        "Every modified file goes back to HEAD and every untracked file is deleted. Staged changes are discarded too. This cannot be undone; ignored files are kept.",
+      confirmLabel: "Discard changes",
+    }),
+    run: (c, env) => env.api.gitRestore({ project: proj(c).id, all: true }),
   },
   {
     id: "git.stash",

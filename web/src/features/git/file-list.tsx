@@ -1,13 +1,16 @@
 import { createMemo, For, Show, type JSX } from "solid-js";
-import { FileCode, Files, Minus, PanelRightClose, Plus, Search, X } from "lucide-solid";
+import { Copy, FileCode, Files, Minus, PanelRightClose, Plus, Search, Undo2, X } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
 import { Spinner } from "~/components/ui/spinner";
+import { copyText } from "~/components/copy-button";
+import { confirm } from "~/app/ui-state";
 import { getAction } from "~/data/actions";
 import { actionBlocked, actionPending, runAction } from "~/app/runtime";
 import { cn } from "~/lib/utils";
 import { displayPath, FileStatus, LineStats, PaneHeader } from "./badges";
-import { stagePath, stagePending, type GitFileView } from "./git-data";
+import { discardChanges, stagePath, stagePending, type GitFileView } from "./git-data";
+import { GitContextMenu, type GitMenuItem } from "./menu";
 import { listKey } from "./nav";
 
 export interface FileGroups {
@@ -45,45 +48,76 @@ function FileRow(props: {
   stage?: { unstage: boolean; project: string };
 }) {
   const pending = () => !!props.stage && stagePending(props.stage.project, props.file.path, props.stage.unstage);
+  const discard = async () => {
+    const stage = props.stage;
+    if (!stage) return;
+    const f = props.file;
+    if (
+      await confirm({
+        title: f.untracked ? `Delete ${f.path}?` : `Discard changes in ${f.path}?`,
+        description: f.untracked
+          ? "The untracked file is deleted. This cannot be undone."
+          : "Staged and unstaged changes are discarded and the file goes back to HEAD. This cannot be undone.",
+        confirmLabel: f.untracked ? "Delete file" : "Discard changes",
+      })
+    )
+      void discardChanges(stage.project, f.path);
+  };
+  const items = (): GitMenuItem[] => {
+    const stage = props.stage;
+    if (!stage) return [{ label: "Copy path", icon: Copy, onSelect: () => void copyText(props.file.path) }];
+    return [
+      {
+        label: stage.unstage ? "Unstage" : "Stage",
+        icon: stage.unstage ? Minus : Plus,
+        onSelect: () => void stagePath(stage.project, props.file.path, stage.unstage),
+        disabled: pending(),
+      },
+      { label: "Discard changes", icon: Undo2, destructive: true, onSelect: () => void discard(), disabled: pending() },
+      { label: "Copy path", icon: Copy, separated: true, onSelect: () => void copyText(props.file.path) },
+    ];
+  };
   return (
-    <div
-      id={props.id}
-      role="option"
-      aria-selected={props.selected}
-      class={cn(
-        "group flex h-8 cursor-pointer items-center gap-2 px-3 select-none",
-        props.selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
-      )}
-      title={displayPath(props.file)}
-      onClick={props.onSelect}
-    >
-      <FileStatus file={props.file} />
-      <span class="min-w-0 flex-1 truncate text-left font-mono text-xs" dir="rtl">
-        <bdi>{displayPath(props.file)}</bdi>
-      </span>
-      <LineStats additions={props.file.additions} deletions={props.file.deletions} />
-      <Show when={props.stage}>
-        {(stage) => (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
-            aria-label={`${stage().unstage ? "Unstage" : "Stage"} ${props.file.path}`}
-            title={stage().unstage ? "Unstage" : "Stage"}
-            disabled={pending()}
-            tabindex="-1"
-            onClick={(e: MouseEvent) => {
-              e.stopPropagation();
-              void stagePath(stage().project, props.file.path, stage().unstage);
-            }}
-          >
-            <Show when={pending()} fallback={stage().unstage ? <Minus /> : <Plus />}>
-              <Spinner />
-            </Show>
-          </Button>
+    <GitContextMenu items={items()}>
+      <div
+        id={props.id}
+        role="option"
+        aria-selected={props.selected}
+        class={cn(
+          "group flex h-8 cursor-pointer items-center gap-2 px-3 select-none",
+          props.selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
         )}
-      </Show>
-    </div>
+        title={displayPath(props.file)}
+        onClick={props.onSelect}
+      >
+        <FileStatus file={props.file} />
+        <span class="min-w-0 flex-1 truncate text-left font-mono text-xs" dir="rtl">
+          <bdi>{displayPath(props.file)}</bdi>
+        </span>
+        <LineStats additions={props.file.additions} deletions={props.file.deletions} />
+        <Show when={props.stage}>
+          {(stage) => (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+              aria-label={`${stage().unstage ? "Unstage" : "Stage"} ${props.file.path}`}
+              title={stage().unstage ? "Unstage" : "Stage"}
+              disabled={pending()}
+              tabindex="-1"
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                void stagePath(stage().project, props.file.path, stage().unstage);
+              }}
+            >
+              <Show when={pending()} fallback={stage().unstage ? <Minus /> : <Plus />}>
+                <Spinner />
+              </Show>
+            </Button>
+          )}
+        </Show>
+      </div>
+    </GitContextMenu>
   );
 }
 
@@ -104,26 +138,31 @@ function GroupHeader(props: { title: string; count: number; tone: "success" | "w
   );
 }
 
-/** Stage-all / unstage-all through the action registry (shared with ⌘K). */
-function BulkButton(props: { id: "git.stage-all" | "git.unstage-all"; project: string }) {
+/** Stage-all / unstage-all / discard-all through the action registry (shared with ⌘K). */
+function BulkButton(props: { id: "git.stage-all" | "git.unstage-all" | "git.discard-all"; project: string }) {
   const action = getAction(props.id);
   const target = () => ({ kind: "project" as const, project: props.project });
   const pending = () => actionPending(action, target());
+  const Icon = () => (props.id === "git.stage-all" ? <Plus /> : props.id === "git.unstage-all" ? <Minus /> : <Undo2 />);
   return (
     <Button
       variant="ghost"
       size="xs"
-      class="h-6 text-current hover:bg-background/60"
+      class={cn(
+        "h-6 hover:bg-background/60",
+        props.id === "git.discard-all" ? "text-destructive hover:text-destructive" : "text-current",
+      )}
       disabled={pending() || actionBlocked(action)}
+      title={action.label}
       onClick={(e: MouseEvent) => {
         e.stopPropagation();
         void runAction(action, target());
       }}
     >
-      <Show when={pending()} fallback={props.id === "git.stage-all" ? <Plus /> : <Minus />}>
+      <Show when={pending()} fallback={<Icon />}>
         <Spinner />
       </Show>
-      {action.label}
+      {props.id === "git.discard-all" ? "Discard" : action.label}
     </Button>
   );
 }
@@ -258,6 +297,7 @@ export function FileList(props: {
           <Show when={groups().changes.length}>
             <GroupHeader title="Changes" count={groups().changes.length} tone="warning">
               <BulkButton id="git.stage-all" project={props.project} />
+              <BulkButton id="git.discard-all" project={props.project} />
             </GroupHeader>
             <For each={groups().changes}>{(f) => row(f, { unstage: false }, !f.staged)}</For>
           </Show>

@@ -126,17 +126,24 @@ describe("action registry", () => {
       ids(actionsFor(resolveContext({ kind: "project", project: "web" }, stateWith({ projects: [project()], git: [git(g)] })))).filter((id) =>
         id.startsWith("git."),
       );
-    expect(gitIds({})).toEqual(["git.fetch", "git.pull", "git.push"]);
+    expect(gitIds({})).toEqual(["git.fetch", "git.pull", "git.push", "git.branch-create"]);
     expect(gitIds({ dirty: 2, staged: 1 })).toEqual([
       "git.fetch",
       "git.pull",
       "git.push",
+      "git.branch-create",
       "git.stage-all",
       "git.unstage-all",
+      "git.discard-all",
       "git.stash",
       "git.commit",
     ]);
-    expect(gitIds({ untracked: 1, syncOperation: "pull" })).toEqual(["git.stage-all", "git.stash"]);
+    expect(gitIds({ untracked: 1, syncOperation: "pull" })).toEqual([
+      "git.branch-create",
+      "git.stage-all",
+      "git.discard-all",
+      "git.stash",
+    ]);
     expect(gitIds({ isRepo: false, dirty: 1 })).toEqual([]);
     // Not inherited: a service page doesn't offer the project's git operations.
     const svcCtx = resolveContext(
@@ -151,9 +158,15 @@ describe("action registry", () => {
       gitFetch: vi.fn().mockResolvedValue({ output: "From origin\n * branch main\n" }),
       gitPush: vi.fn().mockResolvedValue({ output: "" }),
       gitStage: vi.fn().mockResolvedValue({}),
+      gitRestore: vi.fn().mockResolvedValue({}),
       gitStash: vi.fn().mockResolvedValue({}),
     };
-    const env = { api, notify: vi.fn(), openGitCommit: vi.fn() } as unknown as ActionEnv;
+    const env = {
+      api,
+      notify: vi.fn(),
+      openGitCommit: vi.fn(),
+      promptGitBranch: vi.fn().mockResolvedValue(true),
+    } as unknown as ActionEnv;
     const ctx = resolveContext({ kind: "project", project: "web" }, stateWith({ projects: [project()], git: [git({ staged: 1, dirty: 1 })] }));
     await getAction("git.fetch").run(ctx, env);
     expect(api.gitFetch).toHaveBeenCalledWith({ project: "web" });
@@ -162,9 +175,13 @@ describe("action registry", () => {
     expect(env.notify).toHaveBeenLastCalledWith("Pushed web", undefined);
     await getAction("git.unstage-all").run(ctx, env);
     expect(api.gitStage).toHaveBeenCalledWith({ project: "web", stageAll: true, unstage: true });
+    await getAction("git.discard-all").run(ctx, env);
+    expect(api.gitRestore).toHaveBeenCalledWith({ project: "web", all: true });
     await getAction("git.stash").run(ctx, env);
     expect(api.gitStash).toHaveBeenCalledWith({ project: "web", op: "push", includeUntracked: true });
     expect(env.notify).toHaveBeenLastCalledWith("Stashed changes in web", "Pop the stash from the refs panel to restore them.");
+    await getAction("git.branch-create").run(ctx, env);
+    expect(env.promptGitBranch).toHaveBeenCalledWith("web");
     await getAction("git.commit").run(ctx, env);
     expect(env.openGitCommit).toHaveBeenCalledWith("web");
   });

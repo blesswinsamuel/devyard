@@ -371,6 +371,263 @@ func TestStashRejectsBadIndex(t *testing.T) {
 	}
 }
 
+// gitRun runs a git command in dir for test setup, failing the test on error.
+func gitRun(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=Test Author",
+		"GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=Test Committer",
+		"GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestStashApplyKeepsEntry(t *testing.T) {
+	dir := initRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("stashed\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := StashPush(dir, nil, "wip", false); err != nil {
+		t.Fatalf("StashPush: %v", err)
+	}
+	if err := StashApply(dir, ""); err != nil {
+		t.Fatalf("StashApply: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "a.txt"))
+	if err != nil || string(b) != "stashed\n" {
+		t.Fatalf("a.txt after apply = %q, %v", b, err)
+	}
+	if stashes := GetStashes(dir); len(stashes) != 1 {
+		t.Fatalf("apply must keep the entry, got %+v", stashes)
+	}
+}
+
+func TestCheckout(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "branch", "feature")
+
+	// A local branch: HEAD moves to it.
+	if err := Checkout(dir, "feature"); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	if got := gitRun(t, dir, "branch", "--show-current"); got != "feature" {
+		t.Fatalf("on branch %q, want feature", got)
+	}
+
+	// A remote branch creates the local counterpart that tracks it, once the
+	// local branch is gone.
+	remote := newBareRemote(t)
+	gitRun(t, dir, "remote", "add", "origin", remote)
+	gitRun(t, dir, "push", "-q", "origin", "feature")
+	if err := Checkout(dir, "origin/feature"); err == nil {
+		t.Fatal("Checkout remote branch with an existing local branch: expected error, got nil")
+	}
+	gitRun(t, dir, "checkout", "-q", "main")
+	gitRun(t, dir, "branch", "-D", "feature")
+	if err := Checkout(dir, "origin/feature"); err != nil {
+		t.Fatalf("Checkout remote branch: %v", err)
+	}
+	if got := gitRun(t, dir, "branch", "--show-current"); got != "feature" {
+		t.Fatalf("on branch %q, want feature", got)
+	}
+	if got := gitRun(t, dir, "config", "--get", "branch.feature.remote"); got != "origin" {
+		t.Fatalf("feature tracks %q, want origin", got)
+	}
+
+	// Unknown branches and invalid names are rejected.
+	if err := Checkout(dir, "no-such-branch"); err == nil {
+		t.Fatal("Checkout unknown branch: expected error, got nil")
+	}
+	for _, bad := range []string{"", "-o", "bad name", "a..b"} {
+		if err := Checkout(dir, bad); err == nil {
+			t.Fatalf("Checkout(%q): expected error, got nil", bad)
+		}
+	}
+}
+
+func TestBranchCreate(t *testing.T) {
+	dir := initRepo(t)
+
+	// Create without checkout: HEAD stays.
+	if err := BranchCreate(dir, "feature", "", false); err != nil {
+		t.Fatalf("BranchCreate: %v", err)
+	}
+	if got := gitRun(t, dir, "branch", "--show-current"); got != "main" {
+		t.Fatalf("still on %q, want main", got)
+	}
+
+	// Create and check out, from a start point.
+	if err := BranchCreate(dir, "from-first", "main~1", true); err != nil {
+		t.Fatalf("BranchCreate from start: %v", err)
+	}
+	if got := gitRun(t, dir, "branch", "--show-current"); got != "from-first" {
+		t.Fatalf("on %q, want from-first", got)
+	}
+	if got := gitRun(t, dir, "log", "-1", "--format=%s"); got != "first commit" {
+		t.Fatalf("branch started at %q, want 'first commit'", got)
+	}
+
+	// Duplicates and option-like names or start points fail.
+	if err := BranchCreate(dir, "feature", "", false); err == nil {
+		t.Fatal("BranchCreate duplicate: expected error, got nil")
+	}
+	if err := BranchCreate(dir, "-o", "", true); err == nil {
+		t.Fatal("BranchCreate option-like name: expected error, got nil")
+	}
+	if err := BranchCreate(dir, "ok2", "--upload=x", false); err == nil {
+		t.Fatal("BranchCreate option-like start: expected error, got nil")
+	}
+}
+
+func TestRestore(t *testing.T) {
+	dir := initRepo(t)
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("WriteFile %s: %v", name, err)
+		}
+	}
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("ReadFile %s: %v", name, err)
+		}
+		return string(b)
+	}
+
+	// Unstaged, staged and untracked changes at once.
+	write("a.txt", "changed\n")
+	write("b.txt", "staged\n")
+	if err := Stage(dir, "b.txt", false, false); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	write("u.txt", "untracked\n")
+
+	// One path: only that path goes back to HEAD.
+	if err := Restore(dir, "a.txt", false); err != nil {
+		t.Fatalf("Restore a.txt: %v", err)
+	}
+	if got := read("a.txt"); got != "one\n" {
+		t.Fatalf("a.txt = %q, want \"one\\n\"", got)
+	}
+	if got := read("b.txt"); got != "staged\n" {
+		t.Fatalf("b.txt = %q, want \"staged\\n\" (untouched)", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "u.txt")); err != nil {
+		t.Fatalf("u.txt removed too early: %v", err)
+	}
+
+	// A staged path is unstaged and restored as well.
+	if err := Restore(dir, "b.txt", false); err != nil {
+		t.Fatalf("Restore b.txt: %v", err)
+	}
+	if got := read("b.txt"); got != "two\n" {
+		t.Fatalf("b.txt = %q, want \"two\\n\"", got)
+	}
+
+	// An untracked path is deleted.
+	if err := Restore(dir, "u.txt", false); err != nil {
+		t.Fatalf("Restore u.txt: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "u.txt")); err == nil {
+		t.Fatal("u.txt still there after restore")
+	}
+
+	// Restore all clears everything at once.
+	write("a.txt", "dirty\n")
+	write("u2.txt", "x\n")
+	if err := Restore(dir, "", true); err != nil {
+		t.Fatalf("Restore all: %v", err)
+	}
+	if got := read("a.txt"); got != "one\n" {
+		t.Fatalf("a.txt after restore all = %q, want \"one\\n\"", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "u2.txt")); err == nil {
+		t.Fatal("u2.txt still there after restore all")
+	}
+	if uncommittedCount(dir) > 0 {
+		t.Fatal("expected a clean tree after restore all")
+	}
+}
+
+func TestAmend(t *testing.T) {
+	dir := initRepo(t)
+
+	// Amend the message only: same tree, new subject, no extra commit.
+	if err := Amend(dir, "second commit, amended"); err != nil {
+		t.Fatalf("Amend: %v", err)
+	}
+	commits, _, _, _, err := Log(dir)
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if len(commits) != 2 || commits[0].Subject != "second commit, amended" {
+		t.Fatalf("unexpected head after amend: %+v", commits)
+	}
+
+	// An empty message keeps HEAD's message and folds the staged changes in.
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("two-amended\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := Stage(dir, "b.txt", false, false); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	if err := Amend(dir, ""); err != nil {
+		t.Fatalf("Amend --no-edit: %v", err)
+	}
+	commits, _, _, _, err = Log(dir)
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if len(commits) != 2 || commits[0].Subject != "second commit, amended" {
+		t.Fatalf("unexpected head after --no-edit amend: %+v", commits)
+	}
+	if got := gitRun(t, dir, "show", "HEAD:b.txt"); got != "two-amended" {
+		t.Fatalf("amended tree has b.txt %q, want two-amended", got)
+	}
+}
+
+func TestDiffBody(t *testing.T) {
+	dir := initRepo(t)
+	gitRun(t, dir, "commit", "-q", "--allow-empty", "-m", "subject line", "-m", "body line 1", "-m", "body line 2")
+
+	commits, _, _, _, err := Log(dir)
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	// The listing stays body-less; GitDiff resolves the full message.
+	if commits[0].Body != "" {
+		t.Fatalf("Log body = %q, want empty", commits[0].Body)
+	}
+	res, err := Diff(dir, commits[0].Hash, "", "", 3)
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if res.Commit.Subject != "subject line" {
+		t.Fatalf("subject = %q", res.Commit.Subject)
+	}
+	if res.Commit.Body != "body line 1\n\nbody line 2" {
+		t.Fatalf("body = %q, want \"body line 1\\n\\nbody line 2\"", res.Commit.Body)
+	}
+
+	// A subject-only commit has no body.
+	res, err = Diff(dir, commits[1].Hash, "", "", 3)
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if res.Commit.Body != "" {
+		t.Fatalf("body of a subject-only commit = %q, want empty", res.Commit.Body)
+	}
+}
+
 // newBareRemote creates a bare git repo to act as a remote for push/pull/fetch.
 func newBareRemote(t *testing.T) string {
 	t.Helper()

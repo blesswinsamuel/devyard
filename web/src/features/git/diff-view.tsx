@@ -51,6 +51,13 @@ export function CommitMeta(props: { commit: GitCommitView; onSelectCommit: (hash
     <div class="flex flex-col gap-2 sm:flex-row sm:items-start">
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <h2 class="text-sm font-semibold break-words">{c().subject}</h2>
+        <Show when={c().body}>
+          {(body) => (
+            <pre class="max-h-40 overflow-y-auto whitespace-pre-wrap font-sans text-2xs text-muted-foreground">
+              {body()}
+            </pre>
+          )}
+        </Show>
         <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
           <span class="font-medium text-foreground">{c().author}</span>
           <Show when={c().email}>

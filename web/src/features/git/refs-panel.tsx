@@ -1,13 +1,15 @@
 import { createMemo, For, Show, type JSX } from "solid-js";
-import { Archive, ArchiveRestore, ChevronRight, Cloud, GitBranch, Tag, Trash2 } from "lucide-solid";
+import { Archive, ArchiveRestore, ChevronRight, Cloud, Copy, GitBranch, GitBranchPlus, Tag, Trash2 } from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
-import { confirm } from "~/app/ui-state";
+import { copyText } from "~/components/copy-button";
+import { confirm, promptGitBranch } from "~/app/ui-state";
 import { createPersistedSignal } from "~/lib/persistence";
 import { formatRelative, now } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { AheadBehind, PaneHeader } from "./badges";
-import { stashEntry, stashPending, type GitBranchView, type GitLogView, type GitStashView } from "./git-data";
+import { checkoutBranch, stashEntry, stashPending, type GitBranchView, type GitLogView, type GitStashView } from "./git-data";
+import { GitContextMenu, type GitMenuItem } from "./menu";
 
 type SectionId = "branches" | "remotes" | "tags" | "stashes";
 
@@ -71,34 +73,70 @@ function RefButton(props: { selected: boolean; title: string; onClick: () => voi
   );
 }
 
-function BranchRow(props: { branch: GitBranchView; selected: boolean; onSelect: () => void }) {
+function BranchRow(props: { project: string; branch: GitBranchView; selected: boolean; onSelect: () => void }) {
   const b = () => props.branch;
+  const items = (): GitMenuItem[] => [
+    // The active branch has nothing to check out.
+    ...(b().isActive ? [] : [{ label: "Checkout", icon: GitBranch, onSelect: () => void checkoutBranch(props.project, b().name) }]),
+    { label: `New branch from ${b().name}…`, icon: GitBranchPlus, onSelect: () => void promptGitBranch(props.project, b().name) },
+    { label: "Copy name", icon: Copy, separated: true, onSelect: () => void copyText(b().name) },
+  ];
   return (
-    <RefButton
-      selected={props.selected}
-      title={`${b().name} (${b().hash.slice(0, 7)})${b().upstream ? ` → ${b().upstream}` : ""}`}
-      onClick={props.onSelect}
-    >
-      <GitBranch class={cn("size-3 shrink-0", b().isActive ? "text-success" : "text-muted-foreground")} />
-      <span class="flex min-w-0 flex-1 flex-col">
-        <span class={cn("truncate font-mono text-xs", b().isActive && "font-semibold text-success")}>{b().name}</span>
-        <Show when={b().upstream}>
-          <span class="truncate font-mono text-2xs text-muted-foreground">→ {b().upstream}</span>
+    <GitContextMenu items={items()}>
+      <RefButton
+        selected={props.selected}
+        title={`${b().name} (${b().hash.slice(0, 7)})${b().upstream ? ` → ${b().upstream}` : ""}`}
+        onClick={props.onSelect}
+      >
+        <GitBranch class={cn("size-3 shrink-0", b().isActive ? "text-success" : "text-muted-foreground")} />
+        <span class="flex min-w-0 flex-1 flex-col">
+          <span class={cn("truncate font-mono text-xs", b().isActive && "font-semibold text-success")}>{b().name}</span>
+          <Show when={b().upstream}>
+            <span class="truncate font-mono text-2xs text-muted-foreground">→ {b().upstream}</span>
+          </Show>
+        </span>
+        <AheadBehind ahead={b().ahead} behind={b().behind} upstream={b().upstream} />
+        <Show when={b().isActive}>
+          <span class="shrink-0 rounded-sm bg-success/15 px-1 text-2xs font-semibold text-success">HEAD</span>
         </Show>
-      </span>
-      <AheadBehind ahead={b().ahead} behind={b().behind} upstream={b().upstream} />
-      <Show when={b().isActive}>
-        <span class="shrink-0 rounded-sm bg-success/15 px-1 text-2xs font-semibold text-success">HEAD</span>
-      </Show>
-    </RefButton>
+      </RefButton>
+    </GitContextMenu>
   );
 }
 
-/** A stash entry: pick it to inspect its commit; pop or drop it from here. */
+/** A remote branch: picking it shows its commit; checking it out creates and tracks a local branch. */
+function RemoteBranchRow(props: {
+  project: string;
+  name: string;
+  short: string;
+  hash: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <GitContextMenu
+      items={[
+        { label: `Checkout ${props.short}`, icon: GitBranch, onSelect: () => void checkoutBranch(props.project, props.name) },
+        { label: "Copy name", icon: Copy, separated: true, onSelect: () => void copyText(props.name) },
+      ]}
+    >
+      <RefButton
+        class="pl-11"
+        selected={props.selected}
+        title={`${props.name} (${props.hash.slice(0, 7)})`}
+        onClick={props.onSelect}
+      >
+        <span class="truncate font-mono text-xs">{props.short}</span>
+      </RefButton>
+    </GitContextMenu>
+  );
+}
+
+/** A stash entry: pick it to inspect its commit; pop, apply or drop it from the menu or the row. */
 function StashRow(props: { project: string; stash: GitStashView; selected: boolean; onSelect: () => void }) {
   const s = () => props.stash;
-  const pending = (op: "pop" | "drop") => stashPending(props.project, op, s().index);
-  const run = (op: "pop" | "drop") => void stashEntry(props.project, op, s().index);
+  const pending = (op: "pop" | "apply" | "drop") => stashPending(props.project, op, s().index);
+  const run = (op: "pop" | "apply" | "drop") => void stashEntry(props.project, op, s().index);
   const drop = async () => {
     if (
       await confirm({
@@ -109,65 +147,72 @@ function StashRow(props: { project: string; stash: GitStashView; selected: boole
     )
       run("drop");
   };
+  const menu = (): GitMenuItem[] => [
+    { label: `Pop ${s().index}`, icon: ArchiveRestore, onSelect: () => run("pop"), disabled: pending("pop") },
+    { label: `Apply ${s().index}`, icon: Archive, onSelect: () => run("apply"), disabled: pending("apply") },
+    { label: `Drop ${s().index}`, icon: Trash2, destructive: true, separated: true, onSelect: () => void drop(), disabled: pending("drop") },
+  ];
   return (
-    <div
-      role="button"
-      tabindex="0"
-      aria-current={props.selected || undefined}
-      title={`${s().index}: ${s().name}`}
-      class={cn(
-        "focus-ring group flex w-full min-w-0 cursor-pointer items-center gap-1.5 py-1 pr-3 pl-8 text-left",
-        props.selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
-      )}
-      onClick={props.onSelect}
-      onKeyDown={(e: KeyboardEvent) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          props.onSelect();
-        }
-      }}
-    >
-      <span class="flex min-w-0 flex-1 flex-col">
-        <span class="truncate text-xs">{s().name}</span>
-        <span class="truncate font-mono text-2xs text-muted-foreground">
-          {s().index} · {formatRelative(s().time, now())}
+    <GitContextMenu items={menu()}>
+      <div
+        role="button"
+        tabindex="0"
+        aria-current={props.selected || undefined}
+        title={`${s().index}: ${s().name}`}
+        class={cn(
+          "focus-ring group flex w-full min-w-0 cursor-pointer items-center gap-1.5 py-1 pr-3 pl-8 text-left",
+          props.selected ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
+        )}
+        onClick={props.onSelect}
+        onKeyDown={(e: KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            props.onSelect();
+          }
+        }}
+      >
+        <span class="flex min-w-0 flex-1 flex-col">
+          <span class="truncate text-xs">{s().name}</span>
+          <span class="truncate font-mono text-2xs text-muted-foreground">
+            {s().index} · {formatRelative(s().time, now())}
+          </span>
         </span>
-      </span>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
-        aria-label={`Pop ${s().index}`}
-        title={`Pop ${s().index} (restore its changes and remove the entry)`}
-        disabled={pending("pop")}
-        tabindex="-1"
-        onClick={(e: MouseEvent) => {
-          e.stopPropagation();
-          run("pop");
-        }}
-      >
-        <Show when={pending("pop")} fallback={<ArchiveRestore />}>
-          <Spinner />
-        </Show>
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
-        aria-label={`Drop ${s().index}`}
-        title={`Drop ${s().index} (remove the entry without restoring)`}
-        disabled={pending("drop")}
-        tabindex="-1"
-        onClick={(e: MouseEvent) => {
-          e.stopPropagation();
-          void drop();
-        }}
-      >
-        <Show when={pending("drop")} fallback={<Trash2 />}>
-          <Spinner />
-        </Show>
-      </Button>
-    </div>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+          aria-label={`Pop ${s().index}`}
+          title={`Pop ${s().index} (restore its changes and remove the entry)`}
+          disabled={pending("pop")}
+          tabindex="-1"
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation();
+            run("pop");
+          }}
+        >
+          <Show when={pending("pop")} fallback={<ArchiveRestore />}>
+            <Spinner />
+          </Show>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          class="text-muted-foreground lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+          aria-label={`Drop ${s().index}`}
+          title={`Drop ${s().index} (remove the entry without restoring)`}
+          disabled={pending("drop")}
+          tabindex="-1"
+          onClick={(e: MouseEvent) => {
+            e.stopPropagation();
+            void drop();
+          }}
+        >
+          <Show when={pending("drop")} fallback={<Trash2 />}>
+            <Spinner />
+          </Show>
+        </Button>
+      </div>
+    </GitContextMenu>
   );
 }
 
@@ -203,7 +248,17 @@ export function RefsPanel(props: {
   return (
     <div class="flex h-full min-h-0 flex-col">
       <Show when={props.header !== false}>
-        <PaneHeader icon={GitBranch} title="Refs" />
+        <PaneHeader icon={GitBranch} title="Refs">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="New branch"
+            title="New branch…"
+            onClick={() => void promptGitBranch(props.project)}
+          >
+            <GitBranchPlus />
+          </Button>
+        </PaneHeader>
       </Show>
       <div class="min-h-0 flex-1 overflow-y-auto py-1">
         <Section
@@ -214,7 +269,14 @@ export function RefsPanel(props: {
           empty="No branches"
         >
           <For each={local()}>
-            {(b) => <BranchRow branch={b} selected={props.selected === b.hash} onSelect={() => props.onSelect(b.hash)} />}
+            {(b) => (
+              <BranchRow
+                project={props.project}
+                branch={b}
+                selected={props.selected === b.hash}
+                onSelect={() => props.onSelect(b.hash)}
+              />
+            )}
           </For>
         </Section>
         <Section id="remotes" icon={<Cloud class="size-3.5" />} title="Remotes" count={remoteCount()} empty="No remotes">
@@ -236,14 +298,14 @@ export function RefsPanel(props: {
                   <Show when={isOpen(id)}>
                     <For each={list}>
                       {(b) => (
-                        <RefButton
-                          class="pl-11"
+                        <RemoteBranchRow
+                          project={props.project}
+                          name={b.name}
+                          short={b.short}
+                          hash={b.hash}
                           selected={props.selected === b.hash}
-                          title={`${b.name} (${b.hash.slice(0, 7)})`}
-                          onClick={() => props.onSelect(b.hash)}
-                        >
-                          <span class="truncate font-mono text-xs">{b.short}</span>
-                        </RefButton>
+                          onSelect={() => props.onSelect(b.hash)}
+                        />
                       )}
                     </For>
                   </Show>

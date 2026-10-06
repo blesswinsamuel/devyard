@@ -29,6 +29,8 @@ export interface GitCommitView {
   time: number;
   parents: string[];
   subject: string;
+  /** Message below the subject; only GitDiff resolves it (empty in the log). */
+  body: string;
   head: boolean;
   refs: GitRefView[];
   additions: number;
@@ -84,7 +86,7 @@ export interface GitDiffView {
   diff: string;
 }
 
-// `body` is part of GitCommit but not filled by the daemon yet; not mapped.
+// The daemon fills `body` in GitDiff only (the log listing leaves it empty).
 export const toCommit = (c: GitCommit): GitCommitView => ({
   hash: c.hash,
   short: c.short,
@@ -93,6 +95,7 @@ export const toCommit = (c: GitCommit): GitCommitView => ({
   time: Number(c.timeUnixMs),
   parents: [...c.parents],
   subject: c.subject,
+  body: c.body,
   head: c.head,
   refs: c.refs.map((r) => ({ name: r.name, type: r.type, isActive: r.isActive })),
   additions: c.additions,
@@ -197,36 +200,104 @@ const commitKey = (project: string) => `git.commit|${project}`;
 
 export const commitPending = (project: string) => isPending(commitKey(project));
 
-/** Commits the staged changes; resolves true on success. */
-export async function commitStaged(project: string, message: string): Promise<boolean> {
+/**
+ * Commits the staged changes, or amends HEAD when `amend` is set (an empty
+ * message then keeps HEAD's message). Resolves true on success.
+ */
+export async function commitStaged(project: string, message: string, amend = false): Promise<boolean> {
   const ok = await withPending(commitKey(project), async () => {
     try {
-      await api.gitCommit({ project, message });
+      await api.gitCommit({ project, message, amend });
       await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
-      toast.success("Committed", { description: message.split("\n")[0] });
+      if (amend) toast.success("Amended HEAD", { description: message.split("\n")[0] || undefined });
+      else toast.success("Committed", { description: message.split("\n")[0] });
       return true;
     } catch (err) {
-      toastFailure("Commit failed", err);
+      toastFailure(amend ? "Amend failed" : "Commit failed", err);
       return false;
     }
   });
   return ok ?? false;
 }
 
-const stashKey = (project: string, op: "pop" | "drop", index: string) => `git.stash|${project}|${op}|${index}`;
+const stashKey = (project: string, op: "pop" | "apply" | "drop", index: string) => `git.stash|${project}|${op}|${index}`;
 
-export const stashPending = (project: string, op: "pop" | "drop", index: string) =>
+export const stashPending = (project: string, op: "pop" | "apply" | "drop", index: string) =>
   isPending(stashKey(project, op, index));
 
-/** Pops (restores and removes) or drops a stash entry. */
-export function stashEntry(project: string, op: "pop" | "drop", index: string): Promise<void> {
+const STASH_VERB = { pop: "Popped", apply: "Applied", drop: "Dropped" } as const;
+
+/** Pops (restore and remove), applies (restore, keep) or drops a stash entry. */
+export function stashEntry(project: string, op: "pop" | "apply" | "drop", index: string): Promise<void> {
   return withPending(stashKey(project, op, index), async () => {
     try {
       await api.gitStash({ project, op, index });
       await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
-      toast.success(op === "pop" ? `Popped ${index}` : `Dropped ${index}`);
+      toast.success(`${STASH_VERB[op]} ${index}`);
     } catch (err) {
-      toastFailure(`${op === "pop" ? "Pop" : "Drop"} ${index} failed`, err);
+      toastFailure(`${op[0]!.toUpperCase()}${op.slice(1)} ${index} failed`, err);
     }
   }).then(() => undefined);
+}
+
+const checkoutKey = (project: string, branch: string) => `git.checkout|${project}|${branch}`;
+
+export const checkoutPending = (project: string, branch: string) => isPending(checkoutKey(project, branch));
+
+/** Checks out a local branch, or creates a local branch from a remote one. */
+export function checkoutBranch(project: string, branch: string): Promise<void> {
+  return withPending(checkoutKey(project, branch), async () => {
+    try {
+      await api.gitCheckout({ project, branch });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+      toast.success(`Checked out ${branch}`);
+    } catch (err) {
+      toastFailure(`Checkout ${branch} failed`, err);
+    }
+  }).then(() => undefined);
+}
+
+const branchKey = (project: string) => `git.branch|${project}`;
+
+export const branchPending = (project: string) => isPending(branchKey(project));
+
+/** Creates a branch (from `start`, or HEAD) and optionally checks it out. */
+export function createBranch(project: string, name: string, start: string, checkout: boolean): Promise<boolean> {
+  return withPending(branchKey(project), async () => {
+    try {
+      await api.gitBranchCreate({ project, name, start, checkout });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+      toast.success(checkout ? `Created and checked out ${name}` : `Created ${name}`, {
+        description: start ? `from ${start}` : undefined,
+      });
+      return true;
+    } catch (err) {
+      toastFailure(`Create branch ${name} failed`, err);
+      return false;
+    }
+  }).then((ok) => ok ?? false);
+}
+
+const restoreKey = (project: string, path: string) => `git.restore|${project}|${path}`;
+
+export const restorePending = (project: string, path: string) => isPending(restoreKey(project, path));
+
+/** Discards a path's local changes (path null = every path). */
+export function discardChanges(project: string, path: string | null): Promise<void> {
+  return withPending(restoreKey(project, path ?? "*"), async () => {
+    try {
+      await api.gitRestore(path === null ? { project, all: true } : { project, path });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+      toast.success(`Discarded changes in ${path ?? project}`);
+    } catch (err) {
+      toastFailure(`Discard ${path ?? "all changes"} failed`, err);
+    }
+  }).then(() => undefined);
+}
+
+/** The full message (subject and body) of a commit, for amending. */
+export async function fetchCommitMessage(project: string, hash: string): Promise<string> {
+  const r = (await api.gitDiff({ project, hash })).result?.commit;
+  if (!r) return "";
+  return r.subject + (r.body ? `\n\n${r.body}` : "");
 }

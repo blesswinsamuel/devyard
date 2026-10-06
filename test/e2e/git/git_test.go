@@ -177,6 +177,158 @@ func TestGit_StashPushPopDrop(t *testing.T) {
 	}
 }
 
+func TestGit_BranchCheckoutCreateRestore(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "gbranch")
+	p.Start()
+	d := sb.Daemon()
+	w := d.Watch(context.Background())
+	c := d.Client()
+	w.WaitFor(t, "on main", func(s harness.State) bool { return s.Git["gbranch"].GetBranch() == "main" })
+
+	// Create a branch and check it out in one call; the switch reaches Watch.
+	_, err := c.GitBranchCreate(d.Ctx(), connect.NewRequest(&v1.GitBranchCreateRequest{
+		Project: "gbranch", Name: "feature", Checkout: true,
+	}))
+	harness.NoError(t, err, "GitBranchCreate")
+	w.WaitFor(t, "on feature", func(s harness.State) bool { return s.Git["gbranch"].GetBranch() == "feature" })
+
+	// Switch back; a branch created without checkout does not move HEAD.
+	_, err = c.GitCheckout(d.Ctx(), connect.NewRequest(&v1.GitCheckoutRequest{Project: "gbranch", Branch: "main"}))
+	harness.NoError(t, err, "GitCheckout")
+	w.WaitFor(t, "back on main", func(s harness.State) bool { return s.Git["gbranch"].GetBranch() == "main" })
+	_, err = c.GitBranchCreate(d.Ctx(), connect.NewRequest(&v1.GitBranchCreateRequest{Project: "gbranch", Name: "side"}))
+	harness.NoError(t, err, "GitBranchCreate no checkout")
+	if got := w.State().Git["gbranch"].GetBranch(); got != "main" {
+		t.Fatalf("HEAD moved to %q, want main", got)
+	}
+
+	// Both branches are listed.
+	log, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "gbranch"}))
+	harness.NoError(t, err, "GitLog")
+	names := map[string]bool{}
+	for _, b := range log.Msg.GetBranches() {
+		names[b.GetName()] = true
+	}
+	if !names["main"] || !names["feature"] || !names["side"] {
+		t.Fatalf("branches after create: %v", log.Msg.GetBranches())
+	}
+
+	// Empty and malformed branch names are rejected with distinct codes.
+	_, err = c.GitCheckout(d.Ctx(), connect.NewRequest(&v1.GitCheckoutRequest{Project: "gbranch", Branch: ""}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("empty branch: expected InvalidArgument, got %v", err)
+	}
+	_, err = c.GitCheckout(d.Ctx(), connect.NewRequest(&v1.GitCheckoutRequest{Project: "gbranch", Branch: "bad name"}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("invalid branch: expected FailedPrecondition, got %v", err)
+	}
+	_, err = c.GitBranchCreate(d.Ctx(), connect.NewRequest(&v1.GitBranchCreateRequest{Project: "gbranch", Name: "feature"}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("duplicate branch: expected FailedPrecondition, got %v", err)
+	}
+
+	// Discard a tracked file (back to HEAD) and delete an untracked one.
+	p.WriteFile("README.md", "dirty\n")
+	p.WriteFile("scratch.txt", "tmp\n")
+	w.WaitForWithin(t, 20*time.Second, "dirty", func(s harness.State) bool { return !s.Git["gbranch"].GetIsClean() })
+	_, err = c.GitRestore(d.Ctx(), connect.NewRequest(&v1.GitRestoreRequest{Project: "gbranch", Path: "README.md"}))
+	harness.NoError(t, err, "GitRestore path")
+	if got := sb.Git(p.Dir, "show", "HEAD:README.md"); got != "hello" {
+		t.Fatalf("README.md restored to %q, want hello", got)
+	}
+	if _, err := os.Stat(p.Path("scratch.txt")); err != nil {
+		t.Fatalf("scratch.txt removed too early: %v", err)
+	}
+	_, err = c.GitRestore(d.Ctx(), connect.NewRequest(&v1.GitRestoreRequest{Project: "gbranch", Path: "scratch.txt"}))
+	harness.NoError(t, err, "GitRestore untracked")
+	if _, err := os.Stat(p.Path("scratch.txt")); err == nil {
+		t.Fatal("scratch.txt still there after restore")
+	}
+	w.WaitFor(t, "clean after restore", func(s harness.State) bool { return s.Git["gbranch"].GetIsClean() })
+
+	// Discard all clears a fresh batch of changes.
+	p.WriteFile("README.md", "dirty again\n")
+	p.WriteFile("more.txt", "x\n")
+	w.WaitForWithin(t, 20*time.Second, "dirty again", func(s harness.State) bool { return !s.Git["gbranch"].GetIsClean() })
+	_, err = c.GitRestore(d.Ctx(), connect.NewRequest(&v1.GitRestoreRequest{Project: "gbranch", All: true}))
+	harness.NoError(t, err, "GitRestore all")
+	w.WaitFor(t, "clean after restore all", func(s harness.State) bool { return s.Git["gbranch"].GetIsClean() })
+	if _, err := os.Stat(p.Path("more.txt")); err == nil {
+		t.Fatal("more.txt still there after restore all")
+	}
+
+	// Neither path nor all is a bad request.
+	_, err = c.GitRestore(d.Ctx(), connect.NewRequest(&v1.GitRestoreRequest{Project: "gbranch"}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("restore without path or all: expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestGit_AmendAndMessageBody(t *testing.T) {
+	t.Parallel()
+	requireGit(t)
+	sb := harness.New(t)
+	p := repoProject(t, sb, "gamend")
+	p.Start()
+	d := sb.Daemon()
+	w := d.Watch(context.Background())
+	c := d.Client()
+	w.WaitFor(t, "clean repo", func(s harness.State) bool { return s.Git["gamend"].GetIsClean() })
+
+	stageAll := func() {
+		t.Helper()
+		_, err := c.GitStage(d.Ctx(), connect.NewRequest(&v1.GitStageRequest{Project: "gamend", StageAll: true}))
+		harness.NoError(t, err, "GitStage")
+		w.WaitFor(t, "staged", func(s harness.State) bool { return s.Git["gamend"].GetStaged() >= 1 })
+	}
+
+	// Amend with a message replaces HEAD's subject without adding a commit.
+	p.WriteFile("README.md", "amended\n")
+	stageAll()
+	_, err := c.GitCommit(d.Ctx(), connect.NewRequest(&v1.GitCommitRequest{Project: "gamend", Message: "amended message", Amend: true}))
+	harness.NoError(t, err, "GitCommit amend")
+	w.WaitFor(t, "clean after amend", func(s harness.State) bool { return s.Git["gamend"].GetIsClean() })
+	log, err := c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "gamend"}))
+	harness.NoError(t, err, "GitLog")
+	if cs := log.Msg.GetCommits(); len(cs) != 1 || cs[0].GetSubject() != "amended message" {
+		t.Fatalf("commits after amend: %v", cs)
+	}
+
+	// An empty message keeps HEAD's subject and folds the staged changes in.
+	p.WriteFile("README.md", "folded\n")
+	stageAll()
+	_, err = c.GitCommit(d.Ctx(), connect.NewRequest(&v1.GitCommitRequest{Project: "gamend", Amend: true}))
+	harness.NoError(t, err, "GitCommit amend --no-edit")
+	w.WaitFor(t, "clean after no-edit amend", func(s harness.State) bool { return s.Git["gamend"].GetIsClean() })
+	if got := sb.Git(p.Dir, "show", "HEAD:README.md"); got != "folded" {
+		t.Fatalf("amended tree has README.md %q, want folded", got)
+	}
+
+	// A commit message's body travels with GitDiff, not the listing.
+	p.WriteFile("body.txt", "b\n")
+	stageAll()
+	_, err = c.GitCommit(d.Ctx(), connect.NewRequest(&v1.GitCommitRequest{Project: "gamend", Message: "subject line\n\nbody line 1\nbody line 2"}))
+	harness.NoError(t, err, "GitCommit with body")
+	w.WaitFor(t, "clean after body commit", func(s harness.State) bool { return s.Git["gamend"].GetIsClean() })
+	log, err = c.GitLog(d.Ctx(), connect.NewRequest(&v1.GitLogRequest{Project: "gamend"}))
+	harness.NoError(t, err, "GitLog")
+	head := log.Msg.GetCommits()[0]
+	if head.GetSubject() != "subject line" {
+		t.Fatalf("head subject %q", head.GetSubject())
+	}
+	if head.GetBody() != "" {
+		t.Fatalf("GitLog must leave the body empty, got %q", head.GetBody())
+	}
+	res, err := c.GitDiff(d.Ctx(), connect.NewRequest(&v1.GitDiffRequest{Project: "gamend", Hash: head.GetHash()}))
+	harness.NoError(t, err, "GitDiff")
+	if got := res.Msg.GetResult().GetCommit().GetBody(); got != "body line 1\nbody line 2" {
+		t.Fatalf("GitDiff body = %q, want \"body line 1\\nbody line 2\"", got)
+	}
+}
+
 func TestGit_PushFetchPullLocalRemote(t *testing.T) {
 	t.Parallel()
 	requireGit(t)

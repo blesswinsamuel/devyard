@@ -9,6 +9,7 @@ import { AddProjectDialog } from "~/features/home/add-project-dialog";
 import { CommandPalette } from "~/features/palette/palette";
 import { ShortcutsDialog } from "~/features/shortcuts/shortcuts";
 import { Sidebar } from "~/features/sidebar/sidebar";
+import { BranchDialog } from "~/features/git/branch-dialog";
 import { RunArgsDialog } from "~/features/task/run-args-dialog";
 import { Dock } from "~/features/terminal/dock";
 import { isMobile } from "~/lib/media";
@@ -79,6 +80,7 @@ export function Shell(props: ParentProps) {
       <CommandPalette />
       <ConfirmHost />
       <RunArgsDialog />
+      <BranchDialog />
       <AddProjectDialog />
       <ShortcutsDialog />
     </div>

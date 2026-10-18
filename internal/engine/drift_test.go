@@ -333,3 +333,25 @@ func TestBrokenConfigReloadsItselfWhenFixed(t *testing.T) {
 		return r.projects["fixme"].Error == "" && r.projects["fixme"].ServicesTotal == 1
 	})
 }
+
+func TestDriftReadyProbeChangeRefreshesHealthWithoutRestart(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	path := e.project("dr", "services:\n  a:\n    run: sleep 30\n    ready:\n      exec: \"true\"\n      interval: 100ms\n      retries: 1\n")
+	p := e.add(path, true)
+	a := e.obs.waitService(t, "dr/a", StatusRunning)
+	e.obs.waitFor(t, "a healthy", driftWait, func(r *recorder) bool { return r.services["dr/a"].Health == HealthHealthy })
+
+	e.writeConfig(path, "services:\n  a:\n    run: sleep 30\n    ready:\n      exec: \"false\"\n      interval: 100ms\n      retries: 1\n")
+	e.obs.waitFor(t, "drift pending", driftWait, func(r *recorder) bool { return r.projects["dr"].Drift.State == DriftPending })
+	if err := p.Reload(ctx(t), nil, false); err != nil {
+		t.Fatal(err)
+	}
+	// The process keeps running, but the changed probe must take effect.
+	e.obs.waitFor(t, "a unhealthy from the new probe", driftWait, func(r *recorder) bool {
+		return r.services["dr/a"].Health == HealthUnhealthy
+	})
+	if st := e.obs.service("dr/a"); st.PID != a.PID {
+		t.Errorf("a restarted on a ready-only change: %+v", st)
+	}
+}

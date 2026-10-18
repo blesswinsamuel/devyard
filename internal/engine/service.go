@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -482,6 +483,11 @@ func (a *serviceActor) cmdUpdate(m svcUpdate) {
 	old := a.def
 	a.def = m.def
 	if old.RuntimeHash == m.def.RuntimeHash || old.RuntimeHash == "" {
+		// The ready probe is not part of the runtime hash: a change to it
+		// takes effect on the live checker without restarting the process.
+		if a.proc != nil && a.st.Status == StatusRunning && !reflect.DeepEqual(old.Ready, m.def.Ready) {
+			a.startHealth(a.run)
+		}
 		a.publish()
 		m.reply <- nil
 		return

@@ -464,7 +464,8 @@ Details:
   `ports`, `depends_on`, …) and which services restart.
 - **Applying** (`devyard reload`, the dashboard's Apply, or `auto`) starts new
   services, stops removed ones, restarts the services whose definition changed
-  and leaves the rest running.
+  and leaves the rest running. A change to only a `ready` probe is applied to
+  the running service's checker without restarting it.
 - **A config that does not load** (`invalid`) is reported with its error and
   never applied; what runs is unchanged. The same goes for a project whose
   config never loaded: it loads by itself once the file is fixed.

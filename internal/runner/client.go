@@ -212,6 +212,22 @@ func (p *Process) Stop(ctx context.Context, grace time.Duration) (Status, error)
 	return *resp.Status, nil
 }
 
+// Exec runs a one-shot command in the run's directory and environment, in its
+// own process group, and returns its combined output. It is used for command
+// health probes so they run in the runner instead of forking the (very large)
+// supervisor process. The run itself is unaffected. A non-zero exit is
+// returned as an error together with the output; timeout bounds the command.
+func (p *Process) Exec(ctx context.Context, argv []string, dir string, env []string, timeout time.Duration) (string, error) {
+	resp, err := p.call(ctx, request{Op: "exec", Argv: argv, Dir: dir, Env: env, TimeoutMS: timeout.Milliseconds()})
+	if err != nil {
+		return resp.Output, err
+	}
+	if resp.ExitCode != 0 {
+		return resp.Output, fmt.Errorf("exit status %d", resp.ExitCode)
+	}
+	return resp.Output, nil
+}
+
 // Wait blocks until the run exits and returns its final status. It survives
 // runner restarts of the socket connection and detects runners that died
 // without recording a status (Lost).

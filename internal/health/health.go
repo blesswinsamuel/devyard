@@ -64,6 +64,13 @@ type Config struct {
 	WorkingDir string
 	// Env is the probe process's environment (optional; nil inherits parent).
 	Env []string
+	// ExecRunner, when set, runs the Exec probe instead of spawning it here.
+	// It receives the command, working directory, environment and per-probe
+	// timeout and returns the probe's combined output (best-effort; may be
+	// empty). A nil error means the probe passed. It lets a command probe run
+	// inside the service's runner, so the supervisor process (which reserves a
+	// very large address space) is not forked on every probe.
+	ExecRunner func(ctx context.Context, argv []string, dir string, env []string, timeout time.Duration) (string, error)
 	// StartPeriod is a grace period after EnsureStarted during which failing
 	// probes do not count towards Retries. A success ends it early.
 	StartPeriod time.Duration
@@ -284,10 +291,21 @@ func (c *Checker) probeHTTP(ctx context.Context) error {
 	return nil
 }
 
-// probeExec spawns the probe command in its own process group and waits for
-// it. If the per-probe timeout elapses, the whole group is killed so a stuck
-// shell pipeline cannot leak children.
+// probeExec runs the probe command and returns nil when it exits 0. When
+// ExecRunner is set the command runs there (e.g. in the service's runner);
+// otherwise it is spawned in its own process group and killed wholesale after
+// the timeout so a stuck shell pipeline cannot leak children.
 func (c *Checker) probeExec(ctx context.Context) error {
+	if c.cfg.ExecRunner != nil {
+		msg, err := c.cfg.ExecRunner(ctx, c.cfg.Exec, c.cfg.WorkingDir, c.cfg.Env, c.cfg.Timeout)
+		if err != nil {
+			if s := strings.TrimSpace(msg); s != "" && ctx.Err() == nil {
+				return fmt.Errorf("%w: %s", err, s)
+			}
+			return err
+		}
+		return nil
+	}
 	cmd := exec.CommandContext(ctx, c.cfg.Exec[0], c.cfg.Exec[1:]...)
 	if c.cfg.WorkingDir != "" {
 		cmd.Dir = c.cfg.WorkingDir

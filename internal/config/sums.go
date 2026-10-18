@@ -48,23 +48,58 @@ func SumFile(path string) string {
 	}
 }
 
+// SumCache memoizes SumFile results. A file is re-read only when its size or
+// modification time changed since it was last summed, so a caller that checks
+// files on a timer does not re-read and re-hash every one of them each tick.
+// It is not safe for concurrent use.
+type SumCache struct {
+	entries map[string]sumEntry
+}
+
+type sumEntry struct {
+	size    int64
+	modTime int64
+	sum     string
+}
+
+// Sum returns the content hash of path exactly as SumFile would, reusing the
+// previous result while the file's size and modification time are unchanged.
+func (c *SumCache) Sum(path string) string {
+	fi, err := os.Stat(path)
+	if err != nil {
+		// No stat to trust (missing or unreadable): read it and forget any
+		// cached value, so a file that appears later is noticed.
+		delete(c.entries, path)
+		return SumFile(path)
+	}
+	if e, ok := c.entries[path]; ok && e.size == fi.Size() && e.modTime == fi.ModTime().UnixNano() {
+		return e.sum
+	}
+	sum := SumFile(path)
+	if c.entries == nil {
+		c.entries = make(map[string]sumEntry)
+	}
+	c.entries[path] = sumEntry{size: fi.Size(), modTime: fi.ModTime().UnixNano(), sum: sum}
+	return sum
+}
+
+// Changed reports whether the current content of any path in want differs from
+// the hash it records, like Sums.Changed, using the cache.
+func (c *SumCache) Changed(want Sums) bool {
+	for path, sum := range want {
+		if c.Sum(path) != sum {
+			return true
+		}
+	}
+	return false
+}
+
 // Merge returns the union of the given sums.
 func Merge(all ...Sums) Sums {
 	out := Sums{}
 	for _, s := range all {
 		for k, v := range s {
 			out[k] = v
-		}
-	}
-	return out
-}
-
-// Changed lists the paths whose current content no longer matches s.
-func (s Sums) Changed() []string {
-	var out []string
-	for path, sum := range s {
-		if SumFile(path) != sum {
-			out = append(out, path)
 		}
 	}
 	return out

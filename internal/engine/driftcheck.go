@@ -19,7 +19,7 @@ func (a *projectActor) inputSums() config.Sums {
 		filepath.Join(dir, ".env"),
 		filepath.Join(dir, ".env.local"),
 	} {
-		sums[p] = config.SumFile(p)
+		sums[p] = a.sums.Sum(p)
 	}
 	return sums
 }
@@ -43,7 +43,7 @@ func (a *projectActor) checkDrift() {
 		return
 	}
 	policy := a.p.policy(a.reg.ConfigPath)
-	if policy == ReloadOff || len(a.ld.sums.Changed()) == 0 {
+	if policy == ReloadOff || !a.sums.Changed(a.ld.sums) {
 		if a.drift.State != DriftNone {
 			a.drift, a.lastSeen, a.examined = Drift{}, nil, nil
 			a.publishView()
@@ -52,7 +52,7 @@ func (a *projectActor) checkDrift() {
 	}
 	cur := config.Sums{}
 	for path := range a.ld.sums {
-		cur[path] = config.SumFile(path)
+		cur[path] = a.sums.Sum(path)
 	}
 	switch {
 	case maps.Equal(cur, a.examined):

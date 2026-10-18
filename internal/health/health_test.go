@@ -2,6 +2,7 @@ package health_test
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -440,5 +441,81 @@ func TestStartPeriodSuppressesEarlyFailures(t *testing.T) {
 	}
 	if c.LastFailure() == "" {
 		t.Fatal("expected a recorded failure detail")
+	}
+}
+
+func TestExecProbeRunsInProvidedRunner(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	run := func(context.Context, []string, string, []string, time.Duration) (string, error) {
+		calls.Add(1)
+		return "", nil
+	}
+	// The command would fail if it ran locally, so healthy proves the runner
+	// ran the probe instead.
+	c := newChecker(t, health.Config{Exec: []string{"false"}, Interval: 20 * time.Millisecond, Retries: 1, ExecRunner: run})
+	t.Cleanup(c.Stop)
+	c.EnsureStarted(context.Background())
+	if !waitForState(t, c, 2*time.Second, health.StateHealthy) {
+		t.Fatalf("state = %s, want healthy", c.State())
+	}
+	if calls.Load() == 0 {
+		t.Fatal("ExecRunner was never called")
+	}
+}
+
+func TestExecProbeRunnerFailureReportsOutput(t *testing.T) {
+	t.Parallel()
+	run := func(context.Context, []string, string, []string, time.Duration) (string, error) {
+		return "connection refused", errors.New("exit status 1")
+	}
+	c := newChecker(t, health.Config{Exec: []string{"true"}, Interval: 20 * time.Millisecond, Retries: 1, ExecRunner: run})
+	t.Cleanup(c.Stop)
+	c.EnsureStarted(context.Background())
+	if !waitForState(t, c, 2*time.Second, health.StateUnhealthy) {
+		t.Fatalf("state = %s, want unhealthy", c.State())
+	}
+	if got := c.LastFailure(); !strings.Contains(got, "connection refused") {
+		t.Fatalf("LastFailure = %q, want the probe output", got)
+	}
+}
+
+func TestExecProbeRunnerGetsRequestedValues(t *testing.T) {
+	t.Parallel()
+	type call struct {
+		argv    []string
+		dir     string
+		env     []string
+		timeout time.Duration
+	}
+	got := make(chan call, 1)
+	run := func(_ context.Context, argv []string, dir string, env []string, timeout time.Duration) (string, error) {
+		select {
+		case got <- call{argv: argv, dir: dir, env: env, timeout: timeout}:
+		default:
+		}
+		return "", nil
+	}
+	c := newChecker(t, health.Config{
+		Exec:       []string{"pg_isready", "-q"},
+		WorkingDir: "/tmp",
+		Env:        []string{"FOO=bar"},
+		Interval:   time.Hour,
+		Retries:    1,
+		Timeout:    3 * time.Second,
+		ExecRunner: run,
+	})
+	t.Cleanup(c.Stop)
+	c.EnsureStarted(context.Background())
+	select {
+	case got := <-got:
+		if len(got.argv) != 2 || got.argv[0] != "pg_isready" {
+			t.Fatalf("argv = %v", got.argv)
+		}
+		if got.dir != "/tmp" || len(got.env) != 1 || got.env[0] != "FOO=bar" || got.timeout != 3*time.Second {
+			t.Fatalf("call = %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ExecRunner was not called")
 	}
 }

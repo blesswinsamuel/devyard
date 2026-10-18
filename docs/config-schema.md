@@ -175,7 +175,7 @@ ready:
 | `http.path` | `/` | Must start with `/`. Redirects are not followed. |
 | `http.port`, `tcp.port` | default port | A port name of the service or a number. |
 | `http.status` | any 2xx or 3xx | Expected status code. |
-| `exec` | — | Runs in the service's directory and environment, in its own process group (killed on timeout). |
+| `exec` | — | Runs in the service's runner, in the service's directory and environment, in its own process group (killed on timeout). |
 | `interval` | `2s` | Time between probes. |
 | `timeout` | `2s` | Time limit for one probe. |
 | `retries` | `30` | Consecutive failures that mark the service `unhealthy`. |

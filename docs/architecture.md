@@ -46,6 +46,10 @@ optional build step, paths) and:
      the run has exited.
    - `signal`
    - `attach`: replay followed by live output, plus input, resize and EOF
+   - `exec`: run a one-shot command in the run's directory and environment, in
+     its own process group, and return its output and exit code. Command
+     healthchecks use it so a probe does not fork the daemon (whose Go runtime
+     reserves a very large address space) on every interval.
 5. When the child exits:
    - kills stragglers left in its process group,
    - drains output for a bounded time (an escaped grandchild holding the

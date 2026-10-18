@@ -140,6 +140,9 @@ type projectActor struct {
 	drift    Drift
 	lastSeen config.Sums
 	examined config.Sums
+	// sums memoizes config file hashes so the per-tick drift check does not
+	// re-read and re-hash every config file on every check.
+	sums config.SumCache
 }
 
 // configCheckInterval is how often a project checks that its config file

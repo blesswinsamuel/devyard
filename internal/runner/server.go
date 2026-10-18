@@ -4,6 +4,7 @@ package runner
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -578,6 +579,83 @@ func (s *server) signal(sig syscall.Signal) error {
 
 // --- control socket --------------------------------------------------------
 
+// execProbe runs a one-shot command (a health probe) in the run's directory
+// and environment, in its own process group, and returns its combined output
+// and exit code. It is independent of the run: it never touches the run's
+// process group or status. timeout bounds it; on expiry the whole probe group
+// is killed so a stuck shell pipeline cannot leak children.
+func (s *server) execProbe(req request) (int, string, error) {
+	if len(req.Argv) == 0 {
+		return 0, "", errors.New("exec: argv is required")
+	}
+	ctx := context.Background()
+	if timeout := time.Duration(req.TimeoutMS) * time.Millisecond; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(ctx, req.Argv[0], req.Argv[1:]...)
+	cmd.Dir = req.Dir
+	if cmd.Dir == "" {
+		cmd.Dir = s.spec.Dir
+	}
+	if req.Env != nil {
+		cmd.Env = req.Env
+	} else {
+		cmd.Env = s.spec.Env
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Take over the context's cancellation so the whole probe group is killed
+	// (a shell pipeline would otherwise leak its children).
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return os.ErrProcessDone
+	}
+	cmd.WaitDelay = time.Second
+	var out limitedBuffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			return 0, out.String(), fmt.Errorf("timed out after %s", time.Duration(req.TimeoutMS)*time.Millisecond)
+		case errors.As(err, &ee):
+			return ee.ExitCode(), out.String(), nil
+		default:
+			return 0, out.String(), err
+		}
+	}
+	return 0, out.String(), nil
+}
+
+// limitedBuffer keeps the first 1 KiB written to it.
+type limitedBuffer struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if room := 1024 - len(b.buf); room > 0 {
+		if len(p) > room {
+			b.buf = append(b.buf, p[:room]...)
+		} else {
+			b.buf = append(b.buf, p...)
+		}
+	}
+	return len(p), nil
+}
+
+func (b *limitedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf)
+}
+
 func (s *server) acceptLoop() {
 	for {
 		conn, err := s.ln.Accept()
@@ -675,6 +753,14 @@ func (s *server) handle(conn net.Conn) {
 		_ = conn.Close()
 	case "attach":
 		s.attach(conn, br, req)
+	case "exec":
+		code, out, err := s.execProbe(req)
+		resp := response{OK: err == nil, ExitCode: code, Output: out}
+		if err != nil {
+			resp.Error = err.Error()
+		}
+		_ = writeJSONLine(conn, resp)
+		_ = conn.Close()
 	default:
 		_ = writeJSONLine(conn, response{Error: "unknown op " + req.Op})
 		_ = conn.Close()

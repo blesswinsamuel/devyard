@@ -487,3 +487,46 @@ func TestWatchReportsPhases(t *testing.T) {
 		t.Fatalf("phases %s final %+v", got, final)
 	}
 }
+
+func TestExecRunsCommandInRun(t *testing.T) {
+	t.Parallel()
+	spec := testSpec(t, "service", "sleep 30")
+	p := launch(t, spec)
+	out, err := p.Exec(context.Background(), []string{"sh", "-c", "echo hello"}, spec.Dir, spec.Env, 5*time.Second)
+	if err != nil {
+		t.Fatalf("exec: %v (out %q)", err, out)
+	}
+	if strings.TrimSpace(out) != "hello" {
+		t.Fatalf("output = %q, want hello", out)
+	}
+	// The probe must not disturb the run it belongs to.
+	if st, err := p.Status(context.Background()); err != nil || st.Phase != PhaseRunning {
+		t.Fatalf("run status = %+v, %v; want running", st, err)
+	}
+}
+
+func TestExecReturnsExitCodeAndOutput(t *testing.T) {
+	t.Parallel()
+	spec := testSpec(t, "service", "sleep 30")
+	p := launch(t, spec)
+	out, err := p.Exec(context.Background(), []string{"sh", "-c", "echo boom >&2; exit 3"}, spec.Dir, spec.Env, 5*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "exit status 3") {
+		t.Fatalf("err = %v, want exit status 3", err)
+	}
+	if !strings.Contains(out, "boom") {
+		t.Fatalf("output = %q, want the probe's stderr", out)
+	}
+}
+
+func TestExecTimeoutKillsProbe(t *testing.T) {
+	t.Parallel()
+	spec := testSpec(t, "service", "sleep 30")
+	p := launch(t, spec)
+	start := time.Now()
+	if _, err := p.Exec(context.Background(), []string{"sh", "-c", "sleep 30"}, spec.Dir, spec.Env, 200*time.Millisecond); err == nil {
+		t.Fatal("expected a timeout error")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("exec took %s, want a prompt timeout", elapsed)
+	}
+}

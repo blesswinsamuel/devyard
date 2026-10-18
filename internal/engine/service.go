@@ -731,6 +731,7 @@ func (a *serviceActor) startHealth(run int64) {
 		StartPeriod: hc.StartPeriod,
 		WorkingDir:  a.def.Dir,
 		Env:         a.def.Env,
+		ExecRunner:  a.execProbeRunner(),
 	}, nil)
 	if err != nil {
 		// An invalid healthcheck must not abort the service.
@@ -745,6 +746,20 @@ func (a *serviceActor) startHealth(run int64) {
 		a.post(evHealth{run: run, state: s, detail: c.LastFailure()})
 	})
 	c.EnsureStarted(context.Background())
+}
+
+// execProbeRunner runs command probes in the service's runner, so the daemon
+// (whose Go runtime reserves a very large address space) is not forked on every
+// probe. It returns nil when there is no runner to defer to, so the probe falls
+// back to a local child.
+func (a *serviceActor) execProbeRunner() func(ctx context.Context, argv []string, dir string, env []string, timeout time.Duration) (string, error) {
+	proc := a.proc
+	if proc == nil {
+		return nil
+	}
+	return func(ctx context.Context, argv []string, dir string, env []string, timeout time.Duration) (string, error) {
+		return proc.Exec(ctx, argv, dir, env, timeout)
+	}
 }
 
 func (a *serviceActor) stopHealth() {

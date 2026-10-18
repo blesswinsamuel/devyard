@@ -15,11 +15,17 @@ import (
 // "attach", the connection then switches to binary frames.
 
 type request struct {
-	Op      string `json:"op"` // status | wait | stop | signal | attach
+	Op      string `json:"op"` // status | wait | stop | signal | attach | exec
 	GraceMS int64  `json:"grace_ms,omitempty"`
 	Signal  string `json:"signal,omitempty"`
 	Cols    int    `json:"cols,omitempty"`
 	Rows    int    `json:"rows,omitempty"`
+
+	// Exec fields (op "exec"): a one-shot probe command run for the caller.
+	Argv      []string `json:"argv,omitempty"`
+	Dir       string   `json:"dir,omitempty"`
+	Env       []string `json:"env,omitempty"`
+	TimeoutMS int64    `json:"timeout_ms,omitempty"`
 }
 
 type response struct {
@@ -29,6 +35,10 @@ type response struct {
 	TTY    bool    `json:"tty,omitempty"`
 	// Stdin reports whether the attached process accepts input.
 	Stdin bool `json:"stdin,omitempty"`
+
+	// Exec result (op "exec"): the probe's combined output and exit code.
+	Output   string `json:"output,omitempty"`
+	ExitCode int    `json:"exit_code,omitempty"`
 }
 
 // Frame types used after an attach handshake.

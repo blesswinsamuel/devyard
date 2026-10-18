@@ -182,6 +182,9 @@ type Proc interface {
 	Stop(ctx context.Context, grace time.Duration) (runner.Status, error)
 	Signal(ctx context.Context, sig string) error
 	Attach(ctx context.Context, cols, rows int) (*runner.Attachment, error)
+	// Exec runs a one-shot command in the run's directory and environment and
+	// returns its combined output. A non-zero exit is reported as an error.
+	Exec(ctx context.Context, argv []string, dir string, env []string, timeout time.Duration) (string, error)
 }
 
 // Launcher starts and re-opens runs. The daemon uses runner.Launch/Open;

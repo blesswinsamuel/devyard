@@ -51,7 +51,7 @@ function RestartBadge(props: { count: number; title: string }) {
   );
 }
 
-function ProjectRow(props: { node: TreeNode; onToggle: () => void }) {
+function ProjectRow(props: { node: TreeNode; onToggle: () => void; onOpenGit: () => void }) {
   const p = () => getProject(props.node.project);
   const failing = createMemo(() => servicesOf(props.node.project).filter(isServiceFailing).length);
   const restarts = createMemo(() => servicesOf(props.node.project).reduce((n, s) => n + s.restarts, 0));
@@ -74,12 +74,24 @@ function ProjectRow(props: { node: TreeNode; onToggle: () => void }) {
           <span class="min-w-0 flex-1 truncate font-medium">{project().id}</span>
           <Show when={gitSummary(git())}>
             {(summary) => (
-              <span class="flex max-w-24 min-w-0 items-center gap-1 text-2xs text-muted-foreground" title={`git: ${summary()}`}>
+              <button
+                type="button"
+                class="focus-ring flex max-w-24 min-w-0 items-center gap-1 rounded-sm text-2xs text-muted-foreground hover:text-sidebar-accent-foreground hover:underline"
+                title={`git: ${summary()}`}
+                aria-label={`Open git view (${summary()})`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onOpenGit();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+                }}
+              >
                 <span class="truncate">{summary()}</span>
                 <Show when={git() && !git()!.isClean}>
                   <span class="size-1.5 shrink-0 rounded-full bg-warning" aria-label="uncommitted changes" />
                 </Show>
-              </span>
+              </button>
             )}
           </Show>
           <Show when={project().drift}>
@@ -371,7 +383,14 @@ export function Sidebar(props: { onNavigate?: () => void; collapsible?: boolean 
               >
                 <Switch>
                   <Match when={node.kind === "project"}>
-                    <ProjectRow node={node} onToggle={() => setExpanded(node.project, !node.expanded)} />
+                    <ProjectRow
+                      node={node}
+                      onToggle={() => setExpanded(node.project, !node.expanded)}
+                      onOpenGit={() => {
+                        navigate(paths.git(node.project));
+                        props.onNavigate?.();
+                      }}
+                    />
                   </Match>
                   <Match when={node.kind === "service"}>
                     <ServiceRow node={node} />

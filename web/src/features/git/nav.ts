@@ -25,3 +25,19 @@ export function listKey(key: string, index: number, length: number): ListKeyResu
       return null;
   }
 }
+
+export interface CompareState {
+  selected: string | undefined;
+  base: string | undefined;
+}
+
+/**
+ * What a ⌘/Ctrl-click on a commit does to a comparison: the first pick pins
+ * the commit (and selects it); the next pick completes the pair while the
+ * base sticks, and clicking the pinned base clears it again.
+ */
+export function nextCompareState(selected: string | undefined, base: string | undefined, clicked: string): CompareState {
+  if (base === clicked) return { selected, base: undefined };
+  if (base) return { selected: clicked, base };
+  return { selected: clicked, base: clicked };
+}

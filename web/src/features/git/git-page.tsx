@@ -38,7 +38,7 @@ import { CommitMeta, DiffView } from "./diff-view";
 import { FileList } from "./file-list";
 import { DEFAULT_CONTEXT, combineLog, useGitDiff, useGitLog, WORKDIR } from "./git-data";
 import { computeGitGraph, graphWidth } from "./graph";
-import { listKey } from "./nav";
+import { listKey, nextCompareState } from "./nav";
 import { RefsPanel } from "./refs-panel";
 
 type Tab = "commits" | "diff" | "files" | "refs";
@@ -218,6 +218,13 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   // Pin the selected (or a row's) commit as the base of a comparison.
   const setCompareBase = (hash: string) => navigateGit(selected() ?? hash, { path: historyPath(), base: hash });
   const clearCompareBase = () => navigateGit(selected(), { path: historyPath() });
+  // Sublime-Merge-style ⌘/Ctrl-click: the first pick pins a comparison base,
+  // the second completes the pair. The working tree is not a commit range.
+  const compareClick = (hash: string) => {
+    if (hash === WORKDIR) return;
+    const next = nextCompareState(selected(), base(), hash);
+    navigateGit(next.selected, { path: historyPath(), base: next.base });
+  };
 
   // j/k anywhere on the page steps through commits; "/" searches them.
   const onWindowKey = (e: KeyboardEvent) => {
@@ -280,6 +287,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
       base={base()}
       onCompare={setCompareBase}
       onClearCompare={clearCompareBase}
+      onCompareClick={compareClick}
       banner={
         <Show when={historyPath()}>
           {(p) => (
@@ -393,7 +401,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
                       variant="ghost"
                       size="xs"
                       class="h-6"
-                      title="Pin this commit as the comparison base, then pick another commit"
+                      title="Pin this commit as the comparison base, then ⌘/Ctrl-click another commit"
                       onClick={() => setCompareBase(selected()!)}
                     >
                       <GitCompare />
@@ -411,7 +419,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
                         <GitCompare class="size-3.5 shrink-0" />
                         <span class="min-w-0 truncate">
                           Comparing from <span class="font-mono">{b().slice(0, 7)}</span>
-                          <Show when={selected() && b() !== selected()}>
+                          <Show when={selected() && b() !== selected()} fallback={<span> — pick another commit</span>}>
                             {" to "}
                             <span class="font-mono">{selected()!.slice(0, 7)}</span>
                           </Show>

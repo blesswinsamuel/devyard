@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GitCommit, GitDiffResult, GitFileChange, GitLogResponse, GitStash } from "~/gen/devyard/v1/control_pb";
-import { filterCommits } from "./commit-list";
+import { commitRowClass, filterCommits } from "./commit-list";
 import { fileOrder, groupFiles } from "./file-list";
 import { toDiff, toLog, type GitFileView } from "./git-data";
 
@@ -34,6 +34,16 @@ describe("groupFiles / fileOrder", () => {
     expect(groupFiles(files, "GO").all.map((f) => f.path)).toEqual(["a.go", "b.go", "both.go"]);
     expect(fileOrder(groupFiles(files, ""), true)).toEqual([null, "a.go", "both.go", "b.go", "new.txt"]);
     expect(fileOrder(groupFiles(files, ""), false)).toEqual([null, "a.go", "new.txt", "b.go", "both.go"]);
+  });
+});
+
+describe("commitRowClass", () => {
+  it("tints the pinned comparison base and lets the selection win", () => {
+    expect(commitRowClass(true, false)).toBe("bg-accent");
+    expect(commitRowClass(false, true)).toBe("bg-primary/10");
+    expect(commitRowClass(false, false)).toBe("hover:bg-muted/60");
+    // A row can be both sides of a comparison; the selection highlight wins.
+    expect(commitRowClass(true, true)).toBe("bg-accent");
   });
 });
 

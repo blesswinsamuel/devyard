@@ -29,6 +29,15 @@ export function filterCommits(commits: GitCommitView[], query: string): GitCommi
 
 const rowId = (hash: string) => `git-commit-${hash}`;
 
+/**
+ * The highlight variant of a commit row: the selected commit wins, and the
+ * pinned comparison base is tinted below it so both sides of a ⌘/Ctrl-click
+ * comparison stay visible in the list.
+ */
+export function commitRowClass(selected: boolean, base: boolean): string {
+  return selected ? "bg-accent" : base ? "bg-primary/10" : "hover:bg-muted/60";
+}
+
 function CommitRow(props: {
   commit: GitCommitView;
   project: string;
@@ -38,13 +47,15 @@ function CommitRow(props: {
   selected: boolean;
   base: string | undefined;
   onClick: () => void;
+  /** ⌘/Ctrl-click pins or completes a commit comparison. */
+  onCompareClick?: (hash: string) => void;
   onCompare: (hash: string) => void;
   onClearCompare: () => void;
 }) {
   const workdir = () => props.commit.hash === WORKDIR;
   const detached = () => !props.commit.refs.some((r) => r.type === "branch" && r.isActive);
+  const isBase = () => props.base === props.commit.hash;
   const menu = (): GitMenuItem[] => {
-    const isBase = props.base === props.commit.hash;
     return [
       { label: "Copy hash", icon: Copy, onSelect: () => void copyText(props.commit.hash) },
       {
@@ -55,10 +66,10 @@ function CommitRow(props: {
       },
       { label: `Tag ${props.commit.short}…`, icon: Tag, onSelect: () => void promptGitTag(props.project, props.commit.hash) },
       {
-        label: isBase ? "Clear comparison" : "Compare from here",
+        label: isBase() ? "Clear comparison" : "Compare from here",
         icon: GitCompare,
         separated: true,
-        onSelect: () => (isBase ? props.onClearCompare() : props.onCompare(props.commit.hash)),
+        onSelect: () => (isBase() ? props.onClearCompare() : props.onCompare(props.commit.hash)),
       },
     ];
   };
@@ -67,13 +78,25 @@ function CommitRow(props: {
       id={rowId(props.commit.hash)}
       role="option"
       aria-selected={props.selected}
+      title={isBase() ? "Comparison base — ⌘/Ctrl-click to clear" : undefined}
       class={cn(
         "relative flex h-full cursor-pointer items-stretch gap-2 pr-3 pl-1 select-none",
-        props.selected ? "bg-accent" : "hover:bg-muted/60",
+        commitRowClass(props.selected, isBase()),
       )}
-      onClick={props.onClick}
+      onClick={(e) => {
+        // Sublime-Merge-style ⌘/Ctrl-click pins or completes a comparison.
+        if (e.metaKey || e.ctrlKey) {
+          e.preventDefault();
+          props.onCompareClick?.(props.commit.hash);
+        } else {
+          props.onClick();
+        }
+      }}
     >
       <span class={cn("absolute inset-y-0 left-0 w-0.5", props.selected && "bg-primary")} aria-hidden="true" />
+      <Show when={isBase()}>
+        <span class="absolute inset-y-0 right-0 w-0.5 bg-primary/60" aria-hidden="true" />
+      </Show>
       <Show when={props.showGraph} fallback={<span class="w-1" />}>
         <GraphCell info={props.info} columns={props.columns} selected={props.selected} workdir={workdir()} />
       </Show>
@@ -144,6 +167,8 @@ export function CommitList(props: {
   base?: string;
   onCompare?: (hash: string) => void;
   onClearCompare?: () => void;
+  /** ⌘/Ctrl-click pins or completes a commit comparison. */
+  onCompareClick?: (hash: string) => void;
   /** Extra content above the search box (e.g. the file-history chip). */
   banner?: JSX.Element;
   /** Pane title row (off inside mobile tabs, which already name the pane). */
@@ -260,6 +285,7 @@ export function CommitList(props: {
                           selected={commit().hash === props.selected}
                           base={props.base}
                           onClick={() => props.onSelect(commit().hash, "click")}
+                          onCompareClick={(h) => props.onCompareClick?.(h)}
                           onCompare={(h) => props.onCompare?.(h)}
                           onClearCompare={() => props.onClearCompare?.()}
                         />

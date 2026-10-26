@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listKey } from "./nav";
+import { listKey, nextCompareState } from "./nav";
 
 describe("listKey", () => {
   it("steps with j/k and arrows, clamped to the list", () => {
@@ -24,5 +24,20 @@ describe("listKey", () => {
   it("ignores other keys and empty lists", () => {
     expect(listKey("x", 0, 3)).toBeNull();
     expect(listKey("j", -1, 0)).toBeNull();
+  });
+});
+
+describe("nextCompareState", () => {
+  it("pins and selects the first ⌘/Ctrl-clicked commit", () => {
+    expect(nextCompareState("x", undefined, "a")).toEqual({ selected: "a", base: "a" });
+  });
+
+  it("completes the pair while keeping the pinned base", () => {
+    expect(nextCompareState("a", "a", "b")).toEqual({ selected: "b", base: "a" });
+    expect(nextCompareState("b", "a", "b")).toEqual({ selected: "b", base: "a" });
+  });
+
+  it("clears the base when the pinned commit is clicked again", () => {
+    expect(nextCompareState("b", "a", "a")).toEqual({ selected: "b", base: undefined });
   });
 });

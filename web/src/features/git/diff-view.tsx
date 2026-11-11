@@ -288,7 +288,7 @@ function FileDiff(props: {
 
   return (
     // content-visibility lets the browser skip rendering whole files that
-    // are scrolled out of the diff pane (large diffs stay smooth) without
+    // are scrolled out of view (large diffs stay smooth) without
     // restructuring the table or losing the sticky headers.
     <section
       class="overflow-clip rounded-md border bg-card"
@@ -409,7 +409,7 @@ export function DiffView(props: DiffViewProps) {
   const nextContext = () => CONTEXT_STEPS.find((s) => s > props.contextLines);
 
   return (
-    <div class="@container flex h-full min-h-0 flex-col">
+    <div class="@container flex flex-col">
       <div class="flex shrink-0 flex-col gap-2 border-b p-3">{props.header}</div>
       <div class="flex min-h-9 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b px-2 py-1">
         <Show
@@ -468,7 +468,9 @@ export function DiffView(props: DiffViewProps) {
           {props.toolbarEnd}
         </div>
       </div>
-      <div ref={props.scrollRef} class="focus-ring min-h-0 flex-1 overflow-auto p-2 sm:p-3" tabindex="0" aria-label="Diff">
+      {/* The diff grows to its full length; the page (or the mobile tab panel)
+          is the scroll container, so the file headers stick to its top. */}
+      <div ref={props.scrollRef} class="focus-ring p-2 sm:p-3" tabindex="0" aria-label="Diff">
         <Show
           when={visible().length}
           fallback={

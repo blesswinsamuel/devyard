@@ -71,7 +71,12 @@ export function Shell(props: ParentProps) {
         <main
           id="main"
           tabindex="-1"
-          class={cn("min-h-0 flex-1 overflow-y-auto outline-none transition-opacity", isStale() && "opacity-60")}
+          // A size container so pages can size sticky sidebars to the scrollport
+          // (`h-[100cqh]`) instead of guessing at the header and dock heights.
+          class={cn(
+            "min-h-0 flex-1 overflow-y-auto outline-none transition-opacity [container-type:size]",
+            isStale() && "opacity-60",
+          )}
           aria-busy={!entities.state.loaded || undefined}
         >
           {props.children}

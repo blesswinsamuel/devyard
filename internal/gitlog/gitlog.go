@@ -126,10 +126,16 @@ func Log(dir string, skip int, path string) ([]*pb.GitCommit, []*pb.GitBranch, [
 	// No --shortstat: it tree-diffs every listed commit (the dominant cost
 	// of the whole log call); the selected commit's stats come from Diff.
 	// One extra commit reveals whether an older page exists.
-	args := []string{"log", "--all", "--date-order", "--decorate=full", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit+1)}
+	args := []string{"log", "--date-order", "--decorate=full", fmt.Sprintf("--pretty=format:%s", format), "-n", fmt.Sprintf("%d", CommitLimit+1)}
 	if skip > 0 {
 		args = append(args, "--skip", fmt.Sprintf("%d", skip))
 	}
+	// Walk the refs a git GUI walks — local branches, remote-tracking
+	// branches, tags and HEAD (for a detached checkout) — rather than --all,
+	// which also walks refs outside those namespaces. Other tools keep
+	// private bookkeeping there, and their commits would otherwise be
+	// listed as if they belonged to the user's history.
+	args = append(args, "HEAD", "--branches", "--remotes", "--tags")
 	if path != "" {
 		args = append(args, "--", pathSpec(path))
 	}

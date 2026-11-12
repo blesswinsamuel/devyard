@@ -342,7 +342,10 @@ function FileDiff(props: {
             </p>
           }
         >
-          <div class="overflow-x-auto">
+          {/* `overflow-x-auto` makes this a vertical scroller too (with no
+              range), which macOS rubber-bands on; clip the y axis so a wheel
+              over the code scrolls the diff pane instead. */}
+          <div class="overflow-x-auto overflow-y-clip">
             <table class="min-w-full border-collapse font-mono text-xs">
               <tbody>
                 <For each={props.chunk.lines}>
@@ -468,7 +471,12 @@ export function DiffView(props: DiffViewProps) {
           {props.toolbarEnd}
         </div>
       </div>
-      <div ref={props.scrollRef} class="focus-ring min-h-0 flex-1 overflow-auto p-2 sm:p-3" tabindex="0" aria-label="Diff">
+      <div
+        ref={props.scrollRef}
+        class="focus-ring min-h-0 flex-1 overflow-auto overscroll-y-none p-2 sm:p-3"
+        tabindex="0"
+        aria-label="Diff"
+      >
         <Show
           when={visible().length}
           fallback={

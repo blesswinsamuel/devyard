@@ -453,7 +453,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   );
 
   return (
-    <Page wide class={cn("gap-3 px-3 py-3 md:gap-4 md:px-4 md:py-4", !isWide() && "h-full min-h-0")}>
+    <Page wide class="h-full min-h-0 gap-3 px-3 py-3 md:gap-4 md:px-4 md:py-4">
       <PageHeader
         title="Git"
         badges={
@@ -513,12 +513,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
           </>
         }
       />
-      <div
-        class={cn(
-          "rounded-lg border bg-card",
-          isWide() ? "flex items-start overflow-clip" : "flex min-h-0 flex-1 overflow-hidden",
-        )}
-      >
+      <div class="flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-card">
         <Switch>
           <Match when={log.isError && !log.data}>
             <LoadError title="Couldn't load the git log" error={log.error} onRetry={() => void log.refetch()} />
@@ -528,18 +523,18 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
           </Match>
           <Match when={isWide()}>
             <Show when={panes().refs}>
-              <aside class="sticky top-0 h-[100cqh] w-48 shrink-0 border-r 2xl:w-56" aria-label="Refs">
+              <aside class="w-48 shrink-0 border-r 2xl:w-56" aria-label="Refs">
                 {refsPanel()}
               </aside>
             </Show>
-            <section class="sticky top-0 h-[100cqh] w-72 shrink-0 border-r xl:w-80 2xl:w-96" aria-label="Commits">
+            <section class="w-72 shrink-0 border-r xl:w-80 2xl:w-96" aria-label="Commits">
               {commitList()}
             </section>
-            <section class="min-h-[100cqh] min-w-0 flex-1" aria-label="Changes">
+            <section class="min-w-0 flex-1" aria-label="Changes">
               {diffPane()}
             </section>
             <Show when={panes().files && diff.data && files().length}>
-              <aside class="sticky top-0 h-[100cqh] w-56 shrink-0 border-l 2xl:w-64" aria-label="Changed files">
+              <aside class="w-56 shrink-0 border-l 2xl:w-64" aria-label="Changed files">
                 {fileList()}
               </aside>
             </Show>
@@ -573,7 +568,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
               <TabsContent value="commits" class="min-h-0 flex-1">
                 {commitList()}
               </TabsContent>
-              <TabsContent value="diff" class="min-h-0 flex-1 overflow-y-auto">
+              <TabsContent value="diff" class="min-h-0 flex-1">
                 {diffPane()}
               </TabsContent>
               <TabsContent value="files" class="min-h-0 flex-1">

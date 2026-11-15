@@ -138,7 +138,9 @@ unstaging and discarding individual hunks.
 
 `GitPush`, `GitPull` and `GitFetch` run at most one at a time per
 repository (`GitStatus.sync_operation` names the running one) and return
-git's output. With `force`, `GitPush` runs `git push --force-with-lease`.
+git's output. If the current branch has no upstream branch configured,
+`GitPush` sets the remote tracking upstream automatically (`--set-upstream`).
+With `force`, `GitPush` runs `git push --force-with-lease`.
 
 ## Logs
 

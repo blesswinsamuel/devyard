@@ -1453,12 +1453,114 @@ func Apply(dir, patch string, cached, reverse bool) error {
 	return nil
 }
 
-// Push pushes the current branch to its upstream remote. With force, it passes
+// hasUpstream reports whether the current branch has a tracking upstream configured.
+func hasUpstream(dir string) bool {
+	cmd := gitCmd(dir, "rev-parse", "--abbrev-ref", "@{u}")
+	var discard bytes.Buffer
+	cmd.Stdout = &discard
+	cmd.Stderr = &discard
+	return cmd.Run() == nil
+}
+
+// currentBranch returns the name of the currently checked-out branch, or ""
+// if HEAD is detached or unborn.
+func currentBranch(dir string) string {
+	cmd := gitCmd(dir, "symbolic-ref", "--short", "HEAD")
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.String())
+}
+
+// gitConfig reads a git config key from dir, returning "" if not set.
+func gitConfig(dir, key string) string {
+	cmd := gitCmd(dir, "config", "--get", key)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.String())
+}
+
+// listRemotes returns the names of all configured remotes for dir.
+func listRemotes(dir string) []string {
+	cmd := gitCmd(dir, "remote")
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	var res []string
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			res = append(res, line)
+		}
+	}
+	return res
+}
+
+// defaultRemote resolves the remote to push to when no remote is specified:
+// checking branch-specific pushRemote, remote.pushDefault, branch remote,
+// "origin", and finally the first configured remote.
+func defaultRemote(dir, branch string) string {
+	if branch != "" {
+		if r := gitConfig(dir, "branch."+branch+".pushRemote"); r != "" {
+			return r
+		}
+	}
+	if r := gitConfig(dir, "remote.pushDefault"); r != "" {
+		return r
+	}
+	if branch != "" {
+		if r := gitConfig(dir, "branch."+branch+".remote"); r != "" {
+			return r
+		}
+	}
+	remotes := listRemotes(dir)
+	for _, r := range remotes {
+		if r == "origin" {
+			return "origin"
+		}
+	}
+	if len(remotes) > 0 {
+		return remotes[0]
+	}
+	return ""
+}
+
+// Push pushes the current branch to its upstream remote. If the current branch
+// has no upstream configured, it pushes to the remote (defaulting to origin or
+// the configured remote) and sets upstream tracking. With force, it passes
 // --force-with-lease to safely overwrite remote history.
 func Push(ctx context.Context, dir string, remote string, force bool) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return "", fmt.Errorf("git: %s is not a git repository", dir)
+	}
 	var extra []string
 	if force {
 		extra = append(extra, "--force-with-lease")
+	}
+	if !hasUpstream(dir) {
+		if branch := currentBranch(dir); branch != "" {
+			targetRemote := remote
+			if targetRemote == "" {
+				targetRemote = defaultRemote(dir, branch)
+			}
+			if targetRemote != "" {
+				extra = append(extra, "--set-upstream", targetRemote, branch)
+				return remoteCmd(ctx, dir, "push", "", extra...)
+			}
+		}
 	}
 	return remoteCmd(ctx, dir, "push", remote, extra...)
 }

@@ -911,18 +911,20 @@ func TestPushPullFetch(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	runIn("remote", "add", "origin", remote)
-
-	// Push without an upstream should fail with useful guidance.
+	// Push without a configured remote should fail.
 	if _, err := Push(context.Background(), dir, "", false); err == nil {
-		t.Fatalf("Push with no upstream: expected error, got nil")
+		t.Fatalf("Push with no remote: expected error, got nil")
 	}
 
-	// Set upstream and push.
-	runIn("push", "-u", "origin", "main")
-	output, err := Push(context.Background(), dir, "origin", false)
+	runIn("remote", "add", "origin", remote)
+
+	// Push of a new branch without an upstream sets upstream tracking and succeeds.
+	output, err := Push(context.Background(), dir, "", false)
 	if err != nil {
-		t.Fatalf("Push: %v (output: %s)", err, output)
+		t.Fatalf("Push of new branch: %v (output: %s)", err, output)
+	}
+	if got := runIn("rev-parse", "--abbrev-ref", "@{u}"); got != "origin/main" {
+		t.Fatalf("expected upstream origin/main, got %q", got)
 	}
 
 	// Cloning dir gives the pushed commits; fetch should download them and
@@ -1038,6 +1040,59 @@ func TestPush_ForceWithLease(t *testing.T) {
 	remoteHead := exec.Command("git", "--git-dir", remote, "log", "-1", "--format=%s", "main")
 	if out, err := remoteHead.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "second commit amended" {
 		t.Fatalf("remote head commit: %s (err: %v)", out, err)
+	}
+}
+
+func TestPushNewBranch(t *testing.T) {
+	remote := newBareRemote(t)
+	dir := initRepo(t)
+
+	runIn := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	runIn("remote", "add", "origin", remote)
+
+	// Branch without upstream pushes to default remote (origin) and sets tracking.
+	runIn("checkout", "-b", "feature/one")
+	if err := os.WriteFile(filepath.Join(dir, "one.txt"), []byte("one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runIn("add", "one.txt")
+	runIn("commit", "-m", "feature one commit")
+
+	out, err := Push(context.Background(), dir, "", false)
+	if err != nil {
+		t.Fatalf("Push new branch feature/one: %v (output: %s)", err, out)
+	}
+	if got := runIn("rev-parse", "--abbrev-ref", "@{u}"); got != "origin/feature/one" {
+		t.Fatalf("expected upstream origin/feature/one, got %q", got)
+	}
+
+	remoteHead := exec.Command("git", "--git-dir", remote, "log", "-1", "--format=%s", "feature/one")
+	if out, err := remoteHead.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "feature one commit" {
+		t.Fatalf("remote head commit for feature/one: %s (err: %v)", out, err)
+	}
+
+	// Branch with force flag on a new branch also succeeds.
+	runIn("checkout", "-b", "feature/force-new")
+	if err := os.WriteFile(filepath.Join(dir, "force.txt"), []byte("force\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runIn("add", "force.txt")
+	runIn("commit", "-m", "force new commit")
+
+	out, err = Push(context.Background(), dir, "", true)
+	if err != nil {
+		t.Fatalf("Push force new branch: %v (output: %s)", err, out)
+	}
+	if got := runIn("rev-parse", "--abbrev-ref", "@{u}"); got != "origin/feature/force-new" {
+		t.Fatalf("expected upstream origin/feature/force-new, got %q", got)
 	}
 }
 

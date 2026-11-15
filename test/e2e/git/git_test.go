@@ -604,6 +604,26 @@ func TestGit_PushFetchPullLocalRemote(t *testing.T) {
 	if got := sb.Git(sb.Root, "--git-dir", remote, "log", "-1", "--format=%s", "main"); got != "amended local change" {
 		t.Errorf("remote head %q after force push", got)
 	}
+
+	// Push a brand new branch with no upstream via GitPush.
+	_, err = c.GitBranchCreate(d.Ctx(), connect.NewRequest(&v1.GitBranchCreateRequest{
+		Project:  "gremote",
+		Name:     "feature/new-branch",
+		Checkout: true,
+	}))
+	harness.NoError(t, err, "GitBranchCreate")
+	p.WriteFile("feat.txt", "feature content\n")
+	sb.Git(p.Dir, "add", "-A")
+	sb.Git(p.Dir, "commit", "-q", "-m", "feature branch commit")
+	_, err = c.GitPush(d.Ctx(), connect.NewRequest(&v1.GitPushRequest{Project: "gremote"}))
+	harness.NoError(t, err, "GitPush new branch")
+	if got := sb.Git(sb.Root, "--git-dir", remote, "log", "-1", "--format=%s", "feature/new-branch"); got != "feature branch commit" {
+		t.Errorf("remote head for feature/new-branch %q after push", got)
+	}
+	w.WaitFor(t, "feature/new-branch upstream tracked", func(s harness.State) bool {
+		g := s.Git["gremote"]
+		return g.GetBranch() == "feature/new-branch" && g.GetUpstream() == "origin/feature/new-branch" && g.GetAhead() == 0
+	})
 }
 
 // O18: stopped projects are still watched.

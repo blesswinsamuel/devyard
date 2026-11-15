@@ -591,6 +591,19 @@ func TestGit_PushFetchPullLocalRemote(t *testing.T) {
 	if _, err := os.Stat(p.Path("theirs.txt")); err != nil {
 		t.Errorf("pull did not bring theirs.txt: %v", err)
 	}
+
+	// Amend locally: history diverges; normal push fails, force push succeeds.
+	p.WriteFile("local.txt", "l amended\n")
+	sb.Git(p.Dir, "commit", "-q", "-a", "--amend", "-m", "amended local change")
+	_, err = c.GitPush(d.Ctx(), connect.NewRequest(&v1.GitPushRequest{Project: "gremote"}))
+	if err == nil {
+		t.Fatal("normal GitPush expected error on diverged history, got nil")
+	}
+	_, err = c.GitPush(d.Ctx(), connect.NewRequest(&v1.GitPushRequest{Project: "gremote", Force: true}))
+	harness.NoError(t, err, "GitPush force")
+	if got := sb.Git(sb.Root, "--git-dir", remote, "log", "-1", "--format=%s", "main"); got != "amended local change" {
+		t.Errorf("remote head %q after force push", got)
+	}
 }
 
 // O18: stopped projects are still watched.

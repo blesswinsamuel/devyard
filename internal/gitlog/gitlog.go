@@ -42,7 +42,7 @@ const RemoteTimeout = 2 * time.Minute
 // remoteCmd runs a network git operation bounded by ctx and RemoteTimeout.
 // It never prompts for credentials, and cancellation kills the whole process
 // group (git spawns ssh and credential helpers).
-func remoteCmd(ctx context.Context, dir, op, remote string) (string, error) {
+func remoteCmd(ctx context.Context, dir, op, remote string, extra ...string) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("git: no working directory")
 	}
@@ -52,6 +52,7 @@ func remoteCmd(ctx context.Context, dir, op, remote string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, RemoteTimeout)
 	defer cancel()
 	args := []string{"-C", dir, op}
+	args = append(args, extra...)
 	if remote != "" {
 		args = append(args, remote)
 	}
@@ -1452,9 +1453,14 @@ func Apply(dir, patch string, cached, reverse bool) error {
 	return nil
 }
 
-// Push pushes the current branch to its upstream remote.
-func Push(ctx context.Context, dir string, remote string) (string, error) {
-	return remoteCmd(ctx, dir, "push", remote)
+// Push pushes the current branch to its upstream remote. With force, it passes
+// --force-with-lease to safely overwrite remote history.
+func Push(ctx context.Context, dir string, remote string, force bool) (string, error) {
+	var extra []string
+	if force {
+		extra = append(extra, "--force-with-lease")
+	}
+	return remoteCmd(ctx, dir, "push", remote, extra...)
 }
 
 // Pull pulls changes from the current branch's upstream remote.

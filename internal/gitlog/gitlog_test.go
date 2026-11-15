@@ -914,13 +914,13 @@ func TestPushPullFetch(t *testing.T) {
 	runIn("remote", "add", "origin", remote)
 
 	// Push without an upstream should fail with useful guidance.
-	if _, err := Push(context.Background(), dir, ""); err == nil {
+	if _, err := Push(context.Background(), dir, "", false); err == nil {
 		t.Fatalf("Push with no upstream: expected error, got nil")
 	}
 
 	// Set upstream and push.
 	runIn("push", "-u", "origin", "main")
-	output, err := Push(context.Background(), dir, "origin")
+	output, err := Push(context.Background(), dir, "origin", false)
 	if err != nil {
 		t.Fatalf("Push: %v (output: %s)", err, output)
 	}
@@ -975,7 +975,7 @@ func TestPushPullFetch(t *testing.T) {
 
 func TestPushPullFetchNotARepo(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Push(context.Background(), dir, ""); err == nil {
+	if _, err := Push(context.Background(), dir, "", false); err == nil {
 		t.Fatalf("Push on non-repo: expected error, got nil")
 	}
 	if _, err := Pull(context.Background(), dir, ""); err == nil {
@@ -983,6 +983,61 @@ func TestPushPullFetchNotARepo(t *testing.T) {
 	}
 	if _, err := Fetch(context.Background(), dir, ""); err == nil {
 		t.Fatalf("Fetch on non-repo: expected error, got nil")
+	}
+}
+
+func TestPush_ForceWithLease(t *testing.T) {
+	dir := initRepo(t)
+	remote := newBareRemote(t)
+	runIn := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test Author",
+			"GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test Committer",
+			"GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	runIn("remote", "add", "origin", remote)
+	runIn("push", "-u", "origin", "main")
+
+	// Create and push commit 2.
+	if err := os.WriteFile(filepath.Join(dir, "second.txt"), []byte("second\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runIn("add", "second.txt")
+	runIn("commit", "-m", "second commit")
+	if _, err := Push(context.Background(), dir, "", false); err != nil {
+		t.Fatalf("Push commit 2: %v", err)
+	}
+
+	// Amend commit 2: local history now diverges from remote.
+	if err := os.WriteFile(filepath.Join(dir, "second.txt"), []byte("second amended\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runIn("add", "second.txt")
+	runIn("commit", "--amend", "-m", "second commit amended")
+
+	// Normal push should fail because it is non-fast-forward.
+	if _, err := Push(context.Background(), dir, "", false); err == nil {
+		t.Fatal("Push without force should have failed on diverged history, got nil")
+	}
+
+	// Force push with lease should succeed.
+	if out, err := Push(context.Background(), dir, "", true); err != nil {
+		t.Fatalf("Push with force: %v (output: %s)", err, out)
+	}
+
+	// Verify remote has the amended commit.
+	remoteHead := exec.Command("git", "--git-dir", remote, "log", "-1", "--format=%s", "main")
+	if out, err := remoteHead.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "second commit amended" {
+		t.Fatalf("remote head commit: %s (err: %v)", out, err)
 	}
 }
 

@@ -190,8 +190,8 @@ func (t *Tracker) publish(project string, changed bool) {
 }
 
 // Remote runs push, pull or fetch for a project, publishing progress via
-// GitStatus.sync_operation.
-func (t *Tracker) Remote(ctx context.Context, project, op string) (string, error) {
+// GitStatus.sync_operation. With push and force, it passes --force-with-lease.
+func (t *Tracker) Remote(ctx context.Context, project, op string, force ...bool) (string, error) {
 	dir, ok := t.Dir(project)
 	if !ok {
 		return "", fmt.Errorf("project %q is not tracked", project)
@@ -213,7 +213,7 @@ func (t *Tracker) Remote(ctx context.Context, project, op string) (string, error
 	}()
 	switch op {
 	case "push":
-		return gitlog.Push(ctx, dir, "")
+		return gitlog.Push(ctx, dir, "", len(force) > 0 && force[0])
 	case "pull":
 		return gitlog.Pull(ctx, dir, "")
 	case "fetch":

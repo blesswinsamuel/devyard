@@ -591,11 +591,11 @@ func (s *Server) GitCommit(ctx context.Context, req *connect.Request[pb.GitCommi
 	return connect.NewResponse(&pb.GitCommitResponse{}), nil
 }
 
-func (s *Server) gitRemote(ctx context.Context, project, op string) (string, error) {
+func (s *Server) gitRemote(ctx context.Context, project, op string, force ...bool) (string, error) {
 	if _, err := s.gitDir(project); err != nil {
 		return "", err
 	}
-	out, err := s.Git.Remote(ctx, project, op)
+	out, err := s.Git.Remote(ctx, project, op, force...)
 	if err != nil {
 		if errors.Is(err, gitstate.ErrBusy) {
 			return "", toConnect(err)
@@ -606,7 +606,7 @@ func (s *Server) gitRemote(ctx context.Context, project, op string) (string, err
 }
 
 func (s *Server) GitPush(ctx context.Context, req *connect.Request[pb.GitPushRequest]) (*connect.Response[pb.GitPushResponse], error) {
-	out, err := s.gitRemote(ctx, req.Msg.Project, "push")
+	out, err := s.gitRemote(ctx, req.Msg.Project, "push", req.Msg.Force)
 	if err != nil {
 		return nil, err
 	}

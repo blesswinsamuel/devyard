@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
 import { useNavigate, useParams, useSearchParams } from "@solidjs/router";
 import {
+  ChevronDown,
   CloudDownload,
   Download,
   FileCode,
@@ -16,6 +17,12 @@ import {
   X,
 } from "lucide-solid";
 import { Button } from "~/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import { Spinner } from "~/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Toggle } from "~/components/ui/toggle";
@@ -66,8 +73,59 @@ function SyncButton(props: { op: keyof typeof SYNC; git: GitEntity; project: str
   const target = () => ({ kind: "project" as const, project: props.project });
   const running = () => props.git.syncOperation === props.op || actionPending(action(), target());
   const busy = () =>
-    !!props.git.syncOperation || (Object.values(SYNC) as { id: string }[]).some((s) => actionPending(getAction(s.id), target()));
+    !!props.git.syncOperation ||
+    (Object.values(SYNC) as { id: string }[]).some((s) => actionPending(getAction(s.id), target())) ||
+    actionPending(getAction("git.force-push"), target());
   const Icon = spec().icon;
+
+  if (props.op === "push") {
+    const forceAction = () => getAction("git.force-push");
+    const forcePending = () => actionPending(forceAction(), target());
+    const isRunning = () => running() || forcePending();
+    return (
+      <div class="inline-flex items-center -space-x-px">
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-r-none focus:z-10"
+          disabled={busy() || isRunning() || actionBlocked(action())}
+          aria-busy={isRunning() || undefined}
+          aria-label={isRunning() ? (forcePending() ? "Force pushing…" : spec().running) : action().label}
+          title={isRunning() ? spec().running : busy() ? `Waiting for ${props.git.syncOperation} to finish` : undefined}
+          onClick={() => void runAction(action(), target())}
+        >
+          <Show when={isRunning()} fallback={<Icon />}>
+            <Spinner />
+          </Show>
+          <span class="hidden sm:inline">{action().label}</span>
+          <AheadBehind ahead={props.git.ahead} upstream={props.git.upstream} />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            as={Button}
+            variant="outline"
+            size="sm"
+            class="rounded-l-none px-1.5 focus:z-10"
+            disabled={busy() || isRunning() || actionBlocked(forceAction())}
+            aria-label="More push options"
+          >
+            <ChevronDown />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={busy() || isRunning() || actionBlocked(forceAction())}
+              onSelect={() => void runAction(forceAction(), target())}
+            >
+              <Upload />
+              <span>Force push…</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  }
+
   return (
     <Button
       variant="outline"
@@ -84,9 +142,6 @@ function SyncButton(props: { op: keyof typeof SYNC; git: GitEntity; project: str
       <span class="hidden sm:inline">{action().label}</span>
       <Show when={props.op === "pull"}>
         <AheadBehind behind={props.git.behind} upstream={props.git.upstream} />
-      </Show>
-      <Show when={props.op === "push"}>
-        <AheadBehind ahead={props.git.ahead} upstream={props.git.upstream} />
       </Show>
     </Button>
   );

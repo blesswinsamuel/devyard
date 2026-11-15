@@ -138,7 +138,7 @@ unstaging and discarding individual hunks.
 
 `GitPush`, `GitPull` and `GitFetch` run at most one at a time per
 repository (`GitStatus.sync_operation` names the running one) and return
-git's output.
+git's output. With `force`, `GitPush` runs `git push --force-with-lease`.
 
 ## Logs
 

@@ -849,6 +849,8 @@ message GitCommitResponse {}
 
 message GitPushRequest {
   string project = 1;
+  // Force push with lease (--force-with-lease) to overwrite remote history.
+  bool force = 2;
 }
 
 message GitPushResponse {

@@ -126,11 +126,12 @@ describe("action registry", () => {
       ids(actionsFor(resolveContext({ kind: "project", project: "web" }, stateWith({ projects: [project()], git: [git(g)] })))).filter((id) =>
         id.startsWith("git."),
       );
-    expect(gitIds({})).toEqual(["git.fetch", "git.pull", "git.push", "git.branch-create", "git.tag-create"]);
+    expect(gitIds({})).toEqual(["git.fetch", "git.pull", "git.push", "git.force-push", "git.branch-create", "git.tag-create"]);
     expect(gitIds({ dirty: 2, staged: 1 })).toEqual([
       "git.fetch",
       "git.pull",
       "git.push",
+      "git.force-push",
       "git.branch-create",
       "git.tag-create",
       "git.stage-all",
@@ -176,6 +177,13 @@ describe("action registry", () => {
     expect(env.notify).toHaveBeenCalledWith("Fetched web", "From origin\n * branch main");
     await getAction("git.push").run(ctx, env);
     expect(env.notify).toHaveBeenLastCalledWith("Pushed web", undefined);
+    await getAction("git.force-push").run(ctx, env);
+    expect(api.gitPush).toHaveBeenLastCalledWith({ project: "web", force: true });
+    expect(env.notify).toHaveBeenLastCalledWith("Force pushed web", undefined);
+    expect(getAction("git.force-push").confirm?.(ctx)).toMatchObject({
+      title: "Force push web?",
+      confirmLabel: "Force push",
+    });
     await getAction("git.unstage-all").run(ctx, env);
     expect(api.gitStage).toHaveBeenCalledWith({ project: "web", stageAll: true, unstage: true });
     await getAction("git.discard-all").run(ctx, env);

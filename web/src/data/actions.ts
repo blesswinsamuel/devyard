@@ -459,6 +459,25 @@ export const ACTIONS: Action[] = [
     },
   },
   {
+    id: "git.force-push",
+    label: "Force push…",
+    title: (c) => `Force push in ${proj(c).id}…`,
+    icon: Upload,
+    group: "git",
+    scope: "project",
+    destructive: true,
+    when: gitIdle,
+    confirm: (c) => ({
+      title: `Force push ${proj(c).id}?`,
+      description: "This will overwrite remote branch history with your local commits (--force-with-lease).",
+      confirmLabel: "Force push",
+    }),
+    run: async (c, env) => {
+      const res = await env.api.gitPush({ project: proj(c).id, force: true });
+      env.notify(`Force pushed ${proj(c).id}`, gitOutput(res.output));
+    },
+  },
+  {
     id: "git.branch-create",
     label: "New branch…",
     title: (c) => `Create a branch in ${proj(c).id}…`,

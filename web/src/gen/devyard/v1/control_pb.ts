@@ -5355,6 +5355,13 @@ export class GitPushRequest extends Message<GitPushRequest> {
    */
   project = "";
 
+  /**
+   * Force push with lease (--force-with-lease) to overwrite remote history.
+   *
+   * @generated from field: bool force = 2;
+   */
+  force = false;
+
   constructor(data?: PartialMessage<GitPushRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -5364,6 +5371,7 @@ export class GitPushRequest extends Message<GitPushRequest> {
   static readonly typeName = "devyard.v1.GitPushRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "force", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitPushRequest {

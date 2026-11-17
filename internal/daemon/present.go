@@ -197,7 +197,8 @@ func serviceSpec(def *engine.ProcessDef) *pb.ServiceSpec {
 }
 
 // serviceURLs lists the proxy URLs of a service in display order: the
-// project URL (default service), the service URL, then named ports.
+// project URL (default service), then each host label's URL followed by its
+// named ports.
 func serviceURLs(def *engine.ProcessDef, isDefault bool, u urlConfig) []string {
 	if len(def.Ports) == 0 || u.Suffix == "" {
 		return nil
@@ -214,19 +215,21 @@ func serviceURLs(def *engine.ProcessDef, isDefault bool, u urlConfig) []string {
 		}
 		return net.JoinHostPort(host, strconv.Itoa(u.Port))
 	}
-	label := def.Name
-	if def.ProxyHost != "" {
-		label = def.ProxyHost
+	labels := def.ProxyHosts
+	if len(labels) == 0 {
+		labels = []string{def.Name}
 	}
 	base := def.Project + "." + u.Suffix
 	var out []string
 	if isDefault {
 		out = append(out, fmt.Sprintf("%s://%s", scheme, hostport(base)))
 	}
-	out = append(out, fmt.Sprintf("%s://%s", scheme, hostport(label+"."+base)))
-	for _, port := range def.Ports {
-		if port.Name != "" {
-			out = append(out, fmt.Sprintf("%s://%s", scheme, hostport(port.Name+"."+label+"."+base)))
+	for _, label := range labels {
+		out = append(out, fmt.Sprintf("%s://%s", scheme, hostport(label+"."+base)))
+		for _, port := range def.Ports {
+			if port.Name != "" {
+				out = append(out, fmt.Sprintf("%s://%s", scheme, hostport(port.Name+"."+label+"."+base)))
+			}
 		}
 	}
 	return out

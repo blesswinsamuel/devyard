@@ -126,7 +126,7 @@ tasks:
 | `tty` | `false` | Run in a pseudo-terminal (colors, progress bars, `devyard attach`). |
 | `port` | — | Port the service listens on: a number or `auto`. |
 | `ports` | — | Ordered map of named ports (`http: 3000`, `metrics: auto`); the first is the default port. Mutually exclusive with `port`. |
-| `host` | service name | Host label in the proxy URL. Lowercase letters, digits and dashes. |
+| `hosts` | service name | Host labels in the proxy URL, as a list. Lowercase letters, digits and dashes; unique across the project. |
 | `stop.signal` | `SIGTERM` | Signal sent to stop the service (`SIGINT`, `INT`, `2`, …). |
 | `stop.timeout` | `10s` | Wait after the signal before `SIGKILL`. |
 | `autostart` | `true` | When `false`, the service starts only when named (`devyard start storybook`) or needed by a service that starts. |
@@ -267,9 +267,14 @@ Services with a port are exposed by the daemon's reverse proxy at named URLs:
 | `web.myapp.localhost:8080` | web's default port |
 | `myapp.localhost:8080` | the `primary` service |
 | `metrics.api.myapp.localhost:8080` | api's `metrics` port |
+| `app.myapp.localhost:8080` | web, via its `hosts` |
 
 - Hostnames are `<host>.<project>.<domain>`, where `host` defaults to the
   service name; a named port prefixes it (`<port>.<host>.<project>.<domain>`).
+- `hosts` replaces the default label, so a service answering at several names
+  lists all of them:
+  `hosts: [web, app]` serves both `web.myapp.localhost` and
+  `app.myapp.localhost`. Labels must be unique across the project.
 - Requests forward only while the service is running. Stopped or starting
   services get a styled 503 page; an unreachable upstream gets a 502 page.
 - The proxy forwards to `127.0.0.1:<port>`, preserves the `Host` header, and

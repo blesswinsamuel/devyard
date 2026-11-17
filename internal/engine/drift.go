@@ -164,8 +164,8 @@ func diffDef(a, b *ProcessDef) []string {
 	if pa, pb := portSpec(a), portSpec(b); pa != pb {
 		d = append(d, fmt.Sprintf("ports %s → %s", orNone(pa), orNone(pb)))
 	}
-	if a.ProxyHost != b.ProxyHost {
-		d = append(d, fmt.Sprintf("host %s → %s", orNone(a.ProxyHost), orNone(b.ProxyHost)))
+	if !slices.Equal(a.ProxyHosts, b.ProxyHosts) {
+		d = append(d, fmt.Sprintf("hosts [%s] → [%s]", strings.Join(a.ProxyHosts, " "), strings.Join(b.ProxyHosts, " ")))
 	}
 	if a.StopSignal != b.StopSignal || a.StopGrace != b.StopGrace {
 		d = append(d, "stop changed")

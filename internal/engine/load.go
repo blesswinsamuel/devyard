@@ -108,7 +108,7 @@ func loadProject(dirs paths.Dirs, reg *Registration, preview bool) (*loaded, err
 			Restart:    svc.Restart,
 			Ready:      rs.Ready,
 			Ports:      rs.Ports,
-			ProxyHost:  svc.Host,
+			ProxyHosts: svc.Hosts,
 			StopSignal: svc.Stop.Signal,
 			StopGrace:  svc.Stop.Timeout,
 			Autostart:  svc.Starts(),

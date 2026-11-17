@@ -93,7 +93,7 @@ type ProcessDef struct {
 	// the matched files are unchanged since the last successful build.
 	BuildSources []string
 	Ports        []config.ResolvedPort
-	ProxyHost    string
+	ProxyHosts   []string
 	StopSignal   string
 	StopGrace    time.Duration
 	// Autostart is false for services that start only when named.

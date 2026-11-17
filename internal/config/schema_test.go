@@ -72,7 +72,7 @@ services:
   web:
     run: bun run dev --port $PORT
     ports: {http: auto, hmr: 24678}
-    host: app
+    hosts: [app, songbook]
     tty: true
     depends_on: [api]
     env: {API_URL: "${api.url}"}

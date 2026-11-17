@@ -28,8 +28,9 @@ import (
 // Route is a single host→upstream mapping with the service's live status,
 // provided by the daemon on every request.
 type Route struct {
-	// Label is the service's host label: the custom proxy.host when set.
-	Label string
+	// Labels are the service's host labels: the proxy.hosts entries, or the
+	// service name when it sets none.
+	Labels []string
 	// IsDefault marks the project-level default service; its route is also
 	// served at <project>.<domain_suffix>.
 	IsDefault bool
@@ -261,20 +262,23 @@ func (s *Server) routeIndex() map[string]Route {
 }
 
 // routeHosts returns every hostname a route answers to: the project URL for
-// the default service, the service label host, and one host per named port.
+// the default service, one host per label, and one host per label and named
+// port.
 func routeHosts(r Route, domainSuffix string) []string {
 	suffix := r.Project + "." + domainSuffix
 	var hosts []string
 	if r.IsDefault {
 		hosts = append(hosts, suffix)
 	}
-	label := r.Label
-	if label == "" {
-		label = r.Service
+	labels := r.Labels
+	if len(labels) == 0 {
+		labels = []string{r.Service}
 	}
-	hosts = append(hosts, label+"."+suffix)
-	if r.PortName != "" {
-		hosts = append(hosts, r.PortName+"."+label+"."+suffix)
+	for _, label := range labels {
+		hosts = append(hosts, label+"."+suffix)
+		if r.PortName != "" {
+			hosts = append(hosts, r.PortName+"."+label+"."+suffix)
+		}
 	}
 	return hosts
 }

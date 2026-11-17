@@ -162,6 +162,24 @@ func TestServiceDefaults(t *testing.T) {
 	}
 }
 
+func TestServiceHostLabels(t *testing.T) {
+	t.Parallel()
+	p := mustLoad(t, `
+services:
+  web:
+    run: ./web
+    hosts: [app, songbook, notes]
+  api: ./api
+`, nil)
+	web, api := p.File.Services["web"], p.File.Services["api"]
+	if got := web.HostList("web"); !reflect.DeepEqual(got, []string{"app", "songbook", "notes"}) {
+		t.Errorf("web hosts = %v", got)
+	}
+	if got := api.HostList("api"); !reflect.DeepEqual(got, []string{"api"}) {
+		t.Errorf("api hosts = %v, want its name", got)
+	}
+}
+
 func TestTaskTTYDefaultsTrue(t *testing.T) {
 	t.Parallel()
 	p := mustLoad(t, `
@@ -195,7 +213,10 @@ func TestValidationErrors(t *testing.T) {
 		{"bad port", "services:\n  api:\n    run: x\n    port: 70000\n", "between 1 and 65535"},
 		{"bad port word", "services:\n  api:\n    run: x\n    port: any\n", `"auto"`},
 		{"bad port name", "services:\n  api:\n    run: x\n    ports: {Http: 1}\n", "must be lowercase"},
-		{"bad host", "services:\n  api:\n    run: x\n    port: 1\n    host: a.b\n", "host"},
+		{"bad host", "services:\n  api:\n    run: x\n    port: 1\n    hosts: [a.b]\n", "hosts"},
+		{"empty hosts", "services:\n  api:\n    run: x\n    hosts: []\n", "hosts must not be empty"},
+		{"duplicate host", "services:\n  api:\n    run: x\n    hosts: [a, a]\n", "listed twice"},
+		{"host taken", "services:\n  api:\n    run: x\n    hosts: [a]\n  web:\n    run: x\n    hosts: [a]\n", `already used by service "api"`},
 		{"primary unknown", "primary: web\nservices:\n  api: x\n", "unknown service"},
 		{"primary portless", "primary: api\nservices:\n  api: x\n", "has no port"},
 		{"ready none", "services:\n  api:\n    run: x\n    ready: {}\n", "exactly one"},

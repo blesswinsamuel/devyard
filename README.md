@@ -142,7 +142,7 @@ See [docs/config-schema.md](docs/config-schema.md) for every field. Highlights:
 - **Services**: `run` (a string runs with `sh -c`, a list is executed directly), `dir`, `env`,
   `env_files`, `depends_on`, `ready` (`http` / `tcp` / `exec`), `restart` (`never` /
   `on-failure` (default) / `always`), `build` (with optional `sources`), `tty`, `port` / `ports`
-  (numbers or `auto`), `host`, `stop` (`signal`, `timeout`), `autostart`.
+  (numbers or `auto`), `hosts`, `stop` (`signal`, `timeout`), `autostart`.
 - **Tasks**: `run`, `dir`, `env`, `env_files`, `depends_on`, `tty` (default `true`).
 - **Project**: `name`, `primary`, `env`, `links`, and `env_files` (default `.env` then
   `.env.local`), which feed `${VAR}` interpolation and every process's environment.

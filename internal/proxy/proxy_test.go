@@ -88,9 +88,9 @@ func TestProxyRouting(t *testing.T) {
 	homePort := startUpstream(t, "hello from home", &seenHost)
 
 	resolver := &fakeResolver{routes: []Route{
-		{Project: "proj", Service: "web", Port: webPort, Status: "running"},
+		{Project: "proj", Service: "web", Labels: []string{"web", "songbook"}, Port: webPort, Status: "running"},
 		{Project: "proj", Service: "api", PortName: "metrics", Port: apiPort, Status: "running"},
-		{Project: "proj", Service: "home", Label: "myhome", Port: homePort, Status: "running", IsDefault: true},
+		{Project: "proj", Service: "home", Labels: []string{"myhome"}, Port: homePort, Status: "running", IsDefault: true},
 	}}
 	srv := newTestServer(t, resolver)
 
@@ -101,9 +101,11 @@ func TestProxyRouting(t *testing.T) {
 	}{
 		{"web.proj.localhost", http.StatusOK, "hello from web"},
 		{"WEB.Proj.LOCALHOST", http.StatusOK, "hello from web"},
+		{"songbook.proj.localhost", http.StatusOK, "hello from web"},
 		{"api.proj.localhost", http.StatusOK, "hello from api"},
 		{"metrics.api.proj.localhost", http.StatusOK, "hello from api"},
 		{"myhome.proj.localhost", http.StatusOK, "hello from home"},
+		{"home.proj.localhost", http.StatusNotFound, "Unknown service"},
 		{"proj.localhost", http.StatusOK, "hello from home"},
 		{"unknown.proj.localhost", http.StatusNotFound, "Unknown service"},
 	}

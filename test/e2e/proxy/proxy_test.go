@@ -24,6 +24,7 @@ services:
   web:
     run: {{fixture "httpecho"}}
     port: {{port "web"}}
+    hosts: [web, songbook]
     env:
       PORT: "{{port "web"}}"
       NAME: web
@@ -59,7 +60,8 @@ func TestProxy_RoutesByHost(t *testing.T) {
 		body string
 	}{
 		{"web.px.localhost", http.StatusOK, "name=web"},
-		{"px.localhost", http.StatusOK, "name=web"}, // primary
+		{"songbook.px.localhost", http.StatusOK, "name=web"}, // second host label
+		{"px.localhost", http.StatusOK, "name=web"},          // primary
 		{"http.api.px.localhost", http.StatusOK, "name=api"},
 		{"api.px.localhost", http.StatusOK, "name=api"}, // first port is the default
 		{"metrics.api.px.localhost", http.StatusBadGateway, ""},
@@ -109,15 +111,18 @@ func TestProxy_URLsOnServices(t *testing.T) {
 	proxy := strings.TrimPrefix(d.ProxyURL(), "http://")
 	port := proxy[strings.LastIndexByte(proxy, ':')+1:]
 	st := w.State()
-	want := "http://web.pxurl.localhost:" + port
-	found := false
-	for _, u := range st.Service("pxurl", "web").GetUrls() {
-		if strings.HasPrefix(u, want) {
-			found = true
+	urls := st.Service("pxurl", "web").GetUrls()
+	for _, label := range []string{"web", "songbook"} {
+		want := "http://" + label + ".pxurl.localhost:" + port
+		found := false
+		for _, u := range urls {
+			if strings.HasPrefix(u, want) {
+				found = true
+			}
 		}
-	}
-	if !found {
-		t.Errorf("web urls %v missing %s", st.Service("pxurl", "web").GetUrls(), want)
+		if !found {
+			t.Errorf("web urls %v missing %s", urls, want)
+		}
 	}
 	if urls := st.Service("pxurl", "hidden").GetUrls(); len(urls) != 0 {
 		t.Errorf("portless service has urls %v", urls)

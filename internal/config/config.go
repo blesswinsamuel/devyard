@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -90,8 +91,9 @@ type Service struct {
 	// Named ports (number or "auto"); the first is the default port.
 	// Exported as $PORT and $PORT_<NAME>.
 	Ports PortMap `yaml:"ports,omitempty"`
-	// Proxy host label; defaults to the service name.
-	Host string `yaml:"host,omitempty"`
+	// Proxy host labels: each answers at <host>.<project>.<domain>, plus a
+	// named-port prefix when the port has one. Default: the service name.
+	Hosts []string `yaml:"hosts,omitempty"`
 	// How the service is stopped.
 	Stop Stop `yaml:"stop,omitempty"`
 	// Start with the project. When false, the service starts only when
@@ -110,6 +112,15 @@ func (s *Service) UnmarshalYAML(value *yaml.Node) error {
 
 // Starts reports whether the service starts with its project.
 func (s *Service) Starts() bool { return s.Autostart == nil || *s.Autostart }
+
+// HostList returns the host labels the service answers to: its hosts when
+// set, otherwise its own name.
+func (s *Service) HostList(name string) []string {
+	if len(s.Hosts) > 0 {
+		return s.Hosts
+	}
+	return []string{name}
+}
 
 // Ready configures the readiness probe: exactly one of http, tcp and exec.
 type Ready struct {
@@ -523,6 +534,25 @@ func (f *File) Validate(configPath string) error {
 			return fmt.Errorf("service %q: %w", name, err)
 		}
 	}
+	// Host labels must be unique: the proxy routes by hostname, so a
+	// duplicate would silently shadow the service listed before it.
+	owner := make(map[string]string, len(f.Services))
+	names := make([]string, 0, len(f.Services))
+	for name := range f.Services {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		for _, host := range f.Services[name].HostList(name) {
+			if other, taken := owner[host]; taken {
+				if other == name {
+					return fmt.Errorf("service %q: hosts: %q is listed twice", name, host)
+				}
+				return fmt.Errorf("service %q: hosts: %q is already used by service %q", name, host, other)
+			}
+			owner[host] = name
+		}
+	}
 	if f.Primary != "" {
 		svc, ok := f.Services[f.Primary]
 		if !ok {
@@ -573,9 +603,12 @@ func (f *File) validateService(name string, svc *Service) error {
 	if svc.Ports != nil && len(svc.Ports) == 0 {
 		return fmt.Errorf("ports must not be empty")
 	}
-	if svc.Host != "" {
-		if err := validateHostLabel(svc.Host); err != nil {
-			return fmt.Errorf("host: %w", err)
+	if svc.Hosts != nil && len(svc.Hosts) == 0 {
+		return fmt.Errorf("hosts must not be empty")
+	}
+	for _, host := range svc.Hosts {
+		if err := validateHostLabel(host); err != nil {
+			return fmt.Errorf("hosts: %w", err)
 		}
 	}
 	if svc.Stop.Timeout < 0 {

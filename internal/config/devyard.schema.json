@@ -277,9 +277,12 @@
               "minProperties": 1,
               "description": "Named ports (number or \"auto\"); the first is the default port.\nExported as $PORT and $PORT_\u003cNAME\u003e."
             },
-            "host": {
-              "type": "string",
-              "description": "Proxy host label; defaults to the service name."
+            "hosts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "description": "Proxy host labels: each answers at \u003chost\u003e.\u003cproject\u003e.\u003cdomain\u003e, plus a\nnamed-port prefix when the port has one. Default: the service name."
             },
             "stop": {
               "$ref": "#/$defs/Stop",

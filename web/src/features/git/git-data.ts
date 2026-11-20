@@ -423,3 +423,91 @@ export function applyHunk(project: string, path: string, patch: string, action: 
     }
   }).then(() => undefined);
 }
+
+export type ResetMode = "soft" | "mixed" | "hard";
+
+async function runCommitMutation(
+  key: string,
+  project: string,
+  successTitle: string,
+  failureTitle: string,
+  fn: () => Promise<unknown>,
+): Promise<void> {
+  await withPending(key, async () => {
+    try {
+      await fn();
+      toast.success(successTitle);
+    } catch (err) {
+      toastFailure(failureTitle, err);
+    } finally {
+      // Refresh even on failure so conflicts or partial state show up immediately.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.git(project) });
+    }
+  });
+}
+
+/** Checks out a commit in detached HEAD mode. */
+export function checkoutCommit(project: string, commit: string, short: string): Promise<void> {
+  return runCommitMutation(
+    `git.checkout|${project}|${commit}`,
+    project,
+    `Checked out ${short} (detached HEAD)`,
+    `Checkout ${short} failed`,
+    () => api.gitCheckout({ project, branch: commit, detach: true }),
+  );
+}
+
+/** Applies a commit onto HEAD. */
+export function cherryPickCommit(project: string, commit: string, short: string): Promise<void> {
+  return runCommitMutation(
+    `git.cherry-pick|${project}|${commit}`,
+    project,
+    `Cherry-picked ${short}`,
+    `Cherry-pick ${short} failed`,
+    () => api.gitCherryPick({ project, commit }),
+  );
+}
+
+/** Creates a new commit that reverts the given commit. */
+export function revertCommit(project: string, commit: string, short: string): Promise<void> {
+  return runCommitMutation(
+    `git.revert|${project}|${commit}`,
+    project,
+    `Reverted ${short}`,
+    `Revert ${short} failed`,
+    () => api.gitRevert({ project, commit }),
+  );
+}
+
+/** Resets HEAD (and optionally index / working tree) to the given commit. */
+export function resetToCommit(project: string, commit: string, short: string, mode: ResetMode): Promise<void> {
+  return runCommitMutation(
+    `git.reset|${project}|${commit}`,
+    project,
+    `Reset (${mode}) to ${short}`,
+    `Reset (${mode}) to ${short} failed`,
+    () => api.gitReset({ project, commit, mode }),
+  );
+}
+
+/** Merges a commit or branch into the current branch. */
+export function mergeCommit(project: string, target: string, short: string): Promise<void> {
+  return runCommitMutation(
+    `git.merge|${project}|${target}`,
+    project,
+    `Merged ${short}`,
+    `Merge ${short} failed`,
+    () => api.gitMerge({ project, target }),
+  );
+}
+
+/** Rebases the current branch onto the given commit or branch. */
+export function rebaseOnto(project: string, onto: string, short: string): Promise<void> {
+  return runCommitMutation(
+    `git.rebase|${project}|${onto}`,
+    project,
+    `Rebased onto ${short}`,
+    `Rebase onto ${short} failed`,
+    () => api.gitRebase({ project, onto }),
+  );
+}

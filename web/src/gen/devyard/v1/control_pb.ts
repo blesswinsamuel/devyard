@@ -5587,12 +5587,20 @@ export class GitCheckoutRequest extends Message<GitCheckoutRequest> {
 
   /**
    * A local branch name, or a remote branch ("origin/feature") whose local
-   * counterpart is created tracking it. Uncommitted changes keep git from
-   * switching when they would be overwritten.
+   * counterpart is created tracking it. When detach is true, a commit hash or
+   * ref is checked out in detached HEAD mode instead. Uncommitted changes keep
+   * git from switching when they would be overwritten.
    *
    * @generated from field: string branch = 2;
    */
   branch = "";
+
+  /**
+   * Check out `branch` as a detached HEAD (e.g. a commit hash).
+   *
+   * @generated from field: bool detach = 3;
+   */
+  detach = false;
 
   constructor(data?: PartialMessage<GitCheckoutRequest>) {
     super();
@@ -5604,6 +5612,7 @@ export class GitCheckoutRequest extends Message<GitCheckoutRequest> {
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "branch", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "detach", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitCheckoutRequest {
@@ -6163,6 +6172,394 @@ export class GitApplyResponse extends Message<GitApplyResponse> {
 
   static equals(a: GitApplyResponse | PlainMessage<GitApplyResponse> | undefined, b: GitApplyResponse | PlainMessage<GitApplyResponse> | undefined): boolean {
     return proto3.util.equals(GitApplyResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitCherryPickRequest
+ */
+export class GitCherryPickRequest extends Message<GitCherryPickRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * Commit hash (or revision) to cherry-pick onto HEAD.
+   *
+   * @generated from field: string commit = 2;
+   */
+  commit = "";
+
+  constructor(data?: PartialMessage<GitCherryPickRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitCherryPickRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "commit", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitCherryPickRequest {
+    return new GitCherryPickRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitCherryPickRequest {
+    return new GitCherryPickRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitCherryPickRequest {
+    return new GitCherryPickRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitCherryPickRequest | PlainMessage<GitCherryPickRequest> | undefined, b: GitCherryPickRequest | PlainMessage<GitCherryPickRequest> | undefined): boolean {
+    return proto3.util.equals(GitCherryPickRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitCherryPickResponse
+ */
+export class GitCherryPickResponse extends Message<GitCherryPickResponse> {
+  constructor(data?: PartialMessage<GitCherryPickResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitCherryPickResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitCherryPickResponse {
+    return new GitCherryPickResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitCherryPickResponse {
+    return new GitCherryPickResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitCherryPickResponse {
+    return new GitCherryPickResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitCherryPickResponse | PlainMessage<GitCherryPickResponse> | undefined, b: GitCherryPickResponse | PlainMessage<GitCherryPickResponse> | undefined): boolean {
+    return proto3.util.equals(GitCherryPickResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitRevertRequest
+ */
+export class GitRevertRequest extends Message<GitRevertRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * Commit hash (or revision) to revert.
+   *
+   * @generated from field: string commit = 2;
+   */
+  commit = "";
+
+  constructor(data?: PartialMessage<GitRevertRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitRevertRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "commit", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitRevertRequest {
+    return new GitRevertRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitRevertRequest {
+    return new GitRevertRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitRevertRequest {
+    return new GitRevertRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitRevertRequest | PlainMessage<GitRevertRequest> | undefined, b: GitRevertRequest | PlainMessage<GitRevertRequest> | undefined): boolean {
+    return proto3.util.equals(GitRevertRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitRevertResponse
+ */
+export class GitRevertResponse extends Message<GitRevertResponse> {
+  constructor(data?: PartialMessage<GitRevertResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitRevertResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitRevertResponse {
+    return new GitRevertResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitRevertResponse {
+    return new GitRevertResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitRevertResponse {
+    return new GitRevertResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitRevertResponse | PlainMessage<GitRevertResponse> | undefined, b: GitRevertResponse | PlainMessage<GitRevertResponse> | undefined): boolean {
+    return proto3.util.equals(GitRevertResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitResetRequest
+ */
+export class GitResetRequest extends Message<GitResetRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * Commit hash (or revision) to reset HEAD to.
+   *
+   * @generated from field: string commit = 2;
+   */
+  commit = "";
+
+  /**
+   * Reset mode: "soft", "mixed" (default), or "hard".
+   *
+   * @generated from field: string mode = 3;
+   */
+  mode = "";
+
+  constructor(data?: PartialMessage<GitResetRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitResetRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "commit", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "mode", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitResetRequest {
+    return new GitResetRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitResetRequest {
+    return new GitResetRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitResetRequest {
+    return new GitResetRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitResetRequest | PlainMessage<GitResetRequest> | undefined, b: GitResetRequest | PlainMessage<GitResetRequest> | undefined): boolean {
+    return proto3.util.equals(GitResetRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitResetResponse
+ */
+export class GitResetResponse extends Message<GitResetResponse> {
+  constructor(data?: PartialMessage<GitResetResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitResetResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitResetResponse {
+    return new GitResetResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitResetResponse {
+    return new GitResetResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitResetResponse {
+    return new GitResetResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitResetResponse | PlainMessage<GitResetResponse> | undefined, b: GitResetResponse | PlainMessage<GitResetResponse> | undefined): boolean {
+    return proto3.util.equals(GitResetResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitMergeRequest
+ */
+export class GitMergeRequest extends Message<GitMergeRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * Commit hash or branch to merge into the current branch.
+   *
+   * @generated from field: string target = 2;
+   */
+  target = "";
+
+  constructor(data?: PartialMessage<GitMergeRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitMergeRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "target", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitMergeRequest {
+    return new GitMergeRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitMergeRequest {
+    return new GitMergeRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitMergeRequest {
+    return new GitMergeRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitMergeRequest | PlainMessage<GitMergeRequest> | undefined, b: GitMergeRequest | PlainMessage<GitMergeRequest> | undefined): boolean {
+    return proto3.util.equals(GitMergeRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitMergeResponse
+ */
+export class GitMergeResponse extends Message<GitMergeResponse> {
+  constructor(data?: PartialMessage<GitMergeResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitMergeResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitMergeResponse {
+    return new GitMergeResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitMergeResponse {
+    return new GitMergeResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitMergeResponse {
+    return new GitMergeResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitMergeResponse | PlainMessage<GitMergeResponse> | undefined, b: GitMergeResponse | PlainMessage<GitMergeResponse> | undefined): boolean {
+    return proto3.util.equals(GitMergeResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitRebaseRequest
+ */
+export class GitRebaseRequest extends Message<GitRebaseRequest> {
+  /**
+   * @generated from field: string project = 1;
+   */
+  project = "";
+
+  /**
+   * Commit hash or branch to rebase the current branch onto.
+   *
+   * @generated from field: string onto = 2;
+   */
+  onto = "";
+
+  constructor(data?: PartialMessage<GitRebaseRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitRebaseRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "project", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "onto", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitRebaseRequest {
+    return new GitRebaseRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitRebaseRequest {
+    return new GitRebaseRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitRebaseRequest {
+    return new GitRebaseRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitRebaseRequest | PlainMessage<GitRebaseRequest> | undefined, b: GitRebaseRequest | PlainMessage<GitRebaseRequest> | undefined): boolean {
+    return proto3.util.equals(GitRebaseRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message devyard.v1.GitRebaseResponse
+ */
+export class GitRebaseResponse extends Message<GitRebaseResponse> {
+  constructor(data?: PartialMessage<GitRebaseResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "devyard.v1.GitRebaseResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GitRebaseResponse {
+    return new GitRebaseResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): GitRebaseResponse {
+    return new GitRebaseResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): GitRebaseResponse {
+    return new GitRebaseResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: GitRebaseResponse | PlainMessage<GitRebaseResponse> | undefined, b: GitRebaseResponse | PlainMessage<GitRebaseResponse> | undefined): boolean {
+    return proto3.util.equals(GitRebaseResponse, a, b);
   }
 }
 

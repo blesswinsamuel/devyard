@@ -140,6 +140,17 @@ const (
 	DaemonServiceGitRestoreProcedure = "/devyard.v1.DaemonService/GitRestore"
 	// DaemonServiceGitApplyProcedure is the fully-qualified name of the DaemonService's GitApply RPC.
 	DaemonServiceGitApplyProcedure = "/devyard.v1.DaemonService/GitApply"
+	// DaemonServiceGitCherryPickProcedure is the fully-qualified name of the DaemonService's
+	// GitCherryPick RPC.
+	DaemonServiceGitCherryPickProcedure = "/devyard.v1.DaemonService/GitCherryPick"
+	// DaemonServiceGitRevertProcedure is the fully-qualified name of the DaemonService's GitRevert RPC.
+	DaemonServiceGitRevertProcedure = "/devyard.v1.DaemonService/GitRevert"
+	// DaemonServiceGitResetProcedure is the fully-qualified name of the DaemonService's GitReset RPC.
+	DaemonServiceGitResetProcedure = "/devyard.v1.DaemonService/GitReset"
+	// DaemonServiceGitMergeProcedure is the fully-qualified name of the DaemonService's GitMerge RPC.
+	DaemonServiceGitMergeProcedure = "/devyard.v1.DaemonService/GitMerge"
+	// DaemonServiceGitRebaseProcedure is the fully-qualified name of the DaemonService's GitRebase RPC.
+	DaemonServiceGitRebaseProcedure = "/devyard.v1.DaemonService/GitRebase"
 )
 
 // DaemonServiceClient is a client for the devyard.v1.DaemonService service.
@@ -193,6 +204,11 @@ type DaemonServiceClient interface {
 	GitTagDelete(context.Context, *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error)
 	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
 	GitApply(context.Context, *connect.Request[v1.GitApplyRequest]) (*connect.Response[v1.GitApplyResponse], error)
+	GitCherryPick(context.Context, *connect.Request[v1.GitCherryPickRequest]) (*connect.Response[v1.GitCherryPickResponse], error)
+	GitRevert(context.Context, *connect.Request[v1.GitRevertRequest]) (*connect.Response[v1.GitRevertResponse], error)
+	GitReset(context.Context, *connect.Request[v1.GitResetRequest]) (*connect.Response[v1.GitResetResponse], error)
+	GitMerge(context.Context, *connect.Request[v1.GitMergeRequest]) (*connect.Response[v1.GitMergeResponse], error)
+	GitRebase(context.Context, *connect.Request[v1.GitRebaseRequest]) (*connect.Response[v1.GitRebaseResponse], error)
 }
 
 // NewDaemonServiceClient constructs a client for the devyard.v1.DaemonService service. By default,
@@ -458,6 +474,36 @@ func NewDaemonServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(daemonServiceMethods.ByName("GitApply")),
 			connect.WithClientOptions(opts...),
 		),
+		gitCherryPick: connect.NewClient[v1.GitCherryPickRequest, v1.GitCherryPickResponse](
+			httpClient,
+			baseURL+DaemonServiceGitCherryPickProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitCherryPick")),
+			connect.WithClientOptions(opts...),
+		),
+		gitRevert: connect.NewClient[v1.GitRevertRequest, v1.GitRevertResponse](
+			httpClient,
+			baseURL+DaemonServiceGitRevertProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitRevert")),
+			connect.WithClientOptions(opts...),
+		),
+		gitReset: connect.NewClient[v1.GitResetRequest, v1.GitResetResponse](
+			httpClient,
+			baseURL+DaemonServiceGitResetProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitReset")),
+			connect.WithClientOptions(opts...),
+		),
+		gitMerge: connect.NewClient[v1.GitMergeRequest, v1.GitMergeResponse](
+			httpClient,
+			baseURL+DaemonServiceGitMergeProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitMerge")),
+			connect.WithClientOptions(opts...),
+		),
+		gitRebase: connect.NewClient[v1.GitRebaseRequest, v1.GitRebaseResponse](
+			httpClient,
+			baseURL+DaemonServiceGitRebaseProcedure,
+			connect.WithSchema(daemonServiceMethods.ByName("GitRebase")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -505,6 +551,11 @@ type daemonServiceClient struct {
 	gitTagDelete        *connect.Client[v1.GitTagDeleteRequest, v1.GitTagDeleteResponse]
 	gitRestore          *connect.Client[v1.GitRestoreRequest, v1.GitRestoreResponse]
 	gitApply            *connect.Client[v1.GitApplyRequest, v1.GitApplyResponse]
+	gitCherryPick       *connect.Client[v1.GitCherryPickRequest, v1.GitCherryPickResponse]
+	gitRevert           *connect.Client[v1.GitRevertRequest, v1.GitRevertResponse]
+	gitReset            *connect.Client[v1.GitResetRequest, v1.GitResetResponse]
+	gitMerge            *connect.Client[v1.GitMergeRequest, v1.GitMergeResponse]
+	gitRebase           *connect.Client[v1.GitRebaseRequest, v1.GitRebaseResponse]
 }
 
 // GetDaemon calls devyard.v1.DaemonService.GetDaemon.
@@ -717,6 +768,31 @@ func (c *daemonServiceClient) GitApply(ctx context.Context, req *connect.Request
 	return c.gitApply.CallUnary(ctx, req)
 }
 
+// GitCherryPick calls devyard.v1.DaemonService.GitCherryPick.
+func (c *daemonServiceClient) GitCherryPick(ctx context.Context, req *connect.Request[v1.GitCherryPickRequest]) (*connect.Response[v1.GitCherryPickResponse], error) {
+	return c.gitCherryPick.CallUnary(ctx, req)
+}
+
+// GitRevert calls devyard.v1.DaemonService.GitRevert.
+func (c *daemonServiceClient) GitRevert(ctx context.Context, req *connect.Request[v1.GitRevertRequest]) (*connect.Response[v1.GitRevertResponse], error) {
+	return c.gitRevert.CallUnary(ctx, req)
+}
+
+// GitReset calls devyard.v1.DaemonService.GitReset.
+func (c *daemonServiceClient) GitReset(ctx context.Context, req *connect.Request[v1.GitResetRequest]) (*connect.Response[v1.GitResetResponse], error) {
+	return c.gitReset.CallUnary(ctx, req)
+}
+
+// GitMerge calls devyard.v1.DaemonService.GitMerge.
+func (c *daemonServiceClient) GitMerge(ctx context.Context, req *connect.Request[v1.GitMergeRequest]) (*connect.Response[v1.GitMergeResponse], error) {
+	return c.gitMerge.CallUnary(ctx, req)
+}
+
+// GitRebase calls devyard.v1.DaemonService.GitRebase.
+func (c *daemonServiceClient) GitRebase(ctx context.Context, req *connect.Request[v1.GitRebaseRequest]) (*connect.Response[v1.GitRebaseResponse], error) {
+	return c.gitRebase.CallUnary(ctx, req)
+}
+
 // DaemonServiceHandler is an implementation of the devyard.v1.DaemonService service.
 type DaemonServiceHandler interface {
 	// Daemon
@@ -768,6 +844,11 @@ type DaemonServiceHandler interface {
 	GitTagDelete(context.Context, *connect.Request[v1.GitTagDeleteRequest]) (*connect.Response[v1.GitTagDeleteResponse], error)
 	GitRestore(context.Context, *connect.Request[v1.GitRestoreRequest]) (*connect.Response[v1.GitRestoreResponse], error)
 	GitApply(context.Context, *connect.Request[v1.GitApplyRequest]) (*connect.Response[v1.GitApplyResponse], error)
+	GitCherryPick(context.Context, *connect.Request[v1.GitCherryPickRequest]) (*connect.Response[v1.GitCherryPickResponse], error)
+	GitRevert(context.Context, *connect.Request[v1.GitRevertRequest]) (*connect.Response[v1.GitRevertResponse], error)
+	GitReset(context.Context, *connect.Request[v1.GitResetRequest]) (*connect.Response[v1.GitResetResponse], error)
+	GitMerge(context.Context, *connect.Request[v1.GitMergeRequest]) (*connect.Response[v1.GitMergeResponse], error)
+	GitRebase(context.Context, *connect.Request[v1.GitRebaseRequest]) (*connect.Response[v1.GitRebaseResponse], error)
 }
 
 // NewDaemonServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1029,6 +1110,36 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(daemonServiceMethods.ByName("GitApply")),
 		connect.WithHandlerOptions(opts...),
 	)
+	daemonServiceGitCherryPickHandler := connect.NewUnaryHandler(
+		DaemonServiceGitCherryPickProcedure,
+		svc.GitCherryPick,
+		connect.WithSchema(daemonServiceMethods.ByName("GitCherryPick")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitRevertHandler := connect.NewUnaryHandler(
+		DaemonServiceGitRevertProcedure,
+		svc.GitRevert,
+		connect.WithSchema(daemonServiceMethods.ByName("GitRevert")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitResetHandler := connect.NewUnaryHandler(
+		DaemonServiceGitResetProcedure,
+		svc.GitReset,
+		connect.WithSchema(daemonServiceMethods.ByName("GitReset")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitMergeHandler := connect.NewUnaryHandler(
+		DaemonServiceGitMergeProcedure,
+		svc.GitMerge,
+		connect.WithSchema(daemonServiceMethods.ByName("GitMerge")),
+		connect.WithHandlerOptions(opts...),
+	)
+	daemonServiceGitRebaseHandler := connect.NewUnaryHandler(
+		DaemonServiceGitRebaseProcedure,
+		svc.GitRebase,
+		connect.WithSchema(daemonServiceMethods.ByName("GitRebase")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/devyard.v1.DaemonService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DaemonServiceGetDaemonProcedure:
@@ -1115,6 +1226,16 @@ func NewDaemonServiceHandler(svc DaemonServiceHandler, opts ...connect.HandlerOp
 			daemonServiceGitRestoreHandler.ServeHTTP(w, r)
 		case DaemonServiceGitApplyProcedure:
 			daemonServiceGitApplyHandler.ServeHTTP(w, r)
+		case DaemonServiceGitCherryPickProcedure:
+			daemonServiceGitCherryPickHandler.ServeHTTP(w, r)
+		case DaemonServiceGitRevertProcedure:
+			daemonServiceGitRevertHandler.ServeHTTP(w, r)
+		case DaemonServiceGitResetProcedure:
+			daemonServiceGitResetHandler.ServeHTTP(w, r)
+		case DaemonServiceGitMergeProcedure:
+			daemonServiceGitMergeHandler.ServeHTTP(w, r)
+		case DaemonServiceGitRebaseProcedure:
+			daemonServiceGitRebaseHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1290,4 +1411,24 @@ func (UnimplementedDaemonServiceHandler) GitRestore(context.Context, *connect.Re
 
 func (UnimplementedDaemonServiceHandler) GitApply(context.Context, *connect.Request[v1.GitApplyRequest]) (*connect.Response[v1.GitApplyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitApply is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitCherryPick(context.Context, *connect.Request[v1.GitCherryPickRequest]) (*connect.Response[v1.GitCherryPickResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitCherryPick is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitRevert(context.Context, *connect.Request[v1.GitRevertRequest]) (*connect.Response[v1.GitRevertResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitRevert is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitReset(context.Context, *connect.Request[v1.GitResetRequest]) (*connect.Response[v1.GitResetResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitReset is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitMerge(context.Context, *connect.Request[v1.GitMergeRequest]) (*connect.Response[v1.GitMergeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitMerge is not implemented"))
+}
+
+func (UnimplementedDaemonServiceHandler) GitRebase(context.Context, *connect.Request[v1.GitRebaseRequest]) (*connect.Response[v1.GitRebaseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("devyard.v1.DaemonService.GitRebase is not implemented"))
 }

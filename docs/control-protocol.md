@@ -110,8 +110,9 @@ message; with an empty one it keeps it. Every local mutation bumps
 
 `GitCheckout` checks out a branch: a local name switches to it, while a
 remote one (`origin/feature`) creates the local counterpart (`feature`)
-tracking the remote branch. Git refuses to switch when uncommitted changes
-would be overwritten, and when the local branch already exists.
+tracking the remote branch; with `detach = true`, a commit hash or ref is
+checked out in detached HEAD mode. Git refuses to switch when uncommitted
+changes would be overwritten, and when the local branch already exists.
 `GitBranchCreate` creates a branch at `start` (a branch name or commit
 hash; empty = HEAD), optionally checking it out. `GitBranchDelete` deletes
 a local branch — refused when it is unmerged, unless `force` — and
@@ -122,7 +123,9 @@ paths go back to HEAD (staged and unstaged changes alike) and untracked
 paths are deleted; ignored files are never touched. `GitApply` applies a
 unified diff — typically one hunk of one file, as the dashboard sends — to
 the index (`cached`) or the working tree, in reverse when asked: staging,
-unstaging and discarding individual hunks.
+unstaging and discarding individual hunks. `GitCherryPick`, `GitRevert`,
+`GitReset` (`soft`, `mixed`, or `hard`), `GitMerge`, and `GitRebase` perform
+commit-level history operations.
 
 `GitStash` moves working tree changes in and out of the stash list:
 

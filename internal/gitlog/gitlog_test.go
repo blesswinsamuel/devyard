@@ -1510,3 +1510,91 @@ func TestParseDecorations(t *testing.T) {
 		}
 	}
 }
+
+func TestCommitOperations(t *testing.T) {
+	dir := initRepo(t)
+	base := gitRun(t, dir, "rev-parse", "HEAD")
+
+	// Create a feature branch with a commit.
+	if err := BranchCreate(dir, "feature", "", true); err != nil {
+		t.Fatalf("BranchCreate: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "feature.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "feature.txt")
+	gitRun(t, dir, "commit", "-m", "add feature")
+	featHash := gitRun(t, dir, "rev-parse", "HEAD")
+
+	// Switch back to main/master and cherry-pick the feature commit.
+	mainBranch := "main"
+	if !refExists(dir, "refs/heads/main") {
+		mainBranch = "master"
+	}
+	if err := Checkout(dir, mainBranch); err != nil {
+		t.Fatalf("Checkout main: %v", err)
+	}
+	if err := CherryPick(dir, featHash); err != nil {
+		t.Fatalf("CherryPick: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "feature.txt")); err != nil {
+		t.Fatalf("expected feature.txt after cherry-pick: %v", err)
+	}
+
+	// Revert the cherry-picked commit.
+	pickedHash := gitRun(t, dir, "rev-parse", "HEAD")
+	if err := Revert(dir, pickedHash); err != nil {
+		t.Fatalf("Revert: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "feature.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected feature.txt removed after revert, got %v", err)
+	}
+
+	// Soft reset back to base keeps staged changes.
+	if err := Reset(dir, base, "soft"); err != nil {
+		t.Fatalf("Reset soft: %v", err)
+	}
+	if got := gitRun(t, dir, "rev-parse", "HEAD"); got != base {
+		t.Fatalf("HEAD = %s, want %s", got, base)
+	}
+
+	// Hard reset to base cleans everything.
+	if err := Reset(dir, base, "hard"); err != nil {
+		t.Fatalf("Reset hard: %v", err)
+	}
+
+	// Invalid reset mode is rejected.
+	if err := Reset(dir, base, "bogus"); err == nil {
+		t.Fatal("expected error for invalid reset mode")
+	}
+
+	// Option-like revisions are rejected.
+	if err := CherryPick(dir, "--abort"); err == nil {
+		t.Fatal("expected error for option-like revision")
+	}
+
+	// CheckoutCommit detaches HEAD.
+	if err := CheckoutCommit(dir, featHash); err != nil {
+		t.Fatalf("CheckoutCommit: %v", err)
+	}
+	if st, err := Status(dir); err != nil || st.Branch != "(detached)" || st.HeadHash != featHash {
+		t.Fatalf("expected detached HEAD at %s, got %+v (err=%v)", featHash, st, err)
+	}
+
+	// Merge and Rebase on main.
+	if err := Checkout(dir, mainBranch); err != nil {
+		t.Fatalf("Checkout main: %v", err)
+	}
+	if err := Rebase(dir, featHash); err != nil {
+		t.Fatalf("Rebase: %v", err)
+	}
+	if got := gitRun(t, dir, "rev-parse", "HEAD"); got != featHash {
+		t.Fatalf("after rebase HEAD = %s, want %s", got, featHash)
+	}
+	if err := Reset(dir, base, "hard"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Merge(dir, "feature"); err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+}

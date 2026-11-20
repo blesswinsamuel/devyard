@@ -325,6 +325,7 @@ function GitWorkspace(props: { project: string; git: GitEntity }) {
   const commitList = () => (
     <CommitList
       project={props.project}
+      activeBranch={props.git.branch}
       header={isWide()}
       commits={filtered()}
       total={commits().length}

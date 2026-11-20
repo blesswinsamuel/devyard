@@ -67,6 +67,11 @@ service DaemonService {
   rpc GitTagDelete(GitTagDeleteRequest) returns (GitTagDeleteResponse);
   rpc GitRestore(GitRestoreRequest) returns (GitRestoreResponse);
   rpc GitApply(GitApplyRequest) returns (GitApplyResponse);
+  rpc GitCherryPick(GitCherryPickRequest) returns (GitCherryPickResponse);
+  rpc GitRevert(GitRevertRequest) returns (GitRevertResponse);
+  rpc GitReset(GitResetRequest) returns (GitResetResponse);
+  rpc GitMerge(GitMergeRequest) returns (GitMergeResponse);
+  rpc GitRebase(GitRebaseRequest) returns (GitRebaseResponse);
 }
 
 // -----------------------------------------------------------------------------
@@ -876,9 +881,12 @@ message GitFetchResponse {
 message GitCheckoutRequest {
   string project = 1;
   // A local branch name, or a remote branch ("origin/feature") whose local
-  // counterpart is created tracking it. Uncommitted changes keep git from
-  // switching when they would be overwritten.
+  // counterpart is created tracking it. When detach is true, a commit hash or
+  // ref is checked out in detached HEAD mode instead. Uncommitted changes keep
+  // git from switching when they would be overwritten.
   string branch = 2;
+  // Check out `branch` as a detached HEAD (e.g. a commit hash).
+  bool detach = 3;
 }
 
 message GitCheckoutResponse {}
@@ -944,3 +952,45 @@ message GitApplyRequest {
 }
 
 message GitApplyResponse {}
+
+message GitCherryPickRequest {
+  string project = 1;
+  // Commit hash (or revision) to cherry-pick onto HEAD.
+  string commit = 2;
+}
+
+message GitCherryPickResponse {}
+
+message GitRevertRequest {
+  string project = 1;
+  // Commit hash (or revision) to revert.
+  string commit = 2;
+}
+
+message GitRevertResponse {}
+
+message GitResetRequest {
+  string project = 1;
+  // Commit hash (or revision) to reset HEAD to.
+  string commit = 2;
+  // Reset mode: "soft", "mixed" (default), or "hard".
+  string mode = 3;
+}
+
+message GitResetResponse {}
+
+message GitMergeRequest {
+  string project = 1;
+  // Commit hash or branch to merge into the current branch.
+  string target = 2;
+}
+
+message GitMergeResponse {}
+
+message GitRebaseRequest {
+  string project = 1;
+  // Commit hash or branch to rebase the current branch onto.
+  string onto = 2;
+}
+
+message GitRebaseResponse {}

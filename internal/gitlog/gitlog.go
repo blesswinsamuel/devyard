@@ -1197,6 +1197,7 @@ func StashDrop(dir, index string) error {
 // index (checkout, branch, restore, clean).
 func runGit(dir string, args ...string) error {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_EDITOR=true")
 	setProcessGroup(cmd)
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
@@ -1246,6 +1247,83 @@ func validRev(rev string) error {
 // refExists reports whether the exactly named ref exists.
 func refExists(dir, ref string) bool {
 	return gitCmd(dir, "show-ref", "--verify", "--quiet", ref).Run() == nil
+}
+
+func ensureGitRepo(dir string) error {
+	if dir == "" {
+		return fmt.Errorf("git: no working directory")
+	}
+	if !IsRepo(dir) {
+		return fmt.Errorf("git: %s is not a git repository", dir)
+	}
+	return nil
+}
+
+func requireRev(dir, rev string) error {
+	if err := ensureGitRepo(dir); err != nil {
+		return err
+	}
+	if rev == "" {
+		return fmt.Errorf("git: revision is required")
+	}
+	return validRev(rev)
+}
+
+// CheckoutCommit checks out a commit or ref in detached HEAD mode.
+func CheckoutCommit(dir, rev string) error {
+	if err := requireRev(dir, rev); err != nil {
+		return err
+	}
+	return runGit(dir, "checkout", "--detach", rev)
+}
+
+// CherryPick applies the changes introduced by commit onto HEAD.
+func CherryPick(dir, commit string) error {
+	if err := requireRev(dir, commit); err != nil {
+		return err
+	}
+	return runGit(dir, "cherry-pick", commit)
+}
+
+// Revert creates a new commit that undoes the changes introduced by commit.
+func Revert(dir, commit string) error {
+	if err := requireRev(dir, commit); err != nil {
+		return err
+	}
+	return runGit(dir, "revert", "--no-edit", commit)
+}
+
+// Reset moves HEAD (and optionally the index and working tree) to commit.
+// Mode must be "soft", "mixed" (default when empty), or "hard".
+func Reset(dir, commit, mode string) error {
+	if err := requireRev(dir, commit); err != nil {
+		return err
+	}
+	if mode == "" {
+		mode = "mixed"
+	}
+	switch mode {
+	case "soft", "mixed", "hard":
+	default:
+		return fmt.Errorf("git: invalid reset mode %q", mode)
+	}
+	return runGit(dir, "reset", "--"+mode, commit)
+}
+
+// Merge merges target (a commit or branch) into the current branch.
+func Merge(dir, target string) error {
+	if err := requireRev(dir, target); err != nil {
+		return err
+	}
+	return runGit(dir, "merge", "--no-edit", target)
+}
+
+// Rebase reapplies commits on top of onto.
+func Rebase(dir, onto string) error {
+	if err := requireRev(dir, onto); err != nil {
+		return err
+	}
+	return runGit(dir, "rebase", onto)
 }
 
 // Checkout checks out a local branch, or the local counterpart of a remote

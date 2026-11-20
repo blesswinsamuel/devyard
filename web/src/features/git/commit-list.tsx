@@ -1,15 +1,41 @@
 import { createEffect, For, on, Show, type JSX } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
-import { ChevronsDown, Copy, GitBranchPlus, GitCommitHorizontal, GitCompare, Search, Tag, X } from "lucide-solid";
+import {
+  Cherry,
+  ChevronsDown,
+  Copy,
+  FileText,
+  GitBranch,
+  GitBranchPlus,
+  GitCommitHorizontal,
+  GitCompare,
+  GitMerge,
+  GitPullRequestArrow,
+  RotateCcw,
+  Search,
+  Tag,
+  Undo2,
+  X,
+} from "lucide-solid";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "~/components/ui/input-group";
 import { Spinner } from "~/components/ui/spinner";
 import { copyText } from "~/components/copy-button";
-import { promptGitBranch, promptGitTag } from "~/app/ui-state";
+import { confirm, promptGitBranch, promptGitTag } from "~/app/ui-state";
 import { formatRelative, now } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { PaneHeader, LineStats, RefBadge } from "./badges";
-import { WORKDIR, type GitCommitView } from "./git-data";
+import {
+  WORKDIR,
+  checkoutBranch,
+  checkoutCommit,
+  cherryPickCommit,
+  mergeCommit,
+  rebaseOnto,
+  resetToCommit,
+  revertCommit,
+  type GitCommitView,
+} from "./git-data";
 import type { CommitGraphInfo } from "./graph";
 import { GraphCell } from "./graph-cell";
 import { GitContextMenu, type GitMenuItem } from "./menu";
@@ -41,6 +67,7 @@ export function commitRowClass(selected: boolean, base: boolean): string {
 function CommitRow(props: {
   commit: GitCommitView;
   project: string;
+  activeBranch?: string;
   info: CommitGraphInfo | undefined;
   columns: number;
   showGraph: boolean;
@@ -55,22 +82,91 @@ function CommitRow(props: {
   const workdir = () => props.commit.hash === WORKDIR;
   const detached = () => !props.commit.refs.some((r) => r.type === "branch" && r.isActive);
   const isBase = () => props.base === props.commit.hash;
+  const isDetached = () => !props.activeBranch || props.activeBranch === "(detached)";
+  const targetLabel = () => (isDetached() ? "HEAD" : props.activeBranch!);
+  const hardReset = async () => {
+    const ok = await confirm({
+      title: `Hard reset ${targetLabel()} to ${props.commit.short}?`,
+      description: `Moves ${targetLabel()} to ${props.commit.short} and discards all staged and unstaged changes. This cannot be undone.`,
+      confirmLabel: "Hard reset",
+    });
+    if (ok) void resetToCommit(props.project, props.commit.hash, props.commit.short, "hard");
+  };
   const menu = (): GitMenuItem[] => {
+    const c = props.commit;
+    const target = targetLabel();
+    const localBranches = c.refs.filter((r) => r.type === "branch" && !r.isActive);
     return [
-      { label: "Copy hash", icon: Copy, onSelect: () => void copyText(props.commit.hash) },
+      ...localBranches.map((b) => ({
+        label: `Checkout ${b.name}`,
+        icon: GitBranch,
+        onSelect: () => void checkoutBranch(props.project, b.name),
+      })),
       {
-        label: `New branch at ${props.commit.short}…`,
+        label: `Checkout ${c.short} (detached)`,
+        icon: GitBranch,
+        disabled: c.head && isDetached(),
+        onSelect: () => void checkoutCommit(props.project, c.hash, c.short),
+      },
+      {
+        label: `Cherry-pick ${c.short}`,
+        icon: Cherry,
+        separated: true,
+        disabled: c.head,
+        onSelect: () => void cherryPickCommit(props.project, c.hash, c.short),
+      },
+      {
+        label: `Revert ${c.short}`,
+        icon: Undo2,
+        onSelect: () => void revertCommit(props.project, c.hash, c.short),
+      },
+      {
+        label: `Merge ${c.short} into ${target}`,
+        icon: GitMerge,
+        disabled: c.head,
+        onSelect: () => void mergeCommit(props.project, c.hash, c.short),
+      },
+      {
+        label: `Rebase ${target} onto ${c.short}`,
+        icon: GitPullRequestArrow,
+        disabled: c.head,
+        onSelect: () => void rebaseOnto(props.project, c.hash, c.short),
+      },
+      {
+        label: `Reset ${target} to ${c.short}`,
+        icon: RotateCcw,
+        children: [
+          {
+            label: "Soft (keep staged)",
+            onSelect: () => void resetToCommit(props.project, c.hash, c.short, "soft"),
+          },
+          {
+            label: "Mixed (keep working tree)",
+            onSelect: () => void resetToCommit(props.project, c.hash, c.short, "mixed"),
+          },
+          {
+            label: "Hard (discard all changes)…",
+            destructive: true,
+            separated: true,
+            onSelect: () => void hardReset(),
+          },
+        ],
+      },
+      {
+        label: `New branch at ${c.short}…`,
         icon: GitBranchPlus,
         separated: true,
-        onSelect: () => void promptGitBranch(props.project, props.commit.hash),
+        onSelect: () => void promptGitBranch(props.project, c.hash),
       },
-      { label: `Tag ${props.commit.short}…`, icon: Tag, onSelect: () => void promptGitTag(props.project, props.commit.hash) },
+      { label: `Tag ${c.short}…`, icon: Tag, onSelect: () => void promptGitTag(props.project, c.hash) },
       {
         label: isBase() ? "Clear comparison" : "Compare from here",
         icon: GitCompare,
         separated: true,
-        onSelect: () => (isBase() ? props.onClearCompare() : props.onCompare(props.commit.hash)),
+        onSelect: () => (isBase() ? props.onClearCompare() : props.onCompare(c.hash)),
       },
+      { label: "Copy hash", icon: Copy, separated: true, onSelect: () => void copyText(c.hash) },
+      { label: "Copy commit message", icon: FileText, onSelect: () => void copyText(c.subject) },
     ];
   };
   const row = () => (
@@ -148,6 +244,7 @@ function CommitRow(props: {
 
 export function CommitList(props: {
   project: string;
+  activeBranch?: string;
   commits: GitCommitView[];
   /** Commits before filtering (for the count). */
   total: number;
@@ -279,6 +376,7 @@ export function CommitList(props: {
                         <CommitRow
                           commit={commit()}
                           project={props.project}
+                          activeBranch={props.activeBranch}
                           info={props.graph.get(commit().hash)}
                           columns={props.columns}
                           showGraph={!filtering()}

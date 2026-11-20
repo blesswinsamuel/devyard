@@ -637,7 +637,12 @@ func (s *Server) GitCheckout(ctx context.Context, req *connect.Request[pb.GitChe
 	if req.Msg.Branch == "" {
 		return nil, invalid("branch is required")
 	}
-	if err := gitlog.Checkout(dir, req.Msg.Branch); err != nil {
+	if req.Msg.Detach {
+		err = gitlog.CheckoutCommit(dir, req.Msg.Branch)
+	} else {
+		err = gitlog.Checkout(dir, req.Msg.Branch)
+	}
+	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	s.Git.Changed(req.Msg.Project)
@@ -732,4 +737,87 @@ func (s *Server) GitApply(ctx context.Context, req *connect.Request[pb.GitApplyR
 	}
 	s.Git.Changed(req.Msg.Project)
 	return connect.NewResponse(&pb.GitApplyResponse{}), nil
+}
+
+func (s *Server) GitCherryPick(ctx context.Context, req *connect.Request[pb.GitCherryPickRequest]) (*connect.Response[pb.GitCherryPickResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Commit == "" {
+		return nil, invalid("commit is required")
+	}
+	err = gitlog.CherryPick(dir, req.Msg.Commit)
+	s.Git.Changed(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&pb.GitCherryPickResponse{}), nil
+}
+
+func (s *Server) GitRevert(ctx context.Context, req *connect.Request[pb.GitRevertRequest]) (*connect.Response[pb.GitRevertResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Commit == "" {
+		return nil, invalid("commit is required")
+	}
+	err = gitlog.Revert(dir, req.Msg.Commit)
+	s.Git.Changed(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&pb.GitRevertResponse{}), nil
+}
+
+func (s *Server) GitReset(ctx context.Context, req *connect.Request[pb.GitResetRequest]) (*connect.Response[pb.GitResetResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Commit == "" {
+		return nil, invalid("commit is required")
+	}
+	if m := req.Msg.Mode; m != "" && m != "soft" && m != "mixed" && m != "hard" {
+		return nil, invalid("mode must be soft, mixed, or hard")
+	}
+	err = gitlog.Reset(dir, req.Msg.Commit, req.Msg.Mode)
+	s.Git.Changed(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&pb.GitResetResponse{}), nil
+}
+
+func (s *Server) GitMerge(ctx context.Context, req *connect.Request[pb.GitMergeRequest]) (*connect.Response[pb.GitMergeResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Target == "" {
+		return nil, invalid("target is required")
+	}
+	err = gitlog.Merge(dir, req.Msg.Target)
+	s.Git.Changed(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&pb.GitMergeResponse{}), nil
+}
+
+func (s *Server) GitRebase(ctx context.Context, req *connect.Request[pb.GitRebaseRequest]) (*connect.Response[pb.GitRebaseResponse], error) {
+	dir, err := s.gitDir(req.Msg.Project)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.Onto == "" {
+		return nil, invalid("onto is required")
+	}
+	err = gitlog.Rebase(dir, req.Msg.Onto)
+	s.Git.Changed(req.Msg.Project)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return connect.NewResponse(&pb.GitRebaseResponse{}), nil
 }
